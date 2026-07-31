@@ -9,6 +9,9 @@ Bun (server) + React 19 + TypeScript + Vite (client). Desktop only — no mobile
 Reference copy of SillyTavern lives at `../SillyTavernSource` (read-only, for format
 research; we reimplement, we do not copy).
 
+## Important
+- The app is not in use by anyone as we are in early stages so preserving compatibility is not a concern.
+
 ## Commands
 
 - `bun run dev:server` — API on **8787**, hot-reloaded.
