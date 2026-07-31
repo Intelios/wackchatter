@@ -1,6 +1,6 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import { useMemo, useRef, useState } from 'react';
-import { PlusIcon, UploadIcon } from '../../layout/icons.tsx';
+import { EditIcon, PlusIcon, UploadIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import './CharacterList.css';
 
@@ -9,7 +9,10 @@ interface CharacterListProps {
   selected: string | null;
   loading: boolean;
   error: string | null;
+  /** Open this character's chat. */
   onSelect: (avatar: string) => void;
+  /** Open this character's card in the editor. */
+  onEdit: (avatar: string) => void;
   onRefresh: () => void;
 }
 
@@ -19,6 +22,7 @@ export function CharacterList({
   loading,
   error,
   onSelect,
+  onEdit,
   onRefresh,
 }: CharacterListProps) {
   const [query, setQuery] = useState('');
@@ -63,7 +67,8 @@ export function CharacterList({
     try {
       const created = await characterApi.create('New Character');
       onRefresh();
-      onSelect(created.avatar);
+      // A blank card needs filling in before it can be chatted with.
+      onEdit(created.avatar);
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
@@ -104,33 +109,51 @@ export function CharacterList({
           </div>
         ) : (
           filtered.map((character) => (
-            <button
-              type="button"
+            // A row rather than one big button: the card needs two distinct actions,
+            // and a button inside a button is invalid.
+            <div
               key={character.avatar}
               className="character-card"
-              aria-current={character.avatar === selected}
-              onClick={() => onSelect(character.avatar)}
+              data-current={character.avatar === selected || undefined}
             >
-              <img
-                className="character-card__avatar"
-                src={characterApi.imageUrl(character.avatar, character.modified)}
-                alt=""
-                loading="lazy"
-              />
-              <span className="character-card__text">
-                <span className="character-card__name">{character.name}</span>
-                <span className="character-card__meta">
-                  {character.creator ? `by ${character.creator}` : 'Unknown creator'}
-                  {character.tags.length ? ` · ${character.tags.slice(0, 3).join(', ')}` : ''}
+              <button
+                type="button"
+                className="character-card__open"
+                aria-current={character.avatar === selected}
+                onClick={() => onSelect(character.avatar)}
+                title={`Chat with ${character.name}`}
+              >
+                <img
+                  className="character-card__avatar"
+                  src={characterApi.imageUrl(character.avatar, character.modified)}
+                  alt=""
+                  loading="lazy"
+                />
+                <span className="character-card__text">
+                  <span className="character-card__name">{character.name}</span>
+                  <span className="character-card__meta">
+                    {character.creator ? `by ${character.creator}` : 'Unknown creator'}
+                    {character.tags.length ? ` · ${character.tags.slice(0, 3).join(', ')}` : ''}
+                  </span>
                 </span>
-              </span>
-              <span className="character-card__badges">
-                {character.hasLorebook ? <span className="badge">Lore</span> : null}
-                {character.alternateGreetingCount > 0 ? (
-                  <span className="badge">+{character.alternateGreetingCount}</span>
-                ) : null}
-              </span>
-            </button>
+                <span className="character-card__badges">
+                  {character.hasLorebook ? <span className="badge">Lore</span> : null}
+                  {character.alternateGreetingCount > 0 ? (
+                    <span className="badge">+{character.alternateGreetingCount}</span>
+                  ) : null}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="wc-button wc-button--ghost character-card__edit"
+                onClick={() => onEdit(character.avatar)}
+                title={`Edit ${character.name}`}
+                aria-label={`Edit ${character.name}`}
+              >
+                <EditIcon />
+              </button>
+            </div>
           ))
         )}
       </div>

@@ -1,0 +1,354 @@
+/**
+ * Chat state.
+ *
+ * Pure and exhaustive, so the rules that are easy to get wrong — what a failed swipe
+ * leaves behind, what regenerate destroys — are testable without React anywhere near
+ * them.
+ *
+ * The streaming text is deliberately NOT in here. It lives in streamStore and reaches
+ * one leaf component through useSyncExternalStore, so a reply that arrives over sixty
+ * seconds produces three or four actions rather than eighteen hundred.
+ */
+
+import {
+  type MessageState,
+  appendSwipe,
+  assistantPlaceholder,
+  currentText,
+  fromChatMessage,
+  greetingMessage,
+  removeSwipe,
+  selectSwipe,
+  setText,
+  timestamp,
+  toChatMessage,
+  userMessage,
+} from '@shared/chat/message.ts';
+import type { ChatCompletionBody } from '@shared/providers/types.ts';
+import type { CardDataV2 } from '@shared/types/card.ts';
+import type { ChatMessage, ChatMetadata, MessageExtra } from '@shared/types/chat.ts';
+import type { ApiMessage, Chat } from '@shared/types/chat.ts';
+import type { GenerationType } from '@shared/types/preset.ts';
+
+export type GenMode = 'send' | 'regenerate' | 'swipe' | 'continue';
+export type ChatStatus = 'idle' | 'connecting' | 'streaming';
+
+/** A record of one generation, for the "what was actually sent" inspector. */
+export interface PromptInspection {
+  at: number;
+  generationType: GenerationType;
+  messages: ApiMessage[];
+  tokenCounts: Record<string, number>;
+  totalTokens: number;
+  droppedMessages: number;
+  /** The exact object POSTed to /api/generate. */
+  body: ChatCompletionBody;
+  response?: {
+    model?: string;
+    finishReason: string | null;
+    promptTokens?: number;
+    completionTokens?: number;
+    error?: string;
+  };
+}
+
+const MAX_INSPECTIONS = 10;
+
+export interface ChatState {
+  chatId: string | null;
+  characterId: string | null;
+  title: string;
+  metadata: ChatMetadata;
+  messages: MessageState[];
+  status: ChatStatus;
+  /** The message being generated into. An id, because indices shift. */
+  streamingId: string | null;
+  mode: GenMode | null;
+  /** Regenerate's displaced message, restored if the generation produces nothing. */
+  discarded: { message: MessageState; index: number } | null;
+  error: string | null;
+  inspections: PromptInspection[];
+  /** Bumped by anything that must reach the database. Drives the save effect. */
+  revision: number;
+}
+
+export const initialChatState: ChatState = {
+  chatId: null,
+  characterId: null,
+  title: '',
+  metadata: {},
+  messages: [],
+  status: 'idle',
+  streamingId: null,
+  mode: null,
+  discarded: null,
+  error: null,
+  inspections: [],
+  revision: 0,
+};
+
+export type ChatAction =
+  | { type: 'chat/loaded'; chat: Chat }
+  | { type: 'chat/closed' }
+  | { type: 'chat/renamed'; title: string }
+  | { type: 'chat/greeting'; id: string; card: CardDataV2 }
+  | { type: 'message/appendUser'; id: string; name: string; text: string }
+  | { type: 'message/edited'; id: string; text: string }
+  | { type: 'message/deleted'; id: string }
+  | { type: 'message/toggleHidden'; id: string }
+  | { type: 'swipe/select'; id: string; index: number }
+  | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
+  | { type: 'gen/inspected'; inspection: PromptInspection }
+  | { type: 'gen/streaming' }
+  | { type: 'gen/finished'; text: string; extra?: MessageExtra }
+  | { type: 'gen/aborted'; text: string }
+  | { type: 'gen/failed'; message: string; text?: string }
+  | { type: 'error/cleared' };
+
+function replaceMessage(
+  messages: MessageState[],
+  id: string,
+  update: (message: MessageState) => MessageState,
+): MessageState[] {
+  return messages.map((message) => (message.id === id ? update(message) : message));
+}
+
+/** The last non-user message, which is the only one that can be swiped or continued. */
+function lastAssistantIndex(messages: MessageState[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (!messages[i]!.is_user) return i;
+  }
+  return -1;
+}
+
+/** Settle a finished, aborted or failed generation back into a consistent state. */
+function settle(state: ChatState, text: string, extra?: MessageExtra): ChatState {
+  const id = state.streamingId;
+  const mode = state.mode;
+  if (!id || !mode) return { ...state, status: 'idle', streamingId: null, mode: null };
+
+  const index = state.messages.findIndex((message) => message.id === id);
+  const settled: Partial<ChatState> = {
+    status: 'idle',
+    streamingId: null,
+    mode: null,
+    discarded: null,
+    revision: state.revision + 1,
+  };
+
+  if (index === -1) return { ...state, ...settled };
+
+  // Anything the model actually produced is kept, even from an abort or an error.
+  if (text) {
+    return {
+      ...state,
+      ...settled,
+      messages: replaceMessage(state.messages, id, (message) =>
+        setText(message, text, { gen_finished: timestamp(), extra }),
+      ),
+    };
+  }
+
+  // Nothing came back. Each mode has to undo exactly what gen/started did, or the
+  // failure leaves debris behind — most visibly a blank swipe on every failed overswipe.
+  switch (mode) {
+    case 'send':
+      return {
+        ...state,
+        ...settled,
+        messages: state.messages.filter((message) => message.id !== id),
+      };
+
+    case 'swipe':
+      return {
+        ...state,
+        ...settled,
+        messages: replaceMessage(state.messages, id, (message) =>
+          removeSwipe(message, message.swipe_id),
+        ),
+      };
+
+    case 'regenerate': {
+      // A deliberate divergence from SillyTavern, which destroys the swipe array before
+      // generating and so loses every alternate to a 429 or a stray Stop click.
+      if (!state.discarded) return { ...state, ...settled };
+      const messages = [...state.messages];
+      messages.splice(index, 1, state.discarded.message);
+      return { ...state, ...settled, messages };
+    }
+
+    // Continue never added anything, so there is nothing to undo.
+    default:
+      return { ...state, ...settled };
+  }
+}
+
+export function chatReducer(state: ChatState, action: ChatAction): ChatState {
+  switch (action.type) {
+    case 'chat/loaded':
+      return {
+        ...initialChatState,
+        chatId: action.chat.id,
+        characterId: action.chat.characterId,
+        title: action.chat.title,
+        metadata: action.chat.metadata,
+        messages: action.chat.messages.map(fromChatMessage),
+        inspections: state.inspections,
+      };
+
+    case 'chat/closed':
+      return { ...initialChatState, inspections: state.inspections };
+
+    case 'chat/renamed':
+      return { ...state, title: action.title, revision: state.revision + 1 };
+
+    case 'chat/greeting': {
+      // Only ever seeds an empty chat, so an existing transcript can't be overwritten.
+      if (state.messages.length > 0) return state;
+      const greeting = greetingMessage(action.id, action.card);
+      if (!currentText(greeting)) return state;
+      return { ...state, messages: [greeting], revision: state.revision + 1 };
+    }
+
+    case 'message/appendUser':
+      return {
+        ...state,
+        messages: [...state.messages, userMessage(action.id, action.name, action.text)],
+        error: null,
+        revision: state.revision + 1,
+      };
+
+    case 'message/edited':
+      return {
+        ...state,
+        messages: replaceMessage(state.messages, action.id, (message) =>
+          setText(message, action.text),
+        ),
+        revision: state.revision + 1,
+      };
+
+    case 'message/deleted':
+      return {
+        ...state,
+        messages: state.messages.filter((message) => message.id !== action.id),
+        revision: state.revision + 1,
+      };
+
+    case 'message/toggleHidden':
+      return {
+        ...state,
+        messages: replaceMessage(state.messages, action.id, (message) => ({
+          ...message,
+          is_system: !message.is_system,
+        })),
+        revision: state.revision + 1,
+      };
+
+    case 'swipe/select':
+      // Never while generating. A generation writes into whichever swipe is selected
+      // when it settles, so moving the selection mid-flight would land the reply in the
+      // wrong slot and strand an empty one. The UI disables the controls too, but the
+      // rule belongs here, where it cannot be bypassed by a stale read.
+      if (state.status !== 'idle') return state;
+
+      return {
+        ...state,
+        messages: replaceMessage(state.messages, action.id, (message) =>
+          selectSwipe(message, action.index),
+        ),
+        revision: state.revision + 1,
+      };
+
+    case 'gen/started': {
+      if (state.status !== 'idle') return state;
+
+      const base = { ...state, status: 'connecting' as const, mode: action.mode, error: null };
+      const last = state.messages[state.messages.length - 1];
+      const awaitingReply = Boolean(last?.is_user);
+
+      // Retry. The transcript ends on the user's turn — because the last attempt failed,
+      // or because they deleted the reply — so there is nothing to replace and this is
+      // just a fresh generation. SillyTavern behaves the same way (script.js:11567).
+      if (action.mode === 'send' || (action.mode === 'regenerate' && awaitingReply)) {
+        const placeholder = assistantPlaceholder(action.newId, action.name);
+        return {
+          ...base,
+          mode: 'send',
+          messages: [...state.messages, placeholder],
+          streamingId: action.newId,
+        };
+      }
+
+      // Swiping and continuing act on the reply at the end of the transcript. With a
+      // user turn sitting after it there is nothing to extend.
+      if (awaitingReply) return state;
+
+      const index = lastAssistantIndex(state.messages);
+      if (index === -1) return state;
+      const target = state.messages[index]!;
+      const messages = [...state.messages];
+
+      if (action.mode === 'swipe') {
+        // A new, empty swipe. Empty matters: assemble skips blank content, so the
+        // message excludes itself from its own prompt without any splicing.
+        messages[index] = appendSwipe(target, '', {
+          send_date: timestamp(),
+          gen_started: timestamp(),
+        });
+        return { ...base, messages, streamingId: target.id };
+      }
+
+      if (action.mode === 'regenerate') {
+        messages[index] = assistantPlaceholder(action.newId, target.name);
+        return {
+          ...base,
+          messages,
+          streamingId: action.newId,
+          // Kept so a failure can put the original back, alternates and all.
+          discarded: { message: target, index },
+        };
+      }
+
+      // Continue extends the existing text; the stream store is seeded with it.
+      return { ...base, messages, streamingId: target.id };
+    }
+
+    case 'gen/inspected':
+      return {
+        ...state,
+        inspections: [action.inspection, ...state.inspections].slice(0, MAX_INSPECTIONS),
+      };
+
+    case 'gen/streaming':
+      // A late frame from a generation that already settled must not revive it.
+      return state.status === 'connecting' ? { ...state, status: 'streaming' } : state;
+
+    case 'gen/finished':
+      if (state.status === 'idle') return state;
+      return settle(state, action.text, action.extra);
+
+    case 'gen/aborted':
+      if (state.status === 'idle') return state;
+      return settle(state, action.text, action.text ? { truncated: true } : undefined);
+
+    case 'gen/failed': {
+      if (state.status === 'idle') return state;
+      const text = action.text ?? '';
+      return {
+        ...settle(state, text, text ? { truncated: true } : undefined),
+        error: action.message,
+      };
+    }
+
+    case 'error/cleared':
+      return { ...state, error: null };
+
+    default:
+      return state;
+  }
+}
+
+/** The transcript in storage/wire form. Also what assemblePrompt consumes. */
+export function toChatMessages(state: ChatState): ChatMessage[] {
+  return state.messages.map(toChatMessage);
+}

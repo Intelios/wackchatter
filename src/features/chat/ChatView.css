@@ -1,0 +1,463 @@
+/*
+ * The chat column: a scrolling transcript with a pinned composer.
+ *
+ * Structural only — every colour, space and duration comes from tokens.css.
+ */
+
+.chat-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-view__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Content-anchoring would fight the ResizeObserver that follows the stream. */
+  overflow-anchor: none;
+}
+
+.chat-view__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  /* A readable measure, centred, rather than full-bleed text at any window width. */
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--wc-space-4) var(--wc-space-4) var(--wc-space-5);
+}
+
+.chat-view__error {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+  /* Matches the transcript's measure so it lines up with the composer below it. */
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--wc-space-2) var(--wc-space-4);
+  color: var(--wc-danger);
+  font-size: var(--wc-text-sm);
+  flex-shrink: 0;
+}
+
+.chat-view__error-text {
+  flex: 1;
+  min-width: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: 1px solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-danger-subtle);
+  overflow-wrap: anywhere;
+}
+
+.chat-view__retry {
+  flex-shrink: 0;
+}
+
+/* Labelled rather than icon-only: it is the way out of a failure, not a minor action. */
+.message__action--retry {
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1) var(--wc-space-2);
+  color: var(--wc-accent);
+}
+
+.message__action--retry:hover:not(:disabled) {
+  background: var(--wc-accent-subtle);
+}
+
+/* --- Message ------------------------------------------------------------ */
+
+.message {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--wc-space-3);
+  align-items: start;
+}
+
+/* Hidden from the prompt but still readable — dimmed rather than removed. */
+.message[data-hidden] {
+  opacity: 0.5;
+}
+
+.message__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wc-radius-sm);
+  overflow: hidden;
+  background: var(--wc-surface-raised);
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.message__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message__body {
+  min-width: 0;
+}
+
+.message__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  margin-bottom: var(--wc-space-1);
+}
+
+.message__name {
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.message[data-role="user"] .message__name {
+  color: var(--wc-accent);
+}
+
+.message__meta {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+}
+
+.message__badge {
+  padding: 0 var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  border: 1px solid var(--wc-border);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+}
+
+.message__badge--warn {
+  color: var(--wc-warning);
+  border-color: var(--wc-warning);
+}
+
+.message__text {
+  font-size: var(--wc-text-base);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+/* Streaming text is plain, so newlines have to be honoured manually. */
+.message__text--streaming {
+  white-space: pre-wrap;
+}
+
+.message__text > :first-child {
+  margin-top: 0;
+}
+
+.message__text > :last-child {
+  margin-bottom: 0;
+}
+
+.message__text p {
+  margin: 0 0 var(--wc-space-2);
+}
+
+.message__text em {
+  color: var(--wc-text-muted);
+}
+
+.message__text pre {
+  padding: var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  overflow-x: auto;
+}
+
+.message__text code {
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+}
+
+.message__text :not(pre) > code {
+  padding: 1px var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.message__text blockquote {
+  margin: 0 0 var(--wc-space-2);
+  padding-left: var(--wc-space-3);
+  border-left: 2px solid var(--wc-border-strong);
+  color: var(--wc-text-muted);
+}
+
+.message__text table {
+  border-collapse: collapse;
+  font-size: var(--wc-text-sm);
+}
+
+.message__text th,
+.message__text td {
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  text-align: left;
+}
+
+/* A blinking caret while tokens arrive, so a pause reads as "still working". */
+.message__caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--wc-accent);
+  animation: wc-caret 1s steps(2, start) infinite;
+}
+
+@keyframes wc-caret {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message__caret {
+    animation: none;
+  }
+}
+
+/* --- Reasoning ---------------------------------------------------------- */
+
+.message__reasoning {
+  margin-bottom: var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+}
+
+.message__reasoning summary {
+  padding: var(--wc-space-1) var(--wc-space-2);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.message__reasoning-body {
+  padding: 0 var(--wc-space-2) var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+  white-space: pre-wrap;
+}
+
+/* --- Actions ------------------------------------------------------------ */
+
+.message__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  margin-top: var(--wc-space-1);
+  /* Revealed on hover so a long transcript stays quiet. */
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.message:hover .message__actions,
+.message:focus-within .message__actions {
+  opacity: 1;
+}
+
+/* Retry is the way out of a failed generation, so it must not need discovering. */
+.message__actions:has(.message__action--retry) {
+  opacity: 1;
+}
+
+.message__action {
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+}
+
+.message__action:hover:not(:disabled) {
+  color: var(--wc-text);
+}
+
+.message__action[data-confirming] {
+  color: var(--wc-danger);
+  opacity: 1;
+}
+
+.message__confirm {
+  font-size: var(--wc-text-xs);
+}
+
+.message__swipes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: var(--wc-space-2);
+}
+
+.message__swipe-count {
+  font-size: var(--wc-text-xs);
+  font-family: var(--wc-font-mono);
+  color: var(--wc-text-faint);
+  min-width: 2.5em;
+  text-align: center;
+}
+
+.message__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.message__editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+/* --- Composer ----------------------------------------------------------- */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wc-space-2);
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
+  flex-shrink: 0;
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--wc-space-3);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  color: var(--wc-text);
+  font-family: inherit;
+  font-size: var(--wc-text-base);
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 120ms ease;
+}
+
+.composer__input:hover:not(:disabled) {
+  border-color: var(--wc-border-strong);
+}
+
+.composer__input:focus {
+  border-color: var(--wc-accent);
+  outline: none;
+}
+
+.composer__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.composer__button {
+  height: 42px;
+  flex-shrink: 0;
+}
+
+/* --- Chat picker -------------------------------------------------------- */
+
+.chat-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.chat-picker__top {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.chat-picker__title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 120ms ease;
+}
+
+.chat-picker__title:hover {
+  background: var(--wc-surface-hover);
+}
+
+.chat-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.chat-picker__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid transparent;
+}
+
+.chat-picker__item[data-active="true"] {
+  background: var(--wc-accent-subtle);
+  border-color: var(--wc-accent);
+}
+
+.chat-picker__item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.chat-picker__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  padding: var(--wc-space-2);
+}
+
+.chat-picker__name {
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-picker__preview,
+.chat-picker__count {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

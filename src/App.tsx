@@ -1,11 +1,19 @@
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
-import { useCallback, useEffect, useState } from 'react';
+import type { SettingsResponse } from '@shared/types/settings.ts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
+import { ChatPicker } from './features/chat/ChatPicker.tsx';
+import { ChatView } from './features/chat/ChatView.tsx';
+import { PromptInspector } from './features/chat/PromptInspector.tsx';
+import { useChat } from './features/chat/useChat.ts';
+import { usePromptPreview } from './features/chat/usePromptPreview.ts';
+import { ConnectionPanel } from './features/connection/ConnectionPanel.tsx';
 import { SettingsPanel } from './features/preset/SettingsPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
-import { characterApi, presetApi } from './lib/api.ts';
+import { characterApi, presetApi, settingsApi } from './lib/api.ts';
+import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
   const [leftOpen, setLeftOpen] = useState(false);
@@ -21,6 +29,8 @@ export function App() {
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<Preset | null>(null);
+
+  const [settings, setSettings] = useState<SettingsResponse | null>(null);
 
   const refreshPresets = useCallback(async () => {
     try {
@@ -38,6 +48,13 @@ export function App() {
   useEffect(() => {
     void refreshPresets();
   }, [refreshPresets]);
+
+  useEffect(() => {
+    settingsApi
+      .get()
+      .then(setSettings)
+      .catch((err) => setError((err as Error).message));
+  }, []);
 
   useEffect(() => {
     if (!presetId) {
@@ -97,9 +114,31 @@ export function App() {
     };
   }, [selected]);
 
+  const connection = settings?.connection ?? null;
+  const character = detail?.card.data ?? null;
+
+  // Exact for GPT and o-series, an estimate elsewhere — the same position ST is in.
+  const countTokens = useTokenizer(connection?.model ?? '', settings?.tokenizerEncoding);
+
+  const chat = useChat({
+    characterId: selected,
+    character,
+    preset,
+    persona: null,
+    connection,
+    countTokens,
+    streamingFps: settings?.streamingFps ?? 30,
+  });
+
+  // Live per-prompt token counts for the Prompt Manager.
+  const preview = usePromptPreview(
+    preset && character
+      ? { preset, character, persona: null, messages: chat.messages, countTokens }
+      : null,
+  );
+
   const handleSelect = useCallback((avatar: string) => {
     setSelected(avatar);
-    setEditing(true);
     setRightOpen(true);
   }, []);
 
@@ -117,6 +156,12 @@ export function App() {
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
   const showEditor = editing && detail;
+  const ready = Boolean(connection?.baseUrl && connection.model && preset);
+
+  const title = useMemo(() => {
+    if (!active) return 'WackChatter';
+    return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
+  }, [active, chat.state.title]);
 
   return (
     <AppShell
@@ -124,7 +169,7 @@ export function App() {
       rightOpen={rightOpen}
       onToggleLeft={() => setLeftOpen((v) => !v)}
       onToggleRight={() => setRightOpen((v) => !v)}
-      title={active?.name ?? 'WackChatter'}
+      title={title}
       left={
         <Panel title="Settings">
           <SettingsPanel
@@ -134,6 +179,9 @@ export function App() {
             onSelectPreset={setPresetId}
             onPresetChange={setPreset}
             onPresetsChanged={refreshPresets}
+            tokenCounts={preview?.tokenCounts}
+            connection={<ConnectionPanel settings={settings} onChange={setSettings} />}
+            inspector={<PromptInspector inspection={chat.inspection} />}
           />
         </Panel>
       }
@@ -150,6 +198,17 @@ export function App() {
           </Panel>
         ) : (
           <Panel title="Characters">
+            {selected ? (
+              <ChatPicker
+                chats={chat.chats}
+                activeId={chat.state.chatId}
+                title={chat.state.title}
+                onOpen={(id) => void chat.openChat(id)}
+                onNew={() => void chat.newChat()}
+                onDelete={(id) => void chat.deleteChat(id)}
+                onRename={chat.renameChat}
+              />
+            ) : null}
             <CharacterList
               characters={characters}
               selected={selected}
@@ -157,16 +216,22 @@ export function App() {
               error={error}
               onSelect={handleSelect}
               onRefresh={refresh}
+              onEdit={(avatar) => {
+                setSelected(avatar);
+                setEditing(true);
+              }}
             />
           </Panel>
         )
       }
     >
-      {active ? (
-        <div className="wc-empty">
-          <strong>{active.name}</strong>
-          <span>Chat arrives once the assembly engine is wired up.</span>
-        </div>
+      {active && character ? (
+        <ChatView
+          chat={chat}
+          characterName={character.name || active.name}
+          avatar={active.avatar}
+          ready={ready}
+        />
       ) : (
         <div className="wc-empty">
           <span>Select a character to begin.</span>

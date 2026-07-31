@@ -22,20 +22,47 @@
 .character-card {
   display: flex;
   align-items: center;
-  gap: var(--wc-space-3);
+  gap: var(--wc-space-1);
   width: 100%;
-  padding: var(--wc-space-2);
+  padding-right: var(--wc-space-1);
   border-radius: var(--wc-radius);
-  text-align: left;
   transition: background 120ms ease;
+}
+
+.character-card__open {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--wc-space-2);
+  text-align: left;
 }
 
 .character-card:hover {
   background: var(--wc-surface-hover);
 }
 
-.character-card[aria-current="true"] {
+.character-card[data-current] {
   background: var(--wc-accent-subtle);
+}
+
+/* Revealed on hover so the list stays quiet at rest. */
+.character-card__edit {
+  opacity: 0;
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.character-card:hover .character-card__edit,
+.character-card__edit:focus-visible {
+  opacity: 1;
+}
+
+.character-card__edit:hover {
+  color: var(--wc-text);
 }
 
 .character-card__avatar {

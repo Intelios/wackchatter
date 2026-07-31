@@ -14,7 +14,10 @@ import { handle, notFound } from './lib/http.ts';
 import { PROJECT_ROOT, ensureDataDirs } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
+import { handleChatRoute } from './routes/chats.ts';
+import { handleGenerateRoute } from './routes/generate.ts';
 import { handlePresetRoute } from './routes/presets.ts';
+import { handleSettingsRoute } from './routes/settings.ts';
 
 const PORT = Number(process.env.WC_PORT ?? 8787);
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -28,6 +31,9 @@ type RouteHandler = (request: Request, segments: string[]) => Promise<Response |
 const API_ROUTES: Record<string, RouteHandler> = {
   characters: handleCharacterRoute,
   presets: handlePresetRoute,
+  chats: handleChatRoute,
+  generate: handleGenerateRoute,
+  settings: handleSettingsRoute,
 };
 
 async function serveApi(request: Request, url: URL): Promise<Response> {

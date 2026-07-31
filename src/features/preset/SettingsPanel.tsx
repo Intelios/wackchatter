@@ -1,5 +1,5 @@
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Section } from '../../components/Section.tsx';
 import { DownloadIcon, UploadIcon } from '../../layout/icons.tsx';
 import { presetApi } from '../../lib/api.ts';
@@ -18,6 +18,10 @@ interface SettingsPanelProps {
   onPresetChange: (preset: Preset) => void;
   onPresetsChanged: () => void;
   tokenCounts?: Record<string, number>;
+  /** Connection settings — its own concern, but it belongs in this panel. */
+  connection?: ReactNode;
+  /** The "what was actually sent" inspector. */
+  inspector?: ReactNode;
 }
 
 export function SettingsPanel({
@@ -28,6 +32,8 @@ export function SettingsPanel({
   onPresetChange,
   onPresetsChanged,
   tokenCounts,
+  connection,
+  inspector,
 }: SettingsPanelProps) {
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
@@ -81,6 +87,12 @@ export function SettingsPanel({
 
   return (
     <div className="settings-panel">
+      {connection ? (
+        <Section title="Connection" defaultOpen={!preset.chat_completion_source}>
+          {connection}
+        </Section>
+      ) : null}
+
       <div className="settings-panel__preset">
         <select
           className="wc-select"
@@ -220,6 +232,8 @@ export function SettingsPanel({
           <span>Stream responses</span>
         </label>
       </Section>
+
+      {inspector ? <Section title="Last request">{inspector}</Section> : null}
     </div>
   );
 }

@@ -1,0 +1,53 @@
+.connection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+/* The label already carries its own bottom margin; this restores the gap above it. */
+.connection .wc-label:not(:first-child) {
+  margin-top: var(--wc-space-3);
+}
+
+.connection__row {
+  display: flex;
+  gap: var(--wc-space-2);
+  align-items: center;
+}
+
+.connection__row .wc-input,
+.connection__row .wc-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.connection__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wc-space-2);
+  margin-top: var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  cursor: pointer;
+}
+
+.connection__check input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.connection__check .wc-hint {
+  display: block;
+}
+
+.connection__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin-top: var(--wc-space-4);
+  flex-wrap: wrap;
+}
+
+.connection__status {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+}

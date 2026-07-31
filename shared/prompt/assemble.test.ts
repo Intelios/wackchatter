@@ -361,6 +361,99 @@ describe('names_behavior', () => {
   });
 });
 
+describe('continue', () => {
+  /** A short exchange ending on a partial assistant reply. */
+  const partial: ChatMessage[] = [
+    {
+      id: 'u1',
+      name: 'User',
+      is_user: true,
+      is_system: false,
+      mes: 'Describe the glade.',
+      send_date: 'a',
+    },
+    {
+      id: 'a1',
+      name: 'Seraphina',
+      is_user: false,
+      is_system: false,
+      mes: 'The lantern guttered',
+      send_date: 'b',
+    },
+  ];
+
+  test('a normal generation is unaffected', () => {
+    const result = assemble({ messages: partial, generationType: 'normal' });
+    const last = result.messages[result.messages.length - 1]!;
+    expect(last.content).not.toContain('Continue your last message');
+  });
+
+  test('by default the nudge is appended as the final instruction', () => {
+    const result = assemble({ messages: partial, generationType: 'continue' });
+    const last = result.messages[result.messages.length - 1]!;
+
+    expect(last.role).toBe('system');
+    expect(last.content).toBe(
+      '[Continue your last message without repeating its original content.]',
+    );
+  });
+
+  test('the nudge honours a preset override and its macros', () => {
+    const preset = createDefaultPreset();
+    preset.continue_nudge_prompt = 'Keep writing as {{char}}.';
+
+    const result = assemble({ preset, messages: partial, generationType: 'continue' });
+    expect(result.messages[result.messages.length - 1]!.content).toBe('Keep writing as Seraphina.');
+  });
+
+  test('prefill puts the partial reply last so the model carries straight on', () => {
+    const preset = createDefaultPreset();
+    preset.continue_prefill = true;
+
+    const result = assemble({ preset, messages: partial, generationType: 'continue' });
+    const last = result.messages[result.messages.length - 1]!;
+
+    expect(last.role).toBe('assistant');
+    // The default postfix is a single space — the join between old text and new.
+    expect(last.content).toBe('The lantern guttered ');
+    // And it is no longer sitting in the middle of the array.
+    expect(result.messages.filter((m) => m.content.startsWith('The lantern guttered')).length).toBe(
+      1,
+    );
+  });
+
+  test('prefill moves the partial past prompts that were ordered after the history', () => {
+    // jailbreak sits after chatHistory in the default order, so without the move the
+    // prefill would not be the final message and the model would answer it instead.
+    const preset = updatePrompt(createDefaultPreset(), 'jailbreak', {
+      content: 'Stay in character.',
+    });
+    preset.continue_prefill = true;
+
+    const result = assemble({ preset, messages: partial, generationType: 'continue' });
+    const roles = result.messages.map((m) => m.role);
+
+    expect(roles[roles.length - 1]).toBe('assistant');
+    expect(result.messages[result.messages.length - 2]!.content).toBe('Stay in character.');
+  });
+
+  test('a custom postfix is used instead of the space', () => {
+    const preset = createDefaultPreset();
+    preset.continue_prefill = true;
+    preset.continue_postfix = '\n\n';
+
+    const result = assemble({ preset, messages: partial, generationType: 'continue' });
+    expect(result.messages[result.messages.length - 1]!.content).toBe('The lantern guttered\n\n');
+  });
+
+  test('continuing with no assistant reply yet leaves the prompt alone', () => {
+    const onlyUser = [partial[0]!];
+    const nudged = assemble({ messages: onlyUser, generationType: 'continue' });
+    const plain = assemble({ messages: onlyUser, generationType: 'normal' });
+    expect(nudged.messages.length).toBe(plain.messages.length);
+  });
+});
+
 describe('example dialogue', () => {
   test('parses <START> blocks into alternating example messages', () => {
     const blocks = parseExampleDialogue(

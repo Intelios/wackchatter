@@ -170,6 +170,47 @@ function squashSystemMessages(messages: ApiMessage[]): ApiMessage[] {
   return result;
 }
 
+/**
+ * Reshape the prompt for a `continue`, where the model extends its own last reply
+ * rather than writing a new one.
+ *
+ * Two shapes, chosen by `continue_prefill`:
+ *  - Prefill: the partial reply becomes the FINAL message, so the model carries straight
+ *    on from it. It has to be moved there because prompts ordered after chatHistory
+ *    (jailbreak, typically) would otherwise sit between it and the completion.
+ *  - Nudge: the partial stays where it is and an instruction is appended instead. Used
+ *    for providers that reject a trailing assistant turn.
+ *
+ * `continue_postfix` is the join between the old text and the new — the reason a
+ * continuation does not otherwise run into the previous word.
+ */
+function applyContinue(
+  messages: ApiMessage[],
+  preset: Preset,
+  env: MacroEnvironment,
+  seed: string,
+): ApiMessage[] {
+  const lastAssistant = messages.map((m) => m.role).lastIndexOf('assistant');
+  if (lastAssistant === -1) return messages;
+
+  const postfix = preset.continue_postfix ?? ' ';
+
+  if (preset.continue_prefill) {
+    const partial = messages[lastAssistant]!;
+    const rest = messages.filter((_, index) => index !== lastAssistant);
+    return [...rest, { ...partial, content: `${partial.content}${postfix}` }];
+  }
+
+  const nudge = substituteMacros(
+    preset.continue_nudge_prompt ??
+      '[Continue your last message without repeating its original content.]',
+    env,
+    seed,
+  );
+
+  return nudge ? [...messages, { role: 'system' as const, content: nudge }] : messages;
+}
+
 export function assemblePrompt(options: AssembleOptions): AssembleResult {
   const {
     preset,
@@ -391,6 +432,11 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   // --- Flatten -----------------------------------------------------------
   let final = slots.flatMap((slot) => slot.messages);
+
+  // Continue reshapes the finished array: the nudge has to be the last instruction, and
+  // a prefill has to be the last message outright.
+  if (generationType === 'continue') final = applyContinue(final, preset, env, seed);
+
   if (preset.squash_system_messages) final = squashSystemMessages(final);
 
   const totalTokens = final.reduce((sum, m) => sum + countTokens(m.content), 0);
