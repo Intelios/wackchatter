@@ -1,0 +1,157 @@
+/*
+ * Three-column shell.
+ *
+ * The chat column is `1fr`, so opening a panel compresses it rather than covering it —
+ * the chat stays live and usable throughout. Column widths are driven by CSS variables
+ * on the grid so a single transition animates the whole layout.
+ */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--wc-left-width) 1fr var(--wc-right-width);
+  grid-template-rows: 1fr;
+  height: 100%;
+  transition: grid-template-columns var(--wc-duration) var(--wc-ease);
+}
+
+.shell[data-left-open="true"] {
+  --wc-left-width: var(--wc-panel-width);
+}
+
+.shell[data-right-open="true"] {
+  --wc-right-width: var(--wc-panel-width);
+}
+
+/* --- Panels ------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  background: var(--wc-surface);
+  overflow: hidden;
+}
+
+.panel--left {
+  border-right: 1px solid var(--wc-border);
+}
+
+.panel--right {
+  border-left: 1px solid var(--wc-border);
+}
+
+/*
+ * Panel contents are pinned to the panel's open width so text reflows once, on open,
+ * instead of re-wrapping on every animation frame.
+ */
+.panel__inner {
+  display: flex;
+  flex-direction: column;
+  width: var(--wc-panel-width);
+  height: 100%;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.panel--right .panel__inner {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+  height: var(--wc-topbar-height);
+  padding: 0 var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+
+.panel__title {
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--wc-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel__body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+/* --- Centre column ------------------------------------------------------ */
+
+.chat-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  background: var(--wc-bg);
+}
+
+.chat-column__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  height: var(--wc-topbar-height);
+  padding: 0 var(--wc-space-2);
+  border-bottom: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+
+.chat-column__title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  color: var(--wc-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-column__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Panel toggle ------------------------------------------------------- */
+
+.panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-muted);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.panel-toggle:hover {
+  background: var(--wc-surface-hover);
+  color: var(--wc-text);
+}
+
+.panel-toggle[aria-pressed="true"] {
+  color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+}
+
+.panel-toggle svg {
+  width: 17px;
+  height: 17px;
+}

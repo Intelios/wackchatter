@@ -1,0 +1,33 @@
+.field {
+  display: flex;
+  flex-direction: column;
+}
+
+.field__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+}
+
+.field__meta {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-bottom: var(--wc-space-2);
+}
+
+.list-field__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  margin-bottom: var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+}
+
+.list-field__row .wc-button {
+  align-self: flex-end;
+}

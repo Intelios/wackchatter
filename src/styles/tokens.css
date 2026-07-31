@@ -1,0 +1,92 @@
+/*
+ * Design tokens.
+ *
+ * Every component reads from these — no hardcoded colours or spacing anywhere else.
+ * Restyling the app should mean editing this file, not hunting through components.
+ * Values here are deliberately plain; they are structure, not art direction.
+ */
+
+:root {
+  /* Surfaces, from furthest back to closest */
+  --wc-bg: #16171a;
+  --wc-surface: #1c1e22;
+  --wc-surface-raised: #23262b;
+  --wc-surface-hover: #2a2e34;
+
+  /* Text */
+  --wc-text: #e8e9eb;
+  --wc-text-muted: #9aa0a8;
+  --wc-text-faint: #6b7178;
+
+  /* Lines */
+  --wc-border: #2e3238;
+  --wc-border-strong: #3d434b;
+
+  /* Accent */
+  --wc-accent: #6b8afd;
+  --wc-accent-hover: #7f9aff;
+  --wc-accent-text: #ffffff;
+  --wc-accent-subtle: rgba(107, 138, 253, 0.12);
+
+  /* Status */
+  --wc-danger: #e5484d;
+  --wc-danger-subtle: rgba(229, 72, 77, 0.12);
+  --wc-success: #46a758;
+  --wc-warning: #f0a020;
+
+  /* Spacing scale */
+  --wc-space-1: 4px;
+  --wc-space-2: 8px;
+  --wc-space-3: 12px;
+  --wc-space-4: 16px;
+  --wc-space-5: 24px;
+  --wc-space-6: 32px;
+
+  /* Radii */
+  --wc-radius-sm: 4px;
+  --wc-radius: 8px;
+  --wc-radius-lg: 12px;
+
+  /* Type */
+  --wc-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --wc-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --wc-text-xs: 11px;
+  --wc-text-sm: 13px;
+  --wc-text-base: 14px;
+  --wc-text-lg: 16px;
+
+  /* Layout */
+  --wc-panel-width: clamp(380px, 25vw, 560px);
+  --wc-topbar-height: 44px;
+  --wc-left-width: 0px;
+  --wc-right-width: 0px;
+
+  /* Motion. One duration and one curve keeps panel movement coherent. */
+  --wc-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --wc-duration: 260ms;
+
+  --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="light"] {
+  --wc-bg: #f6f7f9;
+  --wc-surface: #ffffff;
+  --wc-surface-raised: #ffffff;
+  --wc-surface-hover: #eceef1;
+
+  --wc-text: #1a1c1f;
+  --wc-text-muted: #5c636b;
+  --wc-text-faint: #878e96;
+
+  --wc-border: #e0e3e7;
+  --wc-border-strong: #c9ced4;
+
+  --wc-accent-subtle: rgba(107, 138, 253, 0.14);
+  --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --wc-duration: 0ms;
+  }
+}
