@@ -1,17 +1,23 @@
 /** Character CRUD + import/export. */
 
 import type { CardDataV2 } from '../../shared/types/card.ts';
+import type { WorldInfoEntry } from '../../shared/types/worldinfo.ts';
 import { stripPrivateFields } from '../lib/card.ts';
 import { writeCard } from '../lib/card.ts';
 import {
+  addBookEntry,
   createBlankCard,
   createCharacter,
+  deleteBook,
+  deleteBookEntry,
   deleteCharacter,
   getCharacter,
   getCharacterImage,
   importCharacter,
   listCharacters,
   renameCharacter,
+  updateBook,
+  updateBookEntry,
   updateCharacter,
 } from '../lib/characters.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
@@ -89,6 +95,55 @@ export async function handleCharacterRoute(
         'content-disposition': `attachment; filename="${base}.png"`,
       },
     });
+  }
+
+  // /api/characters/:avatar/book/...
+  //
+  // Per-entry rather than a whole-book PUT, so the server always mutates the book as
+  // stored rather than accepting one the client assembled. See mutateBook.
+  if (segments[1] === 'book') {
+    // /api/characters/:avatar/book/entries
+    if (segments[2] === 'entries' && segments.length === 3 && method === 'POST') {
+      const created = addBookEntry(avatar);
+      return created ? json(created, { status: 201 }) : notFound('Character not found.');
+    }
+
+    // /api/characters/:avatar/book/entries/:uid
+    if (segments[2] === 'entries' && segments.length === 4) {
+      const uid = Number(segments[3]);
+      if (!Number.isInteger(uid)) return errorResponse('Entry id must be an integer.');
+
+      if (method === 'PUT') {
+        const patch = await readJson<Partial<WorldInfoEntry>>(request);
+        if (!patch) return errorResponse('Request body is not valid JSON.');
+
+        const updated = updateBookEntry(avatar, uid, patch);
+        return updated ? json(updated) : notFound('Character or entry not found.');
+      }
+
+      if (method === 'DELETE') {
+        const updated = deleteBookEntry(avatar, uid);
+        return updated ? json(updated) : notFound('Character or entry not found.');
+      }
+    }
+
+    // /api/characters/:avatar/book
+    if (segments.length === 2) {
+      if (method === 'PUT') {
+        const fields = await readJson<Parameters<typeof updateBook>[1]>(request);
+        if (!fields) return errorResponse('Request body is not valid JSON.');
+
+        const updated = updateBook(avatar, fields);
+        return updated ? json(updated) : notFound('Character not found.');
+      }
+
+      if (method === 'DELETE') {
+        const updated = deleteBook(avatar);
+        return updated ? json(updated) : notFound('Character has no lorebook.');
+      }
+    }
+
+    return null;
   }
 
   // /api/characters/:avatar/rename

@@ -316,7 +316,7 @@ describe('normalizeBook', () => {
 });
 
 describe('nextUid', () => {
-  test('is max + 1, so a freed uid is never reused', () => {
+  test('is max + 1, not length, so a middle deletion cannot collide', () => {
     const book: WorldInfoBook = {
       entries: {
         '0': createWorldInfoEntry(0),
@@ -325,9 +325,37 @@ describe('nextUid', () => {
       },
     };
     expect(nextUid(book)).toBe(3);
-
-    // Deleting from the middle must not make the next uid collide with uid 2.
+    // `length` would say 2 here, which is taken.
     expect(nextUid(removeEntry(book, 1))).toBe(3);
+  });
+
+  test('deleting the HIGHEST entry does not free its uid for reuse', () => {
+    // The dangerous case: toCharacterBook rebuilds each entry from originalData by uid,
+    // so a reused uid grafts the deleted entry's unknown top-level keys onto a new one.
+    const book = toWorldInfoBook(richBook());
+    expect(nextUid(book)).toBe(8);
+
+    const afterDelete = removeEntry(book, 7);
+    expect(Object.keys(afterDelete.entries)).toHaveLength(0);
+    expect(nextUid(afterDelete)).toBe(8);
+  });
+
+  test("a new entry after a delete does not inherit the deleted entry's keys", () => {
+    const book = toWorldInfoBook(richBook());
+    const afterDelete = removeEntry(book, 7);
+
+    const uid = nextUid(afterDelete);
+    const withNew = {
+      ...afterDelete,
+      entries: { [String(uid)]: { ...createWorldInfoEntry(uid), content: 'fresh' } },
+    };
+
+    const rebuilt = toCharacterBook(withNew, 'Rich');
+    expect(rebuilt.entries).toHaveLength(1);
+    expect(rebuilt.entries[0]!.content).toBe('fresh');
+    // These belonged to the deleted entry and must not have followed the uid.
+    expect(rebuilt.entries[0]!.priority).toBeUndefined();
+    expect(rebuilt.entries[0]!.vendor_top_level).toBeUndefined();
   });
 
   test('starts at 0 for an empty book', () => {

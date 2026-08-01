@@ -16,6 +16,8 @@ import { ensureDefaultPreset } from './lib/presets.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
+import { handleLorebookRoute } from './routes/lorebooks.ts';
+import { handlePersonaRoute } from './routes/personas.ts';
 import { handlePresetRoute } from './routes/presets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
 
@@ -31,6 +33,8 @@ type RouteHandler = (request: Request, segments: string[]) => Promise<Response |
 const API_ROUTES: Record<string, RouteHandler> = {
   characters: handleCharacterRoute,
   presets: handlePresetRoute,
+  lorebooks: handleLorebookRoute,
+  personas: handlePersonaRoute,
   chats: handleChatRoute,
   generate: handleGenerateRoute,
   settings: handleSettingsRoute,

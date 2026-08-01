@@ -13,8 +13,10 @@ import type {
 } from '@shared/providers/types.ts';
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { Chat, ChatMessage, ChatMetadata, ChatSummary } from '@shared/types/chat.ts';
+import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
+import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, init);
@@ -109,6 +111,113 @@ export const presetApi = {
   },
 
   exportUrl: (id: string) => `/api/presets/${encodeURIComponent(id)}/export`,
+};
+
+export const lorebookApi = {
+  list: () => request<LorebookSummary[]>('/lorebooks'),
+
+  get: (id: string) => request<WorldInfoBook>(`/lorebooks/${encodeURIComponent(id)}`),
+
+  create: (name: string, book?: WorldInfoBook) =>
+    request<LorebookSummary>('/lorebooks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, book }),
+    }),
+
+  save: (id: string, book: WorldInfoBook) =>
+    request<{ ok: true }>(`/lorebooks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(book),
+    }),
+
+  /** A file move on the server: the filename is what a card's `extensions.world` names. */
+  rename: (id: string, name: string) =>
+    request<LorebookSummary>(`/lorebooks/${encodeURIComponent(id)}/rename`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/lorebooks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  import: (file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return request<LorebookSummary>('/lorebooks/import', { method: 'POST', body: form });
+  },
+
+  exportUrl: (id: string) => `/api/lorebooks/${encodeURIComponent(id)}/export`,
+};
+
+/** The book embedded in a character card, edited one entry at a time. */
+export const characterBookApi = {
+  addEntry: (avatar: string) =>
+    request<{ detail: CharacterDetail; uid: number }>(
+      `/characters/${encodeURIComponent(avatar)}/book/entries`,
+      { method: 'POST' },
+    ),
+
+  saveEntry: (avatar: string, uid: number, entry: unknown) =>
+    request<CharacterDetail>(`/characters/${encodeURIComponent(avatar)}/book/entries/${uid}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(entry),
+    }),
+
+  removeEntry: (avatar: string, uid: number) =>
+    request<CharacterDetail>(`/characters/${encodeURIComponent(avatar)}/book/entries/${uid}`, {
+      method: 'DELETE',
+    }),
+
+  saveBook: (avatar: string, fields: Record<string, unknown>) =>
+    request<CharacterDetail>(`/characters/${encodeURIComponent(avatar)}/book`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(fields),
+    }),
+
+  removeBook: (avatar: string) =>
+    request<CharacterDetail>(`/characters/${encodeURIComponent(avatar)}/book`, {
+      method: 'DELETE',
+    }),
+};
+
+export const personaApi = {
+  list: () => request<Persona[]>('/personas'),
+
+  create: (name: string) =>
+    request<Persona>('/personas', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+
+  save: (id: string, patch: Partial<Persona>) =>
+    request<Persona>(`/personas/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/personas/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  uploadAvatar: (id: string, file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return request<Persona>(`/personas/${encodeURIComponent(id)}/avatar`, {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  // The filename is stable per persona, so a replaced avatar would keep showing the old
+  // image without a cache-busting parameter.
+  avatarUrl: (id: string, version?: string | number) =>
+    `/api/personas/${encodeURIComponent(id)}/avatar${version ? `?v=${version}` : ''}`,
 };
 
 export const chatApi = {

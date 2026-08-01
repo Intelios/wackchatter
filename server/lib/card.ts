@@ -188,6 +188,13 @@ export function syncLegacyMirror(card: TavernCard): TavernCard {
  * This is the single most important function for not corrupting a user's library:
  * we start from the original parsed card and set only what changed, so V3-only and
  * third-party keys (chub, risuai, pygmalion_id, assets, source, ...) come through intact.
+ *
+ * **The spread is shallow, so a `character_book` in `updates` REPLACES the stored one
+ * wholesale.** That is deliberate and must stay that way: entries are an array, and a
+ * deep merge over an array cannot express "this entry was deleted". It does mean a
+ * caller must never hand this a book the client assembled — the embedded-book endpoints
+ * read the stored card, mutate one entry, and pass the result back, so a stale browser
+ * cannot write a mass deletion into the PNG. See routes/characters.ts.
  */
 export function mergeCardData(original: TavernCard, updates: Partial<CardDataV2>): TavernCard {
   const merged: TavernCard = {

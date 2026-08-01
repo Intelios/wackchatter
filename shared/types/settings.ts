@@ -8,13 +8,21 @@
 
 import type { ConnectionSettings, ProviderId } from '../providers/types.ts';
 import { DEFAULT_CONNECTION } from '../providers/types.ts';
+import type { WorldInfoSettings } from './worldinfo.ts';
+import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
 export interface AppSettings {
   connection: ConnectionSettings;
   /** UI refresh rate during streaming. */
   streamingFps: number;
-  /** Active persona id, once personas land. */
+  /**
+   * The persona new chats start with. NOT necessarily the one a given chat uses —
+   * `ChatMetadata.persona` wins there, because a transcript records who you were when
+   * you wrote it.
+   */
   personaId: string | null;
+  /** Global World Info scan settings. ST stores these per-app too, not per-book. */
+  worldInfo: WorldInfoSettings;
   /** Force a tokenizer encoding instead of inferring it from the model id. */
   tokenizerEncoding: 'auto' | 'o200k_base' | 'cl100k_base';
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
@@ -34,5 +42,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   connection: { ...DEFAULT_CONNECTION },
   streamingFps: 30,
   personaId: null,
+  worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
 };

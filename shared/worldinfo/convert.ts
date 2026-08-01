@@ -369,15 +369,28 @@ export function normalizeBook(raw: unknown, fallbackName?: string): WorldInfoBoo
 /**
  * The next free uid.
  *
- * `max + 1`, never `length`: after deleting an entry, `length` would hand back a uid that
- * is still referenced by `originalData`, and the new entry would inherit a deleted one's
- * unknown top-level keys on the next write.
+ * `max + 1`, never `length` — after deleting from the middle of a book, `length` would
+ * hand back a uid that is already in use.
+ *
+ * And the max is taken over `originalData` as well as the live entries, because
+ * `toCharacterBook` rebuilds each entry from the original with the SAME uid. Deleting the
+ * highest entry and adding a new one would otherwise reuse that uid, and the new entry
+ * would silently inherit the deleted one's unknown top-level keys — a `priority`, a
+ * vendor field, or a `name` belonging to lore the user removed on purpose.
  */
 export function nextUid(book: WorldInfoBook): number {
   let max = -1;
   for (const entry of Object.values(book.entries)) {
     if (entry.uid > max) max = entry.uid;
   }
+
+  const original = book.originalData as CharacterBook | undefined;
+  if (original && Array.isArray(original.entries)) {
+    for (const entry of original.entries) {
+      if (typeof entry?.id === 'number' && entry.id > max) max = entry.id;
+    }
+  }
+
   return max + 1;
 }
 

@@ -15,6 +15,8 @@ import type { ConnectionSettings } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS, isProviderId } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import { DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
+import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
+import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { PATHS } from './paths.ts';
 
 export type { AppSettings };
@@ -47,6 +49,34 @@ function normalizeConnection(value: unknown): ConnectionSettings {
   return connection;
 }
 
+/**
+ * Coerce stored World Info settings, field by field.
+ *
+ * A settings file written before this key existed has no `worldInfo` at all, and a client
+ * may legitimately send a single field, so every field falls back to its default
+ * independently rather than the object falling back as a whole.
+ */
+function normalizeWorldInfo(value: unknown): WorldInfoSettings {
+  const stored = isRecord(value) ? value : {};
+  const pick = <K extends keyof WorldInfoSettings>(key: K): WorldInfoSettings[K] => {
+    const candidate = stored[key as string];
+    return typeof candidate === typeof DEFAULT_WI_SETTINGS[key]
+      ? (candidate as WorldInfoSettings[K])
+      : DEFAULT_WI_SETTINGS[key];
+  };
+
+  return {
+    depth: pick('depth'),
+    budget: pick('budget'),
+    budgetCap: pick('budgetCap'),
+    recursive: pick('recursive'),
+    maxRecursionSteps: pick('maxRecursionSteps'),
+    caseSensitive: pick('caseSensitive'),
+    matchWholeWords: pick('matchWholeWords'),
+    minActivations: pick('minActivations'),
+  };
+}
+
 let cache: AppSettings | null = null;
 
 export function getSettings(): AppSettings {
@@ -66,22 +96,35 @@ export function getSettings(): AppSettings {
     ...DEFAULT_SETTINGS,
     ...stored,
     connection: normalizeConnection(stored.connection),
+    worldInfo: normalizeWorldInfo(stored.worldInfo),
   };
 
   return cache;
 }
 
-/** Merge a partial update and persist. `connection` merges field-wise. */
-export function saveSettings(patch: Partial<AppSettings>): AppSettings {
-  const current = getSettings();
-
-  const next: AppSettings = {
+/**
+ * Apply a partial update. Pure, so the merge rules are testable without a filesystem.
+ *
+ * `connection` and `worldInfo` merge FIELD-WISE. A shallow spread would drop every field
+ * the patch didn't mention, so a client changing only the scan depth would silently reset
+ * the budget and every match setting along with it.
+ */
+export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
+  return {
     ...current,
     ...patch,
     connection: patch.connection
       ? normalizeConnection({ ...current.connection, ...patch.connection })
       : current.connection,
+    worldInfo: patch.worldInfo
+      ? normalizeWorldInfo({ ...current.worldInfo, ...patch.worldInfo })
+      : current.worldInfo,
   };
+}
+
+/** Merge a partial update and persist. */
+export function saveSettings(patch: Partial<AppSettings>): AppSettings {
+  const next = mergeSettings(getSettings(), patch);
 
   writeFileSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
   cache = next;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
+import { toCharacterBook, toWorldInfoBook } from '../../shared/worldinfo/convert.ts';
 import {
   createBlankCard,
   mergeCardData,
@@ -238,6 +239,65 @@ describe('unknown-key preservation', () => {
     expect(readBack.data.name).toBe('Seraphina Edited');
     expect(readBack.data.group_only_greetings).toEqual(original.data.group_only_greetings!);
     expect(readBack.data.character_book?.entries).toHaveLength(4);
+  });
+});
+
+describe('mergeCardData and character_book', () => {
+  test('an update that omits character_book leaves the stored book intact', () => {
+    // CharacterEditor's autosave field list omits it for exactly this reason.
+    const original = readCard(loadSeraphina());
+    const edited = mergeCardData(original, { description: 'edited' });
+
+    expect(edited.data.character_book?.entries).toHaveLength(4);
+    expect(edited.data.character_book).toEqual(original.data.character_book!);
+  });
+
+  test('a character_book in the update REPLACES the stored one wholesale', () => {
+    // The contract the per-entry endpoints depend on. The spread is shallow, so entries
+    // are not merged — which is deliberate: entries are an array, and a deep merge over
+    // an array cannot express "this entry was deleted".
+    //
+    // The consequence is that a caller must never pass a book the client assembled. If
+    // this test ever starts failing because someone deep-merged character_book, the
+    // endpoints in routes/characters.ts need rethinking, not this test.
+    const original = readCard(loadSeraphina());
+    expect(original.data.character_book?.entries.length).toBeGreaterThan(1);
+
+    const edited = mergeCardData(original, {
+      character_book: {
+        extensions: {},
+        entries: [
+          { keys: ['x'], content: 'only', enabled: true, insertion_order: 0, extensions: {} },
+        ],
+      },
+    });
+
+    expect(edited.data.character_book?.entries).toHaveLength(1);
+    expect(edited.data.character_book?.entries[0]!.content).toBe('only');
+  });
+
+  test('a book edited through the converter survives the PNG round-trip with its unknown keys', () => {
+    const original = readCard(loadSeraphina());
+    const book = toWorldInfoBook(original.data.character_book!);
+
+    const first = Object.keys(book.entries)[0]!;
+    book.entries[first] = { ...book.entries[first]!, content: 'edited lore' };
+
+    const edited = mergeCardData(original, {
+      character_book: toCharacterBook(book, original.data.character_book!.name ?? 'Book'),
+    });
+    const readBack = readCard(writeCard(loadSeraphina(), edited));
+
+    const entries = readBack.data.character_book!.entries;
+    expect(entries).toHaveLength(original.data.character_book!.entries.length);
+    expect(entries.some((entry) => entry.content === 'edited lore')).toBe(true);
+
+    // Every extension key the shipped card carried is still there, on every entry.
+    original.data.character_book!.entries.forEach((before, index) => {
+      for (const [key, value] of Object.entries(before.extensions ?? {})) {
+        expect(entries[index]!.extensions[key]).toEqual(value);
+      }
+    });
   });
 });
 

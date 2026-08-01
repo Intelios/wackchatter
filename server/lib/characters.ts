@@ -13,6 +13,15 @@ import type {
   CharacterSummary,
   TavernCard,
 } from '../../shared/types/card.ts';
+import type { WorldInfoBook, WorldInfoEntry } from '../../shared/types/worldinfo.ts';
+import { createWorldInfoEntry } from '../../shared/types/worldinfo.ts';
+import {
+  bookEntries,
+  nextUid,
+  removeEntry,
+  toCharacterBook,
+  toWorldInfoBook,
+} from '../../shared/worldinfo/convert.ts';
 import { createBlankCard, mergeCardData, normalizeCard, readCard, writeCard } from './card.ts';
 import { PATHS, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
 
@@ -133,6 +142,141 @@ export function deleteCharacter(avatar: string): boolean {
   if (!path || !existsSync(path)) return false;
   unlinkSync(path);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// The embedded lorebook
+// ---------------------------------------------------------------------------
+
+/**
+ * Mutate the card's `character_book` one entry at a time.
+ *
+ * Deliberately NOT a whole-book PUT. `mergeCardData` replaces `character_book` wholesale
+ * (see its comment), so never handing it a client-built book is what makes that safe:
+ * every mutation here starts from the book as stored on disk. A stale browser tab cannot
+ * write a mass deletion into somebody's PNG, and a 200-entry book isn't re-uploaded on
+ * every keystroke's debounce.
+ *
+ * The conversion round-trip on each call is what preserves unknown keys — `originalData`
+ * carries per-entry top-level keys, and the entry's `extensions` bag carries the rest.
+ *
+ * Because `originalData` is rebuilt from the stored PNG on every call, a uid freed by a
+ * delete IS safely reusable here: the deleted entry is no longer on disk, so there is
+ * nothing left for a new entry to inherit. `nextUid` still refuses to reuse it, which
+ * matters for the client-side editor, where a book is held in memory across both edits.
+ */
+function mutateBook(
+  avatar: string,
+  mutate: (book: WorldInfoBook) => WorldInfoBook | null,
+): CharacterDetail | null {
+  const path = safeJoin(PATHS.characters, avatar);
+  if (!path || !existsSync(path)) return null;
+
+  const existing = new Uint8Array(readFileSync(path));
+  const card = readCard(existing);
+  const stored = card.data.character_book ?? { extensions: {}, entries: [] };
+
+  const next = mutate(toWorldInfoBook(stored));
+  if (!next) return null;
+
+  const merged = mergeCardData(card, {
+    character_book: toCharacterBook(next, next.name || card.data.name || 'Lorebook'),
+  });
+
+  Bun.write(path, writeCard(existing, merged));
+  return { ...summarize(avatar, merged, Date.now()), card: merged };
+}
+
+export function addBookEntry(avatar: string): { detail: CharacterDetail; uid: number } | null {
+  let created = -1;
+
+  const detail = mutateBook(avatar, (book) => {
+    const uid = nextUid(book);
+    created = uid;
+    const entry = createWorldInfoEntry(uid);
+    // Appended to the end of the list, which is where a new entry is expected to appear.
+    entry.displayIndex = bookEntries(book).length;
+    // Blank content would be dropped by the engine as `empty`, so a brand-new entry has
+    // to say something or it looks broken the moment it is created.
+    entry.content = 'New entry.';
+    return { ...book, entries: { ...book.entries, [String(uid)]: entry } };
+  });
+
+  return detail ? { detail, uid: created } : null;
+}
+
+export function updateBookEntry(
+  avatar: string,
+  uid: number,
+  patch: Partial<WorldInfoEntry>,
+): CharacterDetail | null {
+  return mutateBook(avatar, (book) => {
+    const current = book.entries[String(uid)];
+    if (!current) return null;
+
+    // `uid` is forced back: it keys the Record and links the entry to its originalData,
+    // so letting a client change it would silently orphan every unknown key it carries.
+    const next: WorldInfoEntry = { ...current, ...patch, uid };
+    return { ...book, entries: { ...book.entries, [String(uid)]: next } };
+  });
+}
+
+export function deleteBookEntry(avatar: string, uid: number): CharacterDetail | null {
+  return mutateBook(avatar, (book) => {
+    if (!book.entries[String(uid)]) return null;
+    return removeEntry(book, uid);
+  });
+}
+
+/** Book-level fields: the four the V2 spec defines, plus the display order. */
+export function updateBook(
+  avatar: string,
+  fields: {
+    name?: string;
+    description?: string;
+    scan_depth?: number;
+    token_budget?: number;
+    recursive_scanning?: boolean;
+    displayOrder?: number[];
+  },
+): CharacterDetail | null {
+  return mutateBook(avatar, (book) => {
+    const next: WorldInfoBook = { ...book };
+    if (fields.name !== undefined) next.name = fields.name;
+    if (fields.description !== undefined) next.description = fields.description;
+    if (fields.scan_depth !== undefined) next.scan_depth = fields.scan_depth;
+    if (fields.token_budget !== undefined) next.token_budget = fields.token_budget;
+    if (fields.recursive_scanning !== undefined) {
+      next.recursive_scanning = fields.recursive_scanning;
+    }
+
+    // A drag rewrites displayIndex and nothing else. `order` is a weight where ties are
+    // legal; a permutation cannot be expressed in it without inventing values.
+    if (fields.displayOrder) {
+      const entries = { ...next.entries };
+      fields.displayOrder.forEach((uid, index) => {
+        const entry = entries[String(uid)];
+        if (entry) entries[String(uid)] = { ...entry, displayIndex: index };
+      });
+      next.entries = entries;
+    }
+
+    return next;
+  });
+}
+
+/** Remove the embedded book entirely. */
+export function deleteBook(avatar: string): CharacterDetail | null {
+  const path = safeJoin(PATHS.characters, avatar);
+  if (!path || !existsSync(path)) return null;
+
+  const existing = new Uint8Array(readFileSync(path));
+  const card = readCard(existing);
+  if (!card.data.character_book) return null;
+
+  const merged = mergeCardData(card, { character_book: undefined });
+  Bun.write(path, writeCard(existing, merged));
+  return { ...summarize(avatar, merged, Date.now()), card: merged };
 }
 
 /**
