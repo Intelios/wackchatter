@@ -12,6 +12,13 @@ import './CharacterEditor.css';
 
 const AUTOSAVE_DELAY_MS = 700;
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+async function isPngFile(file: File): Promise<boolean> {
+  const head = new Uint8Array(await file.slice(0, PNG_SIGNATURE.length).arrayBuffer());
+  return head.length === PNG_SIGNATURE.length && PNG_SIGNATURE.every((byte, i) => head[i] === byte);
+}
+
 /** Only the fields we manage; the server merges them onto the stored card. */
 function toPatch(data: CardDataV2): Partial<CardDataV2> {
   return {
@@ -136,6 +143,11 @@ export function CharacterEditor({
 
   async function handleImageChange(file: File | undefined) {
     if (!file) return;
+    if (!(await isPngFile(file))) {
+      setSaveState('error');
+      setSaveError('Character cards must be PNG images so the card data can be embedded.');
+      return;
+    }
     setSaveState('saving');
     try {
       const saved = await queue.runSerialized(avatar, () =>
@@ -327,7 +339,7 @@ export function CharacterEditor({
         <input
           ref={imageInput}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png"
           className="wc-visually-hidden"
           onChange={(e) => {
             handleImageChange(e.target.files?.[0]);
