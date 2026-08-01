@@ -67,8 +67,6 @@ export function CharacterEditor({
   const bookPersistenceRef = useRef<PersistenceControls | null>(null);
 
   const avatar = detail.avatar;
-  /** Set while a save is in flight so its response doesn't clobber newer local edits. */
-  const dirtyRef = useRef(false);
   const revisionRef = useRef(0);
 
   // Stable refs so the long-lived queue's callbacks always read fresh values rather than
@@ -89,7 +87,6 @@ export function CharacterEditor({
       {
         onSaved: (id, _patch, saved) => {
           if (id !== avatarRef.current) return;
-          dirtyRef.current = false;
           setSaveState('saved');
           setSaveError(null);
           onSavedRef.current(saved);
@@ -110,7 +107,6 @@ export function CharacterEditor({
     setData(detail.card.data);
     dataRef.current = detail.card.data;
     setNameDraft(detail.card.data.name);
-    dirtyRef.current = false;
     setSaveState('idle');
     setSaveError(null);
     setConfirmDelete(false);
@@ -123,23 +119,21 @@ export function CharacterEditor({
     };
   }, [queue]);
 
-  const update = useCallback(<K extends keyof CardDataV2>(key: K, value: CardDataV2[K]) => {
-    dirtyRef.current = true;
-    setData((prev) => {
-      const next = { ...prev, [key]: value };
+  const update = useCallback(
+    <K extends keyof CardDataV2>(key: K, value: CardDataV2[K]) => {
+      // Schedule in the input event, not a passive effect. Otherwise an older request can
+      // settle after this local edit but before the effect runs, clear the dirty marker, and
+      // leave the new value with no queued revision at all.
+      const next = { ...dataRef.current, [key]: value };
       dataRef.current = next;
-      return next;
-    });
-  }, []);
-
-  // Debounced autosave. The queue owns an immutable copy of the patch, so later edits
-  // cannot mutate a save that is already queued.
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    revisionRef.current += 1;
-    setSaveState('saving');
-    queue.schedule(avatar, revisionRef.current, toPatch(data));
-  }, [data, avatar, queue]);
+      setData(next);
+      setSaveState('saving');
+      setSaveError(null);
+      revisionRef.current += 1;
+      queue.schedule(avatar, revisionRef.current, toPatch(next));
+    },
+    [avatar, queue],
+  );
 
   async function handleImageChange(file: File | undefined) {
     if (!file) return;

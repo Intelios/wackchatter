@@ -67,12 +67,10 @@ export async function handleLorebookRoute(
     const body = await readJson<{ name?: string }>(request);
     if (!body?.name) return errorResponse('A new name is required.');
 
-    const summary = await renameLorebook(id, body.name);
+    const summary = await renameLorebook(id, body.name, (newId) =>
+      cascadeLorebookRename(id, newId),
+    );
     if (!summary) return notFound('Lorebook not found.');
-
-    // The filename is what personas, character cards (`extensions.world`) and the global
-    // selection all key on, so a rename that changed it must repoint all three.
-    await cascadeLorebookRename(id, summary.id);
     return json(summary);
   }
 
@@ -87,13 +85,18 @@ export async function handleLorebookRoute(
       const book = await readJson<WorldInfoBook>(request);
       if (!book) return errorResponse('Request body is not valid JSON.');
 
-      await saveLorebook(id, book);
+      if (!(await saveLorebook(id, book))) return notFound('Lorebook not found.');
       return json({ ok: true });
     }
 
     if (method === 'DELETE') {
-      if (!deleteLorebook(id)) return notFound('Lorebook not found.');
-      await cascadeLorebookDelete(id);
+      if (
+        !(await deleteLorebook(id, async () => {
+          await cascadeLorebookDelete(id);
+        }))
+      ) {
+        return notFound('Lorebook not found.');
+      }
       return json({ ok: true });
     }
   }

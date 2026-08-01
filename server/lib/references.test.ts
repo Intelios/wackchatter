@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBlankCard, mergeCardData, readCard, writeCard } from './card.ts';
-import { updateWorldLinks } from './characters.ts';
+import { updateWorldLinks, updateWorldLinksRecoverable } from './characters.ts';
 
 /**
  * The same 1x1 transparent PNG characters.ts uses as a carrier for imageless cards. Inlined
@@ -84,5 +84,31 @@ describe('updateWorldLinks', () => {
 
     expect(await updateWorldLinks('OldBook', 'NewBook', dir)).toBe(1);
     expect(readdirSync(dir)).toContain('notes.txt');
+  });
+
+  test('a successful rewrite supplies an exact rollback', async () => {
+    writeCardFile('Changed.png', 'OldBook');
+    writeCardFile('AlreadyNew.png', 'NewBook');
+
+    const rollback = await updateWorldLinksRecoverable('OldBook', 'NewBook', dir);
+    expect(worldOf('Changed.png')).toBe('NewBook');
+    expect(worldOf('AlreadyNew.png')).toBe('NewBook');
+
+    await rollback();
+    expect(worldOf('Changed.png')).toBe('OldBook');
+    // The rollback targets only files changed by its own forward pass.
+    expect(worldOf('AlreadyNew.png')).toBe('NewBook');
+  });
+
+  test('a delete rewrite can be rolled back without touching unrelated unlinked cards', async () => {
+    writeCardFile('Changed.png', 'Doomed');
+    writeCardFile('Unlinked.png');
+
+    const rollback = await updateWorldLinksRecoverable('Doomed', null, dir);
+    expect(worldOf('Changed.png')).toBeUndefined();
+
+    await rollback();
+    expect(worldOf('Changed.png')).toBe('Doomed');
+    expect(worldOf('Unlinked.png')).toBeUndefined();
   });
 });

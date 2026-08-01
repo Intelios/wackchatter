@@ -10,13 +10,14 @@
  * still round-trip untouched via the Preset index signature; they are simply never read.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { ConnectionSettings } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS, isProviderId } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import { DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
+import { atomicWriteSync } from './fs.ts';
 import { PATHS } from './paths.ts';
 
 export type { AppSettings };
@@ -139,7 +140,7 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
 export function saveSettings(patch: Partial<AppSettings>): AppSettings {
   const next = mergeSettings(getSettings(), patch);
 
-  writeFileSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
+  atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
   cache = next;
   return next;
 }

@@ -9,11 +9,12 @@
  * ST installation and back.
  */
 
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { rename, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { LorebookSummary, WorldInfoBook } from '../../shared/types/worldinfo.ts';
 import { normalizeBook } from '../../shared/worldinfo/convert.ts';
-import { atomicWrite } from './fs.ts';
+import { withFileLock, withFileLocks, withResourceLock } from './fs.ts';
 import { PATHS, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
 
 function bookPath(id: string): string | null {
@@ -22,6 +23,14 @@ function bookPath(id: string): string | null {
 
 function bookExists(name: string): boolean {
   return existsSync(join(PATHS.lorebooks, `${name}.json`));
+}
+
+type Rollback = () => Promise<void> | void;
+const LOREBOOK_IDENTITIES = 'lorebook-identities';
+
+function serializeLorebook(id: string, book: WorldInfoBook): string {
+  const { originalData: _drop, ...rest } = book;
+  return `${JSON.stringify({ ...rest, name: id }, null, 4)}\n`;
 }
 
 export function listLorebooks(): LorebookSummary[] {
@@ -63,45 +72,106 @@ export function getLorebook(id: string): WorldInfoBook | null {
   }
 }
 
-export async function saveLorebook(id: string, book: WorldInfoBook): Promise<void> {
+export async function saveLorebook(id: string, book: WorldInfoBook): Promise<boolean> {
+  return writeLorebook(id, book, false);
+}
+
+async function writeLorebook(
+  id: string,
+  book: WorldInfoBook,
+  allowCreate: boolean,
+): Promise<boolean> {
   const path = bookPath(id);
   if (!path) throw new Error(`"${id}" is not a usable lorebook name.`);
 
   // The name always tracks the filename; see the header. `originalData` is dropped —
   // it only exists to round-trip an embedded book back into a card.
-  const { originalData: _drop, ...rest } = book;
-  await atomicWrite(path, `${JSON.stringify({ ...rest, name: id }, null, 4)}\n`);
+  return withFileLock(path, async (replace) => {
+    // A stale PUT that waited behind a rename/delete must not recreate the old identity.
+    if (!allowCreate && !existsSync(path)) return false;
+    await replace(serializeLorebook(id, book));
+    return true;
+  });
 }
 
-export function deleteLorebook(id: string): boolean {
+export async function deleteLorebook(id: string, onStaged?: () => Promise<void>): Promise<boolean> {
   const path = bookPath(id);
-  if (!path || !existsSync(path)) return false;
-  unlinkSync(path);
-  return true;
+  if (!path) return false;
+
+  return withResourceLock(LOREBOOK_IDENTITIES, () =>
+    withFileLock(path, async () => {
+      if (!existsSync(path)) return false;
+      const tombstone = `${path}.${crypto.randomUUID()}.deleting`;
+      await rename(path, tombstone);
+      try {
+        await onStaged?.();
+      } catch (error) {
+        await rename(tombstone, path).catch((rollbackError) => {
+          throw new AggregateError([error, rollbackError], 'Lorebook delete rollback failed.');
+        });
+        throw error;
+      }
+
+      await unlink(tombstone).catch((error) => {
+        console.error(`[wackchatter] Could not remove lorebook tombstone: ${String(error)}`);
+      });
+      return true;
+    }),
+  );
 }
 
 /** Rename by moving the file, since the filename is the identity. */
 export async function renameLorebook(
   id: string,
   nextName: string,
+  onStaged?: (newId: string) => Promise<Rollback | undefined>,
 ): Promise<LorebookSummary | null> {
-  const from = bookPath(id);
-  if (!from || !existsSync(from)) return null;
+  return withResourceLock(LOREBOOK_IDENTITIES, async () => {
+    const from = bookPath(id);
+    if (!from) return null;
 
-  const base = sanitizeFilename(nextName);
-  if (!base) throw new Error(`"${nextName}" is not a usable lorebook name.`);
-  if (base === id) return { id, name: id, entryCount: 0, modified: statSync(from).mtimeMs };
-  if (bookExists(base)) throw new Error(`A lorebook called "${base}" already exists.`);
+    const base = sanitizeFilename(nextName);
+    if (!base) throw new Error(`"${nextName}" is not a usable lorebook name.`);
+    if (base === id) {
+      return listLorebooks().find((summary) => summary.id === id) ?? null;
+    }
+    if (bookExists(base)) throw new Error(`A lorebook called "${base}" already exists.`);
 
-  const to = bookPath(base);
-  if (!to) throw new Error(`"${nextName}" is not a usable lorebook name.`);
-  renameSync(from, to);
+    const to = bookPath(base);
+    if (!to) throw new Error(`"${nextName}" is not a usable lorebook name.`);
 
-  // The stored `name` has to follow the file or the two would disagree on next read.
-  const book = getLorebook(base);
-  if (book) await saveLorebook(base, book);
+    return withFileLocks([from, to], async (replace) => {
+      if (!existsSync(from)) return null;
+      const book = normalizeBook(JSON.parse(readFileSync(from, 'utf8')) as unknown, id);
+      await replace(to, serializeLorebook(base, book));
 
-  return listLorebooks().find((summary) => summary.id === base) ?? null;
+      let rollback: Rollback | undefined;
+      try {
+        rollback = await onStaged?.(base);
+        await unlink(from);
+      } catch (error) {
+        const rollbackErrors: unknown[] = [];
+        if (rollback) {
+          try {
+            await rollback();
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError);
+          }
+        }
+        try {
+          await unlink(to);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+        if (rollbackErrors.length > 0) {
+          throw new AggregateError([error, ...rollbackErrors], 'Lorebook rename rollback failed.');
+        }
+        throw error;
+      }
+
+      return listLorebooks().find((summary) => summary.id === base) ?? null;
+    });
+  });
 }
 
 /** Create a book under a free name derived from `suggestedName`. */
@@ -109,16 +179,18 @@ export async function createLorebook(
   suggestedName: string,
   book?: WorldInfoBook,
 ): Promise<LorebookSummary> {
-  const base = sanitizeFilename(suggestedName.replace(/\.json$/i, '')) ?? 'New Lorebook';
-  const id = uniqueName(base, bookExists);
+  return withResourceLock(LOREBOOK_IDENTITIES, async () => {
+    const base = sanitizeFilename(suggestedName.replace(/\.json$/i, '')) ?? 'New Lorebook';
+    const id = uniqueName(base, bookExists);
 
-  await saveLorebook(id, book ? normalizeBook(book, id) : { name: id, entries: {} });
-  return (
-    listLorebooks().find((summary) => summary.id === id) ?? {
-      id,
-      name: id,
-      entryCount: 0,
-      modified: Date.now(),
-    }
-  );
+    await writeLorebook(id, book ? normalizeBook(book, id) : { name: id, entries: {} }, true);
+    return (
+      listLorebooks().find((summary) => summary.id === id) ?? {
+        id,
+        name: id,
+        entryCount: 0,
+        modified: Date.now(),
+      }
+    );
+  });
 }

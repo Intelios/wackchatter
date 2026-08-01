@@ -33,6 +33,7 @@ export function ChatView({
   const { scrollToBottom } = useStickToBottom(scrollRef, contentRef);
 
   const { state, stream, busy } = chat;
+  const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar) : null;
 
   // Who "you" are in this chat has a face too. Keyed on the filename so replacing the
@@ -123,18 +124,37 @@ export function ChatView({
         </div>
       ) : null}
 
+      {chat.loadError ? (
+        <div className="chat-view__error" role="alert">
+          <span className="chat-view__error-text">
+            Could not load this character's chats: {chat.loadError}
+          </span>
+          <button
+            type="button"
+            className="wc-button chat-view__retry"
+            onClick={chat.retryLoad}
+            disabled={busy}
+          >
+            <RefreshIcon />
+            Retry load
+          </button>
+        </div>
+      ) : null}
+
       <Composer
         onSend={(text) => void chat.send(text)}
         onStop={chat.abort}
         busy={busy}
-        disabled={!ready}
+        disabled={!ready || loadBlocksChat}
         // Deliberately not gated on `ready`: closing or starting a chat has to work
         // before a connection is configured.
         leading={<ChatMenu chat={chat} onCloseChat={onCloseChat} onOpenPanel={onOpenPanel} />}
         placeholder={
-          ready
-            ? `Message ${characterName}…`
-            : 'Configure an endpoint and model in Settings → Connection first.'
+          loadBlocksChat
+            ? 'Retry loading this character before sending a message.'
+            : ready
+              ? `Message ${characterName}…`
+              : 'Configure an endpoint and model in Settings → Connection first.'
         }
       />
     </div>

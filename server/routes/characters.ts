@@ -153,12 +153,10 @@ export async function handleCharacterRoute(
     const name = body?.name?.trim();
     if (!name) return errorResponse('A new name is required.');
 
-    const renamed = await renameCharacter(avatar, name);
+    const renamed = await renameCharacter(avatar, name, async (newAvatar) =>
+      cascadeCharacterRename(avatar, newAvatar),
+    );
     if (!renamed) return notFound('Character not found.');
-
-    // The filename is the identity the chats key on, so a rename that changed it must
-    // carry the transcripts over or they are orphaned from the card.
-    cascadeCharacterRename(avatar, renamed.avatar);
     return json(renamed);
   }
 
@@ -200,8 +198,9 @@ export async function handleCharacterRoute(
     }
 
     if (method === 'DELETE') {
-      if (!deleteCharacter(avatar)) return notFound('Character not found.');
-      cascadeCharacterDelete(avatar);
+      if (!(await deleteCharacter(avatar, async () => cascadeCharacterDelete(avatar)))) {
+        return notFound('Character not found.');
+      }
       return json({ ok: true });
     }
   }

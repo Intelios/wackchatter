@@ -10,6 +10,7 @@
 import { existsSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { Persona } from '../../shared/types/chat.ts';
+import { withFileLock } from './fs.ts';
 import { PATHS, safeJoin } from './paths.ts';
 
 const AVATAR_TYPES: Record<string, string> = {
@@ -96,23 +97,31 @@ export function getPersona(id: string): Persona | null {
   }
 }
 
-export async function savePersona(id: string, patch: Partial<Persona>): Promise<Persona> {
+export async function savePersona(
+  id: string,
+  patch: Partial<Persona>,
+  allowCreate = false,
+): Promise<Persona> {
   const path = personaPath(id);
   if (!path) throw new Error(`"${id}" is not a usable persona id.`);
 
-  // Merge onto what is stored rather than trusting the client to send the whole object,
-  // so a form that only edits the description cannot blank the avatar.
-  const current = getPersona(id) ?? normalizePersona(null, id);
-  const next = normalizePersona({ ...current, ...patch }, id);
+  return withFileLock(path, async (replace) => {
+    // The read belongs inside the same lock as the replacement: persona autosave and a
+    // lorebook-reference cascade may update different fields at the same time.
+    const stored = getPersona(id);
+    if (!stored && !allowCreate) throw new Error('Persona not found.');
+    const current = stored ?? normalizePersona(null, id);
+    const next = normalizePersona({ ...current, ...patch }, id);
 
-  await Bun.write(path, `${JSON.stringify(next, null, 2)}\n`);
-  return next;
+    await replace(`${JSON.stringify(next, null, 2)}\n`);
+    return next;
+  });
 }
 
 export async function createPersona(name: string): Promise<Persona> {
   // An opaque id, because the name is editable and must be free to collide.
   const id = crypto.randomUUID();
-  return savePersona(id, { name: name.trim() || 'You', description: '', avatar: null });
+  return savePersona(id, { name: name.trim() || 'You', description: '', avatar: null }, true);
 }
 
 export function deletePersona(id: string): boolean {
@@ -134,9 +143,38 @@ export function deletePersona(id: string): boolean {
 export async function updatePersonaLorebookReferences(
   currentId: string,
   nextId: string | null,
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const affected = listPersonas().filter((persona) => persona.lorebookId === currentId);
-  await Promise.all(affected.map((persona) => savePersona(persona.id, { lorebookId: nextId })));
+  const changed: string[] = [];
+  try {
+    for (const persona of affected) {
+      const current = getPersona(persona.id);
+      if (current?.lorebookId !== currentId) continue;
+      await savePersona(persona.id, { lorebookId: nextId });
+      changed.push(persona.id);
+    }
+  } catch (error) {
+    try {
+      await restorePersonaLorebookReferences(changed, nextId, currentId);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'Persona reference rollback failed.');
+    }
+    throw error;
+  }
+
+  return () => restorePersonaLorebookReferences(changed, nextId, currentId);
+}
+
+async function restorePersonaLorebookReferences(
+  ids: string[],
+  expected: string | null,
+  next: string | null,
+): Promise<void> {
+  for (const id of [...ids].reverse()) {
+    const current = getPersona(id);
+    if (!current || (current.lorebookId ?? null) !== expected) continue;
+    await savePersona(id, { lorebookId: next });
+  }
 }
 
 /** Store an uploaded avatar and point the persona at it. */

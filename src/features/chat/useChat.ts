@@ -29,6 +29,7 @@ import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activa
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
 import { ChatSaveQueue } from './chatPersistence.ts';
 import {
   type ChatAction,
@@ -83,6 +84,8 @@ export interface UseChat {
   saving: boolean;
   /** A persistence failure blocks chat-changing navigation until it is retried. */
   saveError: string | null;
+  /** A chat list/get/create failure. It never means that the character has no chats. */
+  loadError: string | null;
 
   send(text: string): Promise<void>;
   regenerate(): Promise<void>;
@@ -104,6 +107,7 @@ export interface UseChat {
   /** Persist the open transcript before another owner replaces or deletes it. */
   flushSaves(): Promise<void>;
   retrySave(): Promise<void>;
+  retryLoad(): void;
 
   /** The persona this chat actually uses. Resolved here, not passed in. */
   persona: Persona | null;
@@ -136,6 +140,8 @@ export function useChat(options: UseChatOptions): UseChat {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [initAttempt, setInitAttempt] = useState(0);
   const [worldInfo, setWorldInfo] = useState<ActivationResult | null>(null);
 
   const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
@@ -157,9 +163,11 @@ export function useChat(options: UseChatOptions): UseChat {
   characterRef.current = character;
   const cardLoaded = character !== null;
 
-  // One in-flight init per character. Cancelling the effect cannot cancel a server create,
-  // so repeated passes for the same identity chain onto this instead of creating duplicates.
-  const initInFlight = useRef<{ characterId: string; promise: Promise<void> } | null>(null);
+  // One independent tail per character. A -> B -> A must still wait for the original A
+  // create request; a single global slot forgets it as soon as B takes the slot.
+  const initQueueRef = useRef<KeyedSerialQueue | null>(null);
+  if (!initQueueRef.current) initQueueRef.current = new KeyedSerialQueue();
+  const initQueue = initQueueRef.current;
 
   // Bumped synchronously by every user chat-management action. The init effect captures the
   // value when a pass starts and stands down if it moves. A state read would be racy: a
@@ -245,14 +253,12 @@ export function useChat(options: UseChatOptions): UseChat {
     }
     try {
       setChats(await chatApi.list(characterId));
-    } catch {
-      setChats([]);
+      setLoadError(null);
+    } catch (error) {
+      // Keep the last good list. An error is not evidence that the library is empty.
+      setLoadError((error as Error).message || 'Could not list chats.');
     }
   }, [characterId]);
-
-  useEffect(() => {
-    void refreshChats();
-  }, [refreshChats]);
 
   // Open the most recent chat for a character, or start one seeded with the greeting.
   //
@@ -260,9 +266,12 @@ export function useChat(options: UseChatOptions): UseChat {
   // the card object itself. A character autosave replaces that object every keystroke, and
   // depending on it would re-list chats and reopen the most recent one on top of whatever
   // the user has open. `cardLoaded` only flips on a real selection change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initAttempt is an explicit retry trigger
   useEffect(() => {
     if (!characterId || !cardLoaded) {
       dispatch({ type: 'chat/closed' });
+      setChats([]);
+      setLoadError(null);
       return;
     }
 
@@ -273,31 +282,25 @@ export function useChat(options: UseChatOptions): UseChat {
     const passAction = userChatAction.current;
 
     const run = async () => {
-      const existing = await chatApi.list(characterId).catch(() => []);
-      if (cancelled) return;
-
-      if (existing[0]) {
-        const chat = await chatApi.get(existing[0].id).catch(() => null);
-        if (!cancelled && chat && userChatAction.current === passAction) loadChat(chat);
-        return;
-      }
-
-      // Stand down before creating: a brand-new character gets one chat, and only because
-      // the selection itself asked for it.
-      if (cancelled || userChatAction.current !== passAction) return;
-
-      const chat = await chatApi
-        .create({
+      try {
+        const resolved = await resolveInitialChat(
+          chatApi,
           characterId,
-          title: 'New chat',
-          metadata: { persona: defaultPersonaRef.current },
-        })
-        .catch(() => null);
-      if (cancelled || !chat || userChatAction.current !== passAction) return;
-      loadChat(chat);
-      const card = characterRef.current;
-      if (card) {
-        dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card });
+          { persona: defaultPersonaRef.current },
+          () => !cancelled && userChatAction.current === passAction,
+        );
+        if (cancelled) return;
+        setChats(resolved.summaries);
+        setLoadError(null);
+
+        if (!resolved.chat || userChatAction.current !== passAction) return;
+        loadChat(resolved.chat);
+        if (resolved.created) {
+          const card = characterRef.current;
+          if (card) dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card });
+        }
+      } catch (error) {
+        if (!cancelled) setLoadError((error as Error).message || 'Could not initialize chats.');
       }
     };
 
@@ -305,19 +308,20 @@ export function useChat(options: UseChatOptions): UseChat {
     // arriving while a create is still in flight) chains onto the in-flight pass instead of
     // issuing a second list/create. Only the live pass applies its result — the cleanup
     // flag below gates that — but the server mutation cannot be cancelled.
-    const prior = initInFlight.current;
-    const promise = (prior?.characterId === characterId ? prior.promise : Promise.resolve())
-      .then(run)
-      .catch(() => {});
-    initInFlight.current = { characterId, promise };
-    void promise.finally(() => {
-      if (initInFlight.current?.promise === promise) initInFlight.current = null;
+    void initQueue.run(characterId, run).catch((error) => {
+      if (!cancelled) setLoadError((error as Error).message || 'Could not initialize chats.');
     });
 
     return () => {
       cancelled = true;
     };
-  }, [characterId, cardLoaded, loadChat]);
+  }, [characterId, cardLoaded, initAttempt, initQueue, loadChat]);
+
+  const retryLoad = useCallback(() => {
+    setLoadError(null);
+    if (stateRef.current.chatId) void refreshChats();
+    else setInitAttempt((attempt) => attempt + 1);
+  }, [refreshChats]);
 
   // --- Persistence -----------------------------------------------------------
 
@@ -728,6 +732,7 @@ export function useChat(options: UseChatOptions): UseChat {
     busy: state.status !== 'idle',
     saving,
     saveError,
+    loadError,
     send,
     regenerate,
     swipe,
@@ -744,6 +749,7 @@ export function useChat(options: UseChatOptions): UseChat {
     branchFrom,
     flushSaves,
     retrySave,
+    retryLoad,
     persona,
     setPersona,
     updateMetadata,

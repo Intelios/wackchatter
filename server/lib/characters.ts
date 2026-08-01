@@ -5,7 +5,8 @@
  * SillyTavern — the `avatar` field inside the card JSON is vestigial and always "none".
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { rename, unlink } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import type {
   CardDataV2,
@@ -23,7 +24,7 @@ import {
   toWorldInfoBook,
 } from '../../shared/worldinfo/convert.ts';
 import { createBlankCard, mergeCardData, normalizeCard, readCard, writeCard } from './card.ts';
-import { atomicWrite } from './fs.ts';
+import { atomicWrite, withFileLock, withFileLocks, withResourceLock } from './fs.ts';
 import { PATHS, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
 
 /** Placeholder used when a character is created without an uploaded image. */
@@ -84,6 +85,11 @@ function characterExists(name: string): boolean {
   return existsSync(join(PATHS.characters, `${name}.png`));
 }
 
+type Rollback = () => Promise<void> | void;
+
+/** Filename allocation and file moves share this lock; ordinary edits use the file lock. */
+const CHARACTER_IDENTITIES = 'character-identities';
+
 /**
  * Write a card into a new PNG file, choosing a free filename derived from the name.
  * @param image PNG bytes to embed into; a blank placeholder is used if omitted.
@@ -92,14 +98,16 @@ export async function createCharacter(
   card: TavernCard,
   image?: Uint8Array,
 ): Promise<CharacterDetail> {
-  const safeName = sanitizeFilename(card.data.name) ?? 'Character';
-  const filename = `${uniqueName(safeName, characterExists)}.png`;
-  const path = join(PATHS.characters, filename);
+  return withResourceLock(CHARACTER_IDENTITIES, async () => {
+    const safeName = sanitizeFilename(card.data.name) ?? 'Character';
+    const filename = `${uniqueName(safeName, characterExists)}.png`;
+    const path = join(PATHS.characters, filename);
 
-  const base = image ?? loadBlankAvatar();
-  await atomicWrite(path, writeCard(base, card));
+    const base = image ?? loadBlankAvatar();
+    await atomicWrite(path, writeCard(base, card));
 
-  return { ...summarize(filename, card, Date.now()), card };
+    return { ...summarize(filename, card, Date.now()), card };
+  });
 }
 
 /**
@@ -114,42 +122,99 @@ export async function updateCharacter(
   image?: Uint8Array,
 ): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return null;
+  if (!path) return null;
 
-  const existing = new Uint8Array(readFileSync(path));
-  const merged = mergeCardData(readCard(existing), updates);
+  return withFileLock(path, async (replace) => {
+    if (!existsSync(path)) return null;
+    const existing = new Uint8Array(readFileSync(path));
+    const merged = mergeCardData(readCard(existing), updates);
 
-  await atomicWrite(path, writeCard(image ?? existing, merged));
-  return { ...summarize(avatar, merged, Date.now()), card: merged };
+    await replace(writeCard(image ?? existing, merged));
+    return { ...summarize(avatar, merged, Date.now()), card: merged };
+  });
 }
 
 /** Rename the underlying file, keeping the card's `name` field in sync. */
 export async function renameCharacter(
   avatar: string,
   newName: string,
+  onStaged?: (newAvatar: string) => Promise<Rollback | undefined>,
 ): Promise<CharacterDetail | null> {
-  const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return null;
+  return withResourceLock(CHARACTER_IDENTITIES, async () => {
+    const path = safeJoin(PATHS.characters, avatar);
+    if (!path) return null;
 
-  const safeName = sanitizeFilename(newName);
-  if (!safeName) return null;
+    const safeName = sanitizeFilename(newName);
+    if (!safeName) return null;
 
-  const existing = new Uint8Array(readFileSync(path));
-  const card = mergeCardData(readCard(existing), { name: newName });
-  const filename = `${uniqueName(safeName, characterExists)}.png`;
-  const newPath = join(PATHS.characters, filename);
+    const filename = `${uniqueName(safeName, characterExists)}.png`;
+    const newPath = join(PATHS.characters, filename);
 
-  await atomicWrite(newPath, writeCard(existing, card));
-  if (newPath !== path) unlinkSync(path);
+    return withFileLocks([path, newPath], async (replace) => {
+      if (!existsSync(path)) return null;
+      const existing = new Uint8Array(readFileSync(path));
+      const card = mergeCardData(readCard(existing), { name: newName });
+      await replace(newPath, writeCard(existing, card));
 
-  return { ...summarize(filename, card, Date.now()), card };
+      let rollback: Rollback | undefined;
+      try {
+        rollback = await onStaged?.(filename);
+        if (newPath !== path) await unlink(path);
+      } catch (error) {
+        const rollbackErrors: unknown[] = [];
+        if (rollback) {
+          try {
+            await rollback();
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError);
+          }
+        }
+        try {
+          if (newPath === path) await replace(path, existing);
+          else await unlink(newPath);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+        if (rollbackErrors.length > 0) {
+          throw new AggregateError([error, ...rollbackErrors], 'Character rename rollback failed.');
+        }
+        throw error;
+      }
+
+      return { ...summarize(filename, card, Date.now()), card };
+    });
+  });
 }
 
-export function deleteCharacter(avatar: string): boolean {
+export async function deleteCharacter(
+  avatar: string,
+  onStaged?: () => Promise<void>,
+): Promise<boolean> {
   const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return false;
-  unlinkSync(path);
-  return true;
+  if (!path) return false;
+
+  return withResourceLock(CHARACTER_IDENTITIES, () =>
+    withFileLock(path, async () => {
+      if (!existsSync(path)) return false;
+      const tombstone = `${path}.${crypto.randomUUID()}.deleting`;
+      await rename(path, tombstone);
+      try {
+        await onStaged?.();
+      } catch (error) {
+        await rename(tombstone, path).catch((rollbackError) => {
+          throw new AggregateError([error, rollbackError], 'Character delete rollback failed.');
+        });
+        throw error;
+      }
+
+      // Once the reference cascade has committed, the tombstone is logically deleted.
+      // A cleanup failure must not resurrect it or report that the deletion did not happen.
+      await unlink(tombstone).catch((error) => {
+        console.error(`[wackchatter] Could not remove character tombstone: ${String(error)}`);
+      });
+      return true;
+    }),
+  );
 }
 
 /**
@@ -167,12 +232,70 @@ export async function updateWorldLinks(
   newName: string | null,
   dir: string = PATHS.characters,
 ): Promise<number> {
-  if (!existsSync(dir)) return 0;
+  const changed = await rewriteWorldLinks(oldName, newName, dir);
+  return changed.length;
+}
 
-  let changed = 0;
-  for (const file of readdirSync(dir)) {
-    if (!file.toLowerCase().endsWith('.png')) continue;
-    const full = join(dir, file);
+/**
+ * Apply a reference rewrite and return an exact rollback for the files this call changed.
+ * The rollback is used when a later step in a cross-store lorebook migration fails.
+ */
+export async function updateWorldLinksRecoverable(
+  oldName: string,
+  newName: string | null,
+  dir: string = PATHS.characters,
+): Promise<Rollback> {
+  const changed = await rewriteWorldLinks(oldName, newName, dir);
+  return async () => {
+    await rewriteWorldLinksInFiles(changed, newName, oldName, dir);
+  };
+}
+
+async function rewriteWorldLinks(
+  oldName: string | null,
+  newName: string | null,
+  dir: string,
+): Promise<string[]> {
+  if (!existsSync(dir)) return [];
+
+  const files = readdirSync(dir).filter((file) => file.toLowerCase().endsWith('.png'));
+  const changed: string[] = [];
+  try {
+    for (const file of files) {
+      if (await rewriteWorldLinkFile(file, oldName, newName, dir)) changed.push(file);
+    }
+  } catch (error) {
+    try {
+      await rewriteWorldLinksInFiles(changed, newName, oldName, dir);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'Character world-link rollback failed.');
+    }
+    throw error;
+  }
+
+  return changed;
+}
+
+async function rewriteWorldLinksInFiles(
+  files: string[],
+  expected: string | null,
+  next: string | null,
+  dir: string,
+): Promise<void> {
+  for (const file of [...files].reverse()) {
+    await rewriteWorldLinkFile(file, expected, next, dir);
+  }
+}
+
+async function rewriteWorldLinkFile(
+  file: string,
+  expected: string | null,
+  next: string | null,
+  dir: string,
+): Promise<boolean> {
+  const full = join(dir, file);
+  return withFileLock(full, async (replace) => {
+    if (!existsSync(full)) return false;
 
     let existing: Uint8Array;
     let card: TavernCard;
@@ -182,18 +305,14 @@ export async function updateWorldLinks(
     } catch {
       // An unreadable card is skipped here exactly as it is in listCharacters — a lorebook
       // rename is not the moment to fail loudly over one bad file.
-      continue;
+      return false;
     }
 
-    if (card.data.extensions?.world !== oldName) continue;
-
-    // `undefined` is dropped by JSON.stringify, so this removes the key on a deletion.
-    const merged = mergeCardData(card, { extensions: { world: newName ?? undefined } });
-    await atomicWrite(full, writeCard(existing, merged));
-    changed += 1;
-  }
-
-  return changed;
+    if ((card.data.extensions?.world ?? null) !== expected) return false;
+    const merged = mergeCardData(card, { extensions: { world: next ?? undefined } });
+    await replace(writeCard(existing, merged));
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -222,21 +341,24 @@ async function mutateBook(
   mutate: (book: WorldInfoBook) => WorldInfoBook | null,
 ): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return null;
+  if (!path) return null;
 
-  const existing = new Uint8Array(readFileSync(path));
-  const card = readCard(existing);
-  const stored = card.data.character_book ?? { extensions: {}, entries: [] };
+  return withFileLock(path, async (replace) => {
+    if (!existsSync(path)) return null;
+    const existing = new Uint8Array(readFileSync(path));
+    const card = readCard(existing);
+    const stored = card.data.character_book ?? { extensions: {}, entries: [] };
 
-  const next = mutate(toWorldInfoBook(stored));
-  if (!next) return null;
+    const next = mutate(toWorldInfoBook(stored));
+    if (!next) return null;
 
-  const merged = mergeCardData(card, {
-    character_book: toCharacterBook(next, next.name || card.data.name || 'Lorebook'),
+    const merged = mergeCardData(card, {
+      character_book: toCharacterBook(next, next.name || card.data.name || 'Lorebook'),
+    });
+
+    await replace(writeCard(existing, merged));
+    return { ...summarize(avatar, merged, Date.now()), card: merged };
   });
-
-  await atomicWrite(path, writeCard(existing, merged));
-  return { ...summarize(avatar, merged, Date.now()), card: merged };
 }
 
 export async function addBookEntry(
@@ -325,15 +447,18 @@ export async function updateBook(
 /** Remove the embedded book entirely. */
 export async function deleteBook(avatar: string): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return null;
+  if (!path) return null;
 
-  const existing = new Uint8Array(readFileSync(path));
-  const card = readCard(existing);
-  if (!card.data.character_book) return null;
+  return withFileLock(path, async (replace) => {
+    if (!existsSync(path)) return null;
+    const existing = new Uint8Array(readFileSync(path));
+    const card = readCard(existing);
+    if (!card.data.character_book) return null;
 
-  const merged = mergeCardData(card, { character_book: undefined });
-  await atomicWrite(path, writeCard(existing, merged));
-  return { ...summarize(avatar, merged, Date.now()), card: merged };
+    const merged = mergeCardData(card, { character_book: undefined });
+    await replace(writeCard(existing, merged));
+    return { ...summarize(avatar, merged, Date.now()), card: merged };
+  });
 }
 
 /**

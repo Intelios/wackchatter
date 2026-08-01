@@ -12,14 +12,40 @@
  * handlers stay thin: do the rename/delete, then call the matching cascade.
  */
 
-import { updateWorldLinks } from './characters.ts';
+import { updateWorldLinksRecoverable } from './characters.ts';
 import { chatStore } from './chats.ts';
 import { updatePersonaLorebookReferences } from './personas.ts';
 import { getSettings, reassignGlobalLorebooks, saveSettings } from './settings.ts';
 
+type Rollback = () => Promise<void> | void;
+
+async function rollbackAll(rollbacks: Rollback[]): Promise<void> {
+  const failures: unknown[] = [];
+  for (const rollback of [...rollbacks].reverse()) {
+    try {
+      await rollback();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw new AggregateError(failures, 'Reference rollback failed.');
+}
+
+async function failAfterRollback(error: unknown, rollbacks: Rollback[]): Promise<never> {
+  try {
+    await rollbackAll(rollbacks);
+  } catch (rollbackError) {
+    throw new AggregateError([error, rollbackError], 'Reference migration and rollback failed.');
+  }
+  throw error;
+}
+
 /** A character's file moved: keep its chats pointed at the new identity. */
-export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): void {
+export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Rollback {
   chatStore().reassignCharacter(oldAvatar, newAvatar);
+  return () => {
+    chatStore().reassignCharacter(newAvatar, oldAvatar);
+  };
 }
 
 /**
@@ -32,20 +58,48 @@ export function cascadeCharacterDelete(avatar: string): void {
 }
 
 /** A lorebook's file moved: repoint personas, character-card links, and the global selection. */
-export async function cascadeLorebookRename(oldId: string, newId: string): Promise<void> {
-  if (oldId === newId) return;
-  await updatePersonaLorebookReferences(oldId, newId);
-  await updateWorldLinks(oldId, newId);
+export async function cascadeLorebookRename(oldId: string, newId: string): Promise<Rollback> {
+  if (oldId === newId) return () => {};
+  const rollbacks: Rollback[] = [];
+  try {
+    rollbacks.push(await updatePersonaLorebookReferences(oldId, newId));
+    rollbacks.push(await updateWorldLinksRecoverable(oldId, newId));
 
-  const updated = reassignGlobalLorebooks(getSettings(), oldId, newId);
-  if (updated) saveSettings({ globalLorebooks: updated.globalLorebooks });
+    const current = getSettings();
+    const updated = reassignGlobalLorebooks(current, oldId, newId);
+    if (updated) {
+      const original = [...(current.globalLorebooks as string[])];
+      saveSettings({ globalLorebooks: updated.globalLorebooks });
+      rollbacks.push(() => {
+        saveSettings({ globalLorebooks: original });
+      });
+    }
+  } catch (error) {
+    return failAfterRollback(error, rollbacks);
+  }
+
+  return () => rollbackAll(rollbacks);
 }
 
 /** A lorebook is gone: clear every reference that pointed at it. */
-export async function cascadeLorebookDelete(id: string): Promise<void> {
-  await updatePersonaLorebookReferences(id, null);
-  await updateWorldLinks(id, null);
+export async function cascadeLorebookDelete(id: string): Promise<Rollback> {
+  const rollbacks: Rollback[] = [];
+  try {
+    rollbacks.push(await updatePersonaLorebookReferences(id, null));
+    rollbacks.push(await updateWorldLinksRecoverable(id, null));
 
-  const updated = reassignGlobalLorebooks(getSettings(), id, null);
-  if (updated) saveSettings({ globalLorebooks: updated.globalLorebooks });
+    const current = getSettings();
+    const updated = reassignGlobalLorebooks(current, id, null);
+    if (updated) {
+      const original = [...(current.globalLorebooks as string[])];
+      saveSettings({ globalLorebooks: updated.globalLorebooks });
+      rollbacks.push(() => {
+        saveSettings({ globalLorebooks: original });
+      });
+    }
+  } catch (error) {
+    return failAfterRollback(error, rollbacks);
+  }
+
+  return () => rollbackAll(rollbacks);
 }
