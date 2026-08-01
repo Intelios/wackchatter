@@ -211,3 +211,51 @@ export function CloseIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function SearchIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+export function BookIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v14H6.5A2.5 2.5 0 0 0 4 19.5z" />
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20v4H6.5A2.5 2.5 0 0 1 4 19.5z" />
+    </svg>
+  );
+}
+
+export function UserIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+    </svg>
+  );
+}
+
+export function ImageIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <circle cx="8.5" cy="9.5" r="1.75" />
+      <path d="m3.5 17 4.5-4.5a2 2 0 0 1 2.8 0L16 18" />
+      <path d="m14 15 1.6-1.6a2 2 0 0 1 2.8 0l2.1 2.1" />
+    </svg>
+  );
+}
+
+export function MoreIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="5" cy="12" r="1.25" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.25" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}

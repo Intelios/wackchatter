@@ -1,0 +1,332 @@
+/*
+ * One turn of the conversation, in a translucent card.
+ *
+ * The bubble carries plain `rgba` rather than `backdrop-filter`, deliberately — see the
+ * note in AppShell.css. There are N of these inside a scroll container, and blurring each
+ * one would force a recomposite on every scroll frame. Nothing is lost: the backdrop is
+ * already blurred, so a second blur behind a bubble would not be visible anyway.
+ */
+
+.message {
+  min-width: 0;
+}
+
+/* Hidden from the prompt but still readable — dimmed rather than removed. */
+.message[data-hidden] {
+  opacity: 0.55;
+}
+
+.message__bubble {
+  position: relative;
+  padding: var(--wc-space-3) var(--wc-space-4);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  background: var(--wc-bubble);
+}
+
+/* Your own turns read a shade lighter, so the two speakers separate without alignment
+   games — right-aligning would fight the measure long roleplay messages need. */
+.message[data-role="user"] .message__bubble {
+  background: var(--wc-surface-raised);
+}
+
+/* --- Head --------------------------------------------------------------- */
+
+.message__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin-bottom: var(--wc-space-2);
+}
+
+.message__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wc-avatar-sm);
+  height: var(--wc-avatar-sm);
+  border-radius: var(--wc-radius);
+  overflow: hidden;
+  background: var(--wc-surface-raised);
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.message__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message__ident {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.message__name {
+  font-size: var(--wc-text-base);
+  font-weight: 600;
+}
+
+.message__time {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+/* Which model wrote this, on hover only — useful when you want it, noise when you don't. */
+.message__provider {
+  display: inline-flex;
+  align-items: center;
+  color: var(--wc-text-faint);
+  cursor: help;
+  transition: color var(--wc-duration-fast) ease;
+}
+
+.message__provider:hover {
+  color: var(--wc-text-muted);
+}
+
+.message__provider svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+.message__badge {
+  padding: 0 var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  border: 1px solid var(--wc-border);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+}
+
+.message__badge--warn {
+  color: var(--wc-warning);
+  border-color: var(--wc-warning);
+}
+
+/* --- Tools -------------------------------------------------------------- */
+
+.message__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  /* Revealed on hover so a long transcript stays quiet. */
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.message:hover .message__tools,
+.message:focus-within .message__tools {
+  opacity: 1;
+}
+
+/* An open menu whose trigger has faded out is a trap — you cannot see what you opened. */
+.message:has(.menu__trigger[aria-expanded="true"]) .message__tools {
+  opacity: 1;
+}
+
+.message__action {
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+}
+
+.message__action:hover:not(:disabled) {
+  color: var(--wc-text);
+}
+
+/* Kept in the layout so the swipe counter never shifts sideways. */
+.message__action[data-invisible] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.message__menu .menu__trigger {
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+}
+
+.message__menu .menu__trigger:hover,
+.message__menu .menu__trigger[aria-expanded="true"] {
+  color: var(--wc-text);
+}
+
+/* --- Text --------------------------------------------------------------- */
+
+.message__text {
+  font-size: var(--wc-text-lg);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* Streaming text is plain, so newlines have to be honoured manually. */
+.message__text--streaming {
+  white-space: pre-wrap;
+}
+
+.message__text > :first-child {
+  margin-top: 0;
+}
+
+.message__text > :last-child {
+  margin-bottom: 0;
+}
+
+.message__text p {
+  margin: 0 0 var(--wc-space-3);
+}
+
+.message__text em {
+  color: var(--wc-text-muted);
+}
+
+.message__text pre {
+  padding: var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  overflow-x: auto;
+}
+
+.message__text code {
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+}
+
+.message__text :not(pre) > code {
+  padding: 1px var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.message__text blockquote {
+  margin: 0 0 var(--wc-space-3);
+  padding-left: var(--wc-space-3);
+  border-left: 2px solid var(--wc-border-strong);
+  color: var(--wc-text-muted);
+}
+
+.message__text table {
+  border-collapse: collapse;
+  font-size: var(--wc-text-sm);
+}
+
+.message__text th,
+.message__text td {
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  text-align: left;
+}
+
+/* A blinking caret while tokens arrive, so a pause reads as "still working". */
+.message__caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--wc-accent);
+  animation: wc-caret 1s steps(2, start) infinite;
+}
+
+@keyframes wc-caret {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message__caret {
+    animation: none;
+  }
+}
+
+/* --- Reasoning ---------------------------------------------------------- */
+
+/*
+ * Sits between the head and the reply, and reads clearly greyer than the prose — this is
+ * the model working, not the story, and mistaking one for the other spoils both.
+ */
+.reasoning {
+  margin-bottom: var(--wc-space-3);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-tint);
+}
+
+.reasoning__summary {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.reasoning__summary:hover {
+  color: var(--wc-text);
+}
+
+.reasoning__body {
+  padding: 0 var(--wc-space-3) var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+  white-space: pre-wrap;
+}
+
+/* --- Foot --------------------------------------------------------------- */
+
+.message__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wc-space-2);
+  margin-top: var(--wc-space-2);
+}
+
+/* Labelled rather than icon-only: it is the way out of a failure, not a minor action. */
+.message__action--retry {
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1) var(--wc-space-2);
+  margin-right: auto;
+  color: var(--wc-accent);
+}
+
+.message__action--retry:hover:not(:disabled) {
+  background: var(--wc-accent-subtle);
+}
+
+.message__swipes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.message__swipe-count {
+  font-size: var(--wc-text-xs);
+  font-family: var(--wc-font-mono);
+  color: var(--wc-text-faint);
+  min-width: 2.5em;
+  text-align: center;
+}
+
+/* --- Editor ------------------------------------------------------------- */
+
+.message__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.message__editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}

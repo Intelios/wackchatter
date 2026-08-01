@@ -38,8 +38,8 @@
 
 .slider__range::-webkit-slider-thumb {
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
   border-radius: 50%;
   background: var(--wc-accent);
   cursor: grab;
@@ -52,8 +52,8 @@
 }
 
 .slider__range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
   border: none;
   border-radius: 50%;
   background: var(--wc-accent);

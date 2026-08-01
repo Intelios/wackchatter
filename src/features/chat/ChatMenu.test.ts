@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { type MenuAction, type MenuEntry, isSeparator } from '../../components/Menu.tsx';
-import {
-  type ChatMenuActions,
-  type ChatMenuState,
-  type PanelTab,
-  buildChatMenu,
-} from './ChatMenu.tsx';
+import type { RightPanelId } from '../../layout/panels.tsx';
+import { type ChatMenuActions, type ChatMenuState, buildChatMenu } from './ChatMenu.tsx';
 
 /** A transcript ending on the character's turn — the ordinary case, everything available. */
 const healthy: ChatMenuState = {
@@ -17,7 +13,7 @@ const healthy: ChatMenuState = {
 
 function spies() {
   const calls: string[] = [];
-  const panels: PanelTab[] = [];
+  const panels: RightPanelId[] = [];
   const actions: ChatMenuActions = {
     newChat: () => calls.push('newChat'),
     checkpoint: (id) => calls.push(`checkpoint:${id}`),
@@ -119,7 +115,7 @@ describe('buildChatMenu', () => {
     expect(calls).toEqual(['newChat', 'regenerate', 'continueLast', 'closeChat']);
 
     for (const label of JUMPS) item(entries, label).onSelect();
-    expect(panels).toEqual(['characters', 'lore', 'you']);
+    expect(panels).toEqual(['characters', 'lorebooks', 'persona']);
   });
 
   test('separators only ever sit between groups', () => {

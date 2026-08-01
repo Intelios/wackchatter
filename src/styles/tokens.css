@@ -1,38 +1,60 @@
 /*
  * Design tokens.
  *
- * Every component reads from these — no hardcoded colours or spacing anywhere else.
- * Restyling the app should mean editing this file, not hunting through components.
- * Values here are deliberately plain; they are structure, not art direction.
+ * Every component reads from these — no hardcoded colours, sizes, or durations
+ * anywhere else. Restyling the app should mean editing this file, not hunting
+ * through components.
+ *
+ * The palette is deliberately achromatic. The app renders over a user-chosen
+ * background image, and any tint baked into the chrome would fight it — a warm
+ * grey clashes with a snow scene, a cool one with a firelit tavern. Colour comes
+ * from the image; the chrome stays neutral and gets out of the way.
  */
 
 :root {
+  color-scheme: dark;
+
   /* Surfaces, from furthest back to closest */
-  --wc-bg: #16171a;
-  --wc-surface: #1c1e22;
-  --wc-surface-raised: #23262b;
-  --wc-surface-hover: #2a2e34;
+  --wc-bg: #0e0e0f;
+  /* The same colour as channels, for the one place that needs it at a variable alpha. */
+  --wc-bg-rgb: 14 14 15;
+  --wc-surface: #16161a;
+  --wc-surface-raised: #1e1e21;
+  --wc-surface-hover: #26262a;
+  /* The message bubble. Its own token because stage 2 makes it translucent
+     independently of the panels — see the glass block in AppShell.css. */
+  --wc-bubble: var(--wc-surface);
 
   /* Text */
-  --wc-text: #e8e9eb;
-  --wc-text-muted: #9aa0a8;
-  --wc-text-faint: #6b7178;
+  --wc-text: #eaeaec;
+  --wc-text-muted: #8b8b93;
+  --wc-text-faint: #62626a;
 
   /* Lines */
-  --wc-border: #2e3238;
-  --wc-border-strong: #3d434b;
+  --wc-border: #2a2a2e;
+  --wc-border-strong: #3a3a40;
 
-  /* Accent */
-  --wc-accent: #6b8afd;
-  --wc-accent-hover: #7f9aff;
-  --wc-accent-text: #ffffff;
-  --wc-accent-subtle: rgba(107, 138, 253, 0.12);
+  /* Accent. Acid lime against neutral chrome: it reads as "active" at a glance
+     without borrowing a hue any status colour needs. Light enough that text on
+     top of it must be dark, hence --wc-accent-text. */
+  --wc-accent: #c2ee4a;
+  --wc-accent-hover: #d0f664;
+  --wc-accent-text: #12140a;
+  --wc-accent-subtle: rgba(194, 238, 74, 0.12);
 
   /* Status */
   --wc-danger: #e5484d;
   --wc-danger-subtle: rgba(229, 72, 77, 0.12);
   --wc-success: #46a758;
   --wc-warning: #f0a020;
+  --wc-warning-subtle: rgba(240, 160, 32, 0.12);
+
+  /* A wash over imagery, so text laid on top of it stays legible. */
+  --wc-scrim: rgba(0, 0, 0, 0.65);
+  /* For a label sitting directly on an image, where a scrim would cover too much. */
+  --wc-shadow-text: 0 1px 3px rgb(0 0 0 / 0.9);
+  /* A barely-there lift, for a panel inside a panel. */
+  --wc-tint: rgb(255 255 255 / 0.03);
 
   /* Spacing scale */
   --wc-space-1: 4px;
@@ -55,38 +77,80 @@
   --wc-text-base: 14px;
   --wc-text-lg: 16px;
 
+  /* Control and icon sizes. Named by role, not by pixel value, so a denser or
+     roomier pass is one edit here. */
+  --wc-icon-sm: 14px;
+  --wc-icon: 15px;
+  --wc-icon-lg: 17px;
+  --wc-control-sm: 28px;
+  --wc-control: 30px;
+  --wc-control-lg: 42px;
+  --wc-avatar-sm: 32px;
+  --wc-avatar-md: 44px;
+
   /* Layout */
   --wc-panel-width: clamp(380px, 25vw, 560px);
   --wc-topbar-height: 44px;
   --wc-left-width: 0px;
   --wc-right-width: 0px;
+  /* A readable measure for the transcript and everything that must line up with it. */
+  --wc-measure: 860px;
+  /* Ceiling for lists that would otherwise run the length of the panel. */
+  --wc-scroll-cap: 420px;
 
-  /* Motion. One duration and one curve keeps panel movement coherent. */
+  /* Motion. One layout duration and one curve keeps panel movement coherent;
+     --wc-duration-fast is for hover and focus, which must not feel laggy. */
   --wc-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --wc-duration: 260ms;
+  --wc-duration-fast: 120ms;
 
   --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-}
-
-:root[data-theme="light"] {
-  --wc-bg: #f6f7f9;
-  --wc-surface: #ffffff;
-  --wc-surface-raised: #ffffff;
-  --wc-surface-hover: #eceef1;
-
-  --wc-text: #1a1c1f;
-  --wc-text-muted: #5c636b;
-  --wc-text-faint: #878e96;
-
-  --wc-border: #e0e3e7;
-  --wc-border-strong: #c9ced4;
-
-  --wc-accent-subtle: rgba(107, 138, 253, 0.14);
-  --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --wc-duration: 0ms;
+    --wc-duration-fast: 0ms;
+  }
+}
+
+/*
+ * Glass.
+ *
+ * These live here rather than in AppShell.css because they are token *definitions* — the
+ * whole trick is that redefining the surface tokens turns every component translucent
+ * without one component file changing. AppShell.css only applies the backdrop-filter.
+ *
+ * Set only when a background image is actually selected; over a flat colour, glass costs
+ * a compositing layer to blur nothing.
+ */
+.shell[data-glass="true"] {
+  --wc-surface: rgb(20 20 22 / 0.72);
+  --wc-surface-raised: rgb(30 30 33 / 0.8);
+  --wc-bubble: rgb(24 24 27 / 0.66);
+}
+
+/* Without backdrop-filter, 0.72-alpha panels sit over an unblurred image. Unreadable. */
+@supports not (backdrop-filter: blur(1px)) {
+  .shell[data-glass="true"] {
+    --wc-surface: rgb(20 20 22 / 0.95);
+    --wc-surface-raised: rgb(30 30 33 / 0.97);
+    --wc-bubble: rgb(24 24 27 / 0.94);
+  }
+}
+
+/*
+ * The accessibility answer to glass: honour it, in both spellings.
+ *
+ * biome-ignore lint/correctness/noUnknownMediaFeatureName: prefers-reduced-transparency is
+ * Media Queries 5, shipped in Safari 17 and Chrome 118 — Biome's feature list is stale.
+ * A browser that does not know it drops the whole query, which is why prefers-contrast is
+ * a separate condition rather than an `and`.
+ */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .shell[data-glass="true"] {
+    --wc-surface: #16161a;
+    --wc-surface-raised: #1e1e21;
+    --wc-bubble: #16161a;
   }
 }

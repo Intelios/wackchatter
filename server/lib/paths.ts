@@ -23,6 +23,7 @@ export const PATHS = {
   lorebooks: join(DATA_DIR, 'lorebooks'),
   personas: join(DATA_DIR, 'personas'),
   personaAvatars: join(DATA_DIR, 'personas', 'avatars'),
+  backgrounds: join(DATA_DIR, 'backgrounds'),
   settings: join(DATA_DIR, 'settings.json'),
   secrets: join(DATA_DIR, 'secrets.json'),
   db: join(DATA_DIR, 'chats.db'),
@@ -36,6 +37,7 @@ export function ensureDataDirs(): void {
     PATHS.lorebooks,
     PATHS.personas,
     PATHS.personaAvatars,
+    PATHS.backgrounds,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

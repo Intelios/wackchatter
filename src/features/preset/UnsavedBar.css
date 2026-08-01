@@ -1,0 +1,25 @@
+/*
+ * Warning-coloured because presets no longer autosave: this bar is the only thing
+ * standing between a tweak and losing it.
+ *
+ * It sits in the panel's chrome slot, outside the scrolling body, so it does not need the
+ * `position: sticky` it used to — being outside the scroll container is a stronger
+ * guarantee than being sticky inside one.
+ */
+
+.unsaved-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-warning);
+  background: var(--wc-surface-raised);
+  flex-shrink: 0;
+}
+
+.unsaved-bar__text {
+  flex: 1;
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  color: var(--wc-warning);
+}

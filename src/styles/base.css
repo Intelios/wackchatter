@@ -105,7 +105,7 @@ select {
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius-sm);
   color: var(--wc-text);
-  transition: border-color 120ms ease;
+  transition: border-color var(--wc-duration-fast) ease;
 }
 
 .wc-input:hover,
@@ -156,13 +156,13 @@ select {
   font-size: var(--wc-text-sm);
   font-weight: 500;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--wc-duration-fast) ease, border-color var(--wc-duration-fast) ease;
 }
 
 /* Icons inherit their box from the button, never their intrinsic SVG size. */
 .wc-button svg {
-  width: 15px;
-  height: 15px;
+  width: var(--wc-icon);
+  height: var(--wc-icon);
   flex-shrink: 0;
 }
 

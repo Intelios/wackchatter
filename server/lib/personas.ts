@@ -11,27 +11,20 @@ import { existsSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { Persona } from '../../shared/types/chat.ts';
 import { withFileLock } from './fs.ts';
+import { contentTypeFor, isImageFilename } from './images.ts';
 import { PATHS, safeJoin } from './paths.ts';
-
-const AVATAR_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-};
 
 function personaPath(id: string): string | null {
   return safeJoin(PATHS.personas, `${id}.json`);
 }
 
 export function avatarPath(filename: string): string | null {
-  if (!AVATAR_TYPES[extname(filename).toLowerCase()]) return null;
+  if (!isImageFilename(filename)) return null;
   return safeJoin(PATHS.personaAvatars, filename);
 }
 
 export function avatarContentType(filename: string): string {
-  return AVATAR_TYPES[extname(filename).toLowerCase()] ?? 'application/octet-stream';
+  return contentTypeFor(filename);
 }
 
 /** Coerce a stored file into a usable persona. Never throws on a bad field. */
@@ -180,7 +173,7 @@ async function restorePersonaLorebookReferences(
 /** Store an uploaded avatar and point the persona at it. */
 export async function setPersonaAvatar(id: string, file: File): Promise<Persona> {
   const extension = extname(file.name).toLowerCase();
-  if (!AVATAR_TYPES[extension]) {
+  if (!isImageFilename(file.name)) {
     throw new Error(`"${extension || file.name}" is not a supported image type.`);
   }
 

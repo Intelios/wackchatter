@@ -19,6 +19,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -49,20 +50,66 @@ export function isSeparator(entry: MenuEntry): entry is MenuSeparator {
   return entry.kind === 'separator';
 }
 
+/**
+ * Which corner the popup grows from. `top-start` is the composer's burger, which opens
+ * upward because it sits at the bottom of the chat column; `bottom-end` is a trigger in
+ * the top-right of something, like a message bubble's overflow.
+ */
+export type MenuPlacement = 'top-start' | 'bottom-end';
+
 interface MenuProps {
   /** Accessible name for the trigger, and its tooltip. */
   label: string;
   icon: ReactNode;
   entries: MenuEntry[];
   className?: string;
+  placement?: MenuPlacement;
 }
 
-export function Menu({ label, icon, entries, className }: MenuProps) {
+export function Menu({ label, icon, entries, className, placement = 'top-start' }: MenuProps) {
   const [open, setOpen] = useState(false);
+  const [flipped, setFlipped] = useState(false);
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  const [side, align] = placement.split('-') as ['top' | 'bottom', 'start' | 'end'];
+  const effectiveSide = flipped ? (side === 'top' ? 'bottom' : 'top') : side;
+
+  /*
+   * Flip when the preferred side has no room.
+   *
+   * Without this, a bubble's ⋯ near the bottom of the window opens a popup that runs off
+   * the screen — the last entries, delete among them, simply cannot be reached. CSS cannot
+   * measure that, so this does, in a layout effect so the flip lands before paint.
+   *
+   * A flip rather than a portal: the popup stays a child of `.menu`, which keeps the
+   * dismissal and focus handling working on ordinary DOM containment.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setFlipped(false);
+      return;
+    }
+
+    const trigger = triggerRef.current;
+    const popup = popupRef.current;
+    if (!trigger || !popup) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const needed = popup.offsetHeight + 4;
+    const roomAbove = rect.top;
+    const roomBelow = window.innerHeight - rect.bottom;
+
+    // Only flip if the other side is genuinely better — flipping into an equally bad spot
+    // just moves the problem.
+    setFlipped(
+      side === 'top'
+        ? roomAbove < needed && roomBelow > roomAbove
+        : roomBelow < needed && roomAbove > roomBelow,
+    );
+  }, [open, side]);
 
   /** Close and put focus back where it started, so keyboard users are not stranded. */
   const closeAndRestore = useCallback(() => {
@@ -149,7 +196,13 @@ export function Menu({ label, icon, entries, className }: MenuProps) {
   }
 
   return (
-    <div className={`menu${className ? ` ${className}` : ''}`} ref={rootRef} onKeyDown={onKeyDown}>
+    <div
+      className={`menu${className ? ` ${className}` : ''}`}
+      data-side={effectiveSide}
+      data-align={align}
+      ref={rootRef}
+      onKeyDown={onKeyDown}
+    >
       <button
         type="button"
         ref={triggerRef}

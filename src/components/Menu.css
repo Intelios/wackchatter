@@ -10,14 +10,10 @@
 
 .menu__popup {
   position: absolute;
-  /* Opens upward: the trigger lives at the bottom of the chat column. */
-  bottom: 100%;
-  left: 0;
-  margin-bottom: var(--wc-space-1);
   min-width: 220px;
   /* .chat-column clips its overflow, so a long menu has to scroll rather than grow past
      the top of the column and get cut off. */
-  max-height: min(60vh, 420px);
+  max-height: min(60vh, var(--wc-scroll-cap));
   overflow-y: auto;
   padding: var(--wc-space-1);
   border: 1px solid var(--wc-border);
@@ -26,6 +22,35 @@
   box-shadow: var(--wc-shadow);
   /* No z-index needed: the composer is a later sibling than the transcript, so this
      already paints above it. */
+}
+
+/*
+ * Side and alignment are independent, because the side can flip at runtime when the
+ * preferred one has no room (see the layout effect in Menu.tsx) while the alignment never
+ * changes. Four combinations, two rules each.
+ */
+.menu[data-side="top"] .menu__popup {
+  bottom: 100%;
+  margin-bottom: var(--wc-space-1);
+}
+
+.menu[data-side="bottom"] .menu__popup {
+  top: 100%;
+  margin-top: var(--wc-space-1);
+}
+
+.menu[data-align="start"] .menu__popup {
+  left: 0;
+}
+
+/*
+ * Right-aligned so the popup grows inward, away from the edge it is anchored to. Growing
+ * outward would push it under the scroll container's `overflow-x: hidden`.
+ */
+.menu[data-align="end"] .menu__popup {
+  right: 0;
+  /* Above later-painting siblings inside the same bubble, such as the swipe row. */
+  z-index: 2;
 }
 
 .menu__item {
@@ -38,7 +63,7 @@
   text-align: left;
   font-size: var(--wc-text-sm);
   color: var(--wc-text);
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
 }
 
 .menu__item:hover:not(:disabled),
@@ -61,7 +86,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
+  width: var(--wc-icon);
   color: var(--wc-text-faint);
   flex-shrink: 0;
 }
@@ -71,8 +96,8 @@
 }
 
 .menu__icon svg {
-  width: 15px;
-  height: 15px;
+  width: var(--wc-icon);
+  height: var(--wc-icon);
 }
 
 .menu__label {

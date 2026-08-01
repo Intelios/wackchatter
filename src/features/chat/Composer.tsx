@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { SendIcon, StopIcon } from '../../layout/icons.tsx';
+import './Composer.css';
 
 const MAX_ROWS = 12;
 

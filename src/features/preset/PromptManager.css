@@ -14,7 +14,7 @@
   padding: 2px var(--wc-space-2) 2px 0;
   border-radius: var(--wc-radius-sm);
   background: var(--wc-surface);
-  transition: background 120ms ease, opacity 120ms ease;
+  transition: background var(--wc-duration-fast) ease, opacity var(--wc-duration-fast) ease;
 }
 
 .prompt-row:hover {
@@ -45,7 +45,7 @@
   align-items: center;
   justify-content: center;
   width: 22px;
-  height: 28px;
+  height: var(--wc-control-sm);
   flex-shrink: 0;
   color: var(--wc-text-faint);
   cursor: grab;
@@ -115,7 +115,7 @@
 
 .prompt-tag--depth {
   color: var(--wc-warning);
-  background: rgba(240, 160, 32, 0.12);
+  background: var(--wc-warning-subtle);
   font-family: var(--wc-font-mono);
 }
 

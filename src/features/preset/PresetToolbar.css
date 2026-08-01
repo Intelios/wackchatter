@@ -1,0 +1,29 @@
+.preset-toolbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.preset-toolbar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-3);
+}
+
+.preset-toolbar__row .wc-select,
+.preset-toolbar__row .wc-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.preset-toolbar__row .wc-button {
+  flex-shrink: 0;
+  padding: var(--wc-space-2);
+  text-decoration: none;
+}
+
+.preset-toolbar__status {
+  padding: 0 var(--wc-space-3) var(--wc-space-2);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}

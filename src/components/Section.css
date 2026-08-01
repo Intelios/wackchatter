@@ -9,7 +9,7 @@
   width: 100%;
   padding: var(--wc-space-3);
   text-align: left;
-  transition: background 120ms ease;
+  transition: background var(--wc-duration-fast) ease;
 }
 
 .section__header:hover {
@@ -17,8 +17,8 @@
 }
 
 .section__chevron {
-  width: 14px;
-  height: 14px;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
   flex-shrink: 0;
   color: var(--wc-text-faint);
   transition: transform var(--wc-duration) var(--wc-ease);

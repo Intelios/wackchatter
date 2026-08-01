@@ -59,8 +59,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--wc-control-sm);
+  height: var(--wc-control-sm);
   flex-shrink: 0;
   border-radius: var(--wc-radius-sm);
   overflow: hidden;

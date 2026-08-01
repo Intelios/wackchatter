@@ -263,6 +263,37 @@ export const personaApi = {
     `/api/personas/${encodeURIComponent(id)}/avatar${version ? `?v=${version}` : ''}`,
 };
 
+export interface BackgroundSummary {
+  name: string;
+  size: number;
+  modified: number;
+}
+
+export const backgroundApi = {
+  list: () => request<BackgroundSummary[]>('/backgrounds'),
+
+  upload: (file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return request<BackgroundSummary>('/backgrounds', { method: 'POST', body: form });
+  },
+
+  remove: (name: string) =>
+    request<{ ok: true }>(`/backgrounds/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  importFromSillyTavern: () =>
+    request<{ imported: string[]; skipped: string[]; source: string }>('/backgrounds/import', {
+      method: 'POST',
+    }),
+
+  /**
+   * Always go through here rather than interpolating a name into `url(...)` — sanitiseFilename
+   * permits parentheses, so "sunset (2).jpg" would break a raw CSS url token.
+   */
+  url: (name: string, version?: string | number) =>
+    `/api/backgrounds/${encodeURIComponent(name)}${version ? `?v=${version}` : ''}`,
+};
+
 export const chatApi = {
   list: (characterId?: string) =>
     request<ChatSummary[]>(
