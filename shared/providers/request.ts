@@ -84,8 +84,11 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
   const seed = preset.seed;
   if (typeof seed === 'number' && seed >= 0) body.seed = seed;
 
-  const n = preset.n ?? 1;
-  if (n > 1) body.n = n;
+  // WC-07: Multi-choice completion (`n > 1`) is not wired to any UI or storage. The
+  // streaming and non-stream parsers read only `choices[0]`, so any extra completions
+  // would be paid for and discarded — and taking the first array element in each chunk
+  // is not a safe substitute for following a stable `choice.index`. Clamp to 1 until
+  // multi-choice is intentionally implemented.
 
   if (descriptor.supportsExtraSamplers) {
     // These four are OpenRouter-only among OpenAI-compatible sources. A plain endpoint

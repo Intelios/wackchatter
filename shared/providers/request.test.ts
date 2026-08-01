@@ -99,12 +99,19 @@ describe('seed', () => {
 });
 
 describe('n', () => {
+  // WC-07: `n > 1` is clamped out. The parsers read only `choices[0]`, so forwarding
+  // extra completions would bill for work that is then discarded. Until multi-choice
+  // is intentionally implemented, the request never carries `n`.
   test('n of 1 is omitted', () => {
     expect(Object.hasOwn(build({ n: 1 }), 'n')).toBe(false);
   });
 
-  test('n above 1 is sent', () => {
-    expect(build({ n: 3 }).n).toBe(3);
+  test('n above 1 is clamped and never sent', () => {
+    expect(Object.hasOwn(build({ n: 3 }), 'n')).toBe(false);
+  });
+
+  test('unset n is omitted', () => {
+    expect(Object.hasOwn(build({}), 'n')).toBe(false);
   });
 });
 
