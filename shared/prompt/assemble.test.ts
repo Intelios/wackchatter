@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage } from '../types/chat.ts';
 import { CHARACTER_NAMES_BEHAVIOR, INJECTION_POSITION } from '../types/preset.ts';
-import { assemblePrompt, parseExampleDialogue } from './assemble.ts';
+import { DEFAULT_USER_NAME, assemblePrompt, parseExampleDialogue } from './assemble.ts';
 import { createDefaultPreset } from './defaults.ts';
 import { setPromptOrder, updatePrompt } from './preset-io.ts';
 
@@ -573,5 +573,188 @@ describe('world info placement', () => {
     expect(assemble({ preset, worldInfoBefore: 'ELDORIA' }).messages[0]!.content).toBe(
       '[Lore]\nELDORIA\n[/Lore]',
     );
+  });
+});
+
+describe('world info at depth', () => {
+  const historyOnly = () => ({
+    ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+    new_chat_prompt: '',
+  });
+
+  test('is charged against the budget and reported in tokenCounts', () => {
+    // History used to pack against a budget that had never seen the lore sharing space
+    // with it, so the two together could overrun the context.
+    const preset = historyOnly();
+    const lore = { depth: 0, order: 10, role: 'system' as const, content: 'four words of lore' };
+
+    const without = assemble({ preset, messages: makeMessages(6) });
+    const withLore = assemble({ preset, messages: makeMessages(6), worldInfoDepth: [lore] });
+
+    expect(withLore.tokenCounts.worldInfoDepth).toBe(4);
+    expect(without.tokenCounts.worldInfoDepth).toBeUndefined();
+    expect(withLore.tokenCounts.chatHistory!).toBeLessThanOrEqual(without.tokenCounts.chatHistory!);
+  });
+
+  test('the charge actually displaces history when the budget is tight', () => {
+    // Five three-token messages need 15; the budget is 18, so they all fit until five
+    // tokens of lore are charged against it.
+    const preset = { ...historyOnly(), openai_max_context: 18, openai_max_tokens: 0 };
+    const messages = makeMessages(5);
+
+    const without = assemble({ preset, messages });
+    const withLore = assemble({
+      preset,
+      messages,
+      worldInfoDepth: [{ depth: 0, order: 0, role: 'system', content: 'one two three four five' }],
+    });
+
+    expect(withLore.droppedMessages).toBeGreaterThan(without.droppedMessages);
+  });
+
+  test('macros in depth content are substituted', () => {
+    // The activation engine deliberately leaves content raw, so this is the only place
+    // it can happen — and it happens exactly once.
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      worldInfoDepth: [{ depth: 0, order: 0, role: 'system', content: '{{char}} lives here' }],
+    });
+
+    expect(messages.at(-1)!.content).toBe('Seraphina lives here');
+  });
+
+  test('blank depth content is dropped rather than sent as an empty message', () => {
+    const { messages, tokenCounts } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      worldInfoDepth: [{ depth: 0, order: 0, role: 'system', content: '   ' }],
+    });
+
+    expect(tokenCounts.worldInfoDepth).toBeUndefined();
+    expect(messages.some((m) => !m.content.trim())).toBe(false);
+  });
+
+  test('depth injections survive a disabled chatHistory marker', () => {
+    // A live bug before this: the budget was charged during the prompt walk but the
+    // splice only ran inside the history branch, so a preset with chatHistory off paid
+    // for content it never sent.
+    let preset = createDefaultPreset();
+    preset = updatePrompt(preset, 'nsfw', {
+      content: 'ABSOLUTE',
+      injection_position: INJECTION_POSITION.ABSOLUTE,
+      injection_depth: 0,
+    });
+    preset = setPromptOrder(preset, [
+      { identifier: 'nsfw', enabled: true },
+      { identifier: 'chatHistory', enabled: false },
+    ]);
+
+    const { messages } = assemble({
+      preset,
+      messages: makeMessages(4),
+      worldInfoDepth: [{ depth: 0, order: 0, role: 'system', content: 'DEPTH LORE' }],
+    });
+
+    const contents = messages.map((m) => m.content);
+    expect(contents).toContain('ABSOLUTE');
+    expect(contents).toContain('DEPTH LORE');
+    // And the history really is absent, so this is not just the normal path.
+    expect(contents.some((c) => c.startsWith('message number'))).toBe(false);
+  });
+});
+
+describe('persona position', () => {
+  const personaOrder = () =>
+    setPromptOrder(createDefaultPreset(), [
+      { identifier: 'personaDescription', enabled: true },
+      { identifier: 'chatHistory', enabled: true },
+    ]);
+
+  const persona = { id: 'p1', name: 'Ari', description: 'A wandering scholar.', avatar: null };
+
+  test('inPrompt puts the description at the marker', () => {
+    const { messages } = assemble({ preset: personaOrder(), persona });
+    expect(messages[0]!.content).toBe('A wandering scholar.');
+  });
+
+  test('an absent position defaults to inPrompt', () => {
+    const { messages } = assemble({ preset: personaOrder(), persona: { ...persona } });
+    expect(messages[0]!.content).toBe('A wandering scholar.');
+  });
+
+  test('atDepth suppresses the marker and injects into the history instead', () => {
+    const preset = { ...personaOrder(), new_chat_prompt: '' };
+    const { messages, tokenCounts } = assemble({
+      preset,
+      messages: makeMessages(4),
+      persona: { ...persona, position: 'atDepth', depth: 0 },
+    });
+
+    const contents = messages.map((m) => m.content);
+    expect(contents[0]).not.toBe('A wandering scholar.');
+    expect(contents.at(-1)).toBe('A wandering scholar.');
+    expect(tokenCounts.worldInfoDepth).toBe(3);
+  });
+
+  test('atDepth honours the role', () => {
+    const preset = { ...personaOrder(), new_chat_prompt: '' };
+    const { messages } = assemble({
+      preset,
+      messages: makeMessages(2),
+      persona: { ...persona, position: 'atDepth', depth: 0, role: 'user' },
+    });
+
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'A wandering scholar.' });
+  });
+
+  test("'none' sends the description nowhere", () => {
+    const preset = { ...personaOrder(), new_chat_prompt: '' };
+    const { messages } = assemble({
+      preset,
+      messages: makeMessages(2),
+      persona: { ...persona, position: 'none' },
+    });
+
+    expect(messages.map((m) => m.content)).not.toContain('A wandering scholar.');
+  });
+
+  test('{{persona}} keeps resolving at every position', () => {
+    // Otherwise a preset referencing the macro would break the moment somebody changed
+    // a dropdown — which is also ST's behaviour.
+    for (const position of ['inPrompt', 'atDepth', 'none'] as const) {
+      const preset = setPromptOrder({ ...createDefaultPreset(), new_chat_prompt: '' }, [
+        { identifier: 'main', enabled: true },
+      ]);
+      const withMacro = updatePrompt(preset, 'main', { content: 'You talk to {{persona}}' });
+
+      const { messages } = assemble({
+        preset: withMacro,
+        persona: { ...persona, position },
+      });
+      expect(messages[0]!.content).toBe('You talk to A wandering scholar.');
+    }
+  });
+
+  test('the persona name is what {{user}} expands to', () => {
+    const preset = updatePrompt(
+      setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]),
+      'main',
+      { content: 'Talking to {{user}}' },
+    );
+
+    expect(assemble({ preset, persona }).messages[0]!.content).toBe('Talking to Ari');
+  });
+
+  test('with no persona, {{user}} matches the default message label', () => {
+    // These used to disagree: the transcript said "You" while {{user}} said "User", and
+    // with names_behavior CONTENT the label lands in the prompt text.
+    const preset = updatePrompt(
+      setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]),
+      'main',
+      { content: '{{user}}' },
+    );
+
+    expect(assemble({ preset }).messages[0]!.content).toBe(DEFAULT_USER_NAME);
   });
 });

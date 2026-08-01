@@ -7,7 +7,7 @@
  */
 
 import { type MessageState, currentText } from '@shared/chat/message.ts';
-import { assemblePrompt } from '@shared/prompt/assemble.ts';
+import { DEFAULT_USER_NAME, assemblePrompt } from '@shared/prompt/assemble.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { ConnectionSettings } from '@shared/providers/types.ts';
@@ -303,9 +303,12 @@ export function useChat(options: UseChatOptions): UseChat {
       if (!trimmed || stateRef.current.status !== 'idle') return;
 
       const userAction: ChatAction = {
+        // The name becomes message.name, which names_behavior can put into the prompt
+        // text — so it has to be the same name {{user}} expands to, not a friendlier
+        // label. See DEFAULT_USER_NAME.
         type: 'message/appendUser',
         id: crypto.randomUUID(),
-        name: persona?.name ?? 'You',
+        name: persona?.name ?? DEFAULT_USER_NAME,
         text: trimmed,
       };
 

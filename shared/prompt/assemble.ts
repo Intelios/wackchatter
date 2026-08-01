@@ -53,6 +53,20 @@ export interface DepthInjection {
   content: string;
 }
 
+/**
+ * The name used for the user when no persona is set.
+ *
+ * Shared with the client's message labelling on purpose. These used to disagree — the
+ * transcript labelled messages "You" while `{{user}}` expanded to "User" — and with
+ * `names_behavior: CONTENT` the label becomes part of the message text, so the prompt
+ * would say `You: hello` while the character card was told the user is called User.
+ * 'User' wins because cards are written against SillyTavern's default.
+ */
+export const DEFAULT_USER_NAME = 'User';
+
+/** Where a persona description goes when the position says at-depth. */
+const DEFAULT_PERSONA_DEPTH = 2;
+
 export interface AssembleResult {
   messages: ApiMessage[];
   /** Token count per prompt identifier, for the Prompt Manager display. */
@@ -225,7 +239,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     seed = '',
   } = options;
 
-  const userName = options.userName ?? persona?.name ?? 'User';
+  const userName = options.userName ?? persona?.name ?? DEFAULT_USER_NAME;
   const maxContext = preset.openai_max_context ?? 4095;
   const maxResponse = preset.openai_max_tokens ?? 300;
 
@@ -251,12 +265,20 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   const promptsById = new Map<string, Prompt>();
   for (const prompt of preset.prompts ?? []) promptsById.set(prompt.identifier, prompt);
 
+  // Where the persona description goes. `{{persona}}` keeps expanding whatever this says,
+  // as it does in ST — otherwise a preset that references the macro would break the
+  // moment somebody changed a dropdown.
+  const personaPosition = persona?.position ?? 'inPrompt';
+  const personaText = persona?.description?.trim() ? persona.description : '';
+
   /** Content for the marker prompts, resolved from live state. */
   const markerContent: Record<string, string> = {
     charDescription: character.description,
     charPersonality: substituteMacros(preset.personality_format ?? '{{personality}}', env, seed),
     scenario: substituteMacros(preset.scenario_format ?? '{{scenario}}', env, seed),
-    personaDescription: persona?.description ?? '',
+    // Suppressed for the other two positions: at-depth ships it as an injection below,
+    // and 'none' means the description exists for the macro but is not sent on its own.
+    personaDescription: personaPosition === 'inPrompt' ? personaText : '',
     worldInfoBefore: worldInfoBefore
       ? (preset.wi_format ?? '{0}').replace('{0}', worldInfoBefore)
       : '',
@@ -342,6 +364,43 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     slots.push({ identifier: entry.identifier, messages: [message], tokens });
   }
 
+  // --- Depth injections --------------------------------------------------
+  // Everything spliced into the history rather than ordered around it: world info at
+  // at-depth, and a persona positioned the same way.
+  //
+  // Macros are substituted HERE and nowhere else. The activation engine deliberately
+  // leaves content raw, so an at-depth entry containing {{char}} expands exactly once,
+  // in the same place a before/after entry does. Charging the tokens here — with the
+  // other fixed content, before examples and history pack — is the other half: history
+  // used to pack against a budget that had never seen the lore it was sharing space with.
+  const depthInjections: DepthInjection[] = [];
+  let depthTokens = 0;
+
+  for (const injection of worldInfoDepth) {
+    const content = substituteMacros(injection.content, env, seed);
+    if (!content.trim()) continue;
+    depthInjections.push({ ...injection, content });
+    depthTokens += countTokens(content);
+  }
+
+  if (personaPosition === 'atDepth' && personaText) {
+    const content = substituteMacros(personaText, env, seed);
+    if (content.trim()) {
+      depthInjections.push({
+        depth: persona?.depth ?? DEFAULT_PERSONA_DEPTH,
+        order: DEFAULT_INJECTION_ORDER,
+        role: persona?.role ?? 'system',
+        content,
+      });
+      depthTokens += countTokens(content);
+    }
+  }
+
+  if (depthTokens > 0) {
+    tokenCounts.worldInfoDepth = depthTokens;
+    budget -= depthTokens;
+  }
+
   // --- Example dialogue --------------------------------------------------
   // Admitted whole-block, oldest first; a block that doesn't fit stops the rest.
   if (examplesSlotIndex !== -1) {
@@ -417,7 +476,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
     budget -= used;
 
-    const withInjections = applyDepthInjections(packed, [...absolutePrompts, ...worldInfoDepth]);
+    const withInjections = applyDepthInjections(packed, [...absolutePrompts, ...depthInjections]);
     const history = newChatMarker
       ? [{ role: 'system' as const, content: newChatMarker }, ...withInjections]
       : withInjections;
@@ -428,6 +487,19 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       messages: history,
       tokens: used + markerCost,
     };
+  } else if (absolutePrompts.length || depthInjections.length) {
+    // No chatHistory marker in the prompt order — but the budget has already been charged
+    // for these, so dropping them means paying for content that was never sent. A preset
+    // with chatHistory disabled did exactly that until this branch existed.
+    //
+    // With no history to count back from, every depth resolves to the same place, which
+    // is the honest answer: "at the end", where the history would have been.
+    const injections = [...absolutePrompts, ...depthInjections];
+    slots.push({
+      identifier: 'chatHistory',
+      messages: applyDepthInjections([], injections),
+      tokens: injections.reduce((sum, item) => sum + countTokens(item.content), 0),
+    });
   }
 
   // --- Flatten -----------------------------------------------------------

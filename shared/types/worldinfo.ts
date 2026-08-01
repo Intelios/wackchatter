@@ -4,7 +4,15 @@
  * The same data has two on-disk shapes and they differ structurally:
  *  - Standalone book file: `{ entries: { "<uid>": {...} } }`  — entries is an OBJECT keyed by uid
  *  - Embedded `character_book`: `{ name, entries: [...] }`     — entries is an ARRAY
- * Conversion between them lives in server/lib/lorebook.ts.
+ * Conversion between them lives in shared/worldinfo/convert.ts — shared, not server-side,
+ * because the browser needs it for both the embedded editor and the activation engine.
+ *
+ * Three unrelated things in here are called "depth". They are not interchangeable:
+ *  - `WorldInfoSettings.depth` / `WorldInfoEntry.scanDepth` — how many recent MESSAGES to
+ *    scan for keywords. Default 2.
+ *  - `WorldInfoEntry.depth` — where in the history an `atDepth` entry is SPLICED, counted
+ *    back from the end. Default 4.
+ *  - `Persona.depth` — the same splice offset, for the persona description. Default 2.
  */
 
 export const WI_LOGIC = {
@@ -41,6 +49,13 @@ export const WI_ROLE = {
 
 export type WiRole = (typeof WI_ROLE)[keyof typeof WI_ROLE];
 
+/** WiRole is numeric on disk; a DepthInjection wants the string. */
+export const WI_ROLE_TO_STRING: Record<WiRole, 'system' | 'user' | 'assistant'> = {
+  [WI_ROLE.SYSTEM]: 'system',
+  [WI_ROLE.USER]: 'user',
+  [WI_ROLE.ASSISTANT]: 'assistant',
+};
+
 /** A lorebook entry in our internal (ST standalone-file) shape. */
 export interface WorldInfoEntry {
   uid: number;
@@ -55,8 +70,14 @@ export interface WorldInfoEntry {
   selective: boolean;
   selectiveLogic: WiLogic;
   addMemo: boolean;
-  /** Insertion order — higher sorts later within a bucket. */
+  /**
+   * Insertion weight. Sorted DESCENDING then unshifted, so within a bucket the highest
+   * `order` ends up last — closest to the chat. Ties are legal; see `displayIndex` for
+   * the list order, which is a different thing entirely.
+   */
   order: number;
+  /** Position in the editor's list. A permutation, unlike `order`, which is a weight. */
+  displayIndex: number;
   position: WiPosition;
   disable: boolean;
   ignoreBudget: boolean;
@@ -65,8 +86,10 @@ export interface WorldInfoEntry {
   delayUntilRecursion: number | boolean;
   probability: number;
   useProbability: boolean;
-  /** Depth for `position: atDepth`. */
+  /** Splice offset for `position: atDepth`, counted back from the end of the history. */
   depth: number;
+  /** Target for `position: outlet`. Carried, not honoured — outlets are out of scope. */
+  outletName: string;
   group: string;
   groupOverride: boolean;
   groupWeight: number;
@@ -78,13 +101,21 @@ export interface WorldInfoEntry {
   automationId: string;
   role: WiRole;
   vectorized: boolean;
+  /**
+   * Timing suppressors. Carried through a round-trip but never read: each can only ever
+   * make an entry fire LESS, so ignoring them is noisy rather than wrong. Contrast
+   * `vectorized`, which the engine must honour — see activate.ts.
+   */
   sticky: number | null;
   cooldown: number | null;
   delay: number | null;
-  characterFilterNames?: string[];
-  characterFilterTags?: string[];
-  characterFilterExclude?: boolean;
   triggers?: string[];
+  /**
+   * The entry's raw `extensions` bag from the character_book, kept verbatim. This is what
+   * carries third-party keys and the fields we deliberately don't model — ST nests the
+   * character filter here as `character_filter`, so it round-trips without three flat
+   * fields nothing populates and nothing reads.
+   */
   extensions?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -94,6 +125,16 @@ export interface WorldInfoBook {
   name?: string;
   entries: Record<string, WorldInfoEntry>;
   extensions?: Record<string, unknown>;
+  /**
+   * Book-level settings the V2 `character_book` spec defines. A standalone ST book has no
+   * equivalent, but an embedded one does, so they are carried here to survive a
+   * round-trip — and they are the only fields the embedded editor shows that the
+   * standalone editor doesn't.
+   */
+  description?: string;
+  scan_depth?: number;
+  token_budget?: number;
+  recursive_scanning?: boolean;
   /** Set when the book came from an imported character_book, so we can round-trip verbatim. */
   originalData?: unknown;
   [key: string]: unknown;
@@ -147,6 +188,7 @@ export function createWorldInfoEntry(uid: number): WorldInfoEntry {
     selectiveLogic: WI_LOGIC.AND_ANY,
     addMemo: false,
     order: 100,
+    displayIndex: uid,
     position: WI_POSITION.before,
     disable: false,
     ignoreBudget: false,
@@ -156,6 +198,7 @@ export function createWorldInfoEntry(uid: number): WorldInfoEntry {
     probability: 100,
     useProbability: true,
     depth: WI_DEFAULT_DEPTH,
+    outletName: '',
     group: '',
     groupOverride: false,
     groupWeight: WI_DEFAULT_WEIGHT,

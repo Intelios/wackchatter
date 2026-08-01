@@ -85,8 +85,11 @@ function splitChoices(raw: string): string[] {
 /**
  * Stable hash, used to seed {{pick}} so a given occurrence resolves the same way across
  * regenerations of the same text — unlike {{random}}, which re-rolls every call.
+ *
+ * Exported because World Info needs the same trick for probability and group rolls, and
+ * two hash functions would mean two ways for "the same chat" to disagree about a seed.
  */
-function hashString(value: string): number {
+export function hashString(value: string): number {
   let hash = 0;
   for (let i = 0; i < value.length; i++) {
     hash = (hash << 5) - hash + value.charCodeAt(i);
