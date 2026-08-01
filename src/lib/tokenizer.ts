@@ -12,6 +12,7 @@
  */
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
+import type { ApiMessage } from '@shared/types/chat.ts';
 
 export type EncodingName = 'o200k_base' | 'cl100k_base';
 
@@ -19,6 +20,21 @@ export type EncodingName = 'o200k_base' | 'cl100k_base';
 export function approximateTokens(text: string): number {
   if (!text) return 0;
   return Math.ceil(text.length / 3.6);
+}
+
+/** Conservative ChatML-style estimate while the real encoding is loading. */
+export function approximateChatTokens(messages: readonly ApiMessage[]): number {
+  // gpt-tokenizer's chat helper charges 3 per message, 1 extra for a name, and 3 for
+  // reply priming. Count role and name text too, not just visible content.
+  return (
+    3 +
+    messages.reduce((total, message) => {
+      const name = message.name ? approximateTokens(message.name) + 1 : 0;
+      return (
+        total + 3 + approximateTokens(message.role) + approximateTokens(message.content) + name
+      );
+    }, 0)
+  );
 }
 
 /**
@@ -61,7 +77,10 @@ export async function loadCounter(encoding: EncodingName): Promise<TokenCounter>
       ? await import('gpt-tokenizer/encoding/o200k_base')
       : await import('gpt-tokenizer/encoding/cl100k_base');
 
-  const counter: TokenCounter = (text: string) => module.countTokens(text);
+  const counter: TokenCounter = {
+    countText: (text) => module.countTokens(text),
+    countChat: (messages) => module.countTokens(messages),
+  };
   loaded.set(encoding, counter);
   return counter;
 }

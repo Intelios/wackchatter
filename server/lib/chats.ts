@@ -9,7 +9,13 @@
 
 import type { Database } from 'bun:sqlite';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
-import type { Chat, ChatMessage, ChatMetadata, ChatSummary } from '../../shared/types/chat.ts';
+import type {
+  Chat,
+  ChatMessage,
+  ChatMetadata,
+  ChatSummary,
+  StaleChatRevision,
+} from '../../shared/types/chat.ts';
 import { getDb } from './db.ts';
 
 interface ChatRow {
@@ -18,6 +24,7 @@ interface ChatRow {
   title: string;
   created: number;
   modified: number;
+  revision: number;
   metadata: string;
 }
 
@@ -44,13 +51,21 @@ export interface ChatStore {
   /** Whole-chat write: the only path that changes messages. */
   replaceChat(
     id: string,
-    chat: { title?: string; metadata?: ChatMetadata; messages: ChatMessage[] },
-  ): Chat | null;
-  updateChatMeta(id: string, updates: { title?: string; metadata?: ChatMetadata }): Chat | null;
+    chat: { revision: number; title?: string; metadata?: ChatMetadata; messages: ChatMessage[] },
+  ): ChatSaveResult;
+  updateChatMeta(
+    id: string,
+    updates: { revision: number; title?: string; metadata?: ChatMetadata },
+  ): ChatSaveResult;
   deleteChat(id: string): boolean;
   /** Copy a chat up to and including a message, as a new chat. */
   branchChat(id: string, afterMessageId: string, title?: string): Chat | null;
 }
+
+export type ChatSaveResult =
+  | { kind: 'saved'; chat: Chat }
+  | { kind: 'notFound' }
+  | { kind: 'stale'; conflict: StaleChatRevision };
 
 function parseJson<T>(raw: string, fallback: T): T {
   try {
@@ -80,13 +95,14 @@ function rowToMessage(row: MessageRow): ChatMessage {
 export function createChatStore(database: Database): ChatStore {
   const statements = {
     insertChat: database.query(
-      `INSERT INTO chats (id, character_id, title, created, modified, metadata)
-       VALUES ($id, $characterId, $title, $created, $modified, $metadata)`,
+      `INSERT INTO chats (id, character_id, title, created, modified, revision, metadata)
+       VALUES ($id, $characterId, $title, $created, $modified, $revision, $metadata)`,
     ),
     selectChat: database.query<ChatRow, [string]>('SELECT * FROM chats WHERE id = ?'),
-    touchChat: database.query('UPDATE chats SET modified = $modified WHERE id = $id'),
-    updateMeta: database.query(
-      'UPDATE chats SET title = $title, metadata = $metadata, modified = $modified WHERE id = $id',
+    replaceChat: database.query(
+      `UPDATE chats
+         SET title = $title, metadata = $metadata, modified = $modified, revision = $revision
+       WHERE id = $id`,
     ),
     deleteChat: database.query('DELETE FROM chats WHERE id = ?'),
 
@@ -146,6 +162,7 @@ export function createChatStore(database: Database): ChatStore {
       title: row.title,
       created: row.created,
       modified: row.modified,
+      revision: row.revision,
       metadata: parseJson<ChatMetadata>(row.metadata, {}),
       messages: statements.selectMessages.all(id).map(rowToMessage),
     };
@@ -158,15 +175,102 @@ export function createChatStore(database: Database): ChatStore {
       $title: row.title,
       $created: row.created,
       $modified: row.modified,
+      $revision: row.revision,
       $metadata: row.metadata,
     });
     writeMessages(row.id, messages);
   });
 
-  const replaceMessages = database.transaction(
-    (id: string, messages: ChatMessage[], modified: number): void => {
+  function normalizeMessages(messages: ChatMessage[]): ChatMessage[] {
+    return messages.map((message) => toChatMessage(fromChatMessage(message)));
+  }
+
+  function sameMessages(left: ChatMessage[], right: ChatMessage[]): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  const saveWholeChat = database.transaction(
+    (
+      id: string,
+      input: { revision: number; title?: string; metadata?: ChatMetadata; messages: ChatMessage[] },
+    ): ChatSaveResult => {
+      const existing = readChat(id);
+      if (!existing) return { kind: 'notFound' };
+
+      const title = input.title?.trim() || existing.title;
+      const metadata = input.metadata ?? existing.metadata;
+      const messages = normalizeMessages(input.messages);
+
+      if (input.revision < existing.revision) {
+        return {
+          kind: 'stale',
+          conflict: { code: 'stale_revision', currentRevision: existing.revision },
+        };
+      }
+
+      if (input.revision === existing.revision) {
+        if (
+          title === existing.title &&
+          JSON.stringify(metadata) === JSON.stringify(existing.metadata) &&
+          sameMessages(messages, existing.messages)
+        ) {
+          return { kind: 'saved', chat: existing };
+        }
+        return {
+          kind: 'stale',
+          conflict: { code: 'stale_revision', currentRevision: existing.revision },
+        };
+      }
+
+      statements.replaceChat.run({
+        $id: id,
+        $title: title,
+        $metadata: JSON.stringify(metadata),
+        $modified: Date.now(),
+        $revision: input.revision,
+      });
       writeMessages(id, messages);
-      statements.touchChat.run({ $id: id, $modified: modified });
+      return { kind: 'saved', chat: readChat(id)! };
+    },
+  );
+
+  const saveMeta = database.transaction(
+    (
+      id: string,
+      input: { revision: number; title?: string; metadata?: ChatMetadata },
+    ): ChatSaveResult => {
+      const existing = readChat(id);
+      if (!existing) return { kind: 'notFound' };
+
+      const title = input.title?.trim() || existing.title;
+      const metadata = input.metadata ?? existing.metadata;
+      if (input.revision < existing.revision) {
+        return {
+          kind: 'stale',
+          conflict: { code: 'stale_revision', currentRevision: existing.revision },
+        };
+      }
+      if (input.revision === existing.revision) {
+        if (
+          title === existing.title &&
+          JSON.stringify(metadata) === JSON.stringify(existing.metadata)
+        ) {
+          return { kind: 'saved', chat: existing };
+        }
+        return {
+          kind: 'stale',
+          conflict: { code: 'stale_revision', currentRevision: existing.revision },
+        };
+      }
+
+      statements.replaceChat.run({
+        $id: id,
+        $title: title,
+        $metadata: JSON.stringify(metadata),
+        $modified: Date.now(),
+        $revision: input.revision,
+      });
+      return { kind: 'saved', chat: readChat(id)! };
     },
   );
 
@@ -190,6 +294,7 @@ export function createChatStore(database: Database): ChatStore {
           title: input.title?.trim() || 'New chat',
           created: now,
           modified: now,
+          revision: 0,
           metadata: JSON.stringify(input.metadata ?? {}),
         },
         input.messages ?? [],
@@ -198,40 +303,12 @@ export function createChatStore(database: Database): ChatStore {
       return readChat(id)!;
     },
 
-    replaceChat(id, chat): Chat | null {
-      const existing = statements.selectChat.get(id);
-      if (!existing) return null;
-
-      const now = Date.now();
-      if (chat.title !== undefined || chat.metadata !== undefined) {
-        statements.updateMeta.run({
-          $id: id,
-          $title: chat.title ?? existing.title,
-          $metadata: JSON.stringify(
-            chat.metadata ?? parseJson<ChatMetadata>(existing.metadata, {}),
-          ),
-          $modified: now,
-        });
-      }
-
-      replaceMessages(id, chat.messages, now);
-      return readChat(id);
+    replaceChat(id, chat): ChatSaveResult {
+      return saveWholeChat(id, chat);
     },
 
-    updateChatMeta(id, updates): Chat | null {
-      const existing = statements.selectChat.get(id);
-      if (!existing) return null;
-
-      statements.updateMeta.run({
-        $id: id,
-        $title: updates.title?.trim() || existing.title,
-        $metadata: JSON.stringify(
-          updates.metadata ?? parseJson<ChatMetadata>(existing.metadata, {}),
-        ),
-        $modified: Date.now(),
-      });
-
-      return readChat(id);
+    updateChatMeta(id, updates): ChatSaveResult {
+      return saveMeta(id, updates);
     },
 
     deleteChat(id): boolean {
@@ -257,6 +334,7 @@ export function createChatStore(database: Database): ChatStore {
           title: title?.trim() || `${source.title} (branch)`,
           created: now,
           modified: now,
+          revision: 0,
           metadata: JSON.stringify(source.metadata),
         },
         // Fresh ids: the copies are independent messages from here on.

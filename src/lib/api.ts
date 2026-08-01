@@ -12,11 +12,44 @@ import type {
   ProviderModel,
 } from '@shared/providers/types.ts';
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
-import type { Chat, ChatMessage, ChatMetadata, ChatSummary } from '@shared/types/chat.ts';
+import type {
+  Chat,
+  ChatMessage,
+  ChatMetadata,
+  ChatSaveSnapshot,
+  ChatSummary,
+  StaleChatRevision,
+} from '@shared/types/chat.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+export function staleRevisionFrom(error: unknown): StaleChatRevision | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.status !== 409 ||
+    !error.body ||
+    typeof error.body !== 'object'
+  ) {
+    return null;
+  }
+  const body = error.body as Partial<StaleChatRevision>;
+  return body.code === 'stale_revision' && typeof body.currentRevision === 'number'
+    ? { code: 'stale_revision', currentRevision: body.currentRevision }
+    : null;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, init);
@@ -24,13 +57,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     // Errors come back as {error} JSON, but a crash upstream could return HTML.
     let message = `${response.status} ${response.statusText}`;
+    let body: unknown = null;
     try {
-      const body = await response.json();
-      if (body?.error) message = body.error;
+      body = await response.json();
+      if ((body as { error?: unknown } | null)?.error) {
+        message = String((body as { error: unknown }).error);
+      }
     } catch {
       /* keep the status line */
     }
-    throw new Error(message);
+    throw new ApiError(message, response.status, body);
   }
 
   return response.json() as Promise<T>;
@@ -241,14 +277,18 @@ export const chatApi = {
     }),
 
   /** Whole-chat write — the only path that changes messages. */
-  save: (id: string, chat: { title?: string; metadata?: ChatMetadata; messages: ChatMessage[] }) =>
-    request<Chat>(`/chats/${encodeURIComponent(id)}`, {
+  save: (snapshot: ChatSaveSnapshot, options?: Pick<RequestInit, 'keepalive'>) =>
+    request<Chat>(`/chats/${encodeURIComponent(snapshot.chatId)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(chat),
+      body: JSON.stringify(snapshot),
+      ...options,
     }),
 
-  updateMeta: (id: string, updates: { title?: string; metadata?: ChatMetadata }) =>
+  updateMeta: (
+    id: string,
+    updates: { revision: number; title?: string; metadata?: ChatMetadata },
+  ) =>
     request<Chat>(`/chats/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },

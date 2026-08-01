@@ -1,6 +1,11 @@
 /** Chat CRUD. Storage is ours, so there is no external format to honour here. */
 
-import type { Chat, ChatMessage, ChatMetadata } from '../../shared/types/chat.ts';
+import type {
+  Chat,
+  ChatMessage,
+  ChatMetadata,
+  StaleChatRevision,
+} from '../../shared/types/chat.ts';
 import { chatStore } from '../lib/chats.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 
@@ -11,7 +16,14 @@ interface CreateBody {
   messages?: ChatMessage[];
 }
 
-type ReplaceBody = Pick<Chat, 'messages'> & Partial<Pick<Chat, 'title' | 'metadata'>>;
+type ReplaceBody = Pick<Chat, 'messages' | 'revision'> & Partial<Pick<Chat, 'title' | 'metadata'>>;
+
+function saveResponse(result: ReturnType<ReturnType<typeof chatStore>['replaceChat']>): Response {
+  if (result.kind === 'saved') return json(result.chat);
+  if (result.kind === 'notFound') return notFound('Chat not found.');
+  const conflict: StaleChatRevision = result.conflict;
+  return json({ error: 'Chat changed elsewhere.', ...conflict }, { status: 409 });
+}
 
 export async function handleChatRoute(
   request: Request,
@@ -68,21 +80,37 @@ export async function handleChatRoute(
       const body = await readJson<ReplaceBody>(request);
       if (!body) return errorResponse('Request body is not valid JSON.');
       if (!Array.isArray(body.messages)) return errorResponse('A messages array is required.');
+      if (!Number.isSafeInteger(body.revision) || body.revision < 0) {
+        return errorResponse('A non-negative revision is required.');
+      }
 
-      const saved = store.replaceChat(id, {
-        title: body.title,
-        metadata: body.metadata,
-        messages: body.messages,
-      });
-      return saved ? json(saved) : notFound('Chat not found.');
+      return saveResponse(
+        store.replaceChat(id, {
+          revision: body.revision,
+          title: body.title,
+          metadata: body.metadata,
+          messages: body.messages,
+        }),
+      );
     }
 
     if (method === 'PATCH') {
-      const body = await readJson<{ title?: string; metadata?: ChatMetadata }>(request);
+      const body = await readJson<{ revision?: number; title?: string; metadata?: ChatMetadata }>(
+        request,
+      );
       if (!body) return errorResponse('Request body is not valid JSON.');
+      const revision = body.revision;
+      if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
+        return errorResponse('A non-negative revision is required.');
+      }
 
-      const saved = store.updateChatMeta(id, body);
-      return saved ? json(saved) : notFound('Chat not found.');
+      return saveResponse(
+        store.updateChatMeta(id, {
+          revision,
+          title: body.title,
+          metadata: body.metadata,
+        }),
+      );
     }
 
     if (method === 'DELETE') {

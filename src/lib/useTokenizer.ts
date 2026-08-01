@@ -1,6 +1,17 @@
 import { type TokenCounter, memoizeCounter } from '@shared/prompt/token-cache.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { approximateTokens, encodingForModel, isCounterLoaded, loadCounter } from './tokenizer.ts';
+import {
+  approximateChatTokens,
+  approximateTokens,
+  encodingForModel,
+  isCounterLoaded,
+  loadCounter,
+} from './tokenizer.ts';
+
+const approximateCounter: TokenCounter = {
+  countText: approximateTokens,
+  countChat: approximateChatTokens,
+};
 
 /**
  * A token counter for the given model.
@@ -13,7 +24,7 @@ import { approximateTokens, encodingForModel, isCounterLoaded, loadCounter } fro
  */
 export function useTokenizer(model: string, override?: string): TokenCounter {
   const encoding = encodingForModel(model, override);
-  const [raw, setRaw] = useState<TokenCounter>(() => approximateTokens);
+  const [raw, setRaw] = useState<TokenCounter>(() => approximateCounter);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +47,7 @@ export function useTokenizer(model: string, override?: string): TokenCounter {
   // Reset to the estimate when switching to an encoding we haven't loaded yet, so the
   // counts never silently belong to the previous model.
   useEffect(() => {
-    if (!isCounterLoaded(encoding)) setRaw(() => approximateTokens);
+    if (!isCounterLoaded(encoding)) setRaw(() => approximateCounter);
   }, [encoding]);
 
   return useMemo(() => memoizeCounter(raw), [raw]);

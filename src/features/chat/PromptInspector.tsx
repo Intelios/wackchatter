@@ -22,6 +22,11 @@ export function PromptInspector({ inspection }: { inspection: PromptInspection |
         <span>{inspection.generationType}</span>
         <span>{inspection.messages.length} messages</span>
         <span>{inspection.totalTokens} tokens</span>
+        {inspection.overflow ? (
+          <span className="inspector__warn" title="Mandatory prompt content exceeds context">
+            overflow
+          </span>
+        ) : null}
         {inspection.droppedMessages > 0 ? (
           <span className="inspector__warn" title="Oldest messages did not fit the budget">
             {inspection.droppedMessages} dropped

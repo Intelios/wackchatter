@@ -8,6 +8,7 @@ import {
   chatReducer,
   initialChatState,
   toChatMessages,
+  toPersistedChatMessages,
 } from './chatReducer.ts';
 
 function run(state: ChatState, ...actions: ChatAction[]): ChatState {
@@ -21,7 +22,8 @@ function chat(messages: Chat['messages'] = []): Chat {
     title: 'Test',
     created: 0,
     modified: 0,
-    metadata: {},
+    revision: 0,
+    metadata: { persona: null },
     messages,
   };
 }
@@ -61,6 +63,60 @@ function assertConsistent(state: ChatState) {
 function last(state: ChatState): MessageState {
   return state.messages[state.messages.length - 1]!;
 }
+
+describe('chat snapshots', () => {
+  test('loading a legacy chat snapshots the supplied default and marks only that migration dirty', () => {
+    const legacy = { ...chat(), revision: 7, metadata: {} };
+    const state = run(initialChatState, {
+      type: 'chat/loaded',
+      chat: legacy,
+      defaultPersonaId: 'ari',
+    });
+
+    expect(state.metadata.persona).toBe('ari');
+    expect(state.persistedRevision).toBe(7);
+    expect(state.revision).toBe(8);
+  });
+
+  test('an explicit no-persona snapshot is never migrated back to the default', () => {
+    const state = run(initialChatState, {
+      type: 'chat/loaded',
+      chat: { ...chat(), revision: 7, metadata: { persona: null } },
+      defaultPersonaId: 'ari',
+    });
+
+    expect(state.metadata.persona).toBeNull();
+    expect(state.revision).toBe(7);
+    expect(state.persistedRevision).toBe(7);
+  });
+
+  test('a server acknowledgement advances persisted revision without losing a newer local edit', () => {
+    const edited = run(loaded(), { type: 'chat/renamed', title: 'First' });
+    const newer = run(edited, { type: 'chat/renamed', title: 'Second' });
+    const settled = run(newer, { type: 'chat/saved', chatId: 'c1', revision: edited.revision });
+
+    expect(settled.persistedRevision).toBe(edited.revision);
+    expect(settled.revision).toBe(newer.revision);
+    expect(settled.title).toBe('Second');
+  });
+
+  test('a save started by a user edit excludes the transient assistant placeholder', () => {
+    const withUser = run(loaded(), {
+      type: 'message/appendUser',
+      id: 'u1',
+      name: 'Jack',
+      text: 'Hello',
+    });
+    const generating = run(withUser, {
+      type: 'gen/started',
+      mode: 'send',
+      newId: 'a1',
+      name: 'Seraphina',
+    });
+
+    expect(toPersistedChatMessages(generating)).toEqual(toChatMessages(withUser));
+  });
+});
 
 describe('sending', () => {
   test('send then finish leaves one assistant message with a single swipe', () => {

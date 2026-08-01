@@ -84,6 +84,21 @@ export function ChatView({ chat, characterName, avatar, ready }: ChatViewProps) 
         </div>
       ) : null}
 
+      {chat.saveError ? (
+        <div className="chat-view__error" role="alert">
+          <span className="chat-view__error-text">Could not save this chat: {chat.saveError}</span>
+          <button
+            type="button"
+            className="wc-button chat-view__retry"
+            onClick={() => void chat.retrySave()}
+            disabled={busy || chat.saving}
+          >
+            <RefreshIcon />
+            Retry save
+          </button>
+        </div>
+      ) : null}
+
       <Composer
         onSend={(text) => void chat.send(text)}
         onStop={chat.abort}

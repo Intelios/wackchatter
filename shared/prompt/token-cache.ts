@@ -10,7 +10,13 @@
  * assembly that added one message costs the tokens of that one message.
  */
 
-export type TokenCounter = (text: string) => number;
+import type { ApiMessage } from '../types/chat.ts';
+
+/** Text is used by World Info; complete messages are used for provider-context budgets. */
+export interface TokenCounter {
+  countText(text: string): number;
+  countChat(messages: readonly ApiMessage[]): number;
+}
 
 const DEFAULT_LIMIT = 2048;
 
@@ -24,25 +30,29 @@ export function memoizeCounter(counter: TokenCounter, limit = DEFAULT_LIMIT): To
   // Map iterates in insertion order, so the first key is always the least recent.
   const cache = new Map<string, number>();
 
-  return (text: string): number => {
-    if (!text) return 0;
-
-    const cached = cache.get(text);
-    if (cached !== undefined) {
+  function cached(key: string, count: () => number): number {
+    const hit = cache.get(key);
+    if (hit !== undefined) {
       // Re-insert to mark it as most recently used.
-      cache.delete(text);
-      cache.set(text, cached);
-      return cached;
+      cache.delete(key);
+      cache.set(key, hit);
+      return hit;
     }
 
-    const count = counter(text);
-    cache.set(text, count);
-
+    const result = count();
+    cache.set(key, result);
     if (cache.size > limit) {
       const oldest = cache.keys().next();
       if (!oldest.done) cache.delete(oldest.value);
     }
+    return result;
+  }
 
-    return count;
+  return {
+    countText: (text) => (text ? cached(`text:${text}`, () => counter.countText(text)) : 0),
+    countChat: (messages) => {
+      const materialized = [...messages];
+      return cached(`chat:${JSON.stringify(materialized)}`, () => counter.countChat(materialized));
+    },
   };
 }

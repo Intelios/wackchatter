@@ -156,7 +156,9 @@ export function App() {
   }, [selected]);
 
   const connection = settings?.connection ?? null;
-  const character = detail?.card.data ?? null;
+  // Detail resolves asynchronously. Never let the previous card accompany a newly
+  // selected avatar into useChat's auto-open effect.
+  const character = detail?.avatar === selected ? detail.card.data : null;
 
   // Exact for GPT and o-series, an estimate elsewhere — the same position ST is in.
   const countTokens = useTokenizer(connection?.model ?? '', settings?.tokenizerEncoding);
@@ -210,10 +212,31 @@ export function App() {
     }
   }, []);
 
-  const handleSelect = useCallback((avatar: string) => {
-    setSelected(avatar);
-    setRightOpen(true);
-  }, []);
+  const transitionToCharacter = useCallback(
+    async (avatar: string, editing = false) => {
+      if (avatar !== selected || editing) {
+        try {
+          await chat.flushSaves();
+        } catch {
+          return;
+        }
+      }
+      if (avatar !== selected) {
+        setDetail(null);
+        setSelected(avatar);
+      }
+      setEditing(editing);
+      setRightOpen(true);
+    },
+    [chat, selected],
+  );
+
+  const handleSelect = useCallback(
+    (avatar: string) => {
+      void transitionToCharacter(avatar);
+    },
+    [transitionToCharacter],
+  );
 
   const handleSaved = useCallback((saved: CharacterDetail) => {
     setDetail(saved);
@@ -228,7 +251,7 @@ export function App() {
   }, [refresh]);
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
-  const showEditor = editing && detail;
+  const showEditor = editing && detail?.avatar === selected ? detail : null;
   const ready = Boolean(connection?.baseUrl && connection.model && preset);
 
   const title = useMemo(() => {
@@ -265,10 +288,10 @@ export function App() {
       }
       right={
         showEditor ? (
-          <Panel title={detail.name || 'Character'}>
+          <Panel title={showEditor.name || 'Character'}>
             <CharacterEditor
-              key={detail.avatar}
-              detail={detail}
+              key={showEditor.avatar}
+              detail={showEditor}
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               onBack={() => setEditing(false)}
@@ -307,10 +330,7 @@ export function App() {
                   error={error}
                   onSelect={handleSelect}
                   onRefresh={refresh}
-                  onEdit={(avatar) => {
-                    setSelected(avatar);
-                    setEditing(true);
-                  }}
+                  onEdit={(avatar) => void transitionToCharacter(avatar, true)}
                 />
               </>
             ) : null}

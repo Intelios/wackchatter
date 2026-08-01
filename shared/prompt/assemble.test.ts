@@ -1,13 +1,21 @@
 import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
-import type { ChatMessage } from '../types/chat.ts';
+import type { ApiMessage, ChatMessage } from '../types/chat.ts';
 import { CHARACTER_NAMES_BEHAVIOR, INJECTION_POSITION } from '../types/preset.ts';
 import { DEFAULT_USER_NAME, assemblePrompt, parseExampleDialogue } from './assemble.ts';
 import { createDefaultPreset } from './defaults.ts';
 import { setPromptOrder, updatePrompt } from './preset-io.ts';
+import type { TokenCounter } from './token-cache.ts';
 
 /** Deterministic and cheap: one token per whitespace-separated word. */
-const countTokens = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0);
+const countText = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0);
+const countTokens: TokenCounter = {
+  countText,
+  // Keep the existing tests focused on prompt shape; dedicated cases below cover wire
+  // overhead with a counter that models it.
+  countChat: (messages: readonly ApiMessage[]) =>
+    messages.reduce((total, message) => total + countText(message.content), 0),
+};
 
 function makeCharacter(overrides: Partial<CardDataV2> = {}): CardDataV2 {
   return {
@@ -320,6 +328,99 @@ describe('depth injection', () => {
     const contents = messages.map((m) => m.content);
     expect(contents.indexOf('HIGH')).toBeLessThan(contents.indexOf('LOW'));
   });
+
+  test('mixed depths are measured against the original history, not prior insertions', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      new_chat_prompt: '',
+    };
+
+    const { messages } = assemble({
+      preset,
+      messages: makeMessages(3),
+      worldInfoDepth: [
+        { depth: 1, order: 0, role: 'system', content: 'D1' },
+        { depth: 0, order: 0, role: 'system', content: 'D0' },
+      ],
+    });
+
+    expect(messages.map((message) => message.content)).toEqual([
+      'message number 0',
+      'message number 1',
+      'D1',
+      'message number 2',
+      'D0',
+    ]);
+  });
+
+  test('same depth, order, and role injections share one wire message in source order', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      new_chat_prompt: '',
+    };
+    const { messages } = assemble({
+      preset,
+      worldInfoDepth: [
+        { depth: 0, order: 10, role: 'system', content: 'first' },
+        { depth: 0, order: 10, role: 'system', content: 'second' },
+      ],
+    });
+
+    expect(messages).toEqual([{ role: 'system', content: 'first\nsecond' }]);
+  });
+});
+
+describe('complete-message token accounting', () => {
+  const wireCounter: TokenCounter = {
+    countText,
+    countChat: (messages) =>
+      3 +
+      messages.reduce(
+        (total, message) =>
+          total +
+          3 +
+          countText(message.role) +
+          countText(message.content) +
+          (message.name ? countText(message.name) + 1 : 0),
+        0,
+      ),
+  };
+
+  test('counts role, name, framing, and reply priming instead of content alone', () => {
+    const preset = updatePrompt(
+      setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]),
+      'main',
+      { content: 'hello' },
+    );
+    const result = assemble({ preset, countTokens: wireCounter });
+
+    expect(result.ok).toBe(true);
+    expect(result.totalTokens).toBe(8); // role + content + 3 framing + 3 reply priming
+    expect(result.tokenCounts.main).toBe(5);
+    expect(result.tokenCounts.replyPriming).toBe(3);
+  });
+
+  test('returns structured overflow when mandatory prompts cannot fit', () => {
+    const preset = {
+      ...updatePrompt(
+        setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]),
+        'main',
+        { content: 'one two three four five' },
+      ),
+      openai_max_context: 10,
+      openai_max_tokens: 3,
+    };
+    const result = assemble({ preset, countTokens: wireCounter });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected an overflow.');
+    expect(result.error).toMatchObject({
+      code: 'context_overflow',
+      maxContext: 10,
+      reservedCompletionTokens: 3,
+      identifiers: ['main'],
+    });
+  });
 });
 
 describe('names_behavior', () => {
@@ -451,6 +552,20 @@ describe('continue', () => {
     const nudged = assemble({ messages: onlyUser, generationType: 'continue' });
     const plain = assemble({ messages: onlyUser, generationType: 'normal' });
     expect(nudged.messages.length).toBe(plain.messages.length);
+  });
+
+  test('a continuation nudge remains mandatory when its transcript turn is pruned', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      openai_max_context: 4,
+      openai_max_tokens: 0,
+      new_chat_prompt: '',
+    };
+
+    const result = assemble({ preset, messages: partial, generationType: 'continue' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('context_overflow');
   });
 });
 

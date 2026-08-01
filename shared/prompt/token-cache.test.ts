@@ -1,12 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { memoizeCounter } from './token-cache.ts';
+import type { TokenCounter } from './token-cache.ts';
 
 /** A counter that records how often it was actually invoked. */
 function tracking() {
   const calls: string[] = [];
-  const counter = (text: string) => {
-    calls.push(text);
-    return text.length;
+  const counter: TokenCounter = {
+    countText: (text) => {
+      calls.push(text);
+      return text.length;
+    },
+    countChat: (messages) => messages.length,
   };
   return { counter, calls };
 }
@@ -16,22 +20,22 @@ describe('memoizeCounter', () => {
     const { counter, calls } = tracking();
     const memoized = memoizeCounter(counter);
 
-    expect(memoized('hello')).toBe(5);
-    expect(memoized('hello')).toBe(5);
-    expect(memoized('hello')).toBe(5);
+    expect(memoized.countText('hello')).toBe(5);
+    expect(memoized.countText('hello')).toBe(5);
+    expect(memoized.countText('hello')).toBe(5);
     expect(calls).toEqual(['hello']);
   });
 
   test('distinct strings do not collide', () => {
-    const memoized = memoizeCounter((text) => text.length);
-    expect(memoized('ab')).toBe(2);
-    expect(memoized('abc')).toBe(3);
-    expect(memoized('')).toBe(0);
+    const memoized = memoizeCounter({ countText: (text) => text.length, countChat: () => 0 });
+    expect(memoized.countText('ab')).toBe(2);
+    expect(memoized.countText('abc')).toBe(3);
+    expect(memoized.countText('')).toBe(0);
   });
 
   test('an empty string short-circuits without calling through', () => {
     const { counter, calls } = tracking();
-    expect(memoizeCounter(counter)('')).toBe(0);
+    expect(memoizeCounter(counter).countText('')).toBe(0);
     expect(calls).toEqual([]);
   });
 
@@ -39,15 +43,15 @@ describe('memoizeCounter', () => {
     const { counter, calls } = tracking();
     const memoized = memoizeCounter(counter, 3);
 
-    for (const text of ['a', 'b', 'c', 'd']) memoized(text);
+    for (const text of ['a', 'b', 'c', 'd']) memoized.countText(text);
     expect(calls.length).toBe(4);
 
     // 'a' was evicted when 'd' arrived, so it has to be recomputed.
-    memoized('a');
+    memoized.countText('a');
     expect(calls.length).toBe(5);
 
     // 'd' is still resident.
-    memoized('d');
+    memoized.countText('d');
     expect(calls.length).toBe(5);
   });
 
@@ -55,25 +59,27 @@ describe('memoizeCounter', () => {
     const { counter, calls } = tracking();
     const memoized = memoizeCounter(counter, 3);
 
-    memoized('a');
-    memoized('b');
-    memoized('c');
-    memoized('a'); // 'a' becomes most recent; 'b' is now the oldest
-    memoized('d'); // evicts 'b'
+    memoized.countText('a');
+    memoized.countText('b');
+    memoized.countText('c');
+    memoized.countText('a'); // 'a' becomes most recent; 'b' is now the oldest
+    memoized.countText('d'); // evicts 'b'
 
     const before = calls.length;
-    memoized('a');
+    memoized.countText('a');
     expect(calls.length).toBe(before);
 
-    memoized('b');
+    memoized.countText('b');
     expect(calls.length).toBe(before + 1);
   });
 
-  test('the memoized counter is a drop-in for assemblePrompt', () => {
-    // assemblePrompt takes (text: string) => number and calls it many times over the
-    // same message bodies — the shape this exists to serve.
-    const memoized = memoizeCounter((text) => text.trim().split(/\s+/).filter(Boolean).length);
-    expect(memoized('one two three')).toBe(3);
-    expect(memoized('one two three')).toBe(3);
+  test('the memoized counter caches complete message shapes too', () => {
+    const memoized = memoizeCounter({
+      countText: (text) => text.trim().split(/\s+/).filter(Boolean).length,
+      countChat: (messages) => messages.length,
+    });
+    const messages = [{ role: 'user' as const, content: 'one two three' }];
+    expect(memoized.countChat(messages)).toBe(1);
+    expect(memoized.countChat(messages)).toBe(1);
   });
 });

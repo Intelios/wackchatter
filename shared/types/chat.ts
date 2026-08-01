@@ -47,8 +47,14 @@ export interface ChatMessage {
 export interface ChatMetadata {
   /** Overrides the character's scenario for this chat only. */
   scenario?: string;
-  /** Persona id in use when the chat was created. */
-  persona?: string;
+  /**
+   * Persona snapshot for this chat.
+   *
+   * Missing means a pre-snapshot legacy chat, a string is an explicit persona id, and
+   * null means the user explicitly chose no persona. These must not be collapsed into
+   * one another: a transcript records who "you" were when it was written.
+   */
+  persona?: string | null;
   [key: string]: unknown;
 }
 
@@ -59,8 +65,25 @@ export interface Chat {
   title: string;
   created: number;
   modified: number;
+  /** Monotonic whole-chat revision used to reject stale client saves. */
+  revision: number;
   metadata: ChatMetadata;
   messages: ChatMessage[];
+}
+
+/** A complete immutable client save. The server accepts it only at its revision. */
+export interface ChatSaveSnapshot {
+  chatId: string;
+  revision: number;
+  title: string;
+  metadata: ChatMetadata;
+  messages: ChatMessage[];
+}
+
+/** Returned for a save that lost a revision race. */
+export interface StaleChatRevision {
+  code: 'stale_revision';
+  currentRevision: number;
 }
 
 export interface ChatSummary {

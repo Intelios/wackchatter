@@ -27,6 +27,7 @@ import {
 } from '../types/preset.ts';
 import { type MacroEnvironment, substituteMacros } from './macros.ts';
 import { getPromptOrder } from './preset-io.ts';
+import type { TokenCounter } from './token-cache.ts';
 
 export interface AssembleOptions {
   preset: Preset;
@@ -41,7 +42,7 @@ export interface AssembleOptions {
   worldInfoAfter?: string;
   /** World info entries injected at a specific chat depth. */
   worldInfoDepth?: DepthInjection[];
-  countTokens: (text: string) => number;
+  countTokens: TokenCounter;
   /** Stabilises {{pick}} across regenerations. */
   seed?: string;
 }
@@ -67,7 +68,17 @@ export const DEFAULT_USER_NAME = 'User';
 /** Where a persona description goes when the position says at-depth. */
 const DEFAULT_PERSONA_DEPTH = 2;
 
-export interface AssembleResult {
+export interface ContextOverflow {
+  code: 'context_overflow';
+  maxContext: number;
+  reservedCompletionTokens: number;
+  requiredPromptTokens: number;
+  overBy: number;
+  identifiers: string[];
+}
+
+interface AssembleBase {
+  /** The assembled payload, retained on failure for prompt inspection. */
   messages: ApiMessage[];
   /** Token count per prompt identifier, for the Prompt Manager display. */
   tokenCounts: Record<string, number>;
@@ -75,6 +86,10 @@ export interface AssembleResult {
   /** Messages dropped because the budget ran out. */
   droppedMessages: number;
 }
+
+export type AssembleResult =
+  | (AssembleBase & { ok: true })
+  | (AssembleBase & { ok: false; error: ContextOverflow });
 
 /** An assembled piece, before flattening into the final array. */
 interface Slot {
@@ -144,20 +159,40 @@ function applyDepthInjections(history: ApiMessage[], injections: DepthInjection[
     byDepth.set(injection.depth, list);
   }
 
-  // Work back-to-front so earlier splices don't shift later indices.
+  // Depth is measured against the original chat, not the growing result. Iterating from
+  // shallow to deep without this is what used to put D1 after m2 once D0 existed.
   const result = [...history];
+  const originalLength = history.length;
   const depths = [...byDepth.keys()].sort((a, b) => a - b);
 
   for (const depth of depths) {
     const group = byDepth.get(depth)!;
     // Higher injection_order goes first at the same depth.
-    group.sort((a, b) => b.order - a.order);
+    const roleOrder = { system: 0, user: 1, assistant: 2 } as const;
+    group.sort((a, b) => b.order - a.order || roleOrder[a.role] - roleOrder[b.role]);
 
-    const index = Math.max(0, result.length - depth);
+    const index = Math.max(0, originalLength - depth);
     result.splice(index, 0, ...group.map((item) => ({ role: item.role, content: item.content })));
   }
 
   return result;
+}
+
+/** Coalesce injections with one wire position, exactly as prompt managers do. */
+function groupDepthInjections(injections: DepthInjection[]): DepthInjection[] {
+  const grouped = new Map<string, DepthInjection & { contents: string[] }>();
+
+  for (const injection of injections) {
+    const key = `${injection.depth}\u0000${injection.order}\u0000${injection.role}`;
+    const existing = grouped.get(key);
+    if (existing) existing.contents.push(injection.content);
+    else grouped.set(key, { ...injection, contents: [injection.content] });
+  }
+
+  return [...grouped.values()].map(({ contents, ...injection }) => ({
+    ...injection,
+    content: contents.join('\n'),
+  }));
 }
 
 /**
@@ -203,9 +238,23 @@ function applyContinue(
   preset: Preset,
   env: MacroEnvironment,
   seed: string,
+  forceNudge = false,
 ): ApiMessage[] {
   const lastAssistant = messages.map((m) => m.role).lastIndexOf('assistant');
-  if (lastAssistant === -1) return messages;
+  if (lastAssistant === -1) {
+    // The nudge is a continuation control, not transcript history. Keep it in the
+    // mandatory shape if a reply exists in the source transcript but was pruned for
+    // context; otherwise the budgeter could incorrectly declare the request affordable.
+    if (!forceNudge || preset.continue_prefill) return messages;
+
+    const nudge = substituteMacros(
+      preset.continue_nudge_prompt ??
+        '[Continue your last message without repeating its original content.]',
+      env,
+      seed,
+    );
+    return nudge ? [...messages, { role: 'system' as const, content: nudge }] : messages;
+  }
 
   const postfix = preset.continue_postfix ?? ' ';
 
@@ -287,11 +336,16 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       : '',
   };
 
-  // --- Budget ------------------------------------------------------------
-  let budget = maxContext - maxResponse;
+  // --- Materialise fixed prompt collections -----------------------------
   const tokenCounts: Record<string, number> = {};
   const slots: Slot[] = [];
   const absolutePrompts: DepthInjection[] = [];
+  const mandatoryIdentifiers: string[] = [];
+  // gpt-tokenizer includes completion priming in every whole-chat count. Subtract it
+  // when assigning an individual message to a prompt slot, then charge it once in the
+  // final assembled payload.
+  const replyPriming = countTokens.countChat([]);
+  const messageCost = (message: ApiMessage) => countTokens.countChat([message]) - replyPriming;
 
   function shouldTrigger(prompt: Prompt): boolean {
     if (!Array.isArray(prompt.injection_trigger) || !prompt.injection_trigger.length) {
@@ -344,23 +398,24 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
     // Absolute prompts leave the ordered flow and are spliced into the history later.
     if (prompt.injection_position === INJECTION_POSITION.ABSOLUTE) {
-      absolutePrompts.push({
+      const injection: DepthInjection = {
         depth: prompt.injection_depth ?? DEFAULT_INJECTION_DEPTH,
         order: prompt.injection_order ?? DEFAULT_INJECTION_ORDER,
         role: prompt.role ?? 'system',
         content,
-      });
-      const tokens = countTokens(content);
+      };
+      absolutePrompts.push(injection);
+      const tokens = messageCost({ role: injection.role, content: injection.content });
       tokenCounts[entry.identifier] = tokens;
-      budget -= tokens;
+      mandatoryIdentifiers.push(entry.identifier);
       continue;
     }
 
     const message: ApiMessage = { role: prompt.role ?? 'system', content };
-    const tokens = countTokens(content);
+    const tokens = messageCost(message);
 
     tokenCounts[entry.identifier] = tokens;
-    budget -= tokens;
+    mandatoryIdentifiers.push(entry.identifier);
     slots.push({ identifier: entry.identifier, messages: [message], tokens });
   }
 
@@ -374,13 +429,10 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   // other fixed content, before examples and history pack — is the other half: history
   // used to pack against a budget that had never seen the lore it was sharing space with.
   const depthInjections: DepthInjection[] = [];
-  let depthTokens = 0;
-
   for (const injection of worldInfoDepth) {
     const content = substituteMacros(injection.content, env, seed);
     if (!content.trim()) continue;
     depthInjections.push({ ...injection, content });
-    depthTokens += countTokens(content);
   }
 
   if (personaPosition === 'atDepth' && personaText) {
@@ -392,61 +444,100 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         role: persona?.role ?? 'system',
         content,
       });
-      depthTokens += countTokens(content);
     }
   }
 
-  if (depthTokens > 0) {
+  const groupedInjections = groupDepthInjections([...absolutePrompts, ...depthInjections]);
+  const depthTokens = groupedInjections.reduce(
+    (sum, injection) => sum + messageCost({ role: injection.role, content: injection.content }),
+    0,
+  );
+  if (groupedInjections.length > 0) {
     tokenCounts.worldInfoDepth = depthTokens;
-    budget -= depthTokens;
+    mandatoryIdentifiers.push('worldInfoDepth');
   }
 
-  // --- Example dialogue --------------------------------------------------
-  // Admitted whole-block, oldest first; a block that doesn't fit stops the rest.
+  const newChatMarker =
+    historySlotIndex === -1
+      ? ''
+      : substituteMacros(preset.new_chat_prompt ?? '[Start a new Chat]', env, seed);
+  if (newChatMarker) mandatoryIdentifiers.push('chatHistory');
+  const hasContinuableAssistant = messages.some(
+    (message) => !message.is_user && !message.is_system && Boolean(message.mes.trim()),
+  );
+
+  /** Build and normalise the exact message array that would be sent to the provider. */
+  function materialize(examples: ApiMessage[], packedHistory: ApiMessage[]): ApiMessage[] {
+    const history = [
+      ...(newChatMarker ? [{ role: 'system' as const, content: newChatMarker }] : []),
+      ...applyDepthInjections(packedHistory, groupedInjections),
+    ];
+
+    let final = slots.flatMap((slot) => {
+      if (slot.identifier === 'dialogueExamples')
+        return examples.map((message) => ({ ...message }));
+      if (slot.identifier === 'chatHistory') return history.map((message) => ({ ...message }));
+      return slot.messages.map((message) => ({ ...message }));
+    });
+
+    // A disabled history marker still needs a home for absolute/depth injections.
+    if (historySlotIndex === -1 && groupedInjections.length) {
+      final = [...final, ...applyDepthInjections([], groupedInjections)];
+    }
+
+    if (generationType === 'continue') {
+      final = applyContinue(final, preset, env, seed, hasContinuableAssistant);
+    }
+    if (preset.squash_system_messages) final = squashSystemMessages(final);
+    return final;
+  }
+
+  const fixed = materialize([], []);
+  const fixedTokens = countTokens.countChat(fixed);
+  const maxPromptTokens = maxContext - maxResponse;
+  if (fixedTokens > maxPromptTokens) {
+    return {
+      ok: false,
+      messages: fixed,
+      tokenCounts,
+      totalTokens: fixedTokens,
+      droppedMessages: 0,
+      error: {
+        code: 'context_overflow',
+        maxContext,
+        reservedCompletionTokens: maxResponse,
+        requiredPromptTokens: fixedTokens,
+        overBy: fixedTokens - maxPromptTokens,
+        identifiers: mandatoryIdentifiers,
+      },
+    };
+  }
+
+  // --- Optional example dialogue ----------------------------------------
+  const acceptedExamples: ApiMessage[] = [];
   if (examplesSlotIndex !== -1) {
     const blocks = parseExampleDialogue(character.mes_example, env);
     const divider = substituteMacros(preset.new_example_chat_prompt ?? '[Example Chat]', env, seed);
 
-    const accepted: ApiMessage[] = [];
-    let used = 0;
-
     for (const block of blocks) {
-      const withDivider: ApiMessage[] = [{ role: 'system', content: divider }, ...block];
-      const cost = withDivider.reduce((sum, m) => sum + countTokens(m.content), 0);
-      if (cost > budget - used) break;
-      accepted.push(...withDivider);
-      used += cost;
+      const candidate = [{ role: 'system' as const, content: divider }, ...block];
+      const next = [...acceptedExamples, ...candidate];
+      if (countTokens.countChat(materialize(next, [])) > maxPromptTokens) break;
+      acceptedExamples.push(...candidate);
     }
-
-    budget -= used;
-    tokenCounts.dialogueExamples = used;
-    slots[examplesSlotIndex] = {
-      identifier: 'dialogueExamples',
-      messages: accepted,
-      tokens: used,
-    };
+    tokenCounts.dialogueExamples = acceptedExamples.reduce(
+      (sum, message) => sum + messageCost(message),
+      0,
+    );
   }
 
-  // --- Chat history ------------------------------------------------------
+  // --- Optional chat history ---------------------------------------------
+  const namesBehavior = preset.names_behavior ?? CHARACTER_NAMES_BEHAVIOR.DEFAULT;
+  const visible = messages.filter((message) => !message.is_system);
+  const packedHistory: ApiMessage[] = [];
   let droppedMessages = 0;
 
   if (historySlotIndex !== -1) {
-    const namesBehavior = preset.names_behavior ?? CHARACTER_NAMES_BEHAVIOR.DEFAULT;
-    // is_system marks "hidden from prompt" — visible in the transcript, never sent.
-    const visible = messages.filter((m) => !m.is_system);
-
-    const newChatMarker = substituteMacros(
-      preset.new_chat_prompt ?? '[Start a new Chat]',
-      env,
-      seed,
-    );
-    const markerCost = newChatMarker ? countTokens(newChatMarker) : 0;
-    budget -= markerCost;
-
-    const packed: ApiMessage[] = [];
-    let used = 0;
-
-    // Newest first: keep as much recent context as fits, drop the oldest.
     for (let i = visible.length - 1; i >= 0; i--) {
       const message = visible[i]!;
       const content = substituteMacros(message.mes, env, seed);
@@ -459,59 +550,25 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
             ? `${message.name}: ${content}`
             : content,
       };
-
       if (namesBehavior === CHARACTER_NAMES_BEHAVIOR.COMPLETION) {
         apiMessage.name = sanitizeName(message.name);
       }
 
-      const cost = countTokens(apiMessage.content);
-      if (cost > budget - used) {
+      const candidate = [apiMessage, ...packedHistory];
+      if (countTokens.countChat(materialize(acceptedExamples, candidate)) > maxPromptTokens) {
         droppedMessages = i + 1;
         break;
       }
-
-      packed.unshift(apiMessage);
-      used += cost;
+      packedHistory.unshift(apiMessage);
     }
-
-    budget -= used;
-
-    const withInjections = applyDepthInjections(packed, [...absolutePrompts, ...depthInjections]);
-    const history = newChatMarker
-      ? [{ role: 'system' as const, content: newChatMarker }, ...withInjections]
-      : withInjections;
-
-    tokenCounts.chatHistory = used;
-    slots[historySlotIndex] = {
-      identifier: 'chatHistory',
-      messages: history,
-      tokens: used + markerCost,
-    };
-  } else if (absolutePrompts.length || depthInjections.length) {
-    // No chatHistory marker in the prompt order — but the budget has already been charged
-    // for these, so dropping them means paying for content that was never sent. A preset
-    // with chatHistory disabled did exactly that until this branch existed.
-    //
-    // With no history to count back from, every depth resolves to the same place, which
-    // is the honest answer: "at the end", where the history would have been.
-    const injections = [...absolutePrompts, ...depthInjections];
-    slots.push({
-      identifier: 'chatHistory',
-      messages: applyDepthInjections([], injections),
-      tokens: injections.reduce((sum, item) => sum + countTokens(item.content), 0),
-    });
   }
 
-  // --- Flatten -----------------------------------------------------------
-  let final = slots.flatMap((slot) => slot.messages);
+  const final = materialize(acceptedExamples, packedHistory);
+  const totalTokens = countTokens.countChat(final);
+  tokenCounts.chatHistory = packedHistory.reduce((sum, message) => sum + messageCost(message), 0);
+  if (newChatMarker)
+    tokenCounts.chatHistory += messageCost({ role: 'system', content: newChatMarker });
+  tokenCounts.replyPriming = replyPriming;
 
-  // Continue reshapes the finished array: the nudge has to be the last instruction, and
-  // a prefill has to be the last message outright.
-  if (generationType === 'continue') final = applyContinue(final, preset, env, seed);
-
-  if (preset.squash_system_messages) final = squashSystemMessages(final);
-
-  const totalTokens = final.reduce((sum, m) => sum + countTokens(m.content), 0);
-
-  return { messages: final, tokenCounts, totalTokens, droppedMessages };
+  return { ok: true, messages: final, tokenCounts, totalTokens, droppedMessages };
 }

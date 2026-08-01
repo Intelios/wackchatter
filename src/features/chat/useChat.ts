@@ -12,7 +12,13 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { ConnectionSettings } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import type { ChatMessage, ChatSummary, Persona } from '@shared/types/chat.ts';
+import type {
+  Chat,
+  ChatMessage,
+  ChatSaveSnapshot,
+  ChatSummary,
+  Persona,
+} from '@shared/types/chat.ts';
 import type { GenerationType, Preset } from '@shared/types/preset.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
@@ -20,6 +26,7 @@ import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activa
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { ChatSaveQueue } from './chatPersistence.ts';
 import {
   type ChatAction,
   type ChatState,
@@ -28,6 +35,7 @@ import {
   chatReducer,
   initialChatState,
   toChatMessages,
+  toPersistedChatMessages,
 } from './state/chatReducer.ts';
 import { type StreamStore, createStreamStore } from './state/streamStore.ts';
 
@@ -65,6 +73,8 @@ export interface UseChat {
   inspection: PromptInspection | null;
   busy: boolean;
   saving: boolean;
+  /** A persistence failure blocks chat-changing navigation until it is retried. */
+  saveError: string | null;
 
   send(text: string): Promise<void>;
   regenerate(): Promise<void>;
@@ -83,6 +93,9 @@ export interface UseChat {
   renameChat(title: string): void;
   deleteChat(chatId: string): Promise<void>;
   branchFrom(messageId: string): Promise<void>;
+  /** Persist the open transcript before another owner replaces or deletes it. */
+  flushSaves(): Promise<void>;
+  retrySave(): Promise<void>;
 
   /** The persona this chat actually uses. Resolved here, not passed in. */
   persona: Persona | null;
@@ -108,6 +121,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [worldInfo, setWorldInfo] = useState<ActivationResult | null>(null);
 
   const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
@@ -118,10 +132,47 @@ export function useChat(options: UseChatOptions): UseChat {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const defaultPersonaRef = useRef(defaultPersonaId);
+  defaultPersonaRef.current = defaultPersonaId;
+
+  const captureSnapshot = useCallback((source: ChatState): ChatSaveSnapshot | null => {
+    if (!source.chatId) return null;
+    return structuredClone({
+      chatId: source.chatId,
+      revision: source.revision,
+      title: source.title,
+      metadata: source.metadata,
+      messages: toPersistedChatMessages(source),
+    });
+  }, []);
+
+  const persistenceRef = useRef<ChatSaveQueue | null>(null);
+  if (!persistenceRef.current) {
+    persistenceRef.current = new ChatSaveQueue(
+      (snapshot, requestOptions) => chatApi.save(snapshot, requestOptions),
+      SAVE_DELAY_MS,
+      {
+        onSaved: (snapshot) => {
+          dispatch({ type: 'chat/saved', chatId: snapshot.chatId, revision: snapshot.revision });
+          if (stateRef.current.chatId === snapshot.chatId) setSaveError(null);
+        },
+        onFailed: (chatId, error) => {
+          if (stateRef.current.chatId === chatId) setSaveError(error.message);
+        },
+        onPendingChange: setSaving,
+      },
+    );
+  }
+  const persistence = persistenceRef.current;
+
   // Keyed on the transcript alone: status and revision change far more often and would
   // rebuild the projection for no reason.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the transcript only
   const messages = useMemo(() => toChatMessages(state), [state.messages]);
+
+  const loadChat = useCallback((chat: Chat) => {
+    dispatch({ type: 'chat/loaded', chat, defaultPersonaId: defaultPersonaRef.current });
+  }, []);
 
   // --- Persona ---------------------------------------------------------------
 
@@ -138,17 +189,15 @@ export function useChat(options: UseChatOptions): UseChat {
    */
   const persona = useMemo(() => {
     const stored = state.metadata.persona;
-    const fromChat =
-      typeof stored === 'string' ? personas.find((item) => item.id === stored) : undefined;
-    if (fromChat) return fromChat;
-
-    // A chat that names a persona which has since been deleted falls back to the default
-    // rather than to nothing — the transcript still reads as somebody.
-    return personas.find((item) => item.id === defaultPersonaId) ?? null;
-  }, [state.metadata.persona, personas, defaultPersonaId]);
+    if (stored === null) return null;
+    if (typeof stored === 'string') return personas.find((item) => item.id === stored) ?? null;
+    // A loaded chat is migrated before it reaches this point. No-chat state has no
+    // persona, rather than borrowing the global new-chat default.
+    return null;
+  }, [state.metadata.persona, personas]);
 
   const setPersona = useCallback((personaId: string | null) => {
-    dispatch({ type: 'chat/metadata', patch: { persona: personaId ?? undefined } });
+    dispatch({ type: 'chat/metadata', patch: { persona: personaId } });
   }, []);
 
   // --- Chat list -------------------------------------------------------------
@@ -184,53 +233,69 @@ export function useChat(options: UseChatOptions): UseChat {
 
       if (existing[0]) {
         const chat = await chatApi.get(existing[0].id).catch(() => null);
-        if (!cancelled && chat) dispatch({ type: 'chat/loaded', chat });
+        if (!cancelled && chat) loadChat(chat);
         return;
       }
 
-      const chat = await chatApi.create({ characterId, title: 'New chat' }).catch(() => null);
+      const chat = await chatApi
+        .create({
+          characterId,
+          title: 'New chat',
+          metadata: { persona: defaultPersonaRef.current },
+        })
+        .catch(() => null);
       if (cancelled || !chat) return;
-      dispatch({ type: 'chat/loaded', chat });
+      loadChat(chat);
       dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [characterId, character]);
+  }, [characterId, character, loadChat]);
 
   // --- Persistence -----------------------------------------------------------
 
-  // Saves are serialised so a slow write cannot be overtaken by a fast one and land
-  // stale content on top of newer.
-  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
-  const lastSaved = useRef(0);
+  useEffect(() => {
+    if (!state.chatId) return;
+    persistence.adopt(state.chatId, state.persistedRevision);
+    if (state.revision <= state.persistedRevision) return;
+    const snapshot = captureSnapshot(state);
+    if (snapshot) persistence.schedule(snapshot);
+  }, [captureSnapshot, persistence, state]);
+
+  const flushSaves = useCallback(async () => {
+    const current = stateRef.current;
+    const snapshot = captureSnapshot(current);
+    if (!snapshot || snapshot.revision <= current.persistedRevision) return;
+
+    persistence.schedule(snapshot);
+    try {
+      await persistence.flush(snapshot.chatId);
+      setSaveError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveError(message);
+      throw error;
+    }
+  }, [captureSnapshot, persistence]);
+
+  const retrySave = useCallback(async () => {
+    await flushSaves();
+  }, [flushSaves]);
 
   useEffect(() => {
-    if (!state.chatId || state.revision === 0 || state.revision === lastSaved.current) return;
+    const onPageHide = () => {
+      const snapshot = captureSnapshot(stateRef.current);
+      if (snapshot && snapshot.revision > stateRef.current.persistedRevision) {
+        persistence.schedule(snapshot);
+      }
+      persistence.flushForPagehide();
+    };
 
-    const revision = state.revision;
-    const chatId = state.chatId;
-    const timer = setTimeout(() => {
-      lastSaved.current = revision;
-      setSaving(true);
-
-      saveChain.current = saveChain.current
-        .then(() =>
-          chatApi.save(chatId, {
-            title: stateRef.current.title,
-            metadata: stateRef.current.metadata,
-            messages: toChatMessages(stateRef.current),
-          }),
-        )
-        .catch(() => {
-          // A failed save leaves the transcript in memory; the next change retries.
-        })
-        .finally(() => setSaving(false));
-    }, SAVE_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [state.revision, state.chatId]);
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [captureSnapshot, persistence]);
 
   // --- Generation ------------------------------------------------------------
 
@@ -307,6 +372,27 @@ export function useChat(options: UseChatOptions): UseChat {
         seed: started.chatId ?? '',
       });
 
+      if (!assembled.ok) {
+        dispatch({
+          type: 'gen/inspected',
+          inspection: {
+            at: Date.now(),
+            generationType,
+            messages: assembled.messages,
+            tokenCounts: assembled.tokenCounts,
+            totalTokens: assembled.totalTokens,
+            droppedMessages: assembled.droppedMessages,
+            body: null,
+            overflow: assembled.error,
+          },
+        });
+        dispatch({
+          type: 'gen/failed',
+          message: `Context overflow: mandatory prompt content needs ${assembled.error.requiredPromptTokens} tokens, but only ${assembled.error.maxContext - assembled.error.reservedCompletionTokens} are available.`,
+        });
+        return;
+      }
+
       const body = buildRequestBody({
         messages: assembled.messages,
         preset,
@@ -354,7 +440,7 @@ export function useChat(options: UseChatOptions): UseChat {
             model: final.model ?? connection.model,
             ...(final.reasoning ? { reasoning: final.reasoning } : {}),
             // A real count from the provider beats our estimate when we get one.
-            token_count: final.usage?.completion_tokens ?? countTokens(final.content),
+            token_count: final.usage?.completion_tokens ?? countTokens.countText(final.content),
           },
         });
       } catch (error) {
@@ -450,18 +536,35 @@ export function useChat(options: UseChatOptions): UseChat {
 
   // --- Chat management -------------------------------------------------------
 
-  const openChat = useCallback(async (chatId: string) => {
-    const chat = await chatApi.get(chatId);
-    dispatch({ type: 'chat/loaded', chat });
-  }, []);
+  const openChat = useCallback(
+    async (chatId: string) => {
+      try {
+        await flushSaves();
+      } catch {
+        return;
+      }
+      const chat = await chatApi.get(chatId);
+      loadChat(chat);
+    },
+    [flushSaves, loadChat],
+  );
 
   const newChat = useCallback(async () => {
     if (!characterId || !character) return;
-    const chat = await chatApi.create({ characterId, title: 'New chat' });
-    dispatch({ type: 'chat/loaded', chat });
+    try {
+      await flushSaves();
+    } catch {
+      return;
+    }
+    const chat = await chatApi.create({
+      characterId,
+      title: 'New chat',
+      metadata: { persona: defaultPersonaRef.current },
+    });
+    loadChat(chat);
     dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });
     await refreshChats();
-  }, [characterId, character, refreshChats]);
+  }, [characterId, character, flushSaves, loadChat, refreshChats]);
 
   const renameChat = useCallback((title: string) => {
     dispatch({ type: 'chat/renamed', title });
@@ -469,21 +572,31 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const deleteChat = useCallback(
     async (chatId: string) => {
+      try {
+        await flushSaves();
+      } catch {
+        return;
+      }
       await chatApi.remove(chatId);
       if (stateRef.current.chatId === chatId) dispatch({ type: 'chat/closed' });
       await refreshChats();
     },
-    [refreshChats],
+    [flushSaves, refreshChats],
   );
 
   const branchFrom = useCallback(
     async (messageId: string) => {
       if (!stateRef.current.chatId) return;
+      try {
+        await flushSaves();
+      } catch {
+        return;
+      }
       const branch = await chatApi.branch(stateRef.current.chatId, messageId);
-      dispatch({ type: 'chat/loaded', chat: branch });
+      loadChat(branch);
       await refreshChats();
     },
-    [refreshChats],
+    [flushSaves, loadChat, refreshChats],
   );
 
   return {
@@ -493,6 +606,7 @@ export function useChat(options: UseChatOptions): UseChat {
     inspection: state.inspections[0] ?? null,
     busy: state.status !== 'idle',
     saving,
+    saveError,
     send,
     regenerate,
     swipe,
@@ -507,6 +621,8 @@ export function useChat(options: UseChatOptions): UseChat {
     renameChat,
     deleteChat,
     branchFrom,
+    flushSaves,
+    retrySave,
     persona,
     setPersona,
     worldInfo,

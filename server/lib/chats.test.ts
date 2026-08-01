@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { ChatMessage } from '../../shared/types/chat.ts';
-import { type ChatStore, createChatStore } from './chats.ts';
+import type { Chat, ChatMessage } from '../../shared/types/chat.ts';
+import { type ChatSaveResult, type ChatStore, createChatStore } from './chats.ts';
 import { createSchema } from './db.ts';
 
 let store: ChatStore;
@@ -28,6 +28,12 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   };
 }
 
+function saved(result: ChatSaveResult): Chat {
+  expect(result.kind).toBe('saved');
+  if (result.kind !== 'saved') throw new Error('Expected chat save to succeed.');
+  return result.chat;
+}
+
 describe('creating and reading', () => {
   test('a new chat comes back with its messages in order', () => {
     const created = store.createChat({
@@ -44,6 +50,7 @@ describe('creating and reading', () => {
     expect(loaded?.messages.map((m) => m.mes)).toEqual(['one', 'two', 'three']);
     expect(loaded?.title).toBe('First contact');
     expect(loaded?.characterId).toBe('Seraphina.png');
+    expect(loaded?.revision).toBe(0);
   });
 
   test('an unknown id reads as null rather than throwing', () => {
@@ -198,7 +205,7 @@ describe('replacing', () => {
       messages: [message({ mes: '1' }), message({ mes: '2' }), message({ mes: '3' })],
     });
 
-    store.replaceChat(created.id, { messages: [message({ mes: 'only' })] });
+    store.replaceChat(created.id, { revision: 1, messages: [message({ mes: 'only' })] });
 
     expect(store.getChat(created.id)?.messages.map((m) => m.mes)).toEqual(['only']);
 
@@ -215,24 +222,27 @@ describe('replacing', () => {
     const created = store.createChat({ characterId: 'a.png' });
     database.query('UPDATE chats SET modified = ? WHERE id = ?').run(1, created.id);
 
-    store.replaceChat(created.id, { messages: [message()] });
+    store.replaceChat(created.id, { revision: 1, messages: [message()] });
     expect(store.getChat(created.id)!.modified).toBeGreaterThan(1);
   });
 
-  test('replacing an unknown chat returns null', () => {
-    expect(store.replaceChat('nope', { messages: [] })).toBeNull();
+  test('replacing an unknown chat reports notFound', () => {
+    expect(store.replaceChat('nope', { revision: 1, messages: [] })).toEqual({ kind: 'notFound' });
   });
 
   test('title and metadata can be changed alongside messages', () => {
     const created = store.createChat({ characterId: 'a.png', title: 'old' });
-    const updated = store.replaceChat(created.id, {
-      title: 'new',
-      metadata: { persona: 'jack' },
-      messages: [message()],
-    });
+    const updated = saved(
+      store.replaceChat(created.id, {
+        revision: 1,
+        title: 'new',
+        metadata: { persona: 'jack' },
+        messages: [message()],
+      }),
+    );
 
-    expect(updated?.title).toBe('new');
-    expect(updated?.metadata).toEqual({ persona: 'jack' });
+    expect(updated.title).toBe('new');
+    expect(updated.metadata).toEqual({ persona: 'jack' });
   });
 
   test('omitting title and metadata leaves them alone', () => {
@@ -242,9 +252,65 @@ describe('replacing', () => {
       metadata: { persona: 'jack' },
     });
 
-    const updated = store.replaceChat(created.id, { messages: [message()] });
-    expect(updated?.title).toBe('keep me');
-    expect(updated?.metadata).toEqual({ persona: 'jack' });
+    const updated = saved(store.replaceChat(created.id, { revision: 1, messages: [message()] }));
+    expect(updated.title).toBe('keep me');
+    expect(updated.metadata).toEqual({ persona: 'jack' });
+  });
+
+  test('an equal revision is idempotent but an older conflicting snapshot is rejected', () => {
+    const created = store.createChat({ characterId: 'a.png' });
+    const next = {
+      revision: 1,
+      title: 'saved once',
+      metadata: { persona: null },
+      messages: [message({ mes: 'new transcript' })],
+    };
+
+    expect(saved(store.replaceChat(created.id, next)).revision).toBe(1);
+    expect(saved(store.replaceChat(created.id, next)).title).toBe('saved once');
+
+    expect(
+      store.replaceChat(created.id, {
+        revision: 0,
+        title: 'stale title',
+        metadata: {},
+        messages: [],
+      }),
+    ).toEqual({ kind: 'stale', conflict: { code: 'stale_revision', currentRevision: 1 } });
+    expect(store.getChat(created.id)?.title).toBe('saved once');
+  });
+});
+
+describe('schema migration', () => {
+  test('adds revision to a v1 database without losing its chat or messages', () => {
+    const legacy = new Database(':memory:');
+    legacy.exec(`
+      CREATE TABLE chats (
+        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
+        created INTEGER NOT NULL, modified INTEGER NOT NULL, metadata TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE messages (
+        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
+        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, swipe_id INTEGER NOT NULL DEFAULT 0,
+        swipes TEXT NOT NULL, swipe_info TEXT NOT NULL, PRIMARY KEY (chat_id, id)
+      ) WITHOUT ROWID;
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta VALUES ('schema_version', '1');
+      INSERT INTO chats VALUES ('legacy', 'a.png', 'Old chat', 1, 2, '{}');
+      INSERT INTO messages VALUES ('legacy', 'm1', 0, 'User', 1, 0, 0, '["hello"]', '[{"send_date":""}]');
+    `);
+
+    createSchema(legacy);
+    const migrated = createChatStore(legacy).getChat('legacy');
+
+    expect(migrated?.revision).toBe(0);
+    expect(migrated?.title).toBe('Old chat');
+    expect(migrated?.messages.map((item) => item.mes)).toEqual(['hello']);
+    expect(
+      legacy
+        .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
+        .get('schema_version')?.value,
+    ).toBe('2');
   });
 });
 
@@ -255,9 +321,9 @@ describe('renaming and deleting', () => {
       messages: [message({ mes: 'kept' })],
     });
 
-    const renamed = store.updateChatMeta(created.id, { title: 'Renamed' });
-    expect(renamed?.title).toBe('Renamed');
-    expect(renamed?.messages.map((m) => m.mes)).toEqual(['kept']);
+    const renamed = saved(store.updateChatMeta(created.id, { revision: 1, title: 'Renamed' }));
+    expect(renamed.title).toBe('Renamed');
+    expect(renamed.messages.map((m) => m.mes)).toEqual(['kept']);
   });
 
   test('deleting a chat cascades to its messages', () => {

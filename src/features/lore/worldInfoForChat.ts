@@ -5,6 +5,7 @@
  * `usePromptPreview` — so the preview and the send cannot disagree about what lore fires.
  */
 
+import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ChatMessage } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { CHARACTER_NAMES_BEHAVIOR } from '@shared/types/preset.ts';
@@ -19,7 +20,7 @@ export interface WorldInfoForChatOptions {
   preset: Preset;
   chatId: string | null;
   /** The SAME memoised counter assembly uses, or every entry is tokenised twice. */
-  countTokens: (text: string) => number;
+  countTokens: TokenCounter;
 }
 
 /**
@@ -50,7 +51,7 @@ export function worldInfoForChat(options: WorldInfoForChatOptions): ActivationRe
     messages,
     settings,
     budget: worldInfoBudget(settings, maxContext),
-    countTokens,
+    countTokens: countTokens.countText,
     // Match how the transcript will be rendered into the prompt, so a key that only
     // appears in a name prefix behaves consistently between the scan and the send.
     includeNames: preset.names_behavior === CHARACTER_NAMES_BEHAVIOR.CONTENT,

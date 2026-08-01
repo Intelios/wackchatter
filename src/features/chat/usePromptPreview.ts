@@ -21,10 +21,10 @@ export interface PromptPreviewInput {
   chatId?: string | null;
 }
 
-export interface PromptPreview extends AssembleResult {
+export type PromptPreview = AssembleResult & {
   /** What World Info would do, for the Lore tab and the inspector. */
   worldInfo: ActivationResult | null;
-}
+};
 
 /**
  * Assemble the prompt that *would* be sent, for the Prompt Manager's live token counts.

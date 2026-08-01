@@ -136,7 +136,8 @@ export function PersonaPanel({
     try {
       await personaApi.remove(id);
       setEditing(null);
-      // Chats that referenced it fall back to the default; nothing to clean up here.
+      // Chats keep the explicit orphaned id and resolve it as no persona. That preserves
+      // their snapshot if this persona is restored later.
       if (defaultId === id) onSelectDefault(null);
       onChanged();
     } catch (err) {

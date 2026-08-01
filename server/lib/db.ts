@@ -8,7 +8,7 @@
 import { Database } from 'bun:sqlite';
 import { PATHS } from './paths.ts';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS chats (
   title        TEXT    NOT NULL,
   created      INTEGER NOT NULL,
   modified     INTEGER NOT NULL,
+  revision     INTEGER NOT NULL DEFAULT 0,
   metadata     TEXT    NOT NULL DEFAULT '{}'
 );
 
@@ -47,7 +48,15 @@ CREATE TABLE IF NOT EXISTS meta (
 `;
 
 export function createSchema(database: Database): void {
+  // CREATE TABLE IF NOT EXISTS deliberately does not evolve an existing table. Keep
+  // migrations here, where fresh and upgraded databases take the same path.
   database.exec(SCHEMA);
+
+  const chatColumns = database.query<{ name: string }, []>('PRAGMA table_info(chats)').all();
+  if (!chatColumns.some((column) => column.name === 'revision')) {
+    database.exec('ALTER TABLE chats ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+  }
+
   database
     .query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
     .run('schema_version', String(SCHEMA_VERSION));

@@ -24,6 +24,7 @@ import {
   toChatMessage,
   userMessage,
 } from '@shared/chat/message.ts';
+import type { ContextOverflow } from '@shared/prompt/assemble.ts';
 import type { ChatCompletionBody } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatMetadata, MessageExtra } from '@shared/types/chat.ts';
@@ -41,8 +42,9 @@ export interface PromptInspection {
   tokenCounts: Record<string, number>;
   totalTokens: number;
   droppedMessages: number;
-  /** The exact object POSTed to /api/generate. */
-  body: ChatCompletionBody;
+  /** The exact object POSTed to /api/generate, or null when preflight rejected it. */
+  body: ChatCompletionBody | null;
+  overflow?: ContextOverflow;
   response?: {
     model?: string;
     finishReason: string | null;
@@ -68,8 +70,10 @@ export interface ChatState {
   discarded: { message: MessageState; index: number } | null;
   error: string | null;
   inspections: PromptInspection[];
-  /** Bumped by anything that must reach the database. Drives the save effect. */
+  /** Monotonic revision for this chat, matching the server after a successful save. */
   revision: number;
+  /** The greatest revision the server has acknowledged for the open chat. */
+  persistedRevision: number;
 }
 
 export const initialChatState: ChatState = {
@@ -85,11 +89,13 @@ export const initialChatState: ChatState = {
   error: null,
   inspections: [],
   revision: 0,
+  persistedRevision: 0,
 };
 
 export type ChatAction =
-  | { type: 'chat/loaded'; chat: Chat }
+  | { type: 'chat/loaded'; chat: Chat; defaultPersonaId?: string | null }
   | { type: 'chat/closed' }
+  | { type: 'chat/saved'; chatId: string; revision: number }
   | { type: 'chat/renamed'; title: string }
   | { type: 'chat/metadata'; patch: Partial<ChatMetadata> }
   | { type: 'chat/greeting'; id: string; card: CardDataV2 }
@@ -186,19 +192,33 @@ function settle(state: ChatState, text: string, extra?: MessageExtra): ChatState
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
-    case 'chat/loaded':
+    // A missing persona key only exists on chats created before snapshots. Snapshot the
+    // current default immediately and mark that one migration revision dirty.
+    case 'chat/loaded': {
+      const missingPersona = !Object.hasOwn(action.chat.metadata, 'persona');
+      const metadata = missingPersona
+        ? { ...action.chat.metadata, persona: action.defaultPersonaId ?? null }
+        : action.chat.metadata;
       return {
         ...initialChatState,
         chatId: action.chat.id,
         characterId: action.chat.characterId,
         title: action.chat.title,
-        metadata: action.chat.metadata,
+        metadata,
         messages: action.chat.messages.map(fromChatMessage),
         inspections: state.inspections,
+        revision: action.chat.revision + (missingPersona ? 1 : 0),
+        persistedRevision: action.chat.revision,
       };
+    }
 
     case 'chat/closed':
       return { ...initialChatState, inspections: state.inspections };
+
+    case 'chat/saved':
+      if (state.chatId !== action.chatId || action.revision <= state.persistedRevision)
+        return state;
+      return { ...state, persistedRevision: Math.min(action.revision, state.revision) };
 
     case 'chat/renamed':
       return { ...state, title: action.title, revision: state.revision + 1 };
@@ -362,4 +382,47 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 /** The transcript in storage/wire form. Also what assemblePrompt consumes. */
 export function toChatMessages(state: ChatState): ChatMessage[] {
   return state.messages.map(toChatMessage);
+}
+
+/**
+ * The durable transcript represented by `state.revision`.
+ *
+ * Starting a generation deliberately does not increment the revision: a blank
+ * placeholder, a tentative swipe, or regenerate's temporary replacement is UI state
+ * until the request settles. A save that was prompted by the preceding user edit must
+ * therefore project the pre-generation transcript rather than accidentally make that
+ * transient state durable under the earlier revision.
+ */
+export function toPersistedChatMessages(state: ChatState): ChatMessage[] {
+  let messages = state.messages;
+
+  if (state.status !== 'idle' && state.streamingId) {
+    switch (state.mode) {
+      case 'send':
+        messages = messages.filter((message) => message.id !== state.streamingId);
+        break;
+
+      case 'swipe':
+        messages = messages.map((message) =>
+          message.id === state.streamingId ? removeSwipe(message, message.swipe_id) : message,
+        );
+        break;
+
+      case 'regenerate': {
+        const index = messages.findIndex((message) => message.id === state.streamingId);
+        if (index !== -1 && state.discarded) {
+          messages = [...messages];
+          messages[index] = state.discarded.message;
+        }
+        break;
+      }
+
+      // Continue has not altered the transcript: the original assistant message is
+      // already the durable content for this revision.
+      default:
+        break;
+    }
+  }
+
+  return messages.map(toChatMessage);
 }
