@@ -247,6 +247,14 @@ would mean adding one always-on entry reshuffled every later roll.
 **Only admitted entries feed recursion.** ST also recurses on entries that failed the
 budget check, pushing content into the scan buffer that was never sent.
 
+**Only `{{...}}` is reported as an unresolved macro.** The diagnostic pass used to flag
+any `<UPPERCASE>` token too, on the theory that it might be a missed legacy identity
+macro. It never could be — `<USER>`, `<BOT>`, `<CHAR>`, `<GROUP>` and `<CHARIFNOTGROUP>`
+are substituted earlier, and those five are the only ones ST ever had. Everything else in
+angle brackets is ordinary prompt text, and popular presets are full of pseudo-XML section
+markers like `<POV>`, so the check produced nothing but false positives and taught the
+warning count to mean nothing.
+
 ### Replicated on purpose
 
 Two ST matching behaviours look like bugs and are kept anyway, each with a named test so
@@ -291,6 +299,14 @@ regex keys are the escape hatches.
 - **Disabled beats refused.** SillyTavern toasts "stop the generation first"; we have no
   toast system, so a blocked entry is `disabled` with a `disabledReason` that becomes its
   `title`. Same information, no new machinery.
+- **Presets save explicitly, characters autosave.** The difference is what a mistake
+  costs: a card field is one value you can retype, a preset is a tuned artefact where
+  "that felt worse" needs a way back. Editing a preset raises a sticky Save/Revert bar and
+  disables preset switching, rename and import until it is resolved — Revert re-reads the
+  file, which is the only authority on what the preset was.
+- **An editor that takes over its panel, not one appended below it.** `CharacterEditor`
+  and `PromptEditor` both replace their panel's contents and offer a back button. Stacking
+  an editor under a long list means scrolling to the field and back for every edit.
 
 ## Testing
 

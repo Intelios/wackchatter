@@ -16,8 +16,15 @@ describe('sanitizeFilename', () => {
   });
 
   test('strips path-significant characters', () => {
-    expect(sanitizeFilename('../../etc/passwd')).toBe('....etcpasswd');
     expect(sanitizeFilename('a/b\\c:d*e?f"g<h>i|j')).toBe('abcdefghij');
+  });
+
+  test('drops leading dots so a traversal attempt cannot make a hidden file', () => {
+    // Removing the separators from "../../etc/passwd" used to leave "....etcpasswd" —
+    // safely inside the data directory, but invisible to `ls` and to a file browser.
+    expect(sanitizeFilename('../../etc/passwd')).toBe('etcpasswd');
+    expect(sanitizeFilename('.hidden')).toBe('hidden');
+    expect(sanitizeFilename('..')).toBeNull();
   });
 
   test('rejects names that reduce to nothing or to a dot path', () => {
@@ -54,8 +61,9 @@ describe('safeJoin', () => {
   });
 
   test('refuses to escape the base directory', () => {
-    // Traversal survives sanitisation as literal dots, so it can never climb out.
-    expect(safeJoin(base, '../../../etc/passwd')).toBe('/tmp/wc-test/characters/......etcpasswd');
+    // Separators and leading dots are both stripped, so traversal lands on an ordinary
+    // visible name inside the base rather than climbing out or going hidden.
+    expect(safeJoin(base, '../../../etc/passwd')).toBe('/tmp/wc-test/characters/etcpasswd');
     expect(safeJoin(base, '..')).toBeNull();
     expect(safeJoin(base, '/etc/passwd')).toBe('/tmp/wc-test/characters/etcpasswd');
   });

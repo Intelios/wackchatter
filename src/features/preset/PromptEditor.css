@@ -1,24 +1,43 @@
+/*
+ * A full-panel view, not a section appended under the list.
+ *
+ * It used to render below the prompt list, which meant every edit was a round trip past
+ * a dozen rows: scroll down to the field, scroll back up to pick the next prompt. Taking
+ * over the panel — the same move CharacterEditor makes in the right panel — removes the
+ * scrolling entirely, at the cost of not seeing the list while editing, which is the
+ * cheaper loss.
+ */
 .prompt-editor {
-  border-top: 1px solid var(--wc-border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
   background: var(--wc-surface-raised);
 }
 
 .prompt-editor__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--wc-space-2);
   padding: var(--wc-space-2) var(--wc-space-3);
   border-bottom: 1px solid var(--wc-border);
+  /* Sticky so the way back is always reachable from a long prompt body. */
+  position: sticky;
+  top: 0;
+  background: var(--wc-surface-raised);
+  z-index: 1;
 }
 
 .prompt-editor__title {
+  flex: 1;
   font-size: var(--wc-text-sm);
   font-weight: 600;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: right;
+  color: var(--wc-text-muted);
 }
 
 .prompt-editor__body {

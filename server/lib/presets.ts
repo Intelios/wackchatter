@@ -3,7 +3,7 @@
  * exact byte format so files can be copied between the two apps directly.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createDefaultPreset } from '../../shared/prompt/defaults.ts';
 import { normalizePreset, serializePreset } from '../../shared/prompt/preset-io.ts';
@@ -54,6 +54,27 @@ export function deletePreset(id: string): boolean {
   if (!path || !existsSync(path)) return false;
   unlinkSync(path);
   return true;
+}
+
+/**
+ * Rename a preset. A file move, because the filename IS the name — the same rule as
+ * lorebooks. Nothing else stores a preset id: `AppSettings` does not, and a card cannot
+ * reference one, so unlike a lorebook rename there are no back-references to repoint.
+ */
+export function renamePreset(id: string, nextName: string): PresetSummary | null {
+  const from = presetPath(id);
+  if (!from || !existsSync(from)) return null;
+
+  const base = sanitizeFilename(nextName.replace(/\.json$/i, ''));
+  if (!base) throw new Error(`"${nextName}" is not a usable preset name.`);
+  if (base === id) return { id, name: id, modified: statSync(from).mtimeMs };
+  if (presetExists(base)) throw new Error(`A preset called "${base}" already exists.`);
+
+  const to = presetPath(base);
+  if (!to) throw new Error(`"${nextName}" is not a usable preset name.`);
+  renameSync(from, to);
+
+  return { id: base, name: base, modified: statSync(to).mtimeMs };
 }
 
 function presetExists(name: string): boolean {

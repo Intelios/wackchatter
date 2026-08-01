@@ -3,7 +3,14 @@
 import { serializePreset } from '../../shared/prompt/preset-io.ts';
 import type { Preset } from '../../shared/types/preset.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
-import { deletePreset, getPreset, importPreset, listPresets, savePreset } from '../lib/presets.ts';
+import {
+  deletePreset,
+  getPreset,
+  importPreset,
+  listPresets,
+  renamePreset,
+  savePreset,
+} from '../lib/presets.ts';
 
 export async function handlePresetRoute(
   request: Request,
@@ -44,6 +51,19 @@ export async function handlePresetRoute(
         'content-disposition': `attachment; filename="${id.replace(/[^\w\-. ]/g, '')}.json"`,
       },
     });
+  }
+
+  // /api/presets/:id/rename — a file move, because the filename is the identity.
+  if (segments[1] === 'rename' && method === 'POST') {
+    const body = await readJson<{ name?: string }>(request);
+    if (!body?.name) return errorResponse('A new name is required.');
+
+    try {
+      const summary = renamePreset(id, body.name);
+      return summary ? json(summary) : notFound('Preset not found.');
+    } catch (error) {
+      return errorResponse((error as Error).message);
+    }
   }
 
   // /api/presets/:id

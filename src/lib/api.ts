@@ -137,6 +137,13 @@ export const presetApi = {
       body: JSON.stringify(preset),
     }),
 
+  rename: (id: string, name: string) =>
+    request<PresetSummary>(`/presets/${encodeURIComponent(id)}/rename`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+
   remove: (id: string) =>
     request<{ ok: true }>(`/presets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 

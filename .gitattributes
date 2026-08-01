@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Source is always text, even when a file legitimately contains a control character in a
+# string or regex literal. Auto-detection sees the NUL and marks the whole file binary,
+# which silently turns off diffs for it — worst of all in the path sanitiser, where an
+# unreviewable change is the last thing anyone wants.
+*.ts text diff
+*.tsx text diff

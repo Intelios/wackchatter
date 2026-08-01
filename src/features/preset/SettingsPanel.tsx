@@ -1,17 +1,15 @@
-import { deleteCustomPrompt } from '@shared/prompt/preset-io.ts';
+import { deleteCustomPrompt, getPromptById } from '@shared/prompt/preset-io.ts';
 import type { MacroWarning } from '@shared/types/chat.ts';
 import { CHARACTER_NAMES_BEHAVIOR, type Preset, type PresetSummary } from '@shared/types/preset.ts';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
-import { DownloadIcon, UploadIcon } from '../../layout/icons.tsx';
+import { DownloadIcon, EditIcon, UploadIcon } from '../../layout/icons.tsx';
 import { presetApi } from '../../lib/api.ts';
 import { PromptEditor } from './PromptEditor.tsx';
 import { PromptManager } from './PromptManager.tsx';
 import { Slider } from './Slider.tsx';
 import './SettingsPanel.css';
-
-const AUTOSAVE_DELAY_MS = 600;
 
 interface SettingsPanelProps {
   presets: PresetSummary[];
@@ -20,6 +18,8 @@ interface SettingsPanelProps {
   onSelectPreset: (id: string) => void;
   onPresetChange: (preset: Preset) => void;
   onPresetsChanged: () => void;
+  /** Re-read the preset from disk, discarding the working copy. */
+  onRevertPreset: () => void;
   tokenCounts?: Record<string, number>;
   macroWarnings?: MacroWarning[];
   /** Whether the active provider sends OpenRouter-style extra samplers. */
@@ -39,6 +39,7 @@ export function SettingsPanel({
   onSelectPreset,
   onPresetChange,
   onPresetsChanged,
+  onRevertPreset,
   tokenCounts,
   macroWarnings = [],
   extraSamplersSent = false,
@@ -49,30 +50,64 @@ export function SettingsPanel({
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
   const fileInput = useRef<HTMLInputElement>(null);
-  const dirtyRef = useRef(false);
 
-  // Debounced save of the whole preset. Presets are small, and writing the whole file
-  // keeps the on-disk format identical to what SillyTavern produces.
+  /**
+   * Unsaved edits to the working copy.
+   *
+   * Presets used to autosave on a debounce, which meant there was no way back from a
+   * tweak you disliked — the original was already overwritten. Saving is explicit now,
+   * and `dirty` is what Save, Revert and the switch guard all key off.
+   */
+  const [dirty, setDirty] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+
+  /**
+   * The last preset object this panel produced.
+   *
+   * `preset` changes identity on every keystroke, so "did it change?" cannot distinguish
+   * an edit from a fresh load. Anything we did not hand up ourselves — a different preset
+   * selected, a revert, a rename — is a load, and a load arrives clean.
+   */
+  const ownEdit = useRef<Preset | null>(null);
+
   useEffect(() => {
-    if (!preset || !presetId || !dirtyRef.current) return;
-
-    const timer = setTimeout(async () => {
-      try {
-        await presetApi.save(presetId, preset);
-        dirtyRef.current = false;
-        setStatus('Saved');
-      } catch (err) {
-        setStatus((err as Error).message);
-      }
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [preset, presetId]);
+    if (preset && preset === ownEdit.current) return;
+    setDirty(false);
+    setStatus('');
+  }, [preset]);
 
   function change(next: Preset) {
-    dirtyRef.current = true;
+    ownEdit.current = next;
+    setDirty(true);
     setStatus('');
     onPresetChange(next);
+  }
+
+  async function handleSave() {
+    if (!preset || !presetId) return;
+    try {
+      await presetApi.save(presetId, preset);
+      setDirty(false);
+      setStatus('Saved');
+    } catch (err) {
+      setStatus((err as Error).message);
+    }
+  }
+
+  async function handleRename(next: string) {
+    setRenaming(false);
+    if (!presetId || !next.trim() || next.trim() === presetId) return;
+    try {
+      const summary = await presetApi.rename(presetId, next.trim());
+      onPresetsChanged();
+      // No success status: selecting the new id reloads the preset, and a fresh load
+      // clears the status. The renamed entry in the picker is the confirmation. Errors
+      // do not reload, so those still show.
+      onSelectPreset(summary.id);
+    } catch (err) {
+      setStatus((err as Error).message);
+    }
   }
 
   function setField(key: keyof Preset, value: unknown) {
@@ -96,6 +131,48 @@ export function SettingsPanel({
     return <div className="wc-empty">Loading presets…</div>;
   }
 
+  // Resolved rather than trusted: a selection can outlive its prompt (deleted here, or
+  // gone after switching preset), and PromptEditor renders nothing for a missing one —
+  // which would leave an empty panel with no way back.
+  const editing = selectedPrompt ? getPromptById(preset, selectedPrompt) : null;
+
+  // Rendered in both views. Most preset edits happen inside the prompt editor, and a Save
+  // button you have to navigate away from to reach is a Save button people lose work to.
+  const unsavedBar = dirty ? (
+    // <output> rather than a div with role="status" — it is the semantic element for it.
+    <output className="settings-panel__unsaved">
+      <span className="settings-panel__unsaved-text">Unsaved changes</span>
+      <button type="button" className="wc-button wc-button--ghost" onClick={onRevertPreset}>
+        Revert
+      </button>
+      <button
+        type="button"
+        className="wc-button wc-button--primary"
+        onClick={() => void handleSave()}
+      >
+        Save
+      </button>
+    </output>
+  ) : null;
+
+  if (selectedPrompt && editing) {
+    return (
+      <div className="settings-panel__editing">
+        {unsavedBar}
+        <PromptEditor
+          preset={preset}
+          identifier={selectedPrompt}
+          onChange={change}
+          onClose={() => setSelectedPrompt(null)}
+          onDelete={(identifier) => {
+            change(deleteCustomPrompt(preset, identifier));
+            setSelectedPrompt(null);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="settings-panel">
       {connection ? (
@@ -105,24 +182,59 @@ export function SettingsPanel({
       ) : null}
 
       <div className="settings-panel__preset">
-        <select
-          className="wc-select"
-          value={presetId ?? ''}
-          onChange={(e) => onSelectPreset(e.target.value)}
-          aria-label="Active preset"
+        {renaming ? (
+          <input
+            className="wc-input"
+            // biome-ignore lint/a11y/noAutofocus: the field only exists once rename is clicked
+            autoFocus
+            aria-label="Preset name"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={() => void handleRename(nameDraft)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setRenaming(false);
+            }}
+          />
+        ) : (
+          <select
+            className="wc-select"
+            value={presetId ?? ''}
+            // Switching would replace the working copy, so unsaved edits have to be
+            // resolved first. Disabled rather than prompting: no modals, and the
+            // Save/Revert bar below says exactly what to do about it.
+            disabled={dirty}
+            onChange={(e) => onSelectPreset(e.target.value)}
+            aria-label="Active preset"
+          >
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          title="Rename preset"
+          aria-label="Rename preset"
+          disabled={dirty || !presetId}
+          onClick={() => {
+            setNameDraft(presetId ?? '');
+            setRenaming(true);
+          }}
         >
-          {presets.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          <EditIcon />
+        </button>
 
         <button
           type="button"
           className="wc-button wc-button--ghost"
           title="Import preset"
           aria-label="Import preset"
+          disabled={dirty}
           onClick={() => fileInput.current?.click()}
         >
           <UploadIcon />
@@ -150,6 +262,8 @@ export function SettingsPanel({
         />
       </div>
 
+      {unsavedBar}
+
       {status ? <div className="settings-panel__status">{status}</div> : null}
 
       {macroWarnings.length > 0 ? (
@@ -176,19 +290,6 @@ export function SettingsPanel({
           tokenCounts={tokenCounts}
         />
       </Section>
-
-      {selectedPrompt ? (
-        <PromptEditor
-          preset={preset}
-          identifier={selectedPrompt}
-          onChange={change}
-          onClose={() => setSelectedPrompt(null)}
-          onDelete={(identifier) => {
-            change(deleteCustomPrompt(preset, identifier));
-            setSelectedPrompt(null);
-          }}
-        />
-      ) : null}
 
       <Section title="Generation" defaultOpen>
         <Slider

@@ -11,9 +11,15 @@ const PLUGINS = [remarkGfm, remarkBreaks];
  * Memoised on the string: a transcript of fifty messages would otherwise re-parse every
  * one of them whenever anything in the chat changed.
  */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({
+  text,
+  className = 'message__text',
+}: {
+  text: string;
+  className?: string;
+}) {
   return (
-    <div className="message__text">
+    <div className={className}>
       <ReactMarkdown remarkPlugins={PLUGINS}>{text}</ReactMarkdown>
     </div>
   );

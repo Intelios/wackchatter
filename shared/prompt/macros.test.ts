@@ -195,18 +195,34 @@ describe('stateful variables', () => {
 });
 
 describe('diagnostics', () => {
-  test('keeps unresolved curly and legacy-angle macros and reports their sources', () => {
+  test('keeps unresolved curly macros and reports their sources', () => {
     const runtime = createMacroRuntime();
-    const text = substituteMacros('{{unknown}} <UNKNOWN>', env, '', {
+    const text = substituteMacros('{{unknown}}', env, '', {
       runtime,
       source: 'prompt:custom',
     });
 
-    expect(text).toBe('{{unknown}} <UNKNOWN>');
-    expect(runtime.warnings).toEqual([
-      { macro: '{{unknown}}', source: 'prompt:custom' },
-      { macro: '<UNKNOWN>', source: 'prompt:custom' },
-    ]);
+    expect(text).toBe('{{unknown}}');
+    expect(runtime.warnings).toEqual([{ macro: '{{unknown}}', source: 'prompt:custom' }]);
+  });
+
+  /**
+   * Popular presets are full of pseudo-XML section markers. They are not macros, they were
+   * never macros in SillyTavern either, and reporting them buried the real warnings under
+   * noise — the report that prompted this said "2 unresolved macros" and both were `<POV>`.
+   *
+   * The five genuine legacy tokens cannot reach the diagnostic pass: they are substituted
+   * earlier, which the test above this one pins.
+   */
+  test('does not mistake pseudo-XML section markers for macros', () => {
+    const runtime = createMacroRuntime();
+    const text = substituteMacros('<POV>first person</POV> <RULES2>', env, '', {
+      runtime,
+      source: 'prompt:custom',
+    });
+
+    expect(text).toBe('<POV>first person</POV> <RULES2>');
+    expect(runtime.warnings).toEqual([]);
   });
 
   test('deduplicates the same macro within one source but not across sources', () => {

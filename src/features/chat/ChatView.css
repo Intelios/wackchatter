@@ -481,6 +481,34 @@
   padding-top: var(--wc-space-2);
 }
 
+/* Capped: creator notes run to essay length on some cards, and this sits above the
+   character list rather than replacing it. */
+.chat-picker__notes {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-top: var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.chat-picker__notes > :first-child {
+  margin-top: 0;
+}
+
+.chat-picker__notes > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-picker__notes p {
+  margin: 0 0 var(--wc-space-2);
+}
+
+.chat-picker__notes a {
+  color: var(--wc-accent);
+}
+
 .chat-picker__context > summary {
   cursor: pointer;
   color: var(--wc-text-muted);

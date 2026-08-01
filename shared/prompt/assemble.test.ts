@@ -268,12 +268,13 @@ describe('macro state and diagnostics during assembly', () => {
     const preset = updatePrompt(
       setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]),
       'main',
-      { content: '{{missing}} {{MISSING}} <OLD_MACRO>' },
+      // `<SECTION>` is here to prove it is NOT reported: pseudo-XML markers are ordinary
+      // prompt text, and treating them as macros made the warning count meaningless.
+      { content: '{{missing}} {{MISSING}} <SECTION>' },
     );
 
     expect(assemble({ preset }).macroWarnings).toEqual([
       { macro: '{{missing}}', source: 'prompt:main' },
-      { macro: '<OLD_MACRO>', source: 'prompt:main' },
     ]);
   });
 });

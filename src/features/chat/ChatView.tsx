@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { RefreshIcon } from '../../layout/icons.tsx';
-import { characterApi } from '../../lib/api.ts';
+import { characterApi, personaApi } from '../../lib/api.ts';
 import { ChatMenu, type PanelTab } from './ChatMenu.tsx';
 import { Composer } from './Composer.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
@@ -33,7 +33,14 @@ export function ChatView({
   const { scrollToBottom } = useStickToBottom(scrollRef, contentRef);
 
   const { state, stream, busy } = chat;
-  const avatarUrl = avatar ? characterApi.imageUrl(avatar) : null;
+  const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar) : null;
+
+  // Who "you" are in this chat has a face too. Keyed on the filename so replacing the
+  // image busts the cache instead of showing the old one until a reload.
+  const persona = chat.persona;
+  const personaAvatarUrl = persona?.avatar
+    ? personaApi.avatarUrl(persona.id, persona.avatar)
+    : null;
 
   // Jump to the end when a different chat is opened.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the chat, by design
@@ -59,7 +66,7 @@ export function ChatView({
               <MessageBubble
                 key={message.id}
                 message={message}
-                avatarUrl={avatarUrl}
+                avatarUrl={message.is_user ? personaAvatarUrl : characterAvatarUrl}
                 streaming={state.streamingId === message.id}
                 stream={stream}
                 isLast={message.id === lastId}

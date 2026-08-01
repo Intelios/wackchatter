@@ -409,7 +409,12 @@ export function substituteMacros(
 
   // Keep diagnostics non-destructive: anything still macro-shaped remains visible in
   // the prompt and is reported to the preview/inspector rather than blocking generation.
-  for (const match of result.match(/\{\{[^{}]*\}\}|<[A-Z][A-Z0-9_]*>/g) ?? []) {
+  //
+  // Only `{{...}}` counts. Angle-bracket tokens are deliberately NOT reported: the five
+  // legacy ones are already substituted above, so nothing real can reach here, while
+  // `<POV>`, `<RULES>` and friends are ordinary pseudo-XML section markers that presets
+  // use constantly. Flagging those trained the warning to mean nothing.
+  for (const match of result.match(/\{\{[^{}]*\}\}/g) ?? []) {
     warn(runtime, match, diagnosticSource);
   }
 

@@ -46,6 +46,7 @@ export function App() {
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<Preset | null>(null);
+  const [presetReload, setPresetReload] = useState(0);
 
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
 
@@ -98,6 +99,10 @@ export function App() {
       .catch((err) => setError((err as Error).message));
   }, []);
 
+  // `presetReload` is not read in here — it is the reload trigger. Bumping it re-runs this
+  // effect, which is how Revert discards the working copy: the file on disk is the only
+  // authority on what the preset was, so we re-read it rather than snapshotting.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: presetReload is the trigger
   useEffect(() => {
     if (!presetId) {
       setPreset(null);
@@ -117,7 +122,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [presetId]);
+  }, [presetId, presetReload]);
 
   const refresh = useCallback(async () => {
     try {
@@ -346,6 +351,7 @@ export function App() {
             preset={preset}
             onSelectPreset={setPresetId}
             onPresetChange={setPreset}
+            onRevertPreset={() => setPresetReload((n) => n + 1)}
             onPresetsChanged={refreshPresets}
             tokenCounts={preview?.tokenCounts}
             macroWarnings={preview?.macroWarnings}
@@ -395,6 +401,7 @@ export function App() {
                     title={chat.state.title}
                     metadata={chat.state.metadata}
                     inheritedScenario={character?.scenario ?? ''}
+                    creatorNotes={character?.creator_notes ?? ''}
                     onOpen={(id) => void chat.openChat(id)}
                     onNew={() => void chat.newChat()}
                     onDelete={(id) => void chat.deleteChat(id)}

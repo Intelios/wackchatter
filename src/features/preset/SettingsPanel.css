@@ -29,6 +29,38 @@
   border-bottom: 1px solid var(--wc-border);
 }
 
+/* Wraps the prompt editor so the unsaved bar sits above it without scrolling away. */
+.settings-panel__editing {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/*
+ * Sticky, and warning-coloured, because presets no longer autosave: this bar is the only
+ * thing standing between a tweak and losing it.
+ */
+.settings-panel__unsaved {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-warning);
+  background: var(--wc-surface-raised);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.settings-panel__unsaved-text {
+  flex: 1;
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  color: var(--wc-warning);
+}
+
 .settings-panel__check {
   display: flex;
   align-items: flex-start;

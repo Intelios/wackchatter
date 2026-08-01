@@ -17,6 +17,7 @@ import type { StreamStore } from './state/streamStore.ts';
 
 interface MessageBubbleProps {
   message: MessageState;
+  /** Already resolved for this message's speaker — the character's or the persona's. */
   avatarUrl: string | null;
   /** True while this message is the one being generated into. */
   streaming: boolean;
@@ -91,7 +92,7 @@ export function MessageBubble({
       data-hidden={message.is_system || undefined}
     >
       <div className="message__avatar">
-        {avatarUrl && !message.is_user ? (
+        {avatarUrl ? (
           <img src={avatarUrl} alt="" />
         ) : (
           <span aria-hidden="true">{message.name.slice(0, 1).toUpperCase()}</span>

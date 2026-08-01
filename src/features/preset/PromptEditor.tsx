@@ -61,10 +61,10 @@ export function PromptEditor({
   return (
     <div className="prompt-editor">
       <div className="prompt-editor__head">
-        <h3 className="prompt-editor__title">{prompt.name}</h3>
         <button type="button" className="wc-button wc-button--ghost" onClick={onClose}>
-          Close
+          ← All prompts
         </button>
+        <h3 className="prompt-editor__title">{prompt.name}</h3>
       </div>
 
       <div className="prompt-editor__body">

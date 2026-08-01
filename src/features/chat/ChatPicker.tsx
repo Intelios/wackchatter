@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
+import { Markdown } from './Markdown.tsx';
 
 interface ChatPickerProps {
   chats: ChatSummary[];
@@ -14,6 +15,8 @@ interface ChatPickerProps {
   title: string;
   metadata: ChatMetadata;
   inheritedScenario: string;
+  /** The card's `creator_notes`, shown read-only. Empty hides the section entirely. */
+  creatorNotes: string;
   onOpen: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -27,6 +30,7 @@ export function ChatPicker({
   title,
   metadata,
   inheritedScenario,
+  creatorNotes,
   onOpen,
   onNew,
   onDelete,
@@ -118,6 +122,18 @@ export function ChatPicker({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {/*
+        Creator notes are how a card explains itself — who the character is, what the
+        scenario expects of you, which greeting is which. Buried in the editor they may as
+        well not exist, so they sit here, read-only, next to the other per-chat context.
+      */}
+      {creatorNotes.trim() ? (
+        <details className="chat-picker__context">
+          <summary>Creator notes</summary>
+          <Markdown text={creatorNotes} className="chat-picker__notes" />
+        </details>
       ) : null}
 
       {activeId ? (
