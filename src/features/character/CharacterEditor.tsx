@@ -6,87 +6,137 @@ import { ListField, TagField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
+import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { EmbeddedBook } from './EmbeddedBook.tsx';
 import './CharacterEditor.css';
 
 const AUTOSAVE_DELAY_MS = 700;
+
+/** Only the fields we manage; the server merges them onto the stored card. */
+function toPatch(data: CardDataV2): Partial<CardDataV2> {
+  return {
+    name: data.name,
+    description: data.description,
+    personality: data.personality,
+    scenario: data.scenario,
+    first_mes: data.first_mes,
+    mes_example: data.mes_example,
+    creator_notes: data.creator_notes,
+    system_prompt: data.system_prompt,
+    post_history_instructions: data.post_history_instructions,
+    alternate_greetings: data.alternate_greetings,
+    tags: data.tags,
+    creator: data.creator,
+    character_version: data.character_version,
+  };
+}
 
 interface CharacterEditorProps {
   detail: CharacterDetail;
   onSaved: (detail: CharacterDetail) => void;
   onDeleted: () => void;
   onBack: () => void;
+  registerPersistence?: (controls: PersistenceControls | null) => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: CharacterEditorProps) {
+export function CharacterEditor({
+  detail,
+  onSaved,
+  onDeleted,
+  onBack,
+  registerPersistence,
+}: CharacterEditorProps) {
   const [data, setData] = useState<CardDataV2>(detail.card.data);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
+  const dataRef = useRef(data);
+  const bookPersistenceRef = useRef<PersistenceControls | null>(null);
 
   const avatar = detail.avatar;
   /** Set while a save is in flight so its response doesn't clobber newer local edits. */
   const dirtyRef = useRef(false);
+  const revisionRef = useRef(0);
+
+  // Stable refs so the long-lived queue's callbacks always read fresh values rather than
+  // the props captured when the queue was constructed.
+  const avatarRef = useRef(avatar);
+  avatarRef.current = avatar;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+
+  // One serialized, revision-aware queue. Writes never overlap, so a slow older response
+  // cannot land after a newer one; the pending snapshot is flushed on unmount so an edit
+  // made moments before leaving is not lost to the debounce.
+  const queueRef = useRef<AutosaveQueue<Partial<CardDataV2>, CharacterDetail> | null>(null);
+  if (!queueRef.current) {
+    queueRef.current = new AutosaveQueue(
+      (id, patch) => characterApi.update(id, patch),
+      AUTOSAVE_DELAY_MS,
+      {
+        onSaved: (id, _patch, saved) => {
+          if (id !== avatarRef.current) return;
+          dirtyRef.current = false;
+          setSaveState('saved');
+          setSaveError(null);
+          onSavedRef.current(saved);
+        },
+        onFailed: (id, error) => {
+          if (id !== avatarRef.current) return;
+          setSaveState('error');
+          setSaveError(error.message);
+        },
+      },
+    );
+  }
+  const queue = queueRef.current;
 
   // Reset local state when a different character is opened.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on avatar by design
   useEffect(() => {
     setData(detail.card.data);
+    dataRef.current = detail.card.data;
     dirtyRef.current = false;
     setSaveState('idle');
     setSaveError(null);
     setConfirmDelete(false);
   }, [avatar]);
 
+  // Flush any pending write on unmount, or the last edit before closing the editor is lost.
+  useEffect(() => {
+    return () => {
+      void queue.flushAll().catch(() => {});
+    };
+  }, [queue]);
+
   const update = useCallback(<K extends keyof CardDataV2>(key: K, value: CardDataV2[K]) => {
     dirtyRef.current = true;
-    setData((prev) => ({ ...prev, [key]: value }));
+    setData((prev) => {
+      const next = { ...prev, [key]: value };
+      dataRef.current = next;
+      return next;
+    });
   }, []);
 
-  // Debounced autosave. Only the fields we manage are sent; the server merges them onto
-  // the stored card so unknown keys are never at risk.
+  // Debounced autosave. The queue owns an immutable copy of the patch, so later edits
+  // cannot mutate a save that is already queued.
   useEffect(() => {
     if (!dirtyRef.current) return;
-
-    const timer = setTimeout(async () => {
-      setSaveState('saving');
-      try {
-        const saved = await characterApi.update(avatar, {
-          name: data.name,
-          description: data.description,
-          personality: data.personality,
-          scenario: data.scenario,
-          first_mes: data.first_mes,
-          mes_example: data.mes_example,
-          creator_notes: data.creator_notes,
-          system_prompt: data.system_prompt,
-          post_history_instructions: data.post_history_instructions,
-          alternate_greetings: data.alternate_greetings,
-          tags: data.tags,
-          creator: data.creator,
-          character_version: data.character_version,
-        });
-        dirtyRef.current = false;
-        setSaveState('saved');
-        setSaveError(null);
-        onSaved(saved);
-      } catch (err) {
-        setSaveState('error');
-        setSaveError((err as Error).message);
-      }
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [data, avatar, onSaved]);
+    revisionRef.current += 1;
+    setSaveState('saving');
+    queue.schedule(avatar, revisionRef.current, toPatch(data));
+  }, [data, avatar, queue]);
 
   async function handleImageChange(file: File | undefined) {
     if (!file) return;
     setSaveState('saving');
     try {
-      const saved = await characterApi.updateWithImage(avatar, {}, file);
+      const saved = await queue.runSerialized(avatar, () =>
+        characterApi.updateWithImage(avatar, {}, file),
+      );
       setSaveState('saved');
       onSaved(saved);
     } catch (err) {
@@ -101,12 +151,61 @@ export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: Characte
       return;
     }
     try {
-      await characterApi.remove(avatar);
+      await bookPersistenceRef.current?.flush();
+      await queue.runSerialized(avatar, () => characterApi.remove(avatar));
+      queue.discard(avatar);
       onDeleted();
     } catch (err) {
+      setSaveState('error');
       setSaveError((err as Error).message);
     }
   }
+
+  async function handleBack() {
+    try {
+      await flushEditor();
+      onBack();
+    } catch (err) {
+      setSaveState('error');
+      setSaveError((err as Error).message);
+    }
+  }
+
+  async function retrySaves() {
+    setSaveState('saving');
+    try {
+      await retryEditor();
+      setSaveState('saved');
+      setSaveError(null);
+    } catch (err) {
+      setSaveState('error');
+      setSaveError((err as Error).message);
+    }
+  }
+
+  const flushEditor = useCallback(async () => {
+    await queue.flush(avatar);
+    await bookPersistenceRef.current?.flush();
+  }, [avatar, queue]);
+
+  const retryEditor = useCallback(async () => {
+    await queue.retry(avatar);
+    await bookPersistenceRef.current?.retry();
+  }, [avatar, queue]);
+
+  useEffect(() => {
+    registerPersistence?.({ flush: flushEditor, retry: retryEditor });
+    return () => registerPersistence?.(null);
+  }, [flushEditor, registerPersistence, retryEditor]);
+
+  const serializeCardWrite = useCallback(
+    <T,>(task: () => Promise<T>) => queue.runSerialized(avatar, task),
+    [avatar, queue],
+  );
+
+  const registerBookPersistence = useCallback((controls: PersistenceControls | null) => {
+    bookPersistenceRef.current = controls;
+  }, []);
 
   const lorebookEntries = data.character_book?.entries ?? [];
 
@@ -124,8 +223,16 @@ export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: Characte
   // server's rather than being patched twice from two directions.
   const handleBookSaved = useCallback(
     (saved: CharacterDetail) => {
-      setData(saved.card.data);
-      onSaved(saved);
+      const reconciledData = {
+        ...dataRef.current,
+        character_book: saved.card.data.character_book,
+      };
+      dataRef.current = reconciledData;
+      setData(reconciledData);
+      onSaved({
+        ...saved,
+        card: { ...saved.card, ...toPatch(reconciledData), data: reconciledData },
+      });
     },
     [onSaved],
   );
@@ -146,12 +253,25 @@ export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: Characte
   return (
     <div className="editor">
       <div className="editor__top">
-        <button type="button" className="wc-button wc-button--ghost" onClick={onBack}>
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          onClick={() => void handleBack()}
+        >
           ← All characters
         </button>
         <span className="editor__status" data-state={saveState}>
           {statusLabel}
         </span>
+        {saveState === 'error' ? (
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            onClick={() => void retrySaves()}
+          >
+            Retry save
+          </button>
+        ) : null}
       </div>
 
       <div className="editor__identity">
@@ -283,7 +403,12 @@ export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: Characte
           avatar={avatar}
           entries={bookEntries}
           onSaved={handleBookSaved}
-          onError={setSaveError}
+          onError={(message) => {
+            setSaveState('error');
+            setSaveError(message);
+          }}
+          serializeCardWrite={serializeCardWrite}
+          registerPersistence={registerBookPersistence}
         />
       </Section>
 

@@ -22,6 +22,7 @@ import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { SettingsPanel } from './features/preset/SettingsPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { characterApi, lorebookApi, personaApi, presetApi, settingsApi } from './lib/api.ts';
+import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
 type RightTab = 'characters' | 'lore' | 'you';
@@ -53,6 +54,35 @@ export function App() {
   const [rightTab, setRightTab] = useState<RightTab>('characters');
   const [books, setBooks] = useState<LorebookSummary[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const characterPersistence = useRef<PersistenceControls | null>(null);
+  const lorePersistence = useRef<PersistenceControls | null>(null);
+  const personaPersistence = useRef<PersistenceControls | null>(null);
+
+  const flushRightPanel = useCallback(async () => {
+    const controls = editing
+      ? characterPersistence.current
+      : rightTab === 'lore'
+        ? lorePersistence.current
+        : rightTab === 'you'
+          ? personaPersistence.current
+          : null;
+    await controls?.flush();
+  }, [editing, rightTab]);
+
+  const changeRightTab = useCallback(
+    async (tab: RightTab) => {
+      if (tab === rightTab && !editing) return;
+      try {
+        await flushRightPanel();
+      } catch (err) {
+        setError((err as Error).message);
+        return;
+      }
+      setEditing(false);
+      setRightTab(tab);
+    },
+    [editing, flushRightPanel, rightTab],
+  );
 
   const refreshBooks = useCallback(async () => {
     try {
@@ -312,6 +342,7 @@ export function App() {
   const handleCloseChat = useCallback(async () => {
     try {
       await chat.flushSaves();
+      await flushRightPanel();
     } catch {
       return;
     }
@@ -322,16 +353,18 @@ export function App() {
     // and the Lore and You tabs both read as dead ends with no chat open.
     setRightTab('characters');
     setRightOpen(true);
-  }, [chat]);
+  }, [chat, flushRightPanel]);
 
   /** Reveal one of the right panel's tools, for the chat menu's jump entries. */
-  const openPanel = useCallback((tab: RightTab) => {
-    // The character editor replaces the tabbed panel outright, so without this the tab
-    // would change behind a screen nobody can see.
-    setEditing(false);
-    setRightTab(tab);
-    setRightOpen(true);
-  }, []);
+  const openPanel = useCallback(
+    async (tab: RightTab) => {
+      // The character editor replaces the tabbed panel outright, so without this the tab
+      // would change behind a screen nobody can see.
+      await changeRightTab(tab);
+      setRightOpen(true);
+    },
+    [changeRightTab],
+  );
 
   const handleSaved = useCallback((saved: CharacterDetail) => {
     setDetail(saved);
@@ -395,6 +428,9 @@ export function App() {
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               onBack={() => setEditing(false)}
+              registerPersistence={(controls) => {
+                characterPersistence.current = controls;
+              }}
             />
           </Panel>
         ) : (
@@ -404,7 +440,7 @@ export function App() {
               <Tabs<RightTab>
                 value={rightTab}
                 options={RIGHT_TABS}
-                onChange={setRightTab}
+                onChange={(tab) => void changeRightTab(tab)}
                 label="Library section"
               />
             }
@@ -450,6 +486,9 @@ export function App() {
                 onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
                 activeBooks={lore.activeForPersona(chat.persona?.lorebookId ?? undefined)}
                 onBookEdited={lore.invalidate}
+                registerPersistence={(controls) => {
+                  lorePersistence.current = controls;
+                }}
               />
             ) : null}
 
@@ -463,6 +502,9 @@ export function App() {
                 onSelectForChat={chat.setPersona}
                 onSelectDefault={(id) => void patchSettings({ personaId: id })}
                 onChanged={refreshPersonas}
+                registerPersistence={(controls) => {
+                  personaPersistence.current = controls;
+                }}
               />
             ) : null}
           </Panel>

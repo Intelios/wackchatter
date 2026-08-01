@@ -14,6 +14,7 @@ import { CheckField, NumberField, SelectField, TextField } from '../../component
 import { Section } from '../../components/Section.tsx';
 import { TrashIcon } from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
+import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import './PersonaPanel.css';
 
 const SAVE_DELAY = 500;
@@ -44,6 +45,7 @@ interface PersonaPanelProps {
   onSelectForChat: (id: string | null) => void;
   onSelectDefault: (id: string | null) => void;
   onChanged: () => void;
+  registerPersistence?: (controls: PersistenceControls | null) => void;
 }
 
 export function PersonaPanel({
@@ -55,27 +57,57 @@ export function PersonaPanel({
   onSelectForChat,
   onSelectDefault,
   onChanged,
+  registerPersistence,
 }: PersonaPanelProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Persona | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revisionRef = useRef(0);
   /**
-   * Edits made since the last write.
+   * Edits made since the persona was opened.
    *
-   * Accumulated rather than replaced: each keystroke restarts the debounce, so sending
-   * only the most recent field would drop every earlier one. Editing the name and then
-   * the description within the debounce window used to save the description alone.
+   * Accumulated rather than replaced: each keystroke reschedules, so sending only the most
+   * recent field would drop every earlier one. Crucially this is reset only when the
+   * selection changes — never on a successful save — because the queue clones each scheduled
+   * snapshot, and clearing the accumulation mid-flight would let a later edit reschedule a
+   * patch missing fields an older, still-pending snapshot had not yet written.
    */
   const queued = useRef<Partial<Persona>>({});
 
   /** Which persona `draft` currently holds, so a refresh can be told from a selection. */
   const draftId = useRef<string | null>(null);
 
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
+
+  // One queue shared by every persona, keyed per persona so switching selection neither
+  // cancels the previous persona's write nor lets a delayed callback observe a reset queue.
+  // Writes are serialized and a failure is retained for retry rather than dropped.
+  const queueRef = useRef<AutosaveQueue<Partial<Persona>, Persona> | null>(null);
+  if (!queueRef.current) {
+    queueRef.current = new AutosaveQueue((id, patch) => personaApi.save(id, patch), SAVE_DELAY, {
+      onSaved: () => {
+        setError(null);
+        onChangedRef.current();
+      },
+      onFailed: (_id, err) => setError(err.message),
+    });
+  }
+  const queue = queueRef.current;
+
+  useEffect(() => {
+    registerPersistence?.({
+      flush: () => queue.flushAll(),
+      retry: () => queue.flushAll(),
+    });
+    return () => registerPersistence?.(null);
+  }, [queue, registerPersistence]);
+
   useEffect(() => {
     if (!editing) {
+      if (draftId.current) void queue.flush(draftId.current).catch(() => {});
       draftId.current = null;
       setDraft(null);
       queued.current = {};
@@ -93,44 +125,52 @@ export function PersonaPanel({
     const found = personas.find((item) => item.id === editing);
     if (!found) return;
 
+    // Leaving a persona: flush it so an edit made just before switching is not lost. The
+    // queue owns cloned snapshots, so resetting `queued` afterwards cannot drop them.
+    if (draftId.current && draftId.current !== editing) {
+      void queue.flush(draftId.current).catch(() => {});
+    }
+
     draftId.current = editing;
     setDraft(found);
     setConfirmDelete(false);
     queued.current = {};
-  }, [editing, personas]);
+  }, [editing, personas, queue]);
 
+  // Flush every pending write on unmount, or the last edit before closing the panel is lost.
   useEffect(() => {
     return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      void queue.flushAll().catch(() => {});
     };
-  }, []);
+  }, [queue]);
 
   function patch(update: Partial<Persona>) {
     if (!draft) return;
     const id = draft.id;
     setDraft({ ...draft, ...update });
     queued.current = { ...queued.current, ...update };
+    revisionRef.current += 1;
+    queue.schedule(id, revisionRef.current, queued.current);
+  }
 
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const body = queued.current;
-      queued.current = {};
-
-      personaApi
-        .save(id, body)
-        .then(() => {
-          setError(null);
-          onChanged();
-        })
-        .catch((err) => setError((err as Error).message));
-    }, SAVE_DELAY);
+  async function selectEditor(next: string | null): Promise<void> {
+    const current = draftId.current;
+    if (current && current !== next) {
+      try {
+        await queue.flush(current);
+      } catch (err) {
+        setError((err as Error).message);
+        return;
+      }
+    }
+    setEditing(next);
   }
 
   async function handleCreate() {
     try {
       const created = await personaApi.create('You');
       onChanged();
-      setEditing(created.id);
+      await selectEditor(created.id);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -138,7 +178,8 @@ export function PersonaPanel({
 
   async function handleDelete(id: string) {
     try {
-      await personaApi.remove(id);
+      await queue.runSerialized(id, () => personaApi.remove(id));
+      queue.discard(id);
       setEditing(null);
       // Chats keep the explicit orphaned id and resolve it as no persona. That preserves
       // their snapshot if this persona is restored later.
@@ -151,7 +192,7 @@ export function PersonaPanel({
 
   async function handleAvatar(id: string, file: File) {
     try {
-      await personaApi.uploadAvatar(id, file);
+      await queue.runSerialized(id, () => personaApi.uploadAvatar(id, file));
       onChanged();
     } catch (err) {
       setError((err as Error).message);
@@ -160,7 +201,20 @@ export function PersonaPanel({
 
   return (
     <div className="persona-panel">
-      {error ? <p className="persona-panel__error">{error}</p> : null}
+      {error ? (
+        <p className="persona-panel__error">
+          {error}{' '}
+          {editing ? (
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={() => void queue.retry(editing).catch(() => {})}
+            >
+              Retry save
+            </button>
+          ) : null}
+        </p>
+      ) : null}
 
       <ul className="persona-list">
         {personas.map((persona) => (
@@ -192,7 +246,7 @@ export function PersonaPanel({
             <button
               type="button"
               className="wc-button wc-button--ghost persona-list__edit"
-              onClick={() => setEditing(editing === persona.id ? null : persona.id)}
+              onClick={() => void selectEditor(editing === persona.id ? null : persona.id)}
             >
               {editing === persona.id ? 'Close' : 'Edit'}
             </button>
