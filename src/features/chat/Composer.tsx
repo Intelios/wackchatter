@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { SendIcon, StopIcon } from '../../layout/icons.tsx';
 
 const MAX_ROWS = 12;
@@ -9,9 +9,14 @@ interface ComposerProps {
   busy: boolean;
   disabled: boolean;
   placeholder: string;
+  /**
+   * Rendered before the input. A slot rather than a concrete menu so the composer stays
+   * ignorant of the chat hook.
+   */
+  leading?: ReactNode;
 }
 
-export function Composer({ onSend, onStop, busy, disabled, placeholder }: ComposerProps) {
+export function Composer({ onSend, onStop, busy, disabled, placeholder, leading }: ComposerProps) {
   const [text, setText] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
 
@@ -71,6 +76,8 @@ export function Composer({ onSend, onStop, busy, disabled, placeholder }: Compos
 
   return (
     <div className="composer">
+      {leading}
+
       <textarea
         ref={textarea}
         className="composer__input"

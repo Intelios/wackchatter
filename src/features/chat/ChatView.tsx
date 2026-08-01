@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { RefreshIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
+import { ChatMenu, type PanelTab } from './ChatMenu.tsx';
 import { Composer } from './Composer.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import type { UseChat } from './useChat.ts';
@@ -13,9 +14,20 @@ interface ChatViewProps {
   avatar: string | null;
   /** False until an endpoint and model are configured. */
   ready: boolean;
+  /** Leave the chat and go back to the no-character state. */
+  onCloseChat: () => void;
+  /** Open the right panel on a given tab, for the menu's jump entries. */
+  onOpenPanel: (tab: PanelTab) => void;
 }
 
-export function ChatView({ chat, characterName, avatar, ready }: ChatViewProps) {
+export function ChatView({
+  chat,
+  characterName,
+  avatar,
+  ready,
+  onCloseChat,
+  onOpenPanel,
+}: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom } = useStickToBottom(scrollRef, contentRef);
@@ -109,6 +121,9 @@ export function ChatView({ chat, characterName, avatar, ready }: ChatViewProps) 
         onStop={chat.abort}
         busy={busy}
         disabled={!ready}
+        // Deliberately not gated on `ready`: closing or starting a chat has to work
+        // before a connection is configured.
+        leading={<ChatMenu chat={chat} onCloseChat={onCloseChat} onOpenPanel={onOpenPanel} />}
         placeholder={
           ready
             ? `Message ${characterName}…`

@@ -1,0 +1,95 @@
+/*
+ * A popup anchored to its trigger. Structural only — every colour, space and duration
+ * comes from tokens.css.
+ */
+
+.menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu__popup {
+  position: absolute;
+  /* Opens upward: the trigger lives at the bottom of the chat column. */
+  bottom: 100%;
+  left: 0;
+  margin-bottom: var(--wc-space-1);
+  min-width: 220px;
+  /* .chat-column clips its overflow, so a long menu has to scroll rather than grow past
+     the top of the column and get cut off. */
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  padding: var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+  box-shadow: var(--wc-shadow);
+  /* No z-index needed: the composer is a later sibling than the transcript, so this
+     already paints above it. */
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  text-align: left;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.menu__item:hover:not(:disabled),
+.menu__item:focus-visible {
+  background: var(--wc-surface-hover);
+}
+
+.menu__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu__item[data-danger]:hover:not(:disabled),
+.menu__item[data-danger]:focus-visible {
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+}
+
+.menu__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+}
+
+.menu__item:hover:not(:disabled) .menu__icon {
+  color: inherit;
+}
+
+.menu__icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.menu__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu__hint {
+  font-size: var(--wc-text-xs);
+  font-family: var(--wc-font-mono);
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+}
+
+.menu__separator {
+  height: 1px;
+  margin: var(--wc-space-1) 0;
+  border: 0;
+  background: var(--wc-border);
+}

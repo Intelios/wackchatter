@@ -373,6 +373,20 @@
   flex-shrink: 0;
 }
 
+/* Matches the send button's height so the menu trigger sits on the textarea's baseline —
+   .composer aligns its children to flex-end. */
+.composer .menu__trigger {
+  height: 42px;
+  width: 42px;
+  padding: 0;
+  color: var(--wc-text-faint);
+}
+
+.composer .menu__trigger:hover,
+.composer .menu__trigger[aria-expanded="true"] {
+  color: var(--wc-text);
+}
+
 /* --- Chat picker -------------------------------------------------------- */
 
 .chat-picker {

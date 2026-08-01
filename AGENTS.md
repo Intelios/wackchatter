@@ -283,6 +283,14 @@ regex keys are the escape hatches.
   `T | null` where null means "inherit", which a plain checkbox cannot express.
 - `TagField` is **not** safe for World Info keys — `/foo,bar/i` is one legal key. Use
   `KeyField`, which splits via `shared/worldinfo/keys.ts`.
+- **`Menu` is the only popup.** Entries are *data*, not JSX children, which is what lets
+  `buildChatMenu` be a pure tested function rather than a component. It is non-modal, so
+  it does not contradict the no-modals rule. Anything that focuses an element inside a
+  popup must pass `focus({ preventScroll: true })`: the layout is fixed to the viewport,
+  and a browser scrolling to "reveal" an element drags the whole app out from under it.
+- **Disabled beats refused.** SillyTavern toasts "stop the generation first"; we have no
+  toast system, so a blocked entry is `disabled` with a `disabledReason` that becomes its
+  `title`. Same information, no new machinery.
 
 ## Testing
 
@@ -311,6 +319,12 @@ regex keys are the escape hatches.
   entry consumes no draw.
 - `server/lib/settings.test.ts` gates the field-wise merge — a partial `worldInfo` patch
   must not reset the fields it did not mention.
+- `src/features/chat/ChatMenu.test.ts` pins the chat menu's gating: Continue unavailable
+  on a user-final transcript, checkpoint and regenerate unavailable on an empty one, every
+  action but the panel jumps disabled mid-generation, and every disabled entry carrying a
+  reason. There is no DOM test harness in this project, so menu logic lives in a pure
+  `buildChatMenu` and the React wrapper stays thin — the same split as
+  `composeLorebookSources` in `useLorebooks`.
 
 When touching a format, add the test before the code.
 
@@ -321,12 +335,12 @@ Done: layout shell, PNG codec, card format + editor, preset format + Prompt Mana
 OpenAI-compatible + OpenRouter), SSE streaming, chat storage (SQLite), multiple chats per
 character with branching, swipes/regenerate/continue/edit/delete/hide, prompt inspector,
 real tokenizer, World Info (conversion, activation engine, standalone + embedded book
-editing, inspector report), personas with avatars.
+editing, inspector report), personas with avatars, Author's Note, the chat options menu.
 
 Not built yet: impersonate.
 
-Out of scope for V1: group chats, Author's Note, instruct mode, extensions, image
-generation, TTS, local models.
+Out of scope for V1: group chats, instruct mode, extensions, image generation, TTS,
+local models.
 
 World Info features deliberately **not** implemented, all of which can only ever make an
 entry fire *less*, so ignoring them is noisier than ST but never silently wrong:

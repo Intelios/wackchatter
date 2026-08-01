@@ -278,6 +278,38 @@ export function App() {
     [transitionToCharacter],
   );
 
+  /**
+   * Leave the chat entirely, back to the no-character state.
+   *
+   * Flushed first, and a failed flush aborts — same rule as `transitionToCharacter`, and
+   * for the same reason: navigating away from an unsaved chat drops the tail of the
+   * transcript with nothing to show for it. Once `selected` is null `useChat` closes the
+   * chat itself, so there is no further teardown here.
+   */
+  const handleCloseChat = useCallback(async () => {
+    try {
+      await chat.flushSaves();
+    } catch {
+      return;
+    }
+    setSelected(null);
+    setDetail(null);
+    setEditing(false);
+    // Land on the character list. Picking a character is the only thing left to do here,
+    // and the Lore and You tabs both read as dead ends with no chat open.
+    setRightTab('characters');
+    setRightOpen(true);
+  }, [chat]);
+
+  /** Reveal one of the right panel's tools, for the chat menu's jump entries. */
+  const openPanel = useCallback((tab: RightTab) => {
+    // The character editor replaces the tabbed panel outright, so without this the tab
+    // would change behind a screen nobody can see.
+    setEditing(false);
+    setRightTab(tab);
+    setRightOpen(true);
+  }, []);
+
   const handleSaved = useCallback((saved: CharacterDetail) => {
     setDetail(saved);
     setCharacters((prev) => prev.map((c) => (c.avatar === saved.avatar ? { ...c, ...saved } : c)));
@@ -418,6 +450,8 @@ export function App() {
           characterName={character.name || active.name}
           avatar={active.avatar}
           ready={ready}
+          onCloseChat={() => void handleCloseChat()}
+          onOpenPanel={openPanel}
         />
       ) : (
         <div className="wc-empty">

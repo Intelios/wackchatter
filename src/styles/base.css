@@ -205,8 +205,18 @@ select {
 
 /* --- Utilities ---------------------------------------------------------- */
 
+/*
+ * Present to assistive tech and to the file picker, invisible to everyone else.
+ *
+ * Pinned rather than left at its static position. Unpinned, a hidden input near the bottom
+ * of a panel lands below the fold and gives the document 45px of scroll height that
+ * nothing reveals — until something focuses it and the browser scrolls the whole fixed
+ * layout to comply, taking the top bar off screen.
+ */
 .wc-visually-hidden {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   padding: 0;
