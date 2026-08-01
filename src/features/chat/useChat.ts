@@ -330,6 +330,13 @@ export function useChat(options: UseChatOptions): UseChat {
    *     and abandon the generation before it started. The reducer is pure, so applying
    *     it here and dispatching the same action is consistent by construction.
    *
+   * Everything after `gen/started` runs inside one try/finally, and the abort controller
+   * is armed before any of it. Both are for the same reason: from the moment the reducer
+   * says "busy" the UI shows Stop, and a throw on the way to the provider — assembly, a
+   * tokenizer, a failed settings write — must not leave the chat busy forever with a
+   * Stop button wired to a controller that does not exist yet. SillyTavern arms its
+   * controller at the top of Generate() for the same reason (script.js:4243).
+   *
    * @param base The state to build on, when the caller has already folded an action
    *   into it (as `send` does with the user's message).
    */
@@ -352,117 +359,116 @@ export function useChat(options: UseChatOptions): UseChat {
       // The reducer refuses some starts outright — swiping with no reply to swipe.
       if (started.status === 'idle' || !started.streamingId) return;
 
-      const target = started.messages.find((m) => m.id === started.streamingId);
-      // Continue extends the existing text rather than replacing it. The postfix has to
-      // match the one assembly puts in the prefill, or the two halves join differently
-      // from how the model saw them.
-      const seed =
-        mode === 'continue' && target
-          ? `${currentText(target)}${preset.continue_postfix ?? ' '}`
-          : '';
-
-      const generationType = MODE_TO_GENERATION_TYPE[mode];
-      const chatMessages = toChatMessages(started);
-
-      // Activation runs over the state that already contains the folded user message,
-      // so the message just typed is in the scan buffer for the reply it triggers.
-      const lore = worldInfoForChat({
-        sources:
-          resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [],
-        messages: chatMessages,
-        settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
-        preset,
-        chatId: started.chatId,
-        // The same memoised counter assembly gets, or every entry is tokenised twice.
-        countTokens,
-      });
-      setWorldInfo(lore);
-
-      const assembled = assemblePrompt({
-        preset,
-        character,
-        persona,
-        messages: chatMessages,
-        generationType,
-        worldInfoBefore: lore?.before,
-        worldInfoAfter: lore?.after,
-        worldInfoDepth: lore?.depth,
-        scenarioOverride:
-          typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
-        authorNote: started.metadata.authorNote,
-        localVariables: started.metadata.variables ?? {},
-        globalVariables,
-        countTokens,
-        seed: started.chatId ?? '',
-      });
-
-      if (!assembled.ok) {
-        dispatch({
-          type: 'gen/inspected',
-          inspection: {
-            at: Date.now(),
-            generationType,
-            messages: assembled.messages,
-            tokenCounts: assembled.tokenCounts,
-            totalTokens: assembled.totalTokens,
-            droppedMessages: assembled.droppedMessages,
-            macroWarnings: assembled.macroWarnings,
-            body: null,
-            overflow: assembled.error,
-          },
-        });
-        dispatch({
-          type: 'gen/failed',
-          message: `Context overflow: mandatory prompt content needs ${assembled.error.requiredPromptTokens} tokens, but only ${assembled.error.maxContext - assembled.error.reservedCompletionTokens} are available.`,
-        });
-        return;
-      }
-
-      const body = buildRequestBody({
-        messages: assembled.messages,
-        preset,
-        connection,
-        stream: preset.stream_openai !== false,
-      });
-
-      const inspection: PromptInspection = {
-        at: Date.now(),
-        generationType,
-        messages: assembled.messages,
-        tokenCounts: assembled.tokenCounts,
-        totalTokens: assembled.totalTokens,
-        droppedMessages: assembled.droppedMessages,
-        macroWarnings: assembled.macroWarnings,
-        body,
-      };
-      dispatch({ type: 'gen/inspected', inspection });
-
-      // Macro effects are committed once, after the complete request exists and
-      // immediately before the provider is contacted. Preview assembly receives the
-      // same inputs and discards this result, so opening Prompt Manager cannot mutate
-      // either scope. A later provider failure deliberately does not roll these back.
-      if (assembled.variableUpdates.localChanged) {
-        dispatch({
-          type: 'chat/metadata',
-          patch: { variables: assembled.variableUpdates.local },
-        });
-      }
-      if (assembled.variableUpdates.globalChanged) {
-        try {
-          await onGlobalVariablesChange(assembled.variableUpdates.global);
-        } catch (error) {
-          dispatch({ type: 'gen/failed', message: (error as Error).message });
-          return;
-        }
-      }
-
       const controller = new AbortController();
       abortRef.current = controller;
-      stream.begin(seed);
 
-      let text = seed;
+      // Empty until the stream starts, so a failure on the way to the provider settles as
+      // "nothing came back" and the reducer removes the placeholder it added.
+      let text = '';
 
       try {
+        const target = started.messages.find((m) => m.id === started.streamingId);
+        // Continue extends the existing text rather than replacing it. The postfix has to
+        // match the one assembly puts in the prefill, or the two halves join differently
+        // from how the model saw them.
+        const seed =
+          mode === 'continue' && target
+            ? `${currentText(target)}${preset.continue_postfix ?? ' '}`
+            : '';
+
+        const generationType = MODE_TO_GENERATION_TYPE[mode];
+        const chatMessages = toChatMessages(started);
+
+        // Activation runs over the state that already contains the folded user message,
+        // so the message just typed is in the scan buffer for the reply it triggers.
+        const lore = worldInfoForChat({
+          sources:
+            resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [],
+          messages: chatMessages,
+          settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
+          preset,
+          chatId: started.chatId,
+          // The same memoised counter assembly gets, or every entry is tokenised twice.
+          countTokens,
+        });
+        setWorldInfo(lore);
+
+        const assembled = assemblePrompt({
+          preset,
+          character,
+          persona,
+          messages: chatMessages,
+          generationType,
+          worldInfoBefore: lore?.before,
+          worldInfoAfter: lore?.after,
+          worldInfoDepth: lore?.depth,
+          scenarioOverride:
+            typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
+          authorNote: started.metadata.authorNote,
+          localVariables: started.metadata.variables ?? {},
+          globalVariables,
+          countTokens,
+          seed: started.chatId ?? '',
+        });
+
+        if (!assembled.ok) {
+          dispatch({
+            type: 'gen/inspected',
+            inspection: {
+              at: Date.now(),
+              generationType,
+              messages: assembled.messages,
+              tokenCounts: assembled.tokenCounts,
+              totalTokens: assembled.totalTokens,
+              droppedMessages: assembled.droppedMessages,
+              macroWarnings: assembled.macroWarnings,
+              body: null,
+              overflow: assembled.error,
+            },
+          });
+          dispatch({
+            type: 'gen/failed',
+            message: `Context overflow: mandatory prompt content needs ${assembled.error.requiredPromptTokens} tokens, but only ${assembled.error.maxContext - assembled.error.reservedCompletionTokens} are available.`,
+          });
+          return;
+        }
+
+        const body = buildRequestBody({
+          messages: assembled.messages,
+          preset,
+          connection,
+          stream: preset.stream_openai !== false,
+        });
+
+        const inspection: PromptInspection = {
+          at: Date.now(),
+          generationType,
+          messages: assembled.messages,
+          tokenCounts: assembled.tokenCounts,
+          totalTokens: assembled.totalTokens,
+          droppedMessages: assembled.droppedMessages,
+          macroWarnings: assembled.macroWarnings,
+          body,
+        };
+        dispatch({ type: 'gen/inspected', inspection });
+
+        // Macro effects are committed once, after the complete request exists and
+        // immediately before the provider is contacted. Preview assembly receives the
+        // same inputs and discards this result, so opening Prompt Manager cannot mutate
+        // either scope. A later provider failure deliberately does not roll these back.
+        if (assembled.variableUpdates.localChanged) {
+          dispatch({
+            type: 'chat/metadata',
+            patch: { variables: assembled.variableUpdates.local },
+          });
+        }
+        if (assembled.variableUpdates.globalChanged) {
+          await onGlobalVariablesChange(assembled.variableUpdates.global);
+        }
+
+        stream.begin(seed);
+        text = seed;
+
         const final = await streamGenerate(
           body,
           controller.signal,

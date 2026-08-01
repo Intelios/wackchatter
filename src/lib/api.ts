@@ -387,9 +387,20 @@ export async function streamGenerate(
   const decoder = new TextDecoder();
   let sawToken = false;
 
+  const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+  const aborted = new Promise<never>((_, reject) => {
+    const fire = () => reject(abortError());
+    if (signal.aborted) {
+      fire();
+      return;
+    }
+    signal.addEventListener('abort', fire, { once: true });
+  });
+  aborted.catch(() => {});
+
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), aborted]);
       if (done) break;
 
       // stream: true keeps multi-byte characters split across chunks intact.
@@ -410,7 +421,6 @@ export async function streamGenerate(
       if (state) handlers.onTick(state);
     }
   } finally {
-    // An abort leaves the body open; releasing lets the connection tear down promptly.
     reader.cancel().catch(() => {});
   }
 

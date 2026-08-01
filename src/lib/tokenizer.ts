@@ -22,19 +22,34 @@ export function approximateTokens(text: string): number {
   return Math.ceil(text.length / 3.6);
 }
 
-/** Conservative ChatML-style estimate while the real encoding is loading. */
-export function approximateChatTokens(messages: readonly ApiMessage[]): number {
-  // gpt-tokenizer's chat helper charges 3 per message, 1 extra for a name, and 3 for
-  // reply priming. Count role and name text too, not just visible content.
+/**
+ * ChatML accounting, applied on top of whatever counts the text.
+ *
+ * Done here rather than by gpt-tokenizer's own chat helper, which is the whole reason
+ * this exists: the encoding modules carry no model name, and their `countTokens(chat)`
+ * needs one to choose the special tokens — it throws "Model name must be provided" on
+ * every call. The per-message overhead is identical for both encodings we load, so
+ * counting the text and adding the envelope here is exact and needs no model id.
+ *
+ * The charge is 3 per message, 1 extra when a name is present, and 3 to prime the reply.
+ * Role and name are counted as text too, not just the visible content.
+ */
+function withChatEnvelope(
+  countText: (text: string) => number,
+  messages: readonly ApiMessage[],
+): number {
   return (
     3 +
     messages.reduce((total, message) => {
-      const name = message.name ? approximateTokens(message.name) + 1 : 0;
-      return (
-        total + 3 + approximateTokens(message.role) + approximateTokens(message.content) + name
-      );
+      const name = message.name ? countText(message.name) + 1 : 0;
+      return total + 3 + countText(message.role) + countText(message.content) + name;
     }, 0)
   );
+}
+
+/** Conservative ChatML-style estimate while the real encoding is loading. */
+export function approximateChatTokens(messages: readonly ApiMessage[]): number {
+  return withChatEnvelope(approximateTokens, messages);
 }
 
 /**
@@ -77,9 +92,10 @@ export async function loadCounter(encoding: EncodingName): Promise<TokenCounter>
       ? await import('gpt-tokenizer/encoding/o200k_base')
       : await import('gpt-tokenizer/encoding/cl100k_base');
 
+  const countText = (text: string) => module.countTokens(text);
   const counter: TokenCounter = {
-    countText: (text) => module.countTokens(text),
-    countChat: (messages) => module.countTokens(messages),
+    countText,
+    countChat: (messages) => withChatEnvelope(countText, messages),
   };
   loaded.set(encoding, counter);
   return counter;

@@ -24,6 +24,11 @@ export default defineConfig({
           proxy.on('proxyRes', (proxyRes) => {
             proxyRes.headers['cache-control'] = 'no-cache, no-transform';
           });
+          proxy.on('proxyReq', (proxyReq, _req, res) => {
+            res.on('close', () => {
+              if (!res.writableEnded) proxyReq.destroy();
+            });
+          });
         },
       },
     },
