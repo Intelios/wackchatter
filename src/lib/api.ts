@@ -383,6 +383,8 @@ export async function streamGenerate(
   // The server mirrors the upstream content-type, so this is how we learn which we got.
   if (!response.headers.get('content-type')?.includes('text/event-stream')) {
     const state = parseCompletion(await response.json(), seed);
+    // A provider can report a failure inside an otherwise-200 body, same as a stream.
+    if (state.error) throw new Error(state.error);
     handlers.onFirstToken?.();
     handlers.onTick(state);
     return state;
