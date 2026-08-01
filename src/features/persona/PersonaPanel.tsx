@@ -58,10 +58,41 @@ export function PersonaPanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Edits made since the last write.
+   *
+   * Accumulated rather than replaced: each keystroke restarts the debounce, so sending
+   * only the most recent field would drop every earlier one. Editing the name and then
+   * the description within the debounce window used to save the description alone.
+   */
+  const queued = useRef<Partial<Persona>>({});
+
+  /** Which persona `draft` currently holds, so a refresh can be told from a selection. */
+  const draftId = useRef<string | null>(null);
 
   useEffect(() => {
-    setDraft(editing ? (personas.find((item) => item.id === editing) ?? null) : null);
+    if (!editing) {
+      draftId.current = null;
+      setDraft(null);
+      queued.current = {};
+      return;
+    }
+
+    // Already loaded. Every later run of this effect is a `personas` refresh — usually
+    // the one our own save triggered — and re-syncing then would clobber whatever was
+    // typed while the request was in flight.
+    if (draftId.current === editing) return;
+
+    // Not in the list yet: creating a persona sets the selection and refreshes the list,
+    // and the two need not land in the same render. `personas` stays in the dependency
+    // list precisely so this retries when it arrives.
+    const found = personas.find((item) => item.id === editing);
+    if (!found) return;
+
+    draftId.current = editing;
+    setDraft(found);
     setConfirmDelete(false);
+    queued.current = {};
   }, [editing, personas]);
 
   useEffect(() => {
@@ -72,13 +103,17 @@ export function PersonaPanel({
 
   function patch(update: Partial<Persona>) {
     if (!draft) return;
-    const next = { ...draft, ...update };
-    setDraft(next);
+    const id = draft.id;
+    setDraft({ ...draft, ...update });
+    queued.current = { ...queued.current, ...update };
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
+      const body = queued.current;
+      queued.current = {};
+
       personaApi
-        .save(next.id, update)
+        .save(id, body)
         .then(() => {
           setError(null);
           onChanged();

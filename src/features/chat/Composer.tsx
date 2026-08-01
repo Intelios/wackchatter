@@ -15,15 +15,51 @@ export function Composer({ onSend, onStop, busy, disabled, placeholder }: Compos
   const [text, setText] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
 
-  // Grow with the content, up to a cap, then scroll internally. `text` is the trigger
-  // even though the effect reads the DOM rather than the value.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: text is the resize trigger
+  /**
+   * Grow with the content, up to a cap, then scroll internally.
+   *
+   * Re-measured on a width change as well as on typing. That is not a nicety: a
+   * measurement taken while the composer is narrow reads a `scrollHeight` far too large
+   * and clamps to MAX_ROWS, and with `text` as the only trigger that wrong height then
+   * sticks for the life of the component.
+   */
   useEffect(() => {
     const element = textarea.current;
     if (!element) return;
-    element.style.height = 'auto';
-    const max = Number.parseFloat(getComputedStyle(element).lineHeight) * MAX_ROWS;
-    element.style.height = `${Math.min(element.scrollHeight, max)}px`;
+
+    const resize = () => {
+      // Empty means exactly one row, and that needs no measuring — dropping the inline
+      // height falls back to the `rows={1}` height the stylesheet gives it.
+      //
+      // This is the case worth special-casing rather than trusting the measurement for:
+      // measured while the composer is narrow (mid-transition, or laid out inside a
+      // collapsed column) the PLACEHOLDER wraps to a character per line, `scrollHeight`
+      // comes back enormous, and the clamp below pins an empty composer at twelve rows
+      // for the life of the component.
+      if (!text) {
+        element.style.height = '';
+        return;
+      }
+
+      element.style.height = 'auto';
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      const max = Number.isFinite(lineHeight) ? lineHeight * MAX_ROWS : Number.POSITIVE_INFINITY;
+      element.style.height = `${Math.min(element.scrollHeight, max)}px`;
+    };
+
+    resize();
+
+    // Only on a WIDTH change. Observing height would feed back into itself, since resize
+    // is what changes the height. Width is what actually invalidates the measurement: a
+    // panel opening or closing, a window resize, and the 0 -> real first layout.
+    let lastWidth = element.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (element.clientWidth === lastWidth) return;
+      lastWidth = element.clientWidth;
+      resize();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [text]);
 
   function submit() {
