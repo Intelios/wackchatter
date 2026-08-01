@@ -42,6 +42,9 @@
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius-sm);
   overflow: hidden;
+  /* overflow:hidden zeroes this item's automatic minimum height, so without this the
+     capped scroll container flex-shrinks every card to fit instead of scrolling. */
+  flex-shrink: 0;
 }
 
 .inspector__role {

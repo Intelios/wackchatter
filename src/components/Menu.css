@@ -18,7 +18,7 @@
   padding: var(--wc-space-1);
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius);
-  background: var(--wc-surface-raised);
+  background: var(--wc-surface-popup);
   box-shadow: var(--wc-shadow);
   /* No z-index needed: the composer is a later sibling than the transcript, so this
      already paints above it. */

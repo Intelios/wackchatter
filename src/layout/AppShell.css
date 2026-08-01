@@ -164,6 +164,7 @@
   font-size: var(--wc-text-sm);
   font-weight: 500;
   color: var(--wc-text-muted);
+  text-shadow: var(--wc-shadow-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -279,6 +280,7 @@
   flex-shrink: 0;
   border-radius: var(--wc-radius-sm);
   color: var(--wc-text-muted);
+  text-shadow: var(--wc-shadow-text);
   font-size: var(--wc-text-sm);
   white-space: nowrap;
   transition: background var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;

@@ -21,6 +21,9 @@
   --wc-surface: #16161a;
   --wc-surface-raised: #1e1e21;
   --wc-surface-hover: #26262a;
+  /* Popups are never glass: they float over the transcript, so translucency without a
+     blur of their own reads as a bug. Kept solid by not being redefined in glass mode. */
+  --wc-surface-popup: #1e1e21;
   /* The message bubble. Its own token because stage 2 makes it translucent
      independently of the panels — see the glass block in AppShell.css. */
   --wc-bubble: var(--wc-surface);

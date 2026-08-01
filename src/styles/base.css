@@ -73,27 +73,6 @@ select {
   scrollbar-color: var(--wc-border-strong) transparent;
 }
 
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--wc-border-strong);
-  border-radius: 6px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--wc-text-faint);
-  background-clip: content-box;
-}
-
 /* --- Form primitives ---------------------------------------------------- */
 
 .wc-input,
