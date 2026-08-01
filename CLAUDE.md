@@ -34,14 +34,17 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/chats.ts   createChatStore(db) — the whole persistence boundary.
   lib/secrets.ts API keys. Mode 0600. Never leaves the machine.
   lib/generate.ts The one place that calls a provider.
+  lib/lorebooks.ts Standalone lorebook files. Filename IS the name.
+  lib/personas.ts  Personas + avatars. Filename is an opaque id.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant, as a type.
   prompt/        Assembly engine, macros, preset I/O, defaults, token cache.
   providers/     Request building + SSE parsing. Both unit-tested.
+  worldinfo/     Lorebook conversion + the activation engine. No I/O.
   types/         Card, preset, worldinfo, chat, settings.
 src/             React app.
   layout/        AppShell — the three-column grid.
-  features/      character/, preset/, chat/, connection/ (one folder per feature).
+  features/      character/, preset/, chat/, connection/, lore/, persona/.
 data/            Gitignored. characters/*.png, presets/*.json, chats.db, settings.json,
                  secrets.json, lorebooks/, personas/.
 ```
@@ -155,6 +158,55 @@ corrupts users' libraries silently.
   `AbortSignal` upstream. Without that forward, Stop only closes the browser socket while
   the provider keeps generating — and keeps billing.
 
+**World Info** (`shared/worldinfo/`)
+- `character_book` (embedded, `entries` is an **array**) and a standalone book
+  (`entries` is an **object keyed by uid**) differ structurally *and* by field name.
+  `convert.ts` maps both directions, verified against ST's own `convertCharacterBook`
+  (`world-info.js:5498`) and `convertWorldInfoToCharacterBook`
+  (`endpoints/characters.js:663`).
+- Top-level renames: `key`↔`keys`, `keysecondary`↔`secondary_keys`,
+  `order`↔`insertion_order`, `disable`↔`!enabled`. **Everything else lives in
+  `entries[i].extensions`**, including two camelCase names sitting among snake_case ones:
+  **`useProbability`** and **`selectiveLogic`**. They look like typos. They are not.
+- ST writes `use_regex: true` unconditionally and degrades `position` to
+  `before_char`/`after_char` at the top level, with the real numeric value in
+  `extensions.position`. **The extension wins on read**; the top-level field is only the
+  fallback for a book written by something that isn't ST.
+- `originalData` holds the embedded book exactly as parsed. `toCharacterBook` rebuilds
+  each entry from its original before overwriting mapped fields — that is what carries
+  per-entry unknown **top-level** keys (`priority`, `name`, vendor keys) that the
+  extensions bag does not cover. Never emitted into a `character_book`.
+- `nextUid` is `max + 1` over the live entries **and `originalData`**. Reusing a uid freed
+  by a delete would graft the deleted entry's unknown keys onto a new one.
+- Never iterate `book.entries` for anything order-sensitive: numeric-looking keys iterate
+  in ascending *numeric* order, so `"2"` precedes `"10"`. Use `bookEntries()`.
+- `order` is a **weight** (ties legal, higher = closer to the chat); `displayIndex` is a
+  **permutation** (the editor's list order). Dragging rewrites `displayIndex` only —
+  rewriting `order` would mutate a compatibility-relevant field and have to invent
+  distinct values for tied entries.
+- Entries are sorted **descending** by `order` then `unshift`ed into their bucket, so the
+  emitted block reads ascending with the highest `order` last. That is ST
+  (`world-info.js:88` + `:5095`), and it is why a higher `order` feels "more important".
+- The scan buffer joins messages newest-first with `\n\x01` **and starts with `\x01`**.
+  That head sentinel is what makes `(?:^|\W)` whole-word matching treat the first message
+  like every other, and it stops a key spanning the seam between two messages.
+- `vectorized: true` **excludes** the entry. In ST those are reachable only by vector
+  search, so treating the flag as absent would fire them where ST never would. Contrast
+  `sticky`/`cooldown`/`delay`, which only ever *suppress* — carried, unread.
+- The client must never send the server a whole `character_book`. `mergeCardData`'s spread
+  is shallow, so it replaces the book wholesale (correct: entries are an array, and a deep
+  merge cannot express "deleted"). The per-uid endpoints read the stored PNG, mutate one
+  entry and write it back, so a stale tab cannot write a mass deletion.
+
+**Personas** (`server/lib/personas.ts`)
+- A lorebook's filename **is** its name — a card links to one by name via
+  `extensions.world`, so renaming is a file move. A persona's filename is an **opaque id**
+  and `name` is an editable field, because `ChatMetadata.persona` stores that id and a
+  typo fix must not orphan every chat referencing it. Opposite rules, on purpose.
+- **The chat wins.** `AppSettings.personaId` is the default for *new* chats;
+  `ChatMetadata.persona` is what *this* chat uses. A transcript records who you were when
+  you wrote it, so changing the default must not relabel past messages.
+
 ### Deliberate divergence from SillyTavern
 
 `migratePreset` evaluates **all** migration rules for a key before deleting it. ST's own
@@ -172,6 +224,41 @@ client-side tokenizer estimates. Ours falls back to the estimate when the provid
 nothing. Off by default for `custom`, since some proxies reject unknown top-level keys
 for exactly the same reason they reject `stop: []`.
 
+**Unsupported World Info positions are folded, not dropped.** ANTop/EMTop/outlet →
+`before`; ANBottom/EMBottom → `after`, flagged so the inspector says "placed at Before
+(Author's Note top unsupported)". Silently discarding an author's lore is worse than
+placing it slightly wrong and saying so.
+
+**The activation engine substitutes no macros.** Assembly does, exactly once, where the
+environment lives — so the double-substitution class of bug cannot exist. Cost: the World
+Info budget is measured pre-substitution. Deliberate.
+
+**`use_regex` is written but ignored on read.** A key is a regex iff it parses as a
+`/…/flags` literal, same as ST — the flag is written only for a clean diff.
+
+**World Info randomness is seeded**, on `chatId` + the last **user** message id, so
+regenerate/swipe/continue see identical lore and a new turn rolls fresh. Keyed on the last
+*user* message because `generate` appends the assistant placeholder before assembling, so
+the last message id is a fresh uuid on every attempt. And a draw is **skipped**, not
+consumed, for an entry that was never going to roll (`probability >= 100`, `<= 0`, or
+`!useProbability`) — with a seeded generator, spending a draw on a foregone conclusion
+would mean adding one always-on entry reshuffled every later roll.
+
+**Only admitted entries feed recursion.** ST also recurses on entries that failed the
+budget check, pushing content into the scan buffer that was never sent.
+
+### Replicated on purpose
+
+Two ST matching behaviours look like bugs and are kept anyway, each with a named test so
+nobody "fixes" them. Books were authored against them, and changing which entries fire in
+somebody's existing library is worse than an odd rule — per-entry `matchWholeWords` and
+regex keys are the escape hatches.
+
+- A **multi-word key skips whole-word matching** entirely and becomes a substring test, so
+  `red dragon` matches inside `bored dragonfly` (`world-info.js:349`).
+- The boundary regex uses `\W` with **no `u` flag**, so every non-Latin letter counts as a
+  word boundary — Cyrillic, Greek and CJK keys effectively lose whole-word matching.
+
 ## UI conventions
 
 - **Three-column grid**, chat column is `1fr` so panels compress it rather than cover it.
@@ -183,6 +270,19 @@ for exactly the same reason they reject `stop: []`.
 - All colour, spacing and motion comes from `src/styles/tokens.css`. Components must not
   hardcode any of it — restyling should mean editing that one file.
 - Styling is deliberately structural and plain; art direction is the user's.
+- The right panel is **tabbed**: Characters / Lore / You. The chat picker stays under
+  Characters, because it is scoped to the selected character.
+- **One lorebook editor** serves both the standalone books and the embedded
+  `character_book`; persistence is callbacks. The entry form is ~20 controls with
+  non-obvious semantics, and drift between two copies would be invisible — a book would
+  behave differently depending on which screen you edited it in.
+- `NumberField`, `SelectField` and `TriCheckField` are shared for reasons, not tidiness:
+  a number bound straight to an input cannot be cleared (`Number('') === 0`); a select
+  must map back through its options **by index**, since `WiPosition`/`WiLogic`/`WiRole`
+  are numeric and include `0`; and `scanDepth`/`caseSensitive`/`matchWholeWords` are
+  `T | null` where null means "inherit", which a plain checkbox cannot express.
+- `TagField` is **not** safe for World Info keys — `/foo,bar/i` is one legal key. Use
+  `KeyField`, which splits via `shared/worldinfo/keys.ts`.
 
 ## Testing
 
@@ -200,6 +300,17 @@ for exactly the same reason they reject `stop: []`.
   that the accumulator returns cumulative text rather than deltas.
 - `src/features/chat/state/chatReducer.test.ts` covers the failure paths — a failed
   overswipe leaving no blank swipe, a failed regenerate restoring the alternates.
+- `shared/worldinfo/convert.test.ts` round-trips Seraphina's embedded book and proves the
+  survival rules: every ST extension key both directions, unknown extension *and*
+  top-level keys, duplicate ids reassigned rather than overwritten, and a uid freed by
+  deleting the highest entry never reused.
+- `shared/worldinfo/match.test.ts` pins the matching semantics, including both replicated
+  quirks and that `g` is stripped so a cached regex is not stateful.
+- `shared/worldinfo/activate.test.ts` covers the engine: budget cutoff, `ignoreBudget`,
+  recursion with exclude/prevent, group winners, seeded determinism, and that a certain
+  entry consumes no draw.
+- `server/lib/settings.test.ts` gates the field-wise merge — a partial `worldInfo` patch
+  must not reset the fields it did not mention.
 
 When touching a format, add the test before the code.
 
@@ -209,9 +320,15 @@ Done: layout shell, PNG codec, card format + editor, preset format + Prompt Mana
 (drag-reorder, markers, depth injection), assembly engine, macros, providers (custom
 OpenAI-compatible + OpenRouter), SSE streaming, chat storage (SQLite), multiple chats per
 character with branching, swipes/regenerate/continue/edit/delete/hide, prompt inspector,
-real tokenizer.
+real tokenizer, World Info (conversion, activation engine, standalone + embedded book
+editing, inspector report), personas with avatars.
 
-Not built yet: World Info activation engine, personas, impersonate.
+Not built yet: impersonate.
 
 Out of scope for V1: group chats, Author's Note, instruct mode, extensions, image
 generation, TTS, local models.
+
+World Info features deliberately **not** implemented, all of which can only ever make an
+entry fire *less*, so ignoring them is noisier than ST but never silently wrong:
+sticky/cooldown/delay, outlets, character filters, triggers, min-activations, group
+scoring, decorators, and the six non-chat scan sources.
