@@ -549,6 +549,7 @@ describe('late and stray actions', () => {
           tokenCounts: {},
           totalTokens: 0,
           droppedMessages: 0,
+          macroWarnings: [],
           body: {},
         },
       },
@@ -572,6 +573,7 @@ describe('late and stray actions', () => {
           tokenCounts: {},
           totalTokens: 0,
           droppedMessages: 0,
+          macroWarnings: [],
           body: {},
         },
       });

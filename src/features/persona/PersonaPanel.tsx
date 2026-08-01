@@ -3,12 +3,12 @@
  *
  * Two different selections live here and they are not the same thing. The radio picks the
  * persona THIS chat uses (`ChatMetadata.persona`); the "default for new chats" control
- * sets `AppSettings.personaId`. Picking one for the chat also makes it the default, so
- * the common case is one click — but changing the default never reaches back into a chat
- * already in progress, because a transcript records who you were when you wrote it.
+ * sets `AppSettings.personaId`. They change independently: selecting a row affects only
+ * the open chat, and the checkbox is the sole control for new-chat defaults.
  */
 
 import type { Persona } from '@shared/types/chat.ts';
+import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import { useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
@@ -20,6 +20,8 @@ const SAVE_DELAY = 500;
 
 const POSITION_OPTIONS = [
   { label: 'In the prompt (at the marker)', value: 'inPrompt' as const },
+  { label: 'Above Author’s Note', value: 'topAuthorNote' as const },
+  { label: 'Below Author’s Note', value: 'bottomAuthorNote' as const },
   { label: 'At a depth in the chat', value: 'atDepth' as const },
   { label: 'Nowhere — macro only', value: 'none' as const },
 ];
@@ -32,6 +34,7 @@ const ROLE_OPTIONS = [
 
 interface PersonaPanelProps {
   personas: Persona[];
+  books: LorebookSummary[];
   /** The persona the open chat is using. */
   active: Persona | null;
   /** The default for new chats. */
@@ -45,6 +48,7 @@ interface PersonaPanelProps {
 
 export function PersonaPanel({
   personas,
+  books,
   active,
   defaultId,
   hasChat,
@@ -168,12 +172,7 @@ export function PersonaPanel({
             <button
               type="button"
               className="persona-list__pick"
-              onClick={() => {
-                // Picking for the chat also becomes the default, so the next new chat
-                // inherits it without a second click.
-                onSelectForChat(persona.id);
-                onSelectDefault(persona.id);
-              }}
+              onClick={() => onSelectForChat(persona.id)}
               disabled={!hasChat}
               title={hasChat ? 'Use in this chat' : 'Open a chat first'}
             >
@@ -251,7 +250,7 @@ export function PersonaPanel({
           </label>
 
           <Section title="Placement">
-            <SelectField<'inPrompt' | 'atDepth' | 'none'>
+            <SelectField<'inPrompt' | 'topAuthorNote' | 'bottomAuthorNote' | 'atDepth' | 'none'>
               label="Where the description goes"
               value={draft.position ?? 'inPrompt'}
               options={POSITION_OPTIONS}
@@ -275,6 +274,24 @@ export function PersonaPanel({
                   onChange={(role) => patch({ role })}
                 />
               </div>
+            ) : null}
+          </Section>
+
+          <Section title="Lorebook">
+            <SelectField<string>
+              label="Persona lorebook"
+              value={draft.lorebookId ?? ''}
+              options={[
+                { label: 'None', value: '' },
+                ...books.map((book) => ({ label: book.name, value: book.id })),
+              ]}
+              onChange={(lorebookId) => patch({ lorebookId: lorebookId || null })}
+              hint="Loaded ahead of character and global lore whenever this persona is active."
+            />
+            {draft.lorebookId && !books.some((book) => book.id === draft.lorebookId) ? (
+              <p className="wc-hint persona-panel__warning">
+                Missing lorebook “{draft.lorebookId}”. Generation will continue without it.
+              </p>
             ) : null}
           </Section>
 

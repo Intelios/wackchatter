@@ -1,7 +1,7 @@
 import { type AssembleResult, assemblePrompt } from '@shared/prompt/assemble.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import type { ChatMessage, Persona } from '@shared/types/chat.ts';
+import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
@@ -19,6 +19,8 @@ export interface PromptPreviewInput {
   worldInfoSources?: WorldInfoSource[];
   worldInfoSettings?: WorldInfoSettings;
   chatId?: string | null;
+  chatMetadata?: ChatMetadata;
+  globalVariables?: MacroVariableMap;
 }
 
 export type PromptPreview = AssembleResult & {
@@ -50,6 +52,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const worldInfoSources = input?.worldInfoSources;
   const worldInfoSettings = input?.worldInfoSettings;
   const chatId = input?.chatId ?? null;
+  const chatMetadata = input?.chatMetadata;
+  const globalVariables = input?.globalVariables;
 
   useEffect(() => {
     if (!preset || !character || !messages || !countTokens) {
@@ -79,6 +83,11 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           worldInfoBefore: lore?.before,
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
+          scenarioOverride:
+            typeof chatMetadata?.scenario === 'string' ? chatMetadata.scenario : undefined,
+          authorNote: chatMetadata?.authorNote,
+          localVariables: chatMetadata?.variables ?? {},
+          globalVariables: globalVariables ?? {},
           countTokens,
         });
 
@@ -99,6 +108,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     worldInfoSources,
     worldInfoSettings,
     chatId,
+    chatMetadata,
+    globalVariables,
   ]);
 
   return result;

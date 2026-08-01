@@ -1,3 +1,4 @@
+import { PROVIDERS } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
@@ -172,7 +173,44 @@ export function App() {
     [settings?.globalLorebooks],
   );
 
-  const lore = useLorebooks({ character, globalIds: globalBookIds, books });
+  const saveSettingsStrict = useCallback(async (patch: Record<string, unknown>) => {
+    try {
+      setSettings(await settingsApi.save(patch));
+    } catch (err) {
+      setError((err as Error).message);
+      throw err;
+    }
+  }, []);
+
+  const patchSettings = useCallback(
+    async (patch: Record<string, unknown>) => {
+      try {
+        await saveSettingsStrict(patch);
+      } catch {
+        // The error is already visible in the app shell. Ordinary UI autosaves are
+        // fire-and-forget and must not create an unhandled rejected promise.
+      }
+    },
+    [saveSettingsStrict],
+  );
+
+  const commitGlobalVariables = useCallback(
+    async (variables: SettingsResponse['variables']) => {
+      await saveSettingsStrict({ variables });
+    },
+    [saveSettingsStrict],
+  );
+
+  const personaLorebookIds = useMemo(
+    () => personas.flatMap((persona) => (persona.lorebookId ? [persona.lorebookId] : [])),
+    [personas],
+  );
+  const lore = useLorebooks({
+    character,
+    globalIds: globalBookIds,
+    books,
+    personaIds: personaLorebookIds,
+  });
 
   const chat = useChat({
     characterId: selected,
@@ -184,8 +222,16 @@ export function App() {
     countTokens,
     streamingFps: settings?.streamingFps ?? 30,
     worldInfoSources: lore.sources,
+    resolveWorldInfoSources: lore.sourcesForPersona,
     worldInfoSettings,
+    globalVariables: settings?.variables ?? {},
+    onGlobalVariablesChange: commitGlobalVariables,
   });
+
+  const activeLoreSources = useMemo(
+    () => lore.sourcesForPersona(chat.persona?.lorebookId ?? undefined),
+    [lore.sourcesForPersona, chat.persona?.lorebookId],
+  );
 
   // Live per-prompt token counts for the Prompt Manager. Uses the same resolved persona
   // as the send, so the preview cannot disagree with what actually ships.
@@ -197,20 +243,14 @@ export function App() {
           persona: chat.persona,
           messages: chat.messages,
           countTokens,
-          worldInfoSources: lore.sources,
+          worldInfoSources: activeLoreSources,
           worldInfoSettings,
           chatId: chat.state.chatId,
+          chatMetadata: chat.state.metadata,
+          globalVariables: settings?.variables ?? {},
         }
       : null,
   );
-
-  const patchSettings = useCallback(async (patch: Record<string, unknown>) => {
-    try {
-      setSettings(await settingsApi.save(patch));
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }, []);
 
   const transitionToCharacter = useCallback(
     async (avatar: string, editing = false) => {
@@ -276,6 +316,10 @@ export function App() {
             onPresetChange={setPreset}
             onPresetsChanged={refreshPresets}
             tokenCounts={preview?.tokenCounts}
+            macroWarnings={preview?.macroWarnings}
+            extraSamplersSent={
+              connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
+            }
             connection={<ConnectionPanel settings={settings} onChange={setSettings} />}
             // The last generation's result when there is one, else the live preview —
             // so the report answers "why didn't it fire?" before you send, too.
@@ -317,10 +361,13 @@ export function App() {
                     chats={chat.chats}
                     activeId={chat.state.chatId}
                     title={chat.state.title}
+                    metadata={chat.state.metadata}
+                    inheritedScenario={character?.scenario ?? ''}
                     onOpen={(id) => void chat.openChat(id)}
                     onNew={() => void chat.newChat()}
                     onDelete={(id) => void chat.deleteChat(id)}
                     onRename={chat.renameChat}
+                    onMetadataChange={chat.updateMetadata}
                   />
                 ) : null}
                 <CharacterList
@@ -339,9 +386,12 @@ export function App() {
               <LorePanel
                 books={books}
                 settings={worldInfoSettings}
-                onBooksChanged={refreshBooks}
+                onBooksChanged={() => {
+                  void refreshBooks();
+                  void refreshPersonas();
+                }}
                 onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
-                activeBooks={lore.active}
+                activeBooks={lore.activeForPersona(chat.persona?.lorebookId ?? undefined)}
                 onBookEdited={lore.invalidate}
               />
             ) : null}
@@ -349,6 +399,7 @@ export function App() {
             {rightTab === 'you' ? (
               <PersonaPanel
                 personas={personas}
+                books={books}
                 active={chat.persona}
                 defaultId={settings?.personaId ?? null}
                 hasChat={Boolean(chat.state.chatId)}

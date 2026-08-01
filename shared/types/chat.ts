@@ -55,7 +55,40 @@ export interface ChatMetadata {
    * one another: a transcript records who "you" were when it was written.
    */
   persona?: string | null;
+  /** SillyTavern-compatible variables scoped to this chat. */
+  variables?: MacroVariableMap;
+  /** Lightweight, chat-scoped Author's Note configuration. */
+  authorNote?: Partial<AuthorNoteSettings>;
   [key: string]: unknown;
+}
+
+/** Values supported by SillyTavern's legacy variable macros. */
+export type MacroValue = string | number;
+export type MacroVariableMap = Record<string, MacroValue>;
+
+export type AuthorNotePosition = 'beforeScenario' | 'afterScenario' | 'atDepth';
+
+export interface AuthorNoteSettings {
+  text: string;
+  /** Inject every N user turns. Values <= 0 disable the note. */
+  interval: number;
+  position: AuthorNotePosition;
+  depth: number;
+  role: 'system' | 'user' | 'assistant';
+}
+
+export const DEFAULT_AUTHOR_NOTE: Readonly<AuthorNoteSettings> = {
+  text: '',
+  interval: 1,
+  position: 'atDepth',
+  depth: 4,
+  role: 'system',
+};
+
+export interface MacroWarning {
+  macro: string;
+  /** Prompt identifier, message id, or synthesized section that contained it. */
+  source: string;
 }
 
 export interface Chat {
@@ -105,8 +138,10 @@ export interface Persona {
   avatar: string | null;
   /** Injection depth when position is 'atDepth'. */
   depth?: number;
-  position?: 'inPrompt' | 'atDepth' | 'none';
+  position?: 'inPrompt' | 'topAuthorNote' | 'bottomAuthorNote' | 'atDepth' | 'none';
   role?: 'system' | 'user' | 'assistant';
+  /** Standalone lorebook id activated whenever this persona is active. */
+  lorebookId?: string | null;
 }
 
 /** The message shape sent to the provider. */

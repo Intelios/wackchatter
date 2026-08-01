@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getPromptOrder, setPromptOrder } from '@shared/prompt/preset-io.ts';
+import { addCustomPrompt, getPromptOrder, setPromptOrder } from '@shared/prompt/preset-io.ts';
 import type { Preset, Prompt, PromptOrderEntry } from '@shared/types/preset.ts';
 import { INJECTION_POSITION, isMarkerIdentifier } from '@shared/types/preset.ts';
 import { useMemo } from 'react';
@@ -149,6 +149,12 @@ export function PromptManager({
     );
   }
 
+  function handleAdd() {
+    const created = addCustomPrompt(preset);
+    onChange(created.preset);
+    onSelect(created.identifier);
+  }
+
   return (
     <div className="prompt-manager">
       <DndContext
@@ -176,6 +182,9 @@ export function PromptManager({
           </ul>
         </SortableContext>
       </DndContext>
+      <button type="button" className="wc-button wc-button--ghost" onClick={handleAdd}>
+        Add custom prompt
+      </button>
     </div>
   );
 }

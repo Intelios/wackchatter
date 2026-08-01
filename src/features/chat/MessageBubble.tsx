@@ -24,6 +24,8 @@ interface MessageBubbleProps {
   /** The final message in the transcript, which is the only one that can be acted on. */
   isLast: boolean;
   busy: boolean;
+  /** Render-only text, used for raw greeting macros. Editing still receives stored text. */
+  displayText?: string;
   onSwipe: (direction: -1 | 1) => void;
   onRegenerate: () => void;
   onContinue: () => void;
@@ -42,6 +44,7 @@ export function MessageBubble({
   stream,
   isLast,
   busy,
+  displayText,
   onSwipe,
   onRegenerate,
   onContinue,
@@ -57,6 +60,7 @@ export function MessageBubble({
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   const text = currentText(message);
+  const renderedText = displayText ?? text;
   const swipes = swipeCount(message);
   const info = message.swipe_info[message.swipe_id];
 
@@ -152,7 +156,7 @@ export function MessageBubble({
                 <div className="message__reasoning-body">{String(info.extra.reasoning)}</div>
               </details>
             ) : null}
-            <Markdown text={text} />
+            <Markdown text={renderedText} />
           </>
         )}
 

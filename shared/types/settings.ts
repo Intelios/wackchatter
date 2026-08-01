@@ -8,6 +8,7 @@
 
 import type { ConnectionSettings, ProviderId } from '../providers/types.ts';
 import { DEFAULT_CONNECTION } from '../providers/types.ts';
+import type { MacroVariableMap } from './chat.ts';
 import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
@@ -21,6 +22,8 @@ export interface AppSettings {
    * you wrote it.
    */
   personaId: string | null;
+  /** SillyTavern-compatible variables shared by every chat. */
+  variables: MacroVariableMap;
   /** Global World Info scan settings. ST stores these per-app too, not per-book. */
   worldInfo: WorldInfoSettings;
   /** Force a tokenizer encoding instead of inferring it from the model id. */
@@ -42,6 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   connection: { ...DEFAULT_CONNECTION },
   streamingFps: 30,
   personaId: null,
+  variables: {},
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
 };

@@ -32,7 +32,26 @@ export function PromptInspector({ inspection }: { inspection: PromptInspection |
             {inspection.droppedMessages} dropped
           </span>
         ) : null}
+        {inspection.macroWarnings.length > 0 ? (
+          <span className="inspector__warn">
+            {inspection.macroWarnings.length} unresolved macro
+            {inspection.macroWarnings.length === 1 ? '' : 's'}
+          </span>
+        ) : null}
       </div>
+
+      {inspection.macroWarnings.length > 0 ? (
+        <details className="inspector__warnings">
+          <summary>Unresolved macros</summary>
+          <ul>
+            {inspection.macroWarnings.map((warning) => (
+              <li key={`${warning.source}:${warning.macro}`}>
+                <code>{warning.macro}</code> in {warning.source}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       <div className="inspector__tabs">
         <button

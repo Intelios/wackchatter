@@ -8,7 +8,7 @@
  */
 
 import type { Preset, Prompt, PromptOrderEntry, PromptOrderList } from '../types/preset.ts';
-import { PROMPT_ORDER_LIVE_ID } from '../types/preset.ts';
+import { INJECTION_POSITION, PROMPT_ORDER_LIVE_ID, isBuiltinIdentifier } from '../types/preset.ts';
 import { DEFAULT_PROMPTS, DEFAULT_PROMPT_ORDER, PRESET_DEFAULTS } from './defaults.ts';
 
 /**
@@ -192,4 +192,40 @@ export function updatePrompt(preset: Preset, identifier: string, changes: Partia
     p.identifier === identifier ? { ...p, ...changes } : p,
   );
   return { ...preset, prompts };
+}
+
+/** Add an enabled custom prompt to the end of the live order. */
+export function addCustomPrompt(
+  preset: Preset,
+  identifier = `custom-${crypto.randomUUID()}`,
+): { preset: Preset; identifier: string } {
+  const prompt: Prompt = {
+    identifier,
+    name: 'New prompt',
+    role: 'system',
+    content: '',
+    injection_position: INJECTION_POSITION.RELATIVE,
+  };
+
+  return {
+    identifier,
+    preset: setPromptOrder({ ...preset, prompts: [...(preset.prompts ?? []), prompt] }, [
+      ...getPromptOrder(preset),
+      { identifier, enabled: true },
+    ]),
+  };
+}
+
+/** Remove a custom prompt everywhere while protecting the twelve built-ins. */
+export function deleteCustomPrompt(preset: Preset, identifier: string): Preset {
+  if (isBuiltinIdentifier(identifier)) return preset;
+
+  return {
+    ...preset,
+    prompts: (preset.prompts ?? []).filter((prompt) => prompt.identifier !== identifier),
+    prompt_order: (preset.prompt_order ?? []).map((list) => ({
+      ...list,
+      order: list.order.filter((entry) => entry.identifier !== identifier),
+    })),
+  };
 }

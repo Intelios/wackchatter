@@ -63,4 +63,18 @@ describe('mergeSettings', () => {
     expect(set.personaId).toBe('abc');
     expect(mergeSettings(set, { personaId: null }).personaId).toBeNull();
   });
+
+  test('global variables replace atomically and discard unsupported values', () => {
+    const current = mergeSettings(base(), { variables: { kept: 1, removed: 'old' } });
+    const next = mergeSettings(current, {
+      variables: { text: 'yes', number: 3, bad: { nested: true } } as never,
+    });
+
+    expect(next.variables).toEqual({ text: 'yes', number: 3 });
+  });
+
+  test('an empty global-variable map clears all globals', () => {
+    const current = mergeSettings(base(), { variables: { score: 10 } });
+    expect(mergeSettings(current, { variables: {} }).variables).toEqual({});
+  });
 });

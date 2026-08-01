@@ -461,3 +461,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.chat-picker__context {
+  border-top: 1px solid var(--wc-border);
+  padding-top: var(--wc-space-2);
+}
+
+.chat-picker__context > summary {
+  cursor: pointer;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+}
+
+.chat-picker__context-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding-top: var(--wc-space-3);
+}

@@ -49,6 +49,8 @@ function normalizePersona(raw: unknown, id: string): Persona {
   }
   if (
     stored.position === 'inPrompt' ||
+    stored.position === 'topAuthorNote' ||
+    stored.position === 'bottomAuthorNote' ||
     stored.position === 'atDepth' ||
     stored.position === 'none'
   ) {
@@ -56,6 +58,9 @@ function normalizePersona(raw: unknown, id: string): Persona {
   }
   if (stored.role === 'system' || stored.role === 'user' || stored.role === 'assistant') {
     persona.role = stored.role;
+  }
+  if (typeof stored.lorebookId === 'string' && stored.lorebookId) {
+    persona.lorebookId = stored.lorebookId;
   }
 
   return persona;
@@ -123,6 +128,15 @@ export function deletePersona(id: string): boolean {
 
   unlinkSync(path);
   return true;
+}
+
+/** Update persona links when a standalone lorebook is renamed or removed. */
+export async function updatePersonaLorebookReferences(
+  currentId: string,
+  nextId: string | null,
+): Promise<void> {
+  const affected = listPersonas().filter((persona) => persona.lorebookId === currentId);
+  await Promise.all(affected.map((persona) => savePersona(persona.id, { lorebookId: nextId })));
 }
 
 /** Store an uploaded avatar and point the persona at it. */

@@ -43,7 +43,7 @@ export function ChatView({ chat, characterName, avatar, ready }: ChatViewProps) 
               <span>No messages yet. Say something to {characterName}.</span>
             </div>
           ) : (
-            state.messages.map((message) => (
+            state.messages.map((message, index) => (
               <MessageBubble
                 key={message.id}
                 message={message}
@@ -52,6 +52,11 @@ export function ChatView({ chat, characterName, avatar, ready }: ChatViewProps) 
                 stream={stream}
                 isLast={message.id === lastId}
                 busy={busy}
+                displayText={
+                  index === 0 && !message.is_user
+                    ? chat.renderGreeting(message.swipes[message.swipe_id] ?? '')
+                    : undefined
+                }
                 onSwipe={(direction) => void chat.swipe(direction)}
                 onRegenerate={() => void chat.regenerate()}
                 onContinue={() => void chat.continueLast()}

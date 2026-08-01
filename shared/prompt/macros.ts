@@ -1,3 +1,5 @@
+import type { MacroValue, MacroVariableMap, MacroWarning } from '../types/chat.ts';
+
 /**
  * Macro substitution.
  *
@@ -28,6 +30,127 @@ export interface MacroEnvironment {
   maxResponse?: number;
   /** Extra one-off macros, e.g. {{original}} when a card overrides a prompt. */
   extra?: Record<string, string | (() => string)>;
+}
+
+/** Mutable only within one assembly. The caller decides whether to persist the result. */
+export interface MacroRuntime {
+  local: MacroVariableMap;
+  global: MacroVariableMap;
+  localChanged: boolean;
+  globalChanged: boolean;
+  warnings: MacroWarning[];
+  /** Internal de-duplication index. */
+  warningKeys: Set<string>;
+}
+
+export interface MacroSubstitutionOptions {
+  runtime?: MacroRuntime;
+  /** Prompt identifier, message id, or synthesized section for diagnostics. */
+  source?: string;
+}
+
+export function createMacroRuntime(
+  local: MacroVariableMap = {},
+  global: MacroVariableMap = {},
+): MacroRuntime {
+  return {
+    local: { ...local },
+    global: { ...global },
+    localChanged: false,
+    globalChanged: false,
+    warnings: [],
+    warningKeys: new Set(),
+  };
+}
+
+function warn(runtime: MacroRuntime, macro: string, source = 'unknown'): void {
+  const key = `${source}\0${macro.toLowerCase()}`;
+  if (runtime.warningKeys.has(key)) return;
+  runtime.warningKeys.add(key);
+  runtime.warnings.push({ macro, source });
+}
+
+function macroString(value: MacroValue | undefined): string {
+  return value === undefined ? '' : String(value);
+}
+
+function numeric(value: MacroValue | undefined): number | null {
+  if (value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function storedValue(value: string): MacroValue {
+  const parsed = numeric(value);
+  return parsed === null ? value : parsed;
+}
+
+function variablePair(args: string): [string, string] {
+  const doubleColon = args.indexOf('::');
+  if (doubleColon !== -1) {
+    return [args.slice(0, doubleColon).trim(), args.slice(doubleColon + 2).trim()];
+  }
+
+  const whitespace = args.search(/\s/);
+  if (whitespace === -1) return [args.trim(), ''];
+  return [args.slice(0, whitespace).trim(), args.slice(whitespace).trim()];
+}
+
+function variableMap(runtime: MacroRuntime, global: boolean): MacroVariableMap {
+  return global ? runtime.global : runtime.local;
+}
+
+function markVariableChange(runtime: MacroRuntime, global: boolean): void {
+  if (global) runtime.globalChanged = true;
+  else runtime.localChanged = true;
+}
+
+function setVariable(
+  runtime: MacroRuntime,
+  global: boolean,
+  name: string,
+  value: MacroValue,
+): void {
+  variableMap(runtime, global)[name] = value;
+  markVariableChange(runtime, global);
+}
+
+function addVariable(
+  runtime: MacroRuntime,
+  global: boolean,
+  name: string,
+  raw: string,
+): MacroValue {
+  const map = variableMap(runtime, global);
+  const current = map[name] ?? 0;
+
+  if (typeof current === 'string') {
+    try {
+      const parsed = JSON.parse(current);
+      if (Array.isArray(parsed)) {
+        parsed.push(storedValue(raw));
+        setVariable(runtime, global, name, JSON.stringify(parsed));
+        return map[name]!;
+      }
+    } catch {
+      // A normal string is handled below.
+    }
+  }
+
+  const left = numeric(current);
+  const right = numeric(raw);
+  const next = left !== null && right !== null ? left + right : `${macroString(current)}${raw}`;
+  setVariable(runtime, global, name, next);
+  return next;
+}
+
+function changeVariable(
+  runtime: MacroRuntime,
+  global: boolean,
+  name: string,
+  delta: number,
+): MacroValue {
+  return addVariable(runtime, global, name, String(delta));
 }
 
 /** Two-digit zero pad. */
@@ -103,12 +226,26 @@ export function hashString(value: string): number {
  *
  * @param seed Stabilises {{pick}}. Pass something chat-scoped so a pick stays put.
  */
-export function substituteMacros(text: string, env: MacroEnvironment, seed = ''): string {
+export function substituteMacros(
+  text: string,
+  env: MacroEnvironment,
+  seed = '',
+  options: MacroSubstitutionOptions = {},
+): string {
   if (!text) return '';
+
+  const runtime = options.runtime ?? createMacroRuntime();
+  const diagnosticSource = options.source ?? 'unknown';
+
+  // SillyTavern's pre-curly legacy identity tokens are still common in older cards.
+  const withLegacyNames = text.replace(
+    /<(USER|BOT|CHAR|GROUP|CHARIFNOTGROUP)>/gi,
+    (_match, name: string) => (name.toLowerCase() === 'user' ? env.user : env.char),
+  );
 
   // {{trim}} eats the whitespace around its own position. Handled up front, on its own,
   // so the general pass never needs a sentinel value that could collide with real text.
-  const source = text.replace(/\s*\{\{trim\}\}\s*/gi, '');
+  const source = withLegacyNames.replace(/\s*\{\{trim\}\}\s*/gi, '');
   if (!source) return '';
 
   const now = new Date();
@@ -142,6 +279,8 @@ export function substituteMacros(text: string, env: MacroEnvironment, seed = '')
     maxcontexttokens: () => String(env.maxContext ?? ''),
     maxresponse: () => String(env.maxResponse ?? ''),
     maxresponsetokens: () => String(env.maxResponse ?? ''),
+    maxprompt: () => String(Math.max(0, (env.maxContext ?? 0) - (env.maxResponse ?? 0))),
+    maxprompttokens: () => String(Math.max(0, (env.maxContext ?? 0) - (env.maxResponse ?? 0))),
     time: () => formatTime(now),
     date: () => `${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`,
     weekday: () => WEEKDAYS[now.getDay()]!,
@@ -190,12 +329,89 @@ export function substituteMacros(text: string, env: MacroEnvironment, seed = '')
       case 'reverse':
         return args.split('').reverse().join('');
 
+      case 'setvar':
+      case 'setglobalvar': {
+        const [variable, value] = variablePair(args);
+        if (!variable) {
+          warn(runtime, match, diagnosticSource);
+          return match;
+        }
+        setVariable(runtime, name === 'setglobalvar', variable, storedValue(value));
+        return '';
+      }
+
+      case 'addvar':
+      case 'addglobalvar': {
+        const [variable, value] = variablePair(args);
+        if (!variable) {
+          warn(runtime, match, diagnosticSource);
+          return match;
+        }
+        addVariable(runtime, name === 'addglobalvar', variable, value);
+        return '';
+      }
+
+      case 'incvar':
+      case 'incglobalvar': {
+        if (!args.trim()) {
+          warn(runtime, match, diagnosticSource);
+          return match;
+        }
+        return String(changeVariable(runtime, name === 'incglobalvar', args.trim(), 1));
+      }
+
+      case 'decvar':
+      case 'decglobalvar': {
+        if (!args.trim()) {
+          warn(runtime, match, diagnosticSource);
+          return match;
+        }
+        return String(changeVariable(runtime, name === 'decglobalvar', args.trim(), -1));
+      }
+
+      case 'getvar':
+      case 'getglobalvar':
+        return macroString(variableMap(runtime, name === 'getglobalvar')[args.trim()]);
+
+      case 'hasvar':
+      case 'varexists':
+      case 'hasglobalvar':
+      case 'globalvarexists':
+        return String(
+          Object.hasOwn(
+            variableMap(runtime, name === 'hasglobalvar' || name === 'globalvarexists'),
+            args.trim(),
+          ),
+        );
+
+      case 'deletevar':
+      case 'flushvar':
+      case 'deleteglobalvar':
+      case 'flushglobalvar': {
+        const global = name === 'deleteglobalvar' || name === 'flushglobalvar';
+        const map = variableMap(runtime, global);
+        const variable = args.trim();
+        if (Object.hasOwn(map, variable)) {
+          delete map[variable];
+          markVariableChange(runtime, global);
+        }
+        return '';
+      }
+
       default: {
         const resolver = values[name];
-        return resolver ? resolver() : match;
+        if (resolver) return resolver();
+        warn(runtime, match, diagnosticSource);
+        return match;
       }
     }
   });
+
+  // Keep diagnostics non-destructive: anything still macro-shaped remains visible in
+  // the prompt and is reported to the preview/inspector rather than blocking generation.
+  for (const match of result.match(/\{\{[^{}]*\}\}|<[A-Z][A-Z0-9_]*>/g) ?? []) {
+    warn(runtime, match, diagnosticSource);
+  }
 
   return result;
 }

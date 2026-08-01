@@ -30,16 +30,77 @@ interface UseLorebooksOptions {
   globalIds: string[];
   /** All known books, so a link can be resolved without a round trip. */
   books: LorebookSummary[];
+  /** Optional books referenced by personas. They are prefetched, but only the active one is used. */
+  personaIds?: string[];
 }
 
 export interface UseLorebooks {
+  /** Sources without a persona book, retained for callers that do not have a persona. */
   sources: WorldInfoSource[];
   active: ActiveBook[];
+  /** Add the active persona's book ahead of every other source, with id-based deduplication. */
+  sourcesForPersona: (id?: string) => WorldInfoSource[];
+  activeForPersona: (id?: string) => ActiveBook[];
   /** Force a reload of one book after it has been edited. */
   invalidate: (id: string) => void;
 }
 
-export function useLorebooks({ character, globalIds, books }: UseLorebooksOptions): UseLorebooks {
+interface ComposeSourcesOptions {
+  character: CardDataV2 | null;
+  linkedName: string | null;
+  loaded: Record<string, WorldInfoBook>;
+  globalIds: string[];
+  personaId?: string;
+}
+
+/** Pure source composition, exported so precedence and deduplication stay testable. */
+export function composeLorebookSources({
+  character,
+  linkedName,
+  loaded,
+  globalIds,
+  personaId,
+}: ComposeSourcesOptions): WorldInfoSource[] {
+  const list: WorldInfoSource[] = [];
+  const standaloneIds = new Set<string>();
+
+  if (personaId && loaded[personaId]) {
+    list.push({ kind: 'persona', name: personaId, book: loaded[personaId]! });
+    standaloneIds.add(personaId);
+  }
+
+  const embedded = character?.character_book;
+  if (embedded?.entries?.length) {
+    list.push({
+      kind: 'embedded',
+      name: embedded.name || character?.name || 'Embedded',
+      book: toWorldInfoBook(embedded),
+    });
+  }
+
+  if (linkedName && loaded[linkedName] && !standaloneIds.has(linkedName)) {
+    list.push({ kind: 'linked', name: linkedName, book: loaded[linkedName]! });
+    standaloneIds.add(linkedName);
+  }
+
+  for (const id of globalIds) {
+    if (standaloneIds.has(id)) continue;
+    const book = loaded[id];
+    if (book) {
+      list.push({ kind: 'global', name: id, book });
+      standaloneIds.add(id);
+    }
+  }
+
+  return list;
+}
+
+export function useLorebooks({
+  character,
+  globalIds,
+  books,
+  personaIds = [],
+}: UseLorebooksOptions): UseLorebooks {
   const [loaded, setLoaded] = useState<Record<string, WorldInfoBook>>({});
   const [version, setVersion] = useState(0);
 
@@ -50,10 +111,13 @@ export function useLorebooks({ character, globalIds, books }: UseLorebooksOption
   const wanted = useMemo(() => {
     const ids = new Set<string>(globalIds);
     if (linkedName) ids.add(linkedName);
+    for (const id of personaIds) {
+      if (id) ids.add(id);
+    }
     // Only ask for books that exist — a card can link to one the user never imported, and
     // a 404 per render is not a useful way to say so.
     return [...ids].filter((id) => books.some((summary) => summary.id === id));
-  }, [globalIds, linkedName, books]);
+  }, [globalIds, linkedName, personaIds, books]);
 
   /**
    * Ids already fetched or in flight.
@@ -104,44 +168,30 @@ export function useLorebooks({ character, globalIds, books }: UseLorebooksOption
     setVersion((v) => v + 1);
   }, []);
 
-  const sources = useMemo(() => {
-    const list: WorldInfoSource[] = [];
+  const sourcesForPersona = useCallback(
+    (personaId?: string) => {
+      return composeLorebookSources({ character, linkedName, loaded, globalIds, personaId });
+    },
+    [character, linkedName, loaded, globalIds],
+  );
 
-    // Precedence order — it is the sort tiebreak, so this sequence is load-bearing, not
-    // cosmetic: an embedded entry outranks a global one at the same `order`.
-    const embedded = character?.character_book;
-    if (embedded?.entries?.length) {
-      list.push({
-        kind: 'embedded',
-        name: embedded.name || character?.name || 'Embedded',
-        book: toWorldInfoBook(embedded),
-      });
-    }
+  const sources = useMemo(() => sourcesForPersona(), [sourcesForPersona]);
 
-    if (linkedName && loaded[linkedName]) {
-      list.push({ kind: 'linked', name: linkedName, book: loaded[linkedName]! });
-    }
-
-    for (const id of globalIds) {
-      // A book linked by the card is already in, as `linked`. Adding it again would
-      // double every entry it contains.
-      if (id === linkedName) continue;
-      const book = loaded[id];
-      if (book) list.push({ kind: 'global', name: id, book });
-    }
-
-    return list;
-  }, [character, linkedName, loaded, globalIds]);
-
-  const active = useMemo(
-    () =>
-      sources.map((source) => ({
+  const toActive = useCallback(
+    (list: WorldInfoSource[]): ActiveBook[] =>
+      list.map((source) => ({
         kind: source.kind,
         name: source.name,
         entryCount: Object.keys(source.book.entries).length,
       })),
-    [sources],
+    [],
   );
 
-  return { sources, active, invalidate };
+  const active = useMemo(() => toActive(sources), [sources, toActive]);
+  const activeForPersona = useCallback(
+    (id?: string) => toActive(sourcesForPersona(id)),
+    [sourcesForPersona, toActive],
+  );
+
+  return { sources, active, sourcesForPersona, activeForPersona, invalidate };
 }

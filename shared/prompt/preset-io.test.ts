@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { PROMPT_ORDER_LEGACY_ID, PROMPT_ORDER_LIVE_ID } from '../types/preset.ts';
 import {
+  addCustomPrompt,
+  deleteCustomPrompt,
   getPromptOrder,
   migratePreset,
   normalizePreset,
@@ -203,5 +205,51 @@ describe('editing', () => {
 
     updatePrompt(preset, 'main', { content: 'Changed.' });
     expect(preset.prompts!.find((p) => p.identifier === 'main')!.content).toBe(before);
+  });
+
+  test('creates an enabled, empty, relative system prompt at the end of the live order', () => {
+    const preset = normalizePreset(loadStDefault());
+    const created = addCustomPrompt(preset, 'custom-test-id');
+    const prompt = created.preset.prompts?.find((item) => item.identifier === created.identifier);
+
+    expect(prompt).toMatchObject({
+      identifier: 'custom-test-id',
+      role: 'system',
+      content: '',
+      injection_position: 0,
+    });
+    expect(getPromptOrder(created.preset).at(-1)).toEqual({
+      identifier: 'custom-test-id',
+      enabled: true,
+    });
+    expect(preset.prompts?.some((item) => item.identifier === 'custom-test-id')).toBe(false);
+  });
+
+  test('deletes a custom prompt from prompts and every order list', () => {
+    const created = addCustomPrompt(normalizePreset(loadStDefault()), 'custom-delete');
+    const withExtraOrder = {
+      ...created.preset,
+      prompt_order: [
+        ...(created.preset.prompt_order ?? []),
+        {
+          character_id: 42,
+          order: [{ identifier: 'custom-delete', enabled: false }],
+        },
+      ],
+    };
+    const deleted = deleteCustomPrompt(withExtraOrder, 'custom-delete');
+
+    expect(deleted.prompts?.some((prompt) => prompt.identifier === 'custom-delete')).toBe(false);
+    expect(
+      deleted.prompt_order?.every((list) =>
+        list.order.every((entry) => entry.identifier !== 'custom-delete'),
+      ),
+    ).toBe(true);
+  });
+
+  test('built-ins and markers are protected from deletion', () => {
+    const preset = normalizePreset(loadStDefault());
+    expect(deleteCustomPrompt(preset, 'main')).toBe(preset);
+    expect(deleteCustomPrompt(preset, 'chatHistory')).toBe(preset);
   });
 });

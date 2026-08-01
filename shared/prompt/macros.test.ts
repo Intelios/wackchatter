@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type MacroEnvironment, substituteMacros } from './macros.ts';
+import { type MacroEnvironment, createMacroRuntime, substituteMacros } from './macros.ts';
 
 const env: MacroEnvironment = {
   char: 'Seraphina',
@@ -35,6 +35,12 @@ describe('identity macros', () => {
   test('group and charIfNotGroup fall back to the character in single chats', () => {
     expect(substituteMacros('{{charIfNotGroup}}', env)).toBe('Seraphina');
     expect(substituteMacros('{{group}}', env)).toBe('Seraphina');
+  });
+
+  test('supports legacy angle-bracket identity names', () => {
+    expect(substituteMacros('<USER>|<BOT>|<CHAR>|<GROUP>|<CHARIFNOTGROUP>', env)).toBe(
+      'Jack|Seraphina|Seraphina|Seraphina|Seraphina',
+    );
   });
 
   test('leaves unknown macros untouched rather than blanking them', () => {
@@ -127,6 +133,97 @@ describe('extra macros', () => {
       extra: { original: 'ORIGINAL TEXT', lazy: () => 'COMPUTED' },
     });
     expect(result).toBe('ORIGINAL TEXT and COMPUTED');
+  });
+});
+
+describe('stateful variables', () => {
+  test('local operations mutate sequentially with ST return values', () => {
+    const runtime = createMacroRuntime();
+    const result = substituteMacros(
+      '{{setvar::score::2}}{{addvar score 3}}' +
+        '{{getvar::score}}/{{incvar score}}/{{decvar::score}}/{{hasvar::score}}' +
+        '{{deletevar score}}{{varexists::score}}',
+      env,
+      '',
+      { runtime, source: 'test' },
+    );
+
+    expect(result).toBe('5/6/5/truefalse');
+    expect(runtime.local).toEqual({});
+    expect(runtime.localChanged).toBe(true);
+  });
+
+  test('global operations and legacy aliases mirror local ones', () => {
+    const runtime = createMacroRuntime({}, { total: 4 });
+    const result = substituteMacros(
+      '{{addglobalvar::total::2}}{{getglobalvar total}}/' +
+        '{{incglobalvar::total}}/{{decglobalvar total}}/' +
+        '{{globalvarexists total}}{{flushglobalvar::total}}{{hasglobalvar total}}',
+      env,
+      '',
+      { runtime, source: 'test' },
+    );
+
+    expect(result).toBe('6/7/6/truefalse');
+    expect(runtime.global).toEqual({});
+    expect(runtime.globalChanged).toBe(true);
+  });
+
+  test('addition is numeric for two numbers and concatenates otherwise', () => {
+    const runtime = createMacroRuntime({ number: '2', text: 'two' });
+    substituteMacros('{{addvar::number::3}}{{addvar::text::3}}{{addvar::missing::4}}', env, '', {
+      runtime,
+    });
+
+    expect(runtime.local).toEqual({ number: 5, text: 'two3', missing: 4 });
+  });
+
+  test('JSON arrays append a coerced value', () => {
+    const runtime = createMacroRuntime({ list: '["one"]' });
+    substituteMacros('{{addvar::list::2}}', env, '', { runtime });
+    expect(runtime.local.list).toBe('["one",2]');
+  });
+
+  test('inc and dec use zero only when the value is missing', () => {
+    const runtime = createMacroRuntime({ label: 'chapter-' });
+    expect(
+      substituteMacros('{{incvar::missing}}/{{decvar::other}}/{{incvar::label}}', env, '', {
+        runtime,
+      }),
+    ).toBe('1/-1/chapter-1');
+  });
+});
+
+describe('diagnostics', () => {
+  test('keeps unresolved curly and legacy-angle macros and reports their sources', () => {
+    const runtime = createMacroRuntime();
+    const text = substituteMacros('{{unknown}} <UNKNOWN>', env, '', {
+      runtime,
+      source: 'prompt:custom',
+    });
+
+    expect(text).toBe('{{unknown}} <UNKNOWN>');
+    expect(runtime.warnings).toEqual([
+      { macro: '{{unknown}}', source: 'prompt:custom' },
+      { macro: '<UNKNOWN>', source: 'prompt:custom' },
+    ]);
+  });
+
+  test('deduplicates the same macro within one source but not across sources', () => {
+    const runtime = createMacroRuntime();
+    substituteMacros('{{unknown}} {{UNKNOWN}}', env, '', { runtime, source: 'one' });
+    substituteMacros('{{unknown}}', env, '', { runtime, source: 'two' });
+
+    expect(runtime.warnings).toEqual([
+      { macro: '{{unknown}}', source: 'one' },
+      { macro: '{{unknown}}', source: 'two' },
+    ]);
+  });
+
+  test('does not mistake ordinary lowercase HTML tags for legacy macros', () => {
+    const runtime = createMacroRuntime();
+    expect(substituteMacros('<b>hello</b>', env, '', { runtime })).toBe('<b>hello</b>');
+    expect(runtime.warnings).toEqual([]);
   });
 });
 

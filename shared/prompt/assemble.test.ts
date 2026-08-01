@@ -186,6 +186,96 @@ describe('character card overrides', () => {
 
     expect(assemble({ preset, character }).messages[0]!.content).toBe('Stay in character.');
   });
+
+  test('{{original}} exposes the resolved preset prompt once inside a card override', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'main', {
+      content: '{{setvar::phase::original}}Preset {{char}}',
+    });
+    preset = setPromptOrder(preset, [{ identifier: 'main', enabled: true }]);
+    const character = makeCharacter({
+      system_prompt: '{{getvar::phase}} / {{original}} / {{original}}',
+    });
+
+    const result = assemble({ preset, character });
+    expect(result.messages[0]!.content).toBe('original / Preset Seraphina / ');
+    expect(result.variableUpdates.local).toEqual({ phase: 'original' });
+  });
+});
+
+describe('scenario overrides', () => {
+  const scenarioPreset = () =>
+    updatePrompt(
+      setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'scenario', enabled: true },
+      ]),
+      'main',
+      { content: 'Macro: {{scenario}}' },
+    );
+
+  test('missing inherits the character scenario', () => {
+    expect(
+      assemble({ preset: scenarioPreset() }).messages.map((message) => message.content),
+    ).toEqual(['Macro: A glade in Eldoria.', 'A glade in Eldoria.']);
+  });
+
+  test('a value overrides both the marker and every macro occurrence', () => {
+    expect(
+      assemble({ preset: scenarioPreset(), scenarioOverride: 'A moonlit harbour.' }).messages.map(
+        (message) => message.content,
+      ),
+    ).toEqual(['Macro: A moonlit harbour.', 'A moonlit harbour.']);
+  });
+
+  test('an explicit empty override deliberately clears both paths', () => {
+    expect(
+      assemble({ preset: scenarioPreset(), scenarioOverride: '' }).messages.map(
+        (message) => message.content,
+      ),
+    ).toEqual(['Macro: ']);
+  });
+});
+
+describe('macro state and diagnostics during assembly', () => {
+  test('mutations sequence across prompts without changing the input maps', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'main', {
+      content: '{{setvar::step::1}}first',
+    });
+    preset = updatePrompt(preset, 'jailbreak', {
+      content: '{{incvar::step}}/{{setglobalvar::seen::yes}}{{getglobalvar::seen}}',
+    });
+    preset = setPromptOrder(preset, [
+      { identifier: 'main', enabled: true },
+      { identifier: 'jailbreak', enabled: true },
+    ]);
+    const local = { untouched: 'yes' };
+    const global = { old: 2 };
+
+    const result = assemble({ preset, localVariables: local, globalVariables: global });
+
+    expect(result.messages.map((message) => message.content)).toEqual(['first', '2/yes']);
+    expect(result.variableUpdates).toMatchObject({
+      local: { untouched: 'yes', step: 2 },
+      global: { old: 2, seen: 'yes' },
+      localChanged: true,
+      globalChanged: true,
+    });
+    expect(local).toEqual({ untouched: 'yes' });
+    expect(global).toEqual({ old: 2 });
+  });
+
+  test('unresolved warnings carry their source and deduplicate repeats', () => {
+    const preset = updatePrompt(
+      setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]),
+      'main',
+      { content: '{{missing}} {{MISSING}} <OLD_MACRO>' },
+    );
+
+    expect(assemble({ preset }).macroWarnings).toEqual([
+      { macro: '{{missing}}', source: 'prompt:main' },
+      { macro: '<OLD_MACRO>', source: 'prompt:main' },
+    ]);
+  });
 });
 
 describe('token budget', () => {
@@ -569,6 +659,84 @@ describe('continue', () => {
   });
 });
 
+describe('send_if_empty', () => {
+  const historyPreset = () => ({
+    ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+    new_chat_prompt: '',
+    send_if_empty: 'Please continue as {{char}}.',
+  });
+  const assistant: ChatMessage = {
+    id: 'a',
+    name: 'Seraphina',
+    is_user: false,
+    is_system: false,
+    mes: 'Waiting.',
+    send_date: '',
+  };
+  const user: ChatMessage = {
+    ...assistant,
+    id: 'u',
+    name: 'User',
+    is_user: true,
+    mes: 'Hello.',
+  };
+
+  test('adds a substituted user message after an assistant ending', () => {
+    const result = assemble({ preset: historyPreset(), messages: [assistant] });
+    expect(result.messages.at(-1)).toEqual({
+      role: 'user',
+      content: 'Please continue as Seraphina.',
+    });
+    expect(result.tokenCounts.emptyUserMessageReplacement).toBeDefined();
+  });
+
+  test('does nothing after a user ending or for a blank setting', () => {
+    expect(assemble({ preset: historyPreset(), messages: [user] }).messages.at(-1)?.role).toBe(
+      'user',
+    );
+    expect(
+      assemble({ preset: { ...historyPreset(), send_if_empty: '  ' }, messages: [assistant] })
+        .messages,
+    ).toHaveLength(1);
+  });
+
+  test('omits the replacement when the remaining budget cannot afford it', () => {
+    const preset = {
+      ...historyPreset(),
+      send_if_empty: 'two tokens',
+      openai_max_context: 1,
+      openai_max_tokens: 0,
+    };
+    const result = assemble({ preset, messages: [{ ...assistant, mes: 'one' }] });
+    expect(result.ok).toBe(true);
+    expect(result.messages).toEqual([{ role: 'assistant', content: 'one' }]);
+  });
+
+  test('checks the tail after depth injections', () => {
+    const result = assemble({
+      preset: historyPreset(),
+      messages: [assistant],
+      worldInfoDepth: [{ depth: 0, order: 1, role: 'system', content: 'tail injection' }],
+    });
+    expect(result.messages.at(-1)?.content).toBe('tail injection');
+    expect(result.tokenCounts.emptyUserMessageReplacement).toBeUndefined();
+  });
+
+  test('is inserted before continue reshaping', () => {
+    const result = assemble({
+      preset: historyPreset(),
+      messages: [user, assistant],
+      generationType: 'continue',
+    });
+    const replacement = result.messages.findIndex(
+      (message) => message.content === 'Please continue as Seraphina.',
+    );
+    const nudge = result.messages.findIndex((message) => message.content.includes('Continue your'));
+    expect(replacement).toBeGreaterThan(-1);
+    expect(nudge).toBeGreaterThan(replacement);
+  });
+});
+
 describe('example dialogue', () => {
   test('parses <START> blocks into alternating example messages', () => {
     const blocks = parseExampleDialogue(
@@ -590,6 +758,17 @@ describe('example dialogue', () => {
       user: 'Jack',
     });
     expect(blocks[0]![0]!.content).toBe('I am Jack');
+  });
+
+  test('legacy speaker prefixes are recognised', () => {
+    const blocks = parseExampleDialogue('<START>\n<USER>: Hello <BOT>\n<CHAR>: Hello <USER>', {
+      char: 'Sera',
+      user: 'Jack',
+    });
+    expect(blocks[0]).toEqual([
+      { role: 'system', name: 'example_user', content: 'Hello Sera' },
+      { role: 'system', name: 'example_assistant', content: 'Hello Jack' },
+    ]);
   });
 
   test('blocks are admitted whole or not at all', () => {
@@ -837,7 +1016,13 @@ describe('persona position', () => {
   test('{{persona}} keeps resolving at every position', () => {
     // Otherwise a preset referencing the macro would break the moment somebody changed
     // a dropdown — which is also ST's behaviour.
-    for (const position of ['inPrompt', 'atDepth', 'none'] as const) {
+    for (const position of [
+      'inPrompt',
+      'topAuthorNote',
+      'bottomAuthorNote',
+      'atDepth',
+      'none',
+    ] as const) {
       const preset = setPromptOrder({ ...createDefaultPreset(), new_chat_prompt: '' }, [
         { identifier: 'main', enabled: true },
       ]);
@@ -871,5 +1056,148 @@ describe('persona position', () => {
     );
 
     expect(assemble({ preset }).messages[0]!.content).toBe(DEFAULT_USER_NAME);
+  });
+});
+
+describe('Author’s Note', () => {
+  const userTurn = (id: string): ChatMessage => ({
+    id,
+    name: 'User',
+    is_user: true,
+    is_system: false,
+    mes: `turn ${id}`,
+    send_date: '',
+  });
+  const ordered = () => ({
+    ...setPromptOrder(createDefaultPreset(), [
+      { identifier: 'main', enabled: true },
+      { identifier: 'scenario', enabled: true },
+      { identifier: 'chatHistory', enabled: true },
+    ]),
+    new_chat_prompt: '',
+  });
+
+  test('interval <= 0 disables and positive intervals follow user-turn count', () => {
+    const base = { text: 'NOTE', position: 'beforeScenario' as const };
+    expect(
+      assemble({
+        preset: ordered(),
+        messages: [userTurn('1')],
+        authorNote: { ...base, interval: 0 },
+      }).messages.some((message) => message.content === 'NOTE'),
+    ).toBe(false);
+    expect(
+      assemble({
+        preset: ordered(),
+        messages: [userTurn('1')],
+        authorNote: { ...base, interval: 2 },
+      }).messages.some((message) => message.content === 'NOTE'),
+    ).toBe(false);
+    expect(
+      assemble({
+        preset: ordered(),
+        messages: [userTurn('1'), userTurn('2')],
+        authorNote: { ...base, interval: 2 },
+      }).messages.some((message) => message.content === 'NOTE'),
+    ).toBe(true);
+  });
+
+  test('before and after positions anchor around scenario', () => {
+    for (const [position, expected] of [
+      ['beforeScenario', ['NOTE', 'A glade in Eldoria.']],
+      ['afterScenario', ['A glade in Eldoria.', 'NOTE']],
+    ] as const) {
+      const result = assemble({
+        preset: setPromptOrder(ordered(), [
+          { identifier: 'scenario', enabled: true },
+          { identifier: 'chatHistory', enabled: true },
+        ]),
+        messages: [userTurn('1')],
+        authorNote: { text: 'NOTE', position },
+      });
+      expect(result.messages.slice(0, 2).map((message) => message.content)).toEqual([...expected]);
+    }
+  });
+
+  test('a missing scenario marker falls back immediately before history', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: [userTurn('1')],
+      authorNote: { text: 'NOTE', position: 'afterScenario' },
+    });
+    expect(result.messages.map((message) => message.content)).toEqual([
+      "Write Seraphina's next reply in a fictional chat between Seraphina and User.",
+      'NOTE',
+      'turn 1',
+    ]);
+  });
+
+  test('at-depth honours depth and role', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: [userTurn('1'), { ...userTurn('2'), is_user: false, name: 'Seraphina' }],
+      authorNote: { text: 'NOTE', position: 'atDepth', depth: 1, role: 'assistant' },
+    });
+    expect(result.messages).toEqual([
+      { role: 'user', content: 'turn 1' },
+      { role: 'assistant', content: 'NOTE' },
+      { role: 'assistant', content: 'turn 2' },
+    ]);
+  });
+
+  test('top/bottom persona positions compose around the note with one newline', () => {
+    const persona = {
+      id: 'p',
+      name: 'Ari',
+      description: 'PERSONA',
+      avatar: null,
+    };
+    for (const [position, content] of [
+      ['topAuthorNote', 'PERSONA\nNOTE'],
+      ['bottomAuthorNote', 'NOTE\nPERSONA'],
+    ] as const) {
+      const result = assemble({
+        preset: ordered(),
+        messages: [userTurn('1')],
+        persona: { ...persona, position },
+        authorNote: { text: 'NOTE', position: 'beforeScenario', role: 'user' },
+      });
+      expect(result.messages.find((message) => message.content === content)).toEqual({
+        role: 'user',
+        content,
+      });
+    }
+  });
+
+  test('relative note follows an absolute scenario marker at the same depth', () => {
+    let preset = updatePrompt(ordered(), 'scenario', {
+      injection_position: INJECTION_POSITION.ABSOLUTE,
+      injection_depth: 0,
+      injection_order: 20,
+    });
+    preset = setPromptOrder(preset, [
+      { identifier: 'scenario', enabled: true },
+      { identifier: 'chatHistory', enabled: true },
+    ]);
+    const result = assemble({
+      preset,
+      messages: [userTurn('1')],
+      authorNote: { text: 'NOTE', position: 'beforeScenario' },
+    });
+    expect(result.messages.slice(-2).map((message) => message.content)).toEqual([
+      'NOTE',
+      'A glade in Eldoria.',
+    ]);
   });
 });

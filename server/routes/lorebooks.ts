@@ -10,6 +10,7 @@ import {
   renameLorebook,
   saveLorebook,
 } from '../lib/lorebooks.ts';
+import { updatePersonaLorebookReferences } from '../lib/personas.ts';
 
 export async function handleLorebookRoute(
   request: Request,
@@ -67,6 +68,9 @@ export async function handleLorebookRoute(
     if (!body?.name) return errorResponse('A new name is required.');
 
     const summary = renameLorebook(id, body.name);
+    if (summary && summary.id !== id) {
+      await updatePersonaLorebookReferences(id, summary.id);
+    }
     return summary ? json(summary) : notFound('Lorebook not found.');
   }
 
@@ -86,7 +90,9 @@ export async function handleLorebookRoute(
     }
 
     if (method === 'DELETE') {
-      return deleteLorebook(id) ? json({ ok: true }) : notFound('Lorebook not found.');
+      if (!deleteLorebook(id)) return notFound('Lorebook not found.');
+      await updatePersonaLorebookReferences(id, null);
+      return json({ ok: true });
     }
   }
 

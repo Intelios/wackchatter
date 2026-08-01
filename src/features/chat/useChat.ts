@@ -8,6 +8,7 @@
 
 import { type MessageState, currentText } from '@shared/chat/message.ts';
 import { DEFAULT_USER_NAME, assemblePrompt } from '@shared/prompt/assemble.ts';
+import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { ConnectionSettings } from '@shared/providers/types.ts';
@@ -15,8 +16,10 @@ import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
   Chat,
   ChatMessage,
+  ChatMetadata,
   ChatSaveSnapshot,
   ChatSummary,
+  MacroVariableMap,
   Persona,
 } from '@shared/types/chat.ts';
 import type { GenerationType, Preset } from '@shared/types/preset.ts';
@@ -62,7 +65,12 @@ export interface UseChatOptions {
   streamingFps: number;
   /** Lorebooks that apply to this chat, already loaded. */
   worldInfoSources?: WorldInfoSource[];
+  /** Resolve sources after this hook has selected the chat-scoped persona. */
+  resolveWorldInfoSources?: (personaLorebookId?: string) => WorldInfoSource[];
   worldInfoSettings?: WorldInfoSettings;
+  globalVariables: MacroVariableMap;
+  /** Persist global macro effects and refresh the app settings snapshot. */
+  onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
 }
 
 export interface UseChat {
@@ -100,6 +108,9 @@ export interface UseChat {
   /** The persona this chat actually uses. Resolved here, not passed in. */
   persona: Persona | null;
   setPersona(personaId: string | null): void;
+  updateMetadata(patch: Partial<ChatMetadata>): void;
+  /** Resolve a stored greeting for display without committing variable macro effects. */
+  renderGreeting(text: string): string;
   /** What World Info did on the last generation, for the inspector. */
   worldInfo: ActivationResult | null;
 }
@@ -115,7 +126,10 @@ export function useChat(options: UseChatOptions): UseChat {
     countTokens,
     streamingFps,
     worldInfoSources,
+    resolveWorldInfoSources,
     worldInfoSettings,
+    globalVariables,
+    onGlobalVariablesChange,
   } = options;
 
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
@@ -198,6 +212,10 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const setPersona = useCallback((personaId: string | null) => {
     dispatch({ type: 'chat/metadata', patch: { persona: personaId } });
+  }, []);
+
+  const updateMetadata = useCallback((patch: Partial<ChatMetadata>) => {
+    dispatch({ type: 'chat/metadata', patch });
   }, []);
 
   // --- Chat list -------------------------------------------------------------
@@ -349,7 +367,8 @@ export function useChat(options: UseChatOptions): UseChat {
       // Activation runs over the state that already contains the folded user message,
       // so the message just typed is in the scan buffer for the reply it triggers.
       const lore = worldInfoForChat({
-        sources: worldInfoSources ?? [],
+        sources:
+          resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [],
         messages: chatMessages,
         settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
         preset,
@@ -368,6 +387,11 @@ export function useChat(options: UseChatOptions): UseChat {
         worldInfoBefore: lore?.before,
         worldInfoAfter: lore?.after,
         worldInfoDepth: lore?.depth,
+        scenarioOverride:
+          typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
+        authorNote: started.metadata.authorNote,
+        localVariables: started.metadata.variables ?? {},
+        globalVariables,
         countTokens,
         seed: started.chatId ?? '',
       });
@@ -382,6 +406,7 @@ export function useChat(options: UseChatOptions): UseChat {
             tokenCounts: assembled.tokenCounts,
             totalTokens: assembled.totalTokens,
             droppedMessages: assembled.droppedMessages,
+            macroWarnings: assembled.macroWarnings,
             body: null,
             overflow: assembled.error,
           },
@@ -407,9 +432,29 @@ export function useChat(options: UseChatOptions): UseChat {
         tokenCounts: assembled.tokenCounts,
         totalTokens: assembled.totalTokens,
         droppedMessages: assembled.droppedMessages,
+        macroWarnings: assembled.macroWarnings,
         body,
       };
       dispatch({ type: 'gen/inspected', inspection });
+
+      // Macro effects are committed once, after the complete request exists and
+      // immediately before the provider is contacted. Preview assembly receives the
+      // same inputs and discards this result, so opening Prompt Manager cannot mutate
+      // either scope. A later provider failure deliberately does not roll these back.
+      if (assembled.variableUpdates.localChanged) {
+        dispatch({
+          type: 'chat/metadata',
+          patch: { variables: assembled.variableUpdates.local },
+        });
+      }
+      if (assembled.variableUpdates.globalChanged) {
+        try {
+          await onGlobalVariablesChange(assembled.variableUpdates.global);
+        } catch (error) {
+          dispatch({ type: 'gen/failed', message: (error as Error).message });
+          return;
+        }
+      }
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -462,7 +507,10 @@ export function useChat(options: UseChatOptions): UseChat {
       stream,
       refreshChats,
       worldInfoSources,
+      resolveWorldInfoSources,
       worldInfoSettings,
+      globalVariables,
+      onGlobalVariablesChange,
     ],
   );
 
@@ -599,6 +647,22 @@ export function useChat(options: UseChatOptions): UseChat {
     [flushSaves, loadChat, refreshChats],
   );
 
+  const renderGreeting = useCallback(
+    (text: string) => {
+      if (!character || !preset) return text;
+      return resolveGreetingMacros(text, {
+        character,
+        preset,
+        persona,
+        messages: toChatMessages(state),
+        metadata: state.metadata,
+        globalVariables,
+        seed: state.chatId ?? '',
+      });
+    },
+    [character, preset, persona, state, globalVariables],
+  );
+
   return {
     state,
     messages,
@@ -625,6 +689,8 @@ export function useChat(options: UseChatOptions): UseChat {
     retrySave,
     persona,
     setPersona,
+    updateMetadata,
+    renderGreeting,
     worldInfo,
   };
 }

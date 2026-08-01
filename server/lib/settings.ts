@@ -25,6 +25,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function normalizeVariables(value: unknown): AppSettings['variables'] {
+  if (!isRecord(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string | number] =>
+        typeof entry[1] === 'string' || (typeof entry[1] === 'number' && Number.isFinite(entry[1])),
+    ),
+  );
+}
+
 /** Coerce a stored connection into a valid one, falling back field by field. */
 function normalizeConnection(value: unknown): ConnectionSettings {
   if (!isRecord(value)) return { ...DEFAULT_CONNECTION };
@@ -97,6 +108,7 @@ export function getSettings(): AppSettings {
     ...stored,
     connection: normalizeConnection(stored.connection),
     worldInfo: normalizeWorldInfo(stored.worldInfo),
+    variables: normalizeVariables(stored.variables),
   };
 
   return cache;
@@ -119,6 +131,7 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     worldInfo: patch.worldInfo
       ? normalizeWorldInfo({ ...current.worldInfo, ...patch.worldInfo })
       : current.worldInfo,
+    variables: patch.variables ? normalizeVariables(patch.variables) : current.variables,
   };
 }
 
