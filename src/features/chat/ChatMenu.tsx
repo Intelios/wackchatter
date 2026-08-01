@@ -10,6 +10,7 @@
 import type { MenuEntry } from '../../components/Menu.tsx';
 import { Menu } from '../../components/Menu.tsx';
 import {
+  BookIcon,
   BranchIcon,
   CloseIcon,
   ContinueIcon,
@@ -17,13 +18,10 @@ import {
   MessagesIcon,
   PlusIcon,
   RefreshIcon,
-  SlidersIcon,
-  UsersIcon,
+  UserIcon,
 } from '../../layout/icons.tsx';
+import type { RightPanelId } from '../../layout/panels.tsx';
 import type { UseChat } from './useChat.ts';
-
-/** The right panel's tabs, as far as this menu needs to know about them. */
-export type PanelTab = 'characters' | 'lore' | 'you';
 
 export interface ChatMenuState {
   /** A generation is in flight. */
@@ -39,7 +37,7 @@ export interface ChatMenuActions {
   checkpoint: (messageId: string) => void;
   regenerate: () => void;
   continueLast: () => void;
-  openPanel: (tab: PanelTab) => void;
+  openPanel: (panel: RightPanelId) => void;
   closeChat: () => void;
 }
 
@@ -93,8 +91,8 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       icon: <MessagesIcon />,
       onSelect: () => actions.openPanel('characters'),
     },
-    { label: 'Lore…', icon: <SlidersIcon />, onSelect: () => actions.openPanel('lore') },
-    { label: 'Persona…', icon: <UsersIcon />, onSelect: () => actions.openPanel('you') },
+    { label: 'Lore…', icon: <BookIcon />, onSelect: () => actions.openPanel('lorebooks') },
+    { label: 'Persona…', icon: <UserIcon />, onSelect: () => actions.openPanel('persona') },
 
     { kind: 'separator' },
 
@@ -111,7 +109,7 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
 interface ChatMenuProps {
   chat: UseChat;
   onCloseChat: () => void;
-  onOpenPanel: (tab: PanelTab) => void;
+  onOpenPanel: (panel: RightPanelId) => void;
 }
 
 export function ChatMenu({ chat, onCloseChat, onOpenPanel }: ChatMenuProps) {

@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { RefreshIcon } from '../../layout/icons.tsx';
+import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
-import { ChatMenu, type PanelTab } from './ChatMenu.tsx';
+import { ChatMenu } from './ChatMenu.tsx';
 import { Composer } from './Composer.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import type { UseChat } from './useChat.ts';
@@ -17,7 +18,7 @@ interface ChatViewProps {
   /** Leave the chat and go back to the no-character state. */
   onCloseChat: () => void;
   /** Open the right panel on a given tab, for the menu's jump entries. */
-  onOpenPanel: (tab: PanelTab) => void;
+  onOpenPanel: (panel: RightPanelId) => void;
 }
 
 export function ChatView({
@@ -49,10 +50,35 @@ export function ChatView({
     scrollToBottom();
   }, [state.chatId]);
 
+  /*
+   * Hoisted so `memo` on MessageBubble is worth anything.
+   *
+   * Recreating these inline gives every row a new prop identity on every render, which
+   * makes the memo compare unequal every time and re-render the whole transcript. Keyed on
+   * the message id rather than closed over the message, so one stable callback serves
+   * every row.
+   */
+  const swipe = useCallback((direction: -1 | 1) => void chat.swipe(direction), [chat]);
+  const regenerate = useCallback(() => void chat.regenerate(), [chat]);
+  const continueLast = useCallback(() => void chat.continueLast(), [chat]);
+  const editMessage = useCallback((id: string, text: string) => chat.editMessage(id, text), [chat]);
+  const deleteMessage = useCallback((id: string) => chat.deleteMessage(id), [chat]);
+  const toggleHidden = useCallback((id: string) => chat.toggleHidden(id), [chat]);
+  const branchFrom = useCallback((id: string) => void chat.branchFrom(id), [chat]);
+
   const lastId = state.messages[state.messages.length - 1]?.id ?? null;
   // A transcript ending on the user's turn is one still owed a reply — after a failure,
   // an abort, or deleting the reply. That is what makes retry available.
   const awaitingReply = Boolean(state.messages[state.messages.length - 1]?.is_user);
+
+  // The greeting renders its macros fresh, which would hand row 0 a new string on every
+  // render and single-handedly defeat its memo.
+  const first = state.messages[0];
+  const greeting = useMemo(
+    () =>
+      first && !first.is_user ? chat.renderGreeting(first.swipes[first.swipe_id] ?? '') : undefined,
+    [chat, first],
+  );
 
   return (
     <div className="chat-view">
@@ -72,19 +98,15 @@ export function ChatView({
                 stream={stream}
                 isLast={message.id === lastId}
                 busy={busy}
-                displayText={
-                  index === 0 && !message.is_user
-                    ? chat.renderGreeting(message.swipes[message.swipe_id] ?? '')
-                    : undefined
-                }
-                onSwipe={(direction) => void chat.swipe(direction)}
-                onRegenerate={() => void chat.regenerate()}
-                onContinue={() => void chat.continueLast()}
-                onRetry={() => void chat.regenerate()}
-                onEdit={(text) => chat.editMessage(message.id, text)}
-                onDelete={() => chat.deleteMessage(message.id)}
-                onToggleHidden={() => chat.toggleHidden(message.id)}
-                onBranch={() => void chat.branchFrom(message.id)}
+                displayText={index === 0 ? greeting : undefined}
+                onSwipe={swipe}
+                onRegenerate={regenerate}
+                onContinue={continueLast}
+                onRetry={regenerate}
+                onEdit={editMessage}
+                onDelete={deleteMessage}
+                onToggleHidden={toggleHidden}
+                onBranch={branchFrom}
               />
             ))
           )}

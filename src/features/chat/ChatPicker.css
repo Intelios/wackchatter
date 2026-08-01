@@ -1,0 +1,135 @@
+/* The chat list and per-chat context, scoped to the selected character. */
+
+.chat-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.chat-picker__top {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.chat-picker__title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--wc-duration-fast) ease;
+}
+
+.chat-picker__title:hover {
+  background: var(--wc-surface-hover);
+}
+
+.chat-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.chat-picker__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid transparent;
+}
+
+.chat-picker__item[data-active="true"] {
+  background: var(--wc-accent-subtle);
+  border-color: var(--wc-accent);
+}
+
+.chat-picker__item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.chat-picker__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  padding: var(--wc-space-2);
+}
+
+.chat-picker__name {
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-picker__preview,
+.chat-picker__count {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-picker__context {
+  border-top: 1px solid var(--wc-border);
+  padding-top: var(--wc-space-2);
+}
+
+/* Capped: creator notes run to essay length on some cards, and this sits above the
+   character list rather than replacing it. */
+.chat-picker__notes {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-top: var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.chat-picker__notes > :first-child {
+  margin-top: 0;
+}
+
+.chat-picker__notes > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-picker__notes p {
+  margin: 0 0 var(--wc-space-2);
+}
+
+.chat-picker__notes a {
+  color: var(--wc-accent);
+}
+
+.chat-picker__context > summary {
+  cursor: pointer;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+}
+
+.chat-picker__context-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding-top: var(--wc-space-3);
+}

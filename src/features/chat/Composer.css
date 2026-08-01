@@ -1,0 +1,61 @@
+/* The message input and its send button, sharing the transcript's measure. */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wc-space-2);
+  max-width: var(--wc-measure);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
+  flex-shrink: 0;
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--wc-space-3);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  color: var(--wc-text);
+  font-family: inherit;
+  font-size: var(--wc-text-base);
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.composer__input:hover:not(:disabled) {
+  border-color: var(--wc-border-strong);
+}
+
+.composer__input:focus {
+  border-color: var(--wc-accent);
+  outline: none;
+}
+
+.composer__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.composer__button {
+  height: var(--wc-control-lg);
+  flex-shrink: 0;
+}
+
+/* Matches the send button's height so the menu trigger sits on the textarea's baseline —
+   .composer aligns its children to flex-end. */
+.composer .menu__trigger {
+  height: var(--wc-control-lg);
+  width: var(--wc-control-lg);
+  padding: 0;
+  color: var(--wc-text-faint);
+}
+
+.composer .menu__trigger:hover,
+.composer .menu__trigger[aria-expanded="true"] {
+  color: var(--wc-text);
+}

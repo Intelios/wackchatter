@@ -30,6 +30,22 @@ export interface AppSettings {
   tokenizerEncoding: 'auto' | 'o200k_base' | 'cl100k_base';
   /** The preset selected on startup. Null means "first alphabetically". */
   presetId: string | null;
+  /**
+   * Appearance. Flat scalars rather than a nested `appearance` object, because
+   * `mergeSettings` only merges `connection`/`worldInfo`/`variables` field-wise — a
+   * nested object would need a fourth branch, or patching one key would wipe the rest.
+   *
+   * `background` is `builtin:<id>` for a bundled asset, `user:<filename>` for an upload,
+   * or null for none. The prefix keeps the two namespaces from colliding and lets a
+   * deleted upload degrade to "no background" rather than a broken image.
+   */
+  background: string | null;
+  /** Blur applied to the background image, in px. Kills the detail that ruins legibility. */
+  backgroundBlur: number;
+  /** Scrim opacity over the background, 0–0.9. The contrast floor. */
+  backgroundDim: number;
+  /** Translucent panels and bubbles. Only meaningful with a background set. */
+  glass: boolean;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
@@ -51,4 +67,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
   presetId: null,
+  background: null,
+  backgroundBlur: 8,
+  backgroundDim: 0.55,
+  glass: true,
 };

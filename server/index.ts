@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { errorResponse, handle, notFound } from './lib/http.ts';
 import { PROJECT_ROOT, ensureDataDirs } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
+import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
@@ -51,6 +52,7 @@ await ensureDefaultPreset();
 type RouteHandler = (request: Request, segments: string[]) => Promise<Response | null>;
 
 const API_ROUTES: Record<string, RouteHandler> = {
+  backgrounds: handleBackgroundRoute,
   characters: handleCharacterRoute,
   presets: handlePresetRoute,
   lorebooks: handleLorebookRoute,

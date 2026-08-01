@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { Reasoning } from './Reasoning.tsx';
 import type { StreamStore } from './state/streamStore.ts';
 
 /**
@@ -13,12 +14,12 @@ export function StreamingText({ store }: { store: StreamStore }) {
 
   return (
     <>
-      {snapshot.reasoning ? (
-        <details className="message__reasoning">
-          <summary>Thinking</summary>
-          <div className="message__reasoning-body">{snapshot.reasoning}</div>
-        </details>
-      ) : null}
+      {/*
+       * Open while streaming, collapsed once settled. Reasoning arrives before any content
+       * does, so a collapsed box during that window would leave the bubble looking frozen
+       * with nothing to watch.
+       */}
+      {snapshot.reasoning ? <Reasoning text={snapshot.reasoning} defaultOpen /> : null}
       <div className="message__text message__text--streaming">
         {snapshot.text}
         <span className="message__caret" aria-hidden="true" />

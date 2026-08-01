@@ -34,7 +34,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 420px;
+  max-height: var(--wc-scroll-cap);
   overflow-y: auto;
 }
 
@@ -79,7 +79,7 @@
 }
 
 .inspector__json {
-  max-height: 420px;
+  max-height: var(--wc-scroll-cap);
   overflow: auto;
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius-sm);

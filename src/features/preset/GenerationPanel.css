@@ -1,0 +1,22 @@
+.generation-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.generation-panel__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wc-space-2);
+  cursor: pointer;
+  font-size: var(--wc-text-sm);
+}
+
+.generation-panel__check input {
+  accent-color: var(--wc-accent);
+  margin: 3px 0 0;
+  flex-shrink: 0;
+}
+
+.generation-panel__check .wc-hint {
+  display: block;
+}

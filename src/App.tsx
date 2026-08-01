@@ -6,36 +6,33 @@ import type { SettingsResponse } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Tabs } from './components/Tabs.tsx';
+import { AppearancePanel } from './features/appearance/AppearancePanel.tsx';
+import { resolveBackgroundUrl } from './features/appearance/backgrounds.ts';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatPicker } from './features/chat/ChatPicker.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
-import { PromptInspector } from './features/chat/PromptInspector.tsx';
-import { WorldInfoReport } from './features/chat/WorldInfoReport.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
-import { ConnectionPanel } from './features/connection/ConnectionPanel.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
-import { SettingsPanel } from './features/preset/SettingsPanel.tsx';
+import { usePresetDraft } from './features/preset/usePresetDraft.ts';
 import { AppShell, Panel } from './layout/AppShell.tsx';
+import { LeftPanel } from './layout/LeftPanel.tsx';
+import {
+  LEFT_PANELS,
+  type LeftPanelId,
+  RIGHT_PANELS,
+  type RightPanelId,
+} from './layout/panels.tsx';
 import { characterApi, lorebookApi, personaApi, presetApi, settingsApi } from './lib/api.ts';
 import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
-type RightTab = 'characters' | 'lore' | 'you';
-
-const RIGHT_TABS = [
-  { label: 'Characters', value: 'characters' as const },
-  { label: 'Lore', value: 'lore' as const },
-  { label: 'You', value: 'you' as const },
-];
-
 export function App() {
-  const [leftOpen, setLeftOpen] = useState(false);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
+  const [rightPanel, setRightPanel] = useState<RightPanelId | null>('characters');
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -51,7 +48,6 @@ export function App() {
 
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
 
-  const [rightTab, setRightTab] = useState<RightTab>('characters');
   const [books, setBooks] = useState<LorebookSummary[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const characterPersistence = useRef<PersistenceControls | null>(null);
@@ -61,17 +57,24 @@ export function App() {
   const flushRightPanel = useCallback(async () => {
     const controls = editing
       ? characterPersistence.current
-      : rightTab === 'lore'
+      : rightPanel === 'lorebooks'
         ? lorePersistence.current
-        : rightTab === 'you'
+        : rightPanel === 'persona'
           ? personaPersistence.current
           : null;
     await controls?.flush();
-  }, [editing, rightTab]);
+  }, [editing, rightPanel]);
 
-  const changeRightTab = useCallback(
-    async (tab: RightTab) => {
-      if (tab === rightTab && !editing) return;
+  /**
+   * Reveal a right panel. Idempotent — never closes, so programmatic jumps (the chat
+   * menu, opening a character) cannot toggle a panel shut by landing on the one you are
+   * already looking at.
+   */
+  const showRightPanel = useCallback(
+    async (id: RightPanelId) => {
+      // The character editor replaces the panel outright, so without the `editing` check
+      // the panel would change behind a screen nobody can see.
+      if (id === rightPanel && !editing) return;
       try {
         await flushRightPanel();
       } catch (err) {
@@ -79,10 +82,40 @@ export function App() {
         return;
       }
       setEditing(false);
-      setRightTab(tab);
+      setRightPanel(id);
     },
-    [editing, flushRightPanel, rightTab],
+    [editing, flushRightPanel, rightPanel],
   );
+
+  /**
+   * The bar buttons. Pressing the panel you are already on closes the side.
+   *
+   * Closing unmounts the panel, unlike the old collapse-in-place, so it has to flush like
+   * a switch does — the panels' own unmount cleanups are fire-and-forget and swallow
+   * errors, where this aborts and surfaces them.
+   */
+  const selectRightPanel = useCallback(
+    async (id: RightPanelId) => {
+      if (id !== rightPanel || editing) {
+        await showRightPanel(id);
+        return;
+      }
+      try {
+        await flushRightPanel();
+      } catch (err) {
+        setError((err as Error).message);
+        return;
+      }
+      setRightPanel(null);
+    },
+    [editing, flushRightPanel, rightPanel, showRightPanel],
+  );
+
+  const selectLeftPanel = useCallback((id: LeftPanelId) => {
+    // Nothing on the left autosaves — the preset saves explicitly and connection settings
+    // write through immediately — so there is nothing to flush.
+    setLeftPanel((current) => (current === id ? null : id));
+  }, []);
 
   const refreshBooks = useCallback(async () => {
     try {
@@ -247,6 +280,51 @@ export function App() {
     [patchSettings],
   );
 
+  /**
+   * Appearance edits apply immediately and persist on a debounce.
+   *
+   * Dragging a blur slider at 60fps through `patchSettings` would issue ~60 atomic writes
+   * a second, and worse, the value driving the CSS would be whatever the last round-trip
+   * returned — so the image would visibly lag the thumb. The optimistic local update is
+   * what makes the slider feel attached to the picture.
+   */
+  const appearanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Merged, not replaced: nudging blur and then dim inside the debounce window must save
+  // both. A plain "last patch wins" debounce would drop the blur.
+  const appearancePending = useRef<Record<string, unknown>>({});
+
+  const patchAppearance = useCallback(
+    (patch: Record<string, unknown>) => {
+      setSettings((current) => (current ? { ...current, ...patch } : current));
+      appearancePending.current = { ...appearancePending.current, ...patch };
+
+      if (appearanceTimer.current) clearTimeout(appearanceTimer.current);
+      appearanceTimer.current = setTimeout(() => {
+        const pending = appearancePending.current;
+        appearancePending.current = {};
+        void patchSettings(pending);
+      }, 200);
+    },
+    [patchSettings],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (appearanceTimer.current) clearTimeout(appearanceTimer.current);
+    };
+  }, []);
+
+  // Hoisted above the left panel's router: all four left panels edit the same preset, and
+  // a Save/Revert bar that unmounts when you switch panels would hide unsaved work.
+  const presetDraft = usePresetDraft({
+    presetId,
+    preset,
+    onPresetChange: setPreset,
+    onSelectPreset: selectPreset,
+    onPresetsChanged: refreshPresets,
+    onRevertPreset: () => setPresetReload((n) => n + 1),
+  });
+
   const commitGlobalVariables = useCallback(
     async (variables: SettingsResponse['variables']) => {
       await saveSettingsStrict({ variables });
@@ -319,7 +397,7 @@ export function App() {
         setSelected(avatar);
       }
       setEditing(editing);
-      setRightOpen(true);
+      setRightPanel('characters');
     },
     [chat, selected],
   );
@@ -350,21 +428,9 @@ export function App() {
     setDetail(null);
     setEditing(false);
     // Land on the character list. Picking a character is the only thing left to do here,
-    // and the Lore and You tabs both read as dead ends with no chat open.
-    setRightTab('characters');
-    setRightOpen(true);
+    // and Lorebooks and Persona both read as dead ends with no chat open.
+    setRightPanel('characters');
   }, [chat, flushRightPanel]);
-
-  /** Reveal one of the right panel's tools, for the chat menu's jump entries. */
-  const openPanel = useCallback(
-    async (tab: RightTab) => {
-      // The character editor replaces the tabbed panel outright, so without this the tab
-      // would change behind a screen nobody can see.
-      await changeRightTab(tab);
-      setRightOpen(true);
-    },
-    [changeRightTab],
-  );
 
   const handleSaved = useCallback((saved: CharacterDetail) => {
     setDetail(saved);
@@ -410,35 +476,37 @@ export function App() {
 
   return (
     <AppShell
-      leftOpen={leftOpen}
-      rightOpen={rightOpen}
-      onToggleLeft={() => setLeftOpen((v) => !v)}
-      onToggleRight={() => setRightOpen((v) => !v)}
+      leftPanel={leftPanel}
+      rightPanel={rightPanel}
+      leftButtons={LEFT_PANELS}
+      rightButtons={RIGHT_PANELS}
+      onSelectLeft={selectLeftPanel}
+      onSelectRight={(id) => void selectRightPanel(id)}
       title={title}
+      backgroundUrl={resolveBackgroundUrl(settings?.background)}
+      backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+      backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+      glass={settings?.glass !== false}
       left={
-        <Panel title="Settings">
-          <SettingsPanel
-            presets={presets}
-            presetId={presetId}
-            preset={preset}
-            onSelectPreset={selectPreset}
-            onPresetChange={setPreset}
-            onRevertPreset={() => setPresetReload((n) => n + 1)}
-            onPresetsChanged={refreshPresets}
-            tokenCounts={preview?.tokenCounts}
-            macroWarnings={preview?.macroWarnings}
-            extraSamplersSent={
-              connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
-            }
-            connection={<ConnectionPanel settings={settings} onChange={setSettings} />}
-            // The last generation's result when there is one, else the live preview —
-            // so the report answers "why didn't it fire?" before you send, too.
-            worldInfoReport={
-              <WorldInfoReport result={chat.worldInfo ?? preview?.worldInfo ?? null} />
-            }
-            inspector={<PromptInspector inspection={chat.inspection} />}
-          />
-        </Panel>
+        <LeftPanel
+          active={leftPanel}
+          settings={settings}
+          onSettingsChange={setSettings}
+          presets={presets}
+          presetId={presetId}
+          preset={preset}
+          onSelectPreset={selectPreset}
+          draft={presetDraft}
+          tokenCounts={preview?.tokenCounts}
+          macroWarnings={preview?.macroWarnings}
+          extraSamplersSent={
+            connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
+          }
+          // The last generation's result when there is one, else the live preview — so the
+          // report answers "why didn't it fire?" before you send, too.
+          worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
+          inspection={chat.inspection}
+        />
       }
       right={
         showEditor ? (
@@ -456,18 +524,8 @@ export function App() {
             />
           </Panel>
         ) : (
-          <Panel
-            title="Library"
-            tabs={
-              <Tabs<RightTab>
-                value={rightTab}
-                options={RIGHT_TABS}
-                onChange={(tab) => void changeRightTab(tab)}
-                label="Library section"
-              />
-            }
-          >
-            {rightTab === 'characters' ? (
+          <Panel title={RIGHT_PANELS.find((p) => p.id === rightPanel)?.label}>
+            {rightPanel === 'characters' ? (
               <>
                 {/* The chat picker stays here: it is scoped to the selected character. */}
                 {selected ? (
@@ -497,7 +555,7 @@ export function App() {
               </>
             ) : null}
 
-            {rightTab === 'lore' ? (
+            {rightPanel === 'lorebooks' ? (
               <LorePanel
                 books={books}
                 settings={worldInfoSettings}
@@ -514,7 +572,7 @@ export function App() {
               />
             ) : null}
 
-            {rightTab === 'you' ? (
+            {rightPanel === 'persona' ? (
               <PersonaPanel
                 personas={personas}
                 books={books}
@@ -529,6 +587,10 @@ export function App() {
                 }}
               />
             ) : null}
+
+            {rightPanel === 'appearance' ? (
+              <AppearancePanel settings={settings} onPatch={patchAppearance} />
+            ) : null}
           </Panel>
         )
       }
@@ -540,7 +602,7 @@ export function App() {
           avatar={active.avatar}
           ready={ready}
           onCloseChat={() => void handleCloseChat()}
-          onOpenPanel={openPanel}
+          onOpenPanel={(id) => void showRightPanel(id)}
         />
       ) : (
         <div className="wc-empty">

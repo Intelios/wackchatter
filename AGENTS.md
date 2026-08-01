@@ -269,17 +269,31 @@ regex keys are the escape hatches.
 
 ## UI conventions
 
-- **Three-column grid**, chat column is `1fr` so panels compress it rather than cover it.
-  Widths are CSS variables on `.shell`, animated with one transition.
+- **A full-width header row over three columns.** The chat column is `1fr` so panels
+  compress it rather than cover it. Widths are CSS variables on `.shell`, animated with
+  one transition; the header row is a **fixed** track so `grid-template-columns` stays the
+  only animated property.
+- The bar spans every column (`grid-column: 1 / -1`). That is the mechanism, not a detail:
+  the bar's own width never changes as the columns animate, so the button clusters stay
+  pinned to the screen edges instead of sliding when a panel opens.
 - Panels are **wide** (`clamp(380px, 25vw, 560px)`), matching ST's gutter. That width is
   what lets the full character editor live in the right panel.
 - **No blocking modals.** The chat stays live and usable while anything else is open.
   Destructive actions use a two-click confirm in place, not a dialog.
-- All colour, spacing and motion comes from `src/styles/tokens.css`. Components must not
-  hardcode any of it — restyling should mean editing that one file.
-- Styling is deliberately structural and plain; art direction is the user's.
-- The right panel is **tabbed**: Characters / Lore / You. The chat picker stays under
-  Characters, because it is scoped to the selected character.
+- All colour, spacing, sizing and motion comes from `src/styles/tokens.css`. Components
+  must not hardcode any of it — restyling should mean editing that one file.
+- **Both sides are multi-destination**, routed by a panel id rather than an open/closed
+  boolean plus a tab: left is Connection / Prompts / Generation / Inspect, right is
+  Characters / Lorebooks / Persona / Appearance. Pressing the button of the panel already
+  showing closes that side. A boolean and a tab can disagree; an id cannot.
+- The bar buttons are **toggle buttons, not tabs** — `aria-pressed` + `aria-expanded` +
+  `aria-controls`. `role="tab"` would promise arrow-key navigation between siblings, and
+  these panels are not siblings under one container.
+- **Closing a side unmounts its panel**, unlike the old collapse-in-place, so closing has
+  to flush pending autosaves exactly like switching does. The panels' own unmount cleanups
+  are fire-and-forget and swallow errors; routing through `flushRightPanel` is what makes
+  a failed flush abort and surface.
+- The chat picker stays under Characters, because it is scoped to the selected character.
 - **One lorebook editor** serves both the standalone books and the embedded
   `character_book`; persistence is callbacks. The entry form is ~20 controls with
   non-obvious semantics, and drift between two copies would be invisible — a book would
@@ -292,21 +306,60 @@ regex keys are the escape hatches.
 - `TagField` is **not** safe for World Info keys — `/foo,bar/i` is one legal key. Use
   `KeyField`, which splits via `shared/worldinfo/keys.ts`.
 - **`Menu` is the only popup.** Entries are *data*, not JSX children, which is what lets
-  `buildChatMenu` be a pure tested function rather than a component. It is non-modal, so
-  it does not contradict the no-modals rule. Anything that focuses an element inside a
-  popup must pass `focus({ preventScroll: true })`: the layout is fixed to the viewport,
-  and a browser scrolling to "reveal" an element drags the whole app out from under it.
+  `buildChatMenu` and `buildMessageMenu` be pure tested functions rather than components.
+  It is non-modal, so it does not contradict the no-modals rule. Anything that focuses an
+  element inside a popup must pass `focus({ preventScroll: true })`: the layout is fixed to
+  the viewport, and a browser scrolling to "reveal" an element drags the whole app out from
+  under it.
+- `Menu` **flips its side when the preferred one has no room**, measured in a layout effect
+  on open. Without it a bubble's ⋯ near the bottom of the window opens a popup that runs
+  off screen, and the last entries — delete among them — cannot be reached. A flip rather
+  than a portal, so the popup stays a DOM child of `.menu` and dismissal keeps working on
+  ordinary containment.
 - **Disabled beats refused.** SillyTavern toasts "stop the generation first"; we have no
   toast system, so a blocked entry is `disabled` with a `disabledReason` that becomes its
   `title`. Same information, no new machinery.
 - **Presets save explicitly, characters autosave.** The difference is what a mistake
   costs: a card field is one value you can retype, a preset is a tuned artefact where
-  "that felt worse" needs a way back. Editing a preset raises a sticky Save/Revert bar and
+  "that felt worse" needs a way back. Editing a preset raises a Save/Revert bar and
   disables preset switching, rename and import until it is resolved — Revert re-reads the
   file, which is the only authority on what the preset was.
+- **The preset draft lives above the left panel's router** (`usePresetDraft`, called from
+  `App`), and the Save/Revert bar renders **once**, in the panel's chrome slot outside the
+  scrolling body — so it shows on all four left panels, Connection and Inspect included.
+  If `dirty` lived inside a panel, editing a sampler and clicking Connection would unmount
+  the bar: the edits would still be in `App`'s state with no way to save them, and the app
+  would look saved. Losing work silently is worse than losing it loudly.
 - **An editor that takes over its panel, not one appended below it.** `CharacterEditor`
   and `PromptEditor` both replace their panel's contents and offer a back button. Stacking
   an editor under a long list means scrolling to the field and back for every edit.
+
+## Background and glass
+
+- The background image is a layer **behind the whole shell**, spanning every row and column
+  so it sits under the top bar too — that is what makes the bar read as glass over the
+  image rather than a lid on top of it. A real element, not a `::before`: React sets
+  `backgroundImage` directly, and `sanitizeFilename` permits parentheses, so a name like
+  `sunset (2).jpg` would break a `url()` built from a CSS variable.
+- Glass is **token redefinition, not component restyling**. `.shell[data-glass="true"]`
+  redefines `--wc-surface` and friends, so every surface goes translucent without one
+  component file changing.
+- Legibility has three layers and all of them are required: a scrim (the contrast floor,
+  independent of the image), a blur on the image (kills the high-frequency detail that dim
+  alone cannot), and per-surface alpha floors. Plus the `@supports not (backdrop-filter)`
+  and `prefers-reduced-transparency` / `prefers-contrast` fallbacks — without those the app
+  is genuinely unreadable on some machines, so they are not polish.
+- **`backdrop-filter` goes on the bar and the two panels only, never on message bubbles.**
+  The panels are grid areas that never overlap the scrolling transcript, so each samples a
+  static backdrop the browser can cache. Bubbles are N elements inside a scroll container,
+  and each one would force a recomposite on every scroll frame. Nothing is lost: the
+  backdrop is already blurred, so a second blur behind a bubble is invisible. For the same
+  reason the bar must stay in its own grid row rather than floating over the chat.
+- **Built-in backgrounds ship as bundled client assets**, not seeded into `data/` — `data/`
+  is gitignored, and a seeded file would be deletable with no way back. They are authored
+  SVG gradients rather than copies of SillyTavern's images, which are AGPL assets. The
+  Appearance panel offers a one-click import for anyone who wants ST's, copying from their
+  own local install into their own gitignored `data/` — nothing is redistributed.
 
 ## Testing
 

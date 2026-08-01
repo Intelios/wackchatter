@@ -1,0 +1,28 @@
+.prompts-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A macro that never resolved usually means a typo in a prompt — worth noticing, not
+   worth interrupting for. */
+.prompts-panel__warnings {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-warning);
+}
+
+.prompts-panel__warnings summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.prompts-panel__warnings ul {
+  margin: var(--wc-space-2) 0 0;
+  padding-left: var(--wc-space-4);
+  color: var(--wc-text-muted);
+}
+
+.prompts-panel__warnings code {
+  font-family: var(--wc-font-mono);
+}
