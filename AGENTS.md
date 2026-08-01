@@ -6,7 +6,7 @@ settings are ours and deliberately not portable.
 
 Bun (server) + React 19 + TypeScript + Vite (client). Desktop only — no mobile support.
 
-Reference copy of SillyTavern lives at `../SillyTavernSource` (read-only, for format
+Reference copy of SillyTavern lives at `Documents/Github/SillyTavernSource` (read-only, for format
 research; we reimplement, we do not copy).
 
 ## Important
