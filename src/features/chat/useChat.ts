@@ -149,6 +149,24 @@ export function useChat(options: UseChatOptions): UseChat {
   const defaultPersonaRef = useRef(defaultPersonaId);
   defaultPersonaRef.current = defaultPersonaId;
 
+  // The card autosaves without the identity changing, so the chat-init effect must not key
+  // on it — it would re-run on every keystroke. `cardLoaded` is the only stable signal; the
+  // card itself is read from here at the moment creation actually needs it, so the greeting
+  // always seeds from the freshest copy.
+  const characterRef = useRef(character);
+  characterRef.current = character;
+  const cardLoaded = character !== null;
+
+  // One in-flight init per character. Cancelling the effect cannot cancel a server create,
+  // so repeated passes for the same identity chain onto this instead of creating duplicates.
+  const initInFlight = useRef<{ characterId: string; promise: Promise<void> } | null>(null);
+
+  // Bumped synchronously by every user chat-management action. The init effect captures the
+  // value when a pass starts and stands down if it moves. A state read would be racy: a
+  // dispatch only becomes visible at render, so the user's open can be queued but not yet
+  // reflected in `stateRef` when the init settles. The counter moves before any await.
+  const userChatAction = useRef(0);
+
   const captureSnapshot = useCallback((source: ChatState): ChatSaveSnapshot | null => {
     if (!source.chatId) return null;
     return structuredClone({
@@ -237,23 +255,36 @@ export function useChat(options: UseChatOptions): UseChat {
   }, [refreshChats]);
 
   // Open the most recent chat for a character, or start one seeded with the greeting.
+  //
+  // Keyed on the character identity plus whether its card has arrived — deliberately not on
+  // the card object itself. A character autosave replaces that object every keystroke, and
+  // depending on it would re-list chats and reopen the most recent one on top of whatever
+  // the user has open. `cardLoaded` only flips on a real selection change.
   useEffect(() => {
-    if (!characterId || !character) {
+    if (!characterId || !cardLoaded) {
       dispatch({ type: 'chat/closed' });
       return;
     }
 
     let cancelled = false;
+    // Background initialisation yields to anything the user has done with the chat list
+    // since this pass began: opening, creating, branching or deleting is an explicit
+    // choice that must not be undone by the most-recent-chat auto-open settling late.
+    const passAction = userChatAction.current;
 
-    (async () => {
+    const run = async () => {
       const existing = await chatApi.list(characterId).catch(() => []);
       if (cancelled) return;
 
       if (existing[0]) {
         const chat = await chatApi.get(existing[0].id).catch(() => null);
-        if (!cancelled && chat) loadChat(chat);
+        if (!cancelled && chat && userChatAction.current === passAction) loadChat(chat);
         return;
       }
+
+      // Stand down before creating: a brand-new character gets one chat, and only because
+      // the selection itself asked for it.
+      if (cancelled || userChatAction.current !== passAction) return;
 
       const chat = await chatApi
         .create({
@@ -262,15 +293,31 @@ export function useChat(options: UseChatOptions): UseChat {
           metadata: { persona: defaultPersonaRef.current },
         })
         .catch(() => null);
-      if (cancelled || !chat) return;
+      if (cancelled || !chat || userChatAction.current !== passAction) return;
       loadChat(chat);
-      dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });
-    })();
+      const card = characterRef.current;
+      if (card) {
+        dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card });
+      }
+    };
+
+    // A repeat pass for the same character (StrictMode's mount/unmount/mount, or the card
+    // arriving while a create is still in flight) chains onto the in-flight pass instead of
+    // issuing a second list/create. Only the live pass applies its result — the cleanup
+    // flag below gates that — but the server mutation cannot be cancelled.
+    const prior = initInFlight.current;
+    const promise = (prior?.characterId === characterId ? prior.promise : Promise.resolve())
+      .then(run)
+      .catch(() => {});
+    initInFlight.current = { characterId, promise };
+    void promise.finally(() => {
+      if (initInFlight.current?.promise === promise) initInFlight.current = null;
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [characterId, character, loadChat]);
+  }, [characterId, cardLoaded, loadChat]);
 
   // --- Persistence -----------------------------------------------------------
 
@@ -592,6 +639,7 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const openChat = useCallback(
     async (chatId: string) => {
+      userChatAction.current += 1;
       try {
         await flushSaves();
       } catch {
@@ -605,6 +653,7 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const newChat = useCallback(async () => {
     if (!characterId || !character) return;
+    userChatAction.current += 1;
     try {
       await flushSaves();
     } catch {
@@ -626,6 +675,7 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const deleteChat = useCallback(
     async (chatId: string) => {
+      userChatAction.current += 1;
       try {
         await flushSaves();
       } catch {
@@ -641,6 +691,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const branchFrom = useCallback(
     async (messageId: string) => {
       if (!stateRef.current.chatId) return;
+      userChatAction.current += 1;
       try {
         await flushSaves();
       } catch {
