@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import { DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
-import { mergeSettings } from './settings.ts';
+import { mergeSettings, reassignGlobalLorebooks } from './settings.ts';
 
 function base(): AppSettings {
   return structuredClone(DEFAULT_SETTINGS);
@@ -76,5 +76,32 @@ describe('mergeSettings', () => {
   test('an empty global-variable map clears all globals', () => {
     const current = mergeSettings(base(), { variables: { score: 10 } });
     expect(mergeSettings(current, { variables: {} }).variables).toEqual({});
+  });
+});
+
+describe('reassignGlobalLorebooks', () => {
+  function withGlobals(ids: string[]): AppSettings {
+    return { ...base(), globalLorebooks: ids };
+  }
+
+  test('a rename repoints the selection, keeping order and the rest', () => {
+    const next = reassignGlobalLorebooks(withGlobals(['a', 'old', 'b']), 'old', 'new');
+    expect(next?.globalLorebooks).toEqual(['a', 'new', 'b']);
+  });
+
+  test('a delete drops the entry', () => {
+    const next = reassignGlobalLorebooks(withGlobals(['a', 'old', 'b']), 'old', null);
+    expect(next?.globalLorebooks).toEqual(['a', 'b']);
+  });
+
+  test('nothing referencing the old id means nothing to persist', () => {
+    expect(reassignGlobalLorebooks(withGlobals(['a', 'b']), 'old', 'new')).toBeNull();
+  });
+
+  test('an absent or malformed selection is left alone', () => {
+    expect(reassignGlobalLorebooks(base(), 'old', 'new')).toBeNull();
+    expect(
+      reassignGlobalLorebooks({ ...base(), globalLorebooks: 'nope' }, 'old', 'new'),
+    ).toBeNull();
   });
 });

@@ -152,6 +152,50 @@ export function deleteCharacter(avatar: string): boolean {
   return true;
 }
 
+/**
+ * Repoint every card that links to a standalone lorebook by name (`data.extensions.world`).
+ *
+ * A lorebook's filename is its identity and a card links to it by that name, so a rename
+ * or delete that left these links alone would silently strand every card pointing at the
+ * old name. `newName === null` clears the link (a deletion); otherwise it is rewritten.
+ *
+ * `dir` defaults to the character directory but is injectable so the cascade is testable
+ * against a scratch directory without touching real data. Returns the number of cards changed.
+ */
+export async function updateWorldLinks(
+  oldName: string,
+  newName: string | null,
+  dir: string = PATHS.characters,
+): Promise<number> {
+  if (!existsSync(dir)) return 0;
+
+  let changed = 0;
+  for (const file of readdirSync(dir)) {
+    if (!file.toLowerCase().endsWith('.png')) continue;
+    const full = join(dir, file);
+
+    let existing: Uint8Array;
+    let card: TavernCard;
+    try {
+      existing = new Uint8Array(readFileSync(full));
+      card = readCard(existing);
+    } catch {
+      // An unreadable card is skipped here exactly as it is in listCharacters — a lorebook
+      // rename is not the moment to fail loudly over one bad file.
+      continue;
+    }
+
+    if (card.data.extensions?.world !== oldName) continue;
+
+    // `undefined` is dropped by JSON.stringify, so this removes the key on a deletion.
+    const merged = mergeCardData(card, { extensions: { world: newName ?? undefined } });
+    await atomicWrite(full, writeCard(existing, merged));
+    changed += 1;
+  }
+
+  return changed;
+}
+
 // ---------------------------------------------------------------------------
 // The embedded lorebook
 // ---------------------------------------------------------------------------

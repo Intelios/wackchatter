@@ -21,6 +21,7 @@ import {
   updateCharacter,
 } from '../lib/characters.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
+import { cascadeCharacterDelete, cascadeCharacterRename } from '../lib/references.ts';
 
 export async function handleCharacterRoute(
   request: Request,
@@ -153,7 +154,12 @@ export async function handleCharacterRoute(
     if (!name) return errorResponse('A new name is required.');
 
     const renamed = await renameCharacter(avatar, name);
-    return renamed ? json(renamed) : notFound('Character not found.');
+    if (!renamed) return notFound('Character not found.');
+
+    // The filename is the identity the chats key on, so a rename that changed it must
+    // carry the transcripts over or they are orphaned from the card.
+    cascadeCharacterRename(avatar, renamed.avatar);
+    return json(renamed);
   }
 
   // /api/characters/:avatar
@@ -194,7 +200,9 @@ export async function handleCharacterRoute(
     }
 
     if (method === 'DELETE') {
-      return deleteCharacter(avatar) ? json({ ok: true }) : notFound('Character not found.');
+      if (!deleteCharacter(avatar)) return notFound('Character not found.');
+      cascadeCharacterDelete(avatar);
+      return json({ ok: true });
     }
   }
 

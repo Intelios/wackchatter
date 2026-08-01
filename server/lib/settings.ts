@@ -148,3 +148,27 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
 export function resetSettingsCache(): void {
   cache = null;
 }
+
+/**
+ * Repoint the global-lorebook selection when a standalone book is renamed or removed.
+ *
+ * `globalLorebooks` rides the settings index signature rather than a declared field, so it
+ * is read defensively: anything that is not an array of strings is left alone. Pure, so the
+ * rewrite rule is testable without a filesystem. Returns the updated settings, or null when
+ * nothing referenced the old id and there is nothing to persist.
+ */
+export function reassignGlobalLorebooks(
+  current: AppSettings,
+  oldId: string,
+  newId: string | null,
+): AppSettings | null {
+  const stored = current.globalLorebooks;
+  if (!Array.isArray(stored) || !stored.includes(oldId)) return null;
+
+  const next =
+    newId === null
+      ? stored.filter((id) => id !== oldId)
+      : stored.map((id) => (id === oldId ? newId : id));
+
+  return { ...current, globalLorebooks: next };
+}

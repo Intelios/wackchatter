@@ -10,7 +10,7 @@ import {
   renameLorebook,
   saveLorebook,
 } from '../lib/lorebooks.ts';
-import { updatePersonaLorebookReferences } from '../lib/personas.ts';
+import { cascadeLorebookDelete, cascadeLorebookRename } from '../lib/references.ts';
 
 export async function handleLorebookRoute(
   request: Request,
@@ -68,10 +68,12 @@ export async function handleLorebookRoute(
     if (!body?.name) return errorResponse('A new name is required.');
 
     const summary = await renameLorebook(id, body.name);
-    if (summary && summary.id !== id) {
-      await updatePersonaLorebookReferences(id, summary.id);
-    }
-    return summary ? json(summary) : notFound('Lorebook not found.');
+    if (!summary) return notFound('Lorebook not found.');
+
+    // The filename is what personas, character cards (`extensions.world`) and the global
+    // selection all key on, so a rename that changed it must repoint all three.
+    await cascadeLorebookRename(id, summary.id);
+    return json(summary);
   }
 
   // /api/lorebooks/:id
@@ -91,7 +93,7 @@ export async function handleLorebookRoute(
 
     if (method === 'DELETE') {
       if (!deleteLorebook(id)) return notFound('Lorebook not found.');
-      await updatePersonaLorebookReferences(id, null);
+      await cascadeLorebookDelete(id);
       return json({ ok: true });
     }
   }

@@ -349,6 +349,73 @@ describe('renaming and deleting', () => {
   });
 });
 
+describe('character identity cascades', () => {
+  test('reassignCharacter moves every chat to the new identity', () => {
+    const kept = store.createChat({ characterId: 'Old.png', title: 'one' });
+    store.createChat({ characterId: 'Old.png', title: 'two' });
+    const other = store.createChat({ characterId: 'Other.png', title: 'three' });
+
+    expect(store.reassignCharacter('Old.png', 'New.png')).toBe(2);
+
+    // The transcripts now list under the renamed card, not the old one.
+    expect(store.listChats('Old.png')).toEqual([]);
+    expect(
+      store
+        .listChats('New.png')
+        .map((c) => c.title)
+        .sort(),
+    ).toEqual(['one', 'two']);
+    expect(store.getChat(kept.id)?.characterId).toBe('New.png');
+
+    // An unrelated character is untouched.
+    expect(store.listChats('Other.png').map((c) => c.id)).toEqual([other.id]);
+  });
+
+  test('reassignCharacter preserves messages and metadata', () => {
+    const created = store.createChat({
+      characterId: 'Old.png',
+      metadata: { persona: 'jack' },
+      messages: [message({ mes: 'kept' })],
+    });
+
+    store.reassignCharacter('Old.png', 'New.png');
+
+    const loaded = store.getChat(created.id);
+    expect(loaded?.characterId).toBe('New.png');
+    expect(loaded?.metadata).toEqual({ persona: 'jack' });
+    expect(loaded?.messages.map((m) => m.mes)).toEqual(['kept']);
+  });
+
+  test('reassigning to the same identity is a no-op', () => {
+    store.createChat({ characterId: 'Same.png' });
+    expect(store.reassignCharacter('Same.png', 'Same.png')).toBe(0);
+    expect(store.listChats('Same.png').length).toBe(1);
+  });
+
+  test('deleteChatsForCharacter removes only that character chats, messages and all', () => {
+    const doomed = store.createChat({ characterId: 'Gone.png', messages: [message(), message()] });
+    const survivor = store.createChat({ characterId: 'Kept.png', messages: [message()] });
+
+    expect(store.deleteChatsForCharacter('Gone.png')).toBe(1);
+
+    expect(store.getChat(doomed.id)).toBeNull();
+    expect(store.listChats('Gone.png')).toEqual([]);
+    expect(store.getChat(survivor.id)?.id).toBe(survivor.id);
+
+    // The deleted chat's messages cascaded away rather than orphaning.
+    const orphans = database
+      .query<{ count: number }, [string]>(
+        'SELECT COUNT(*) AS count FROM messages WHERE chat_id = ?',
+      )
+      .get(doomed.id);
+    expect(orphans?.count).toBe(0);
+  });
+
+  test('deleteChatsForCharacter on an unknown character reports zero', () => {
+    expect(store.deleteChatsForCharacter('Nobody.png')).toBe(0);
+  });
+});
+
 describe('branching', () => {
   test('a branch copies messages up to and including the branch point', () => {
     const created = store.createChat({

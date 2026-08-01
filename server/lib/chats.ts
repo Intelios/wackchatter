@@ -60,6 +60,14 @@ export interface ChatStore {
   deleteChat(id: string): boolean;
   /** Copy a chat up to and including a message, as a new chat. */
   branchChat(id: string, afterMessageId: string, title?: string): Chat | null;
+  /**
+   * Move every chat from one character identity to another, for a character rename.
+   * The filename IS the identity, so renaming a character changes the id its chats key on;
+   * without this the transcripts are orphaned from the renamed card. Returns the count moved.
+   */
+  reassignCharacter(oldCharacterId: string, newCharacterId: string): number;
+  /** Delete every chat belonging to a character, for a character deletion. Returns the count. */
+  deleteChatsForCharacter(characterId: string): number;
 }
 
 export type ChatSaveResult =
@@ -105,6 +113,13 @@ export function createChatStore(database: Database): ChatStore {
        WHERE id = $id`,
     ),
     deleteChat: database.query('DELETE FROM chats WHERE id = ?'),
+    reassignCharacter: database.query(
+      'UPDATE chats SET character_id = $new WHERE character_id = $old',
+    ),
+    countChatsForCharacter: database.query<{ count: number }, [string]>(
+      'SELECT COUNT(*) AS count FROM chats WHERE character_id = ?',
+    ),
+    deleteChatsForCharacter: database.query('DELETE FROM chats WHERE character_id = ?'),
 
     selectMessages: database.query<MessageRow, [string]>(
       'SELECT * FROM messages WHERE chat_id = ? ORDER BY position ASC',
@@ -347,6 +362,22 @@ export function createChatStore(database: Database): ChatStore {
       );
 
       return readChat(branchId);
+    },
+
+    reassignCharacter(oldCharacterId, newCharacterId): number {
+      if (oldCharacterId === newCharacterId) return 0;
+      return statements.reassignCharacter.run({
+        $old: oldCharacterId,
+        $new: newCharacterId,
+      }).changes;
+    },
+
+    deleteChatsForCharacter(characterId): number {
+      // Count first: the DELETE's `.changes` also counts the message rows removed by
+      // ON DELETE CASCADE, so it would overstate how many CHATS went. Messages follow.
+      const count = statements.countChatsForCharacter.get(characterId)?.count ?? 0;
+      if (count > 0) statements.deleteChatsForCharacter.run(characterId);
+      return count;
     },
   };
 }

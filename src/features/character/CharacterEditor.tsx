@@ -15,7 +15,6 @@ const AUTOSAVE_DELAY_MS = 700;
 /** Only the fields we manage; the server merges them onto the stored card. */
 function toPatch(data: CardDataV2): Partial<CardDataV2> {
   return {
-    name: data.name,
     description: data.description,
     personality: data.personality,
     scenario: data.scenario,
@@ -34,6 +33,8 @@ function toPatch(data: CardDataV2): Partial<CardDataV2> {
 interface CharacterEditorProps {
   detail: CharacterDetail;
   onSaved: (detail: CharacterDetail) => void;
+  /** A rename moves the file identity; the app must re-select the character under it. */
+  onRenamed: (detail: CharacterDetail) => void;
   onDeleted: () => void;
   onBack: () => void;
   registerPersistence?: (controls: PersistenceControls | null) => void;
@@ -44,11 +45,13 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 export function CharacterEditor({
   detail,
   onSaved,
+  onRenamed,
   onDeleted,
   onBack,
   registerPersistence,
 }: CharacterEditorProps) {
   const [data, setData] = useState<CardDataV2>(detail.card.data);
+  const [nameDraft, setNameDraft] = useState(detail.card.data.name);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -99,6 +102,7 @@ export function CharacterEditor({
   useEffect(() => {
     setData(detail.card.data);
     dataRef.current = detail.card.data;
+    setNameDraft(detail.card.data.name);
     dirtyRef.current = false;
     setSaveState('idle');
     setSaveError(null);
@@ -139,6 +143,38 @@ export function CharacterEditor({
       );
       setSaveState('saved');
       onSaved(saved);
+    } catch (err) {
+      setSaveState('error');
+      setSaveError((err as Error).message);
+    }
+  }
+
+  /**
+   * Rename the character's file identity, not just its display name.
+   *
+   * The PNG filename is what the chats key on, so this goes through the rename endpoint —
+   * which moves the file and carries the transcripts over — rather than the field autosave,
+   * which would only touch the card's `name` and leave the identity (and the chats) behind.
+   * Committed on blur/Enter rather than per keystroke for the same reason the lore rename
+   * does: a rename is a file move, and saving per keystroke would leave a trail of files.
+   */
+  async function handleRename() {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === data.name) {
+      setNameDraft(data.name);
+      return;
+    }
+    setSaveState('saving');
+    try {
+      // Land any pending field edits on the current file before it moves, or they would
+      // post to a filename that no longer exists.
+      await queue.flush(avatar);
+      await bookPersistenceRef.current?.flush();
+      const saved = await queue.runSerialized(avatar, () => characterApi.rename(avatar, trimmed));
+      queue.discard(avatar);
+      setSaveState('saved');
+      setSaveError(null);
+      onRenamed(saved);
     } catch (err) {
       setSaveState('error');
       setSaveError((err as Error).message);
@@ -300,7 +336,13 @@ export function CharacterEditor({
         />
 
         <div className="editor__identity-fields">
-          <TextField label="Name" value={data.name} onChange={(v) => update('name', v)} />
+          <TextField
+            label="Name"
+            value={nameDraft}
+            onChange={setNameDraft}
+            onCommit={() => void handleRename()}
+            hint="Renaming moves the character's file; existing chats follow it."
+          />
           <div className="editor__row">
             <TextField
               label="Creator"

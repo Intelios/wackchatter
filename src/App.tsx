@@ -371,6 +371,27 @@ export function App() {
     setCharacters((prev) => prev.map((c) => (c.avatar === saved.avatar ? { ...c, ...saved } : c)));
   }, []);
 
+  /**
+   * A rename changed the character's file identity. Re-select under the new avatar and
+   * refresh the library so the old entry is replaced. Chat saves are flushed first so the
+   * re-select (which reopens the character's most recent chat) cannot drop in-memory edits;
+   * the chats themselves were carried over server-side by the rename.
+   */
+  const handleRenamed = useCallback(
+    async (saved: CharacterDetail) => {
+      try {
+        await chat.flushSaves();
+      } catch {
+        // The rename already landed; a failed chat flush is surfaced by the app shell and
+        // should not stop the re-select.
+      }
+      setSelected(saved.avatar);
+      setDetail(saved);
+      void refresh();
+    },
+    [chat, refresh],
+  );
+
   const handleDeleted = useCallback(() => {
     setSelected(null);
     setDetail(null);
@@ -426,6 +447,7 @@ export function App() {
               key={showEditor.avatar}
               detail={showEditor}
               onSaved={handleSaved}
+              onRenamed={(saved) => void handleRenamed(saved)}
               onDeleted={handleDeleted}
               onBack={() => setEditing(false)}
               registerPersistence={(controls) => {
