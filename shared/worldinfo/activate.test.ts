@@ -285,6 +285,36 @@ describe('budget', () => {
 
     expect(uids(activate([normal, forced], [message('hi')], { budget: 0 }))).toEqual([forced.uid]);
   });
+
+  test('ignoreBudget can still fire from recursive content after budget exhaustion', () => {
+    // The source admits text the chat triggers; a budget-busting normal entry exhausts
+    // the budget on the same pass; the ignoreBudget entry is keyed by the source's
+    // admitted text, so it can only fire on a recursion pass. The editor promises it
+    // is always includable after the budget is spent, so the loop must not stop just
+    // because the budget ran out.
+    const source = entry({ key: ['dragon'], content: 'the dragon guards a castle', order: 300 });
+    const normal = entry({ key: ['dragon'], content: 'one two three four five six', order: 200 });
+    const forced = entry({
+      key: ['castle'],
+      content: 'forced',
+      order: 100,
+      ignoreBudget: true,
+    });
+
+    const result = activate([source, normal, forced], [message('tell me about the dragon')], {
+      budget: 5,
+    });
+
+    expect(uids(result).sort()).toEqual([source.uid, forced.uid].sort());
+    expect(result.budgetExhausted).toBe(true);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ uid: normal.uid, reason: 'budget' }),
+    ]);
+    // The ignoreBudget entry fired on a recursion pass, not from the chat.
+    const forcedEntry = result.activated.find((e) => e.uid === forced.uid)!;
+    expect(forcedEntry.reason).toBe('recursion');
+    expect(forcedEntry.pass).toBe(1);
+  });
 });
 
 describe('recursion', () => {

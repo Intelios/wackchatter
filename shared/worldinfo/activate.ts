@@ -361,6 +361,13 @@ export function activateWorldInfo(options: ActivateOptions): ActivationResult {
       if (fired.has(candidate)) continue;
       const { entry } = candidate;
 
+      // Once the budget is exhausted a normal entry can never be admitted, so there is
+      // no point matching it — and no point reporting it as budget-skipped on every
+      // later pass. `ignoreBudget` entries are the exception: the editor promises they
+      // are always includable after the budget is spent, so they keep matching against
+      // newly admitted recursive content until none of them can fire.
+      if (budgetExhausted && !entry.ignoreBudget) continue;
+
       // Recursion gating. `excludeRecursion` means the entry may only ever be triggered
       // by the chat itself, never by text an earlier pass admitted.
       if (pass > 0 && entry.excludeRecursion) continue;
@@ -456,9 +463,12 @@ export function activateWorldInfo(options: ActivateOptions): ActivationResult {
       if (!entry.preventRecursion) recursionText.push(entry.content);
     }
 
-    // Nothing new can be triggered by content nobody admitted, and a hard budget stop
-    // means nothing further would fit anyway.
-    if (!settings.recursive || budgetExhausted || recursionText.length === 0) break;
+    // Nothing new can be triggered by content nobody admitted. Budget exhaustion no
+    // longer ends the loop on its own: normal entries are skipped from matching once the
+    // budget is gone, so the only thing that can still fire is an `ignoreBudget` entry
+    // keyed by newly admitted recursive content — and if none does, `matches` is empty
+    // and the loop ends on the next pass's empty-match break above.
+    if (!settings.recursive || recursionText.length === 0) break;
     for (const text of recursionText) buffer.addRecursed(text);
   }
 
