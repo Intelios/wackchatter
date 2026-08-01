@@ -10,7 +10,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { handle, notFound } from './lib/http.ts';
+import { errorResponse, handle, notFound } from './lib/http.ts';
 import { PROJECT_ROOT, ensureDataDirs } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
@@ -24,6 +24,26 @@ import { handleSettingsRoute } from './routes/settings.ts';
 const PORT = Number(process.env.WC_PORT ?? 8787);
 const IS_PROD = process.env.NODE_ENV === 'production';
 const DIST_DIR = join(PROJECT_ROOT, 'dist');
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+/**
+ * Reject requests whose Host or Origin header points somewhere other than loopback.
+ * Binding to 127.0.0.1 is the real guard; this is defence in depth against DNS
+ * rebinding and browser-based cross-site requests that reach us over loopback.
+ */
+function forbiddenOrigin(request: Request): boolean {
+  const host = request.headers.get('host');
+  if (host && !LOOPBACK_HOSTS.has(host.replace(/:\d+$/, ''))) return true;
+
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+  try {
+    return !LOOPBACK_HOSTS.has(new URL(origin).hostname);
+  } catch {
+    return true;
+  }
+}
 
 ensureDataDirs();
 await ensureDefaultPreset();
@@ -79,14 +99,23 @@ async function serveStatic(url: URL): Promise<Response> {
 }
 
 const server = Bun.serve({
+  // Loopback only. The API is unauthenticated, so it must never be reachable from
+  // other hosts. Remote access would need explicit opt-in plus authentication.
+  hostname: '127.0.0.1',
   port: PORT,
   // Generation can be slow; the default 10s idle timeout would cut streams off.
   idleTimeout: 255,
   fetch(request) {
     const url = new URL(request.url);
-    return handle(() =>
-      url.pathname.startsWith('/api') ? serveApi(request, url) : serveStatic(url),
-    );
+    return handle(() => {
+      if (url.pathname.startsWith('/api')) {
+        if (forbiddenOrigin(request)) {
+          return errorResponse('Cross-origin requests are not allowed.', 403);
+        }
+        return serveApi(request, url);
+      }
+      return serveStatic(url);
+    });
   },
 });
 
