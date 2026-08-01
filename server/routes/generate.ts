@@ -27,6 +27,8 @@ export async function handleGenerateRoute(
     return errorResponse('Expected a JSON object with a "body" property.');
   }
 
+  console.debug('Chat Completion request:', payload.body);
+
   let upstream: Response;
   try {
     upstream = await callUpstream(payload.body, request.signal);
@@ -34,6 +36,7 @@ export async function handleGenerateRoute(
     // A client that hung up mid-connect is not an error worth reporting back.
     if (request.signal.aborted) return new Response(null, { status: 499 });
 
+    console.error('Generation failed:', error);
     const message = (error as Error).message;
     return errorResponse(
       message.includes('ECONNREFUSED') || message.includes('Unable to connect')
@@ -44,19 +47,33 @@ export async function handleGenerateRoute(
   }
 
   if (!upstream.ok) {
-    return errorResponse(describeFailure(upstream.status, await upstream.text()), upstream.status);
+    const errorText = await upstream.text();
+    console.error(`Chat Completion error ${upstream.status}:`, errorText);
+    return errorResponse(describeFailure(upstream.status, errorText), upstream.status);
   }
 
-  // Pipe the body straight through. Bun streams it without buffering, and because none
-  // of our code runs inside the stream there is nothing that can throw partway and turn
-  // a half-delivered response into a 500.
-  return new Response(upstream.body, {
-    status: 200,
-    headers: {
-      'content-type': upstream.headers.get('content-type') ?? 'application/json',
-      'cache-control': 'no-cache, no-transform',
-      // Tells any reverse proxy in front of us not to buffer the stream.
-      'x-accel-buffering': 'no',
-    },
-  });
+  const headers = {
+    'content-type': upstream.headers.get('content-type') ?? 'application/json',
+    'cache-control': 'no-cache, no-transform',
+    // Tells any reverse proxy in front of us not to buffer the stream.
+    'x-accel-buffering': 'no',
+  };
+
+  if (payload.body.stream) {
+    console.info('Streaming request in progress');
+    const transform = new TransformStream({
+      flush() {
+        console.info('Streaming request finished');
+      },
+    });
+    return new Response(upstream.body?.pipeThrough(transform), { status: 200, headers });
+  }
+
+  const text = await upstream.text();
+  try {
+    console.debug('Chat Completion response:', JSON.parse(text));
+  } catch {
+    console.debug('Chat Completion response:', text);
+  }
+  return new Response(text, { status: 200, headers });
 }
