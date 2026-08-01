@@ -36,7 +36,7 @@ export async function handleCharacterRoute(
       const body = await readJson<{ name?: string }>(request);
       const name = body?.name?.trim();
       if (!name) return errorResponse('A character name is required.');
-      return json(createCharacter(createBlankCard(name)), { status: 201 });
+      return json(await createCharacter(createBlankCard(name)), { status: 201 });
     }
     return null;
   }
@@ -49,7 +49,7 @@ export async function handleCharacterRoute(
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
-      return json(importCharacter(bytes, file.name), { status: 201 });
+      return json(await importCharacter(bytes, file.name), { status: 201 });
     } catch (error) {
       return errorResponse((error as Error).message);
     }
@@ -104,7 +104,7 @@ export async function handleCharacterRoute(
   if (segments[1] === 'book') {
     // /api/characters/:avatar/book/entries
     if (segments[2] === 'entries' && segments.length === 3 && method === 'POST') {
-      const created = addBookEntry(avatar);
+      const created = await addBookEntry(avatar);
       return created ? json(created, { status: 201 }) : notFound('Character not found.');
     }
 
@@ -117,12 +117,12 @@ export async function handleCharacterRoute(
         const patch = await readJson<Partial<WorldInfoEntry>>(request);
         if (!patch) return errorResponse('Request body is not valid JSON.');
 
-        const updated = updateBookEntry(avatar, uid, patch);
+        const updated = await updateBookEntry(avatar, uid, patch);
         return updated ? json(updated) : notFound('Character or entry not found.');
       }
 
       if (method === 'DELETE') {
-        const updated = deleteBookEntry(avatar, uid);
+        const updated = await deleteBookEntry(avatar, uid);
         return updated ? json(updated) : notFound('Character or entry not found.');
       }
     }
@@ -133,12 +133,12 @@ export async function handleCharacterRoute(
         const fields = await readJson<Parameters<typeof updateBook>[1]>(request);
         if (!fields) return errorResponse('Request body is not valid JSON.');
 
-        const updated = updateBook(avatar, fields);
+        const updated = await updateBook(avatar, fields);
         return updated ? json(updated) : notFound('Character not found.');
       }
 
       if (method === 'DELETE') {
-        const updated = deleteBook(avatar);
+        const updated = await deleteBook(avatar);
         return updated ? json(updated) : notFound('Character has no lorebook.');
       }
     }
@@ -152,7 +152,7 @@ export async function handleCharacterRoute(
     const name = body?.name?.trim();
     if (!name) return errorResponse('A new name is required.');
 
-    const renamed = renameCharacter(avatar, name);
+    const renamed = await renameCharacter(avatar, name);
     return renamed ? json(renamed) : notFound('Character not found.');
   }
 
@@ -182,14 +182,14 @@ export async function handleCharacterRoute(
         }
 
         const image = file instanceof File ? new Uint8Array(await file.arrayBuffer()) : undefined;
-        const updated = updateCharacter(avatar, updates, image);
+        const updated = await updateCharacter(avatar, updates, image);
         return updated ? json(updated) : notFound('Character not found.');
       }
 
       const updates = await readJson<Partial<CardDataV2>>(request);
       if (!updates) return errorResponse('Request body is not valid JSON.');
 
-      const updated = updateCharacter(avatar, updates);
+      const updated = await updateCharacter(avatar, updates);
       return updated ? json(updated) : notFound('Character not found.');
     }
 

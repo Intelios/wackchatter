@@ -13,6 +13,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync
 import { basename, join } from 'node:path';
 import type { LorebookSummary, WorldInfoBook } from '../../shared/types/worldinfo.ts';
 import { normalizeBook } from '../../shared/worldinfo/convert.ts';
+import { atomicWrite } from './fs.ts';
 import { PATHS, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
 
 function bookPath(id: string): string | null {
@@ -69,7 +70,7 @@ export async function saveLorebook(id: string, book: WorldInfoBook): Promise<voi
   // The name always tracks the filename; see the header. `originalData` is dropped —
   // it only exists to round-trip an embedded book back into a card.
   const { originalData: _drop, ...rest } = book;
-  await Bun.write(path, `${JSON.stringify({ ...rest, name: id }, null, 4)}\n`);
+  await atomicWrite(path, `${JSON.stringify({ ...rest, name: id }, null, 4)}\n`);
 }
 
 export function deleteLorebook(id: string): boolean {
@@ -80,7 +81,10 @@ export function deleteLorebook(id: string): boolean {
 }
 
 /** Rename by moving the file, since the filename is the identity. */
-export function renameLorebook(id: string, nextName: string): LorebookSummary | null {
+export async function renameLorebook(
+  id: string,
+  nextName: string,
+): Promise<LorebookSummary | null> {
   const from = bookPath(id);
   if (!from || !existsSync(from)) return null;
 
@@ -95,7 +99,7 @@ export function renameLorebook(id: string, nextName: string): LorebookSummary | 
 
   // The stored `name` has to follow the file or the two would disagree on next read.
   const book = getLorebook(base);
-  if (book) void saveLorebook(base, book);
+  if (book) await saveLorebook(base, book);
 
   return listLorebooks().find((summary) => summary.id === base) ?? null;
 }

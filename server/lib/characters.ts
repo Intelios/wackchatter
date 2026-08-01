@@ -5,7 +5,7 @@
  * SillyTavern — the `avatar` field inside the card JSON is vestigial and always "none".
  */
 
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type {
   CardDataV2,
@@ -23,6 +23,7 @@ import {
   toWorldInfoBook,
 } from '../../shared/worldinfo/convert.ts';
 import { createBlankCard, mergeCardData, normalizeCard, readCard, writeCard } from './card.ts';
+import { atomicWrite } from './fs.ts';
 import { PATHS, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
 
 /** Placeholder used when a character is created without an uploaded image. */
@@ -87,13 +88,16 @@ function characterExists(name: string): boolean {
  * Write a card into a new PNG file, choosing a free filename derived from the name.
  * @param image PNG bytes to embed into; a blank placeholder is used if omitted.
  */
-export function createCharacter(card: TavernCard, image?: Uint8Array): CharacterDetail {
+export async function createCharacter(
+  card: TavernCard,
+  image?: Uint8Array,
+): Promise<CharacterDetail> {
   const safeName = sanitizeFilename(card.data.name) ?? 'Character';
   const filename = `${uniqueName(safeName, characterExists)}.png`;
   const path = join(PATHS.characters, filename);
 
   const base = image ?? loadBlankAvatar();
-  Bun.write(path, writeCard(base, card));
+  await atomicWrite(path, writeCard(base, card));
 
   return { ...summarize(filename, card, Date.now()), card };
 }
@@ -104,35 +108,39 @@ export function createCharacter(card: TavernCard, image?: Uint8Array): Character
  * Reads the card back off disk first so unknown keys are merged onto the real stored
  * card, never onto whatever subset the client happened to send.
  */
-export function updateCharacter(
+export async function updateCharacter(
   avatar: string,
   updates: Partial<CardDataV2>,
   image?: Uint8Array,
-): CharacterDetail | null {
+): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
   if (!path || !existsSync(path)) return null;
 
   const existing = new Uint8Array(readFileSync(path));
   const merged = mergeCardData(readCard(existing), updates);
 
-  Bun.write(path, writeCard(image ?? existing, merged));
+  await atomicWrite(path, writeCard(image ?? existing, merged));
   return { ...summarize(avatar, merged, Date.now()), card: merged };
 }
 
 /** Rename the underlying file, keeping the card's `name` field in sync. */
-export function renameCharacter(avatar: string, newName: string): CharacterDetail | null {
+export async function renameCharacter(
+  avatar: string,
+  newName: string,
+): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
   if (!path || !existsSync(path)) return null;
 
   const safeName = sanitizeFilename(newName);
   if (!safeName) return null;
 
-  const card = mergeCardData(readCard(new Uint8Array(readFileSync(path))), { name: newName });
+  const existing = new Uint8Array(readFileSync(path));
+  const card = mergeCardData(readCard(existing), { name: newName });
   const filename = `${uniqueName(safeName, characterExists)}.png`;
   const newPath = join(PATHS.characters, filename);
 
-  Bun.write(path, writeCard(new Uint8Array(readFileSync(path)), card));
-  if (newPath !== path) renameSync(path, newPath);
+  await atomicWrite(newPath, writeCard(existing, card));
+  if (newPath !== path) unlinkSync(path);
 
   return { ...summarize(filename, card, Date.now()), card };
 }
@@ -165,10 +173,10 @@ export function deleteCharacter(avatar: string): boolean {
  * nothing left for a new entry to inherit. `nextUid` still refuses to reuse it, which
  * matters for the client-side editor, where a book is held in memory across both edits.
  */
-function mutateBook(
+async function mutateBook(
   avatar: string,
   mutate: (book: WorldInfoBook) => WorldInfoBook | null,
-): CharacterDetail | null {
+): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
   if (!path || !existsSync(path)) return null;
 
@@ -183,14 +191,16 @@ function mutateBook(
     character_book: toCharacterBook(next, next.name || card.data.name || 'Lorebook'),
   });
 
-  Bun.write(path, writeCard(existing, merged));
+  await atomicWrite(path, writeCard(existing, merged));
   return { ...summarize(avatar, merged, Date.now()), card: merged };
 }
 
-export function addBookEntry(avatar: string): { detail: CharacterDetail; uid: number } | null {
+export async function addBookEntry(
+  avatar: string,
+): Promise<{ detail: CharacterDetail; uid: number } | null> {
   let created = -1;
 
-  const detail = mutateBook(avatar, (book) => {
+  const detail = await mutateBook(avatar, (book) => {
     const uid = nextUid(book);
     created = uid;
     const entry = createWorldInfoEntry(uid);
@@ -205,11 +215,11 @@ export function addBookEntry(avatar: string): { detail: CharacterDetail; uid: nu
   return detail ? { detail, uid: created } : null;
 }
 
-export function updateBookEntry(
+export async function updateBookEntry(
   avatar: string,
   uid: number,
   patch: Partial<WorldInfoEntry>,
-): CharacterDetail | null {
+): Promise<CharacterDetail | null> {
   return mutateBook(avatar, (book) => {
     const current = book.entries[String(uid)];
     if (!current) return null;
@@ -221,7 +231,10 @@ export function updateBookEntry(
   });
 }
 
-export function deleteBookEntry(avatar: string, uid: number): CharacterDetail | null {
+export async function deleteBookEntry(
+  avatar: string,
+  uid: number,
+): Promise<CharacterDetail | null> {
   return mutateBook(avatar, (book) => {
     if (!book.entries[String(uid)]) return null;
     return removeEntry(book, uid);
@@ -229,7 +242,7 @@ export function deleteBookEntry(avatar: string, uid: number): CharacterDetail | 
 }
 
 /** Book-level fields: the four the V2 spec defines, plus the display order. */
-export function updateBook(
+export async function updateBook(
   avatar: string,
   fields: {
     name?: string;
@@ -239,7 +252,7 @@ export function updateBook(
     recursive_scanning?: boolean;
     displayOrder?: number[];
   },
-): CharacterDetail | null {
+): Promise<CharacterDetail | null> {
   return mutateBook(avatar, (book) => {
     const next: WorldInfoBook = { ...book };
     if (fields.name !== undefined) next.name = fields.name;
@@ -266,7 +279,7 @@ export function updateBook(
 }
 
 /** Remove the embedded book entirely. */
-export function deleteBook(avatar: string): CharacterDetail | null {
+export async function deleteBook(avatar: string): Promise<CharacterDetail | null> {
   const path = safeJoin(PATHS.characters, avatar);
   if (!path || !existsSync(path)) return null;
 
@@ -275,7 +288,7 @@ export function deleteBook(avatar: string): CharacterDetail | null {
   if (!card.data.character_book) return null;
 
   const merged = mergeCardData(card, { character_book: undefined });
-  Bun.write(path, writeCard(existing, merged));
+  await atomicWrite(path, writeCard(existing, merged));
   return { ...summarize(avatar, merged, Date.now()), card: merged };
 }
 
@@ -283,7 +296,10 @@ export function deleteBook(avatar: string): CharacterDetail | null {
  * Import a card from PNG or JSON bytes.
  * JSON imports get the blank placeholder image; PNG imports keep their artwork.
  */
-export function importCharacter(bytes: Uint8Array, filename: string): CharacterDetail {
+export async function importCharacter(
+  bytes: Uint8Array,
+  filename: string,
+): Promise<CharacterDetail> {
   const isPng = filename.toLowerCase().endsWith('.png');
 
   if (isPng) {

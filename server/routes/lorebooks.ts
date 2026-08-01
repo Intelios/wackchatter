@@ -67,7 +67,7 @@ export async function handleLorebookRoute(
     const body = await readJson<{ name?: string }>(request);
     if (!body?.name) return errorResponse('A new name is required.');
 
-    const summary = renameLorebook(id, body.name);
+    const summary = await renameLorebook(id, body.name);
     if (summary && summary.id !== id) {
       await updatePersonaLorebookReferences(id, summary.id);
     }
