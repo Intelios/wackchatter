@@ -1,0 +1,80 @@
+.lore-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-4);
+}
+
+.lore-panel__books {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.lore-panel__toolbar {
+  display: flex;
+  gap: var(--wc-space-2);
+}
+
+.lore-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+/* The file input inside it is hidden; the label is the button. */
+.lore-panel__actions label {
+  cursor: pointer;
+}
+
+.lore-panel__error {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: 1px solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+  font-size: var(--wc-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.lore-panel__active {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.lore-panel__active li {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+}
+
+.lore-panel__source {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 4px;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  flex-shrink: 0;
+  min-width: 58px;
+  text-align: center;
+}
+
+.lore-panel__active-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lore-panel__count {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}

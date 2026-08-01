@@ -91,6 +91,7 @@ export type ChatAction =
   | { type: 'chat/loaded'; chat: Chat }
   | { type: 'chat/closed' }
   | { type: 'chat/renamed'; title: string }
+  | { type: 'chat/metadata'; patch: Partial<ChatMetadata> }
   | { type: 'chat/greeting'; id: string; card: CardDataV2 }
   | { type: 'message/appendUser'; id: string; name: string; text: string }
   | { type: 'message/edited'; id: string; text: string }
@@ -201,6 +202,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'chat/renamed':
       return { ...state, title: action.title, revision: state.revision + 1 };
+
+    case 'chat/metadata':
+      // No chat, nothing to attach metadata to — and writing it into the initial state
+      // would leak it into whichever chat opens next.
+      if (!state.chatId) return state;
+      return {
+        ...state,
+        metadata: { ...state.metadata, ...action.patch },
+        revision: state.revision + 1,
+      };
 
     case 'chat/greeting': {
       // Only ever seeds an empty chat, so an existing transcript can't be overwritten.

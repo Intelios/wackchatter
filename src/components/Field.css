@@ -18,6 +18,34 @@
   margin-bottom: var(--wc-space-2);
 }
 
+/* A checkbox sits on its label's line, so the block-level .wc-label margin is wrong. */
+.field--check {
+  justify-content: center;
+}
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.check-field input {
+  accent-color: var(--wc-accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* Two or three narrow fields across, for the numeric entry settings. */
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(var(--field-row-columns, 2), minmax(0, 1fr));
+  gap: var(--wc-space-3);
+}
+
 .list-field__row {
   display: flex;
   flex-direction: column;

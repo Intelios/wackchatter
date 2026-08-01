@@ -22,6 +22,8 @@ interface SettingsPanelProps {
   connection?: ReactNode;
   /** The "what was actually sent" inspector. */
   inspector?: ReactNode;
+  /** Which lorebook entries fired, and why the rest did not. */
+  worldInfoReport?: ReactNode;
 }
 
 export function SettingsPanel({
@@ -34,6 +36,7 @@ export function SettingsPanel({
   tokenCounts,
   connection,
   inspector,
+  worldInfoReport,
 }: SettingsPanelProps) {
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
@@ -233,6 +236,7 @@ export function SettingsPanel({
         </label>
       </Section>
 
+      {worldInfoReport ? <Section title="World Info">{worldInfoReport}</Section> : null}
       {inspector ? <Section title="Last request">{inspector}</Section> : null}
     </div>
   );

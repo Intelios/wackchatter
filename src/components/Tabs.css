@@ -1,0 +1,40 @@
+.tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--wc-space-1);
+  padding: 0 var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.tabs__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-2) var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-faint);
+  /* Drawn on the container's border rather than adding height, so switching tabs
+     doesn't shift the body by a pixel. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.tabs__tab:hover {
+  color: var(--wc-text-muted);
+}
+
+.tabs__tab[aria-selected="true"] {
+  color: var(--wc-text);
+  border-bottom-color: var(--wc-accent);
+}
+
+.tabs__badge {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 4px;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-hover);
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+}

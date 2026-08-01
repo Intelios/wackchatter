@@ -3,7 +3,10 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
+import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
+import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useEffect, useState } from 'react';
+import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 
 const DEBOUNCE_MS = 200;
 
@@ -13,6 +16,14 @@ export interface PromptPreviewInput {
   persona: Persona | null;
   messages: ChatMessage[];
   countTokens: TokenCounter;
+  worldInfoSources?: WorldInfoSource[];
+  worldInfoSettings?: WorldInfoSettings;
+  chatId?: string | null;
+}
+
+export interface PromptPreview extends AssembleResult {
+  /** What World Info would do, for the Lore tab and the inspector. */
+  worldInfo: ActivationResult | null;
 }
 
 /**
@@ -24,15 +35,21 @@ export interface PromptPreviewInput {
  *
  * Debounced, and deliberately unaware of the composer's text — retyping a message would
  * otherwise re-run assembly on every keystroke for numbers that cannot change.
+ *
+ * World Info runs through the same `worldInfoForChat` the send uses, seeded the same way,
+ * so the preview and the send agree about which entries fire.
  */
-export function usePromptPreview(input: PromptPreviewInput | null): AssembleResult | null {
-  const [result, setResult] = useState<AssembleResult | null>(null);
+export function usePromptPreview(input: PromptPreviewInput | null): PromptPreview | null {
+  const [result, setResult] = useState<PromptPreview | null>(null);
 
   const preset = input?.preset;
   const character = input?.character;
   const persona = input?.persona;
   const messages = input?.messages;
   const countTokens = input?.countTokens;
+  const worldInfoSources = input?.worldInfoSources;
+  const worldInfoSettings = input?.worldInfoSettings;
+  const chatId = input?.chatId ?? null;
 
   useEffect(() => {
     if (!preset || !character || !messages || !countTokens) {
@@ -42,7 +59,30 @@ export function usePromptPreview(input: PromptPreviewInput | null): AssembleResu
 
     const timer = setTimeout(() => {
       try {
-        setResult(assemblePrompt({ preset, character, persona, messages, countTokens }));
+        const lore =
+          worldInfoSources && worldInfoSettings
+            ? worldInfoForChat({
+                sources: worldInfoSources,
+                messages,
+                settings: worldInfoSettings,
+                preset,
+                chatId,
+                countTokens,
+              })
+            : null;
+
+        const assembled = assemblePrompt({
+          preset,
+          character,
+          persona,
+          messages,
+          worldInfoBefore: lore?.before,
+          worldInfoAfter: lore?.after,
+          worldInfoDepth: lore?.depth,
+          countTokens,
+        });
+
+        setResult({ ...assembled, worldInfo: lore });
       } catch {
         // A preset mid-edit can be momentarily invalid; the counts simply stall.
         setResult(null);
@@ -50,7 +90,16 @@ export function usePromptPreview(input: PromptPreviewInput | null): AssembleResu
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [preset, character, persona, messages, countTokens]);
+  }, [
+    preset,
+    character,
+    persona,
+    messages,
+    countTokens,
+    worldInfoSources,
+    worldInfoSettings,
+    chatId,
+  ]);
 
   return result;
 }

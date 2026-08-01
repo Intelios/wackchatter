@@ -1,19 +1,35 @@
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
+import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
+import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
+import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Tabs } from './components/Tabs.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatPicker } from './features/chat/ChatPicker.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { PromptInspector } from './features/chat/PromptInspector.tsx';
+import { WorldInfoReport } from './features/chat/WorldInfoReport.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
 import { ConnectionPanel } from './features/connection/ConnectionPanel.tsx';
+import { LorePanel } from './features/lore/LorePanel.tsx';
+import { useLorebooks } from './features/lore/useLorebooks.ts';
+import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { SettingsPanel } from './features/preset/SettingsPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
-import { characterApi, presetApi, settingsApi } from './lib/api.ts';
+import { characterApi, lorebookApi, personaApi, presetApi, settingsApi } from './lib/api.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
+
+type RightTab = 'characters' | 'lore' | 'you';
+
+const RIGHT_TABS = [
+  { label: 'Characters', value: 'characters' as const },
+  { label: 'Lore', value: 'lore' as const },
+  { label: 'You', value: 'you' as const },
+];
 
 export function App() {
   const [leftOpen, setLeftOpen] = useState(false);
@@ -31,6 +47,31 @@ export function App() {
   const [preset, setPreset] = useState<Preset | null>(null);
 
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
+
+  const [rightTab, setRightTab] = useState<RightTab>('characters');
+  const [books, setBooks] = useState<LorebookSummary[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
+
+  const refreshBooks = useCallback(async () => {
+    try {
+      setBooks(await lorebookApi.list());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  const refreshPersonas = useCallback(async () => {
+    try {
+      setPersonas(await personaApi.list());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshBooks();
+    void refreshPersonas();
+  }, [refreshBooks, refreshPersonas]);
 
   const refreshPresets = useCallback(async () => {
     try {
@@ -120,22 +161,54 @@ export function App() {
   // Exact for GPT and o-series, an estimate elsewhere — the same position ST is in.
   const countTokens = useTokenizer(connection?.model ?? '', settings?.tokenizerEncoding);
 
+  const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
+
+  // Global books are opt-in per book; nothing is global until the user says so. Stored in
+  // settings so the choice survives a reload.
+  const globalBookIds = useMemo(
+    () => (Array.isArray(settings?.globalLorebooks) ? (settings.globalLorebooks as string[]) : []),
+    [settings?.globalLorebooks],
+  );
+
+  const lore = useLorebooks({ character, globalIds: globalBookIds, books });
+
   const chat = useChat({
     characterId: selected,
     character,
     preset,
-    persona: null,
+    personas,
+    defaultPersonaId: settings?.personaId ?? null,
     connection,
     countTokens,
     streamingFps: settings?.streamingFps ?? 30,
+    worldInfoSources: lore.sources,
+    worldInfoSettings,
   });
 
-  // Live per-prompt token counts for the Prompt Manager.
+  // Live per-prompt token counts for the Prompt Manager. Uses the same resolved persona
+  // as the send, so the preview cannot disagree with what actually ships.
   const preview = usePromptPreview(
     preset && character
-      ? { preset, character, persona: null, messages: chat.messages, countTokens }
+      ? {
+          preset,
+          character,
+          persona: chat.persona,
+          messages: chat.messages,
+          countTokens,
+          worldInfoSources: lore.sources,
+          worldInfoSettings,
+          chatId: chat.state.chatId,
+        }
       : null,
   );
+
+  const patchSettings = useCallback(async (patch: Record<string, unknown>) => {
+    try {
+      setSettings(await settingsApi.save(patch));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
 
   const handleSelect = useCallback((avatar: string) => {
     setSelected(avatar);
@@ -181,6 +254,11 @@ export function App() {
             onPresetsChanged={refreshPresets}
             tokenCounts={preview?.tokenCounts}
             connection={<ConnectionPanel settings={settings} onChange={setSettings} />}
+            // The last generation's result when there is one, else the live preview —
+            // so the report answers "why didn't it fire?" before you send, too.
+            worldInfoReport={
+              <WorldInfoReport result={chat.worldInfo ?? preview?.worldInfo ?? null} />
+            }
             inspector={<PromptInspector inspection={chat.inspection} />}
           />
         </Panel>
@@ -197,30 +275,68 @@ export function App() {
             />
           </Panel>
         ) : (
-          <Panel title="Characters">
-            {selected ? (
-              <ChatPicker
-                chats={chat.chats}
-                activeId={chat.state.chatId}
-                title={chat.state.title}
-                onOpen={(id) => void chat.openChat(id)}
-                onNew={() => void chat.newChat()}
-                onDelete={(id) => void chat.deleteChat(id)}
-                onRename={chat.renameChat}
+          <Panel
+            title="Library"
+            tabs={
+              <Tabs<RightTab>
+                value={rightTab}
+                options={RIGHT_TABS}
+                onChange={setRightTab}
+                label="Library section"
+              />
+            }
+          >
+            {rightTab === 'characters' ? (
+              <>
+                {/* The chat picker stays here: it is scoped to the selected character. */}
+                {selected ? (
+                  <ChatPicker
+                    chats={chat.chats}
+                    activeId={chat.state.chatId}
+                    title={chat.state.title}
+                    onOpen={(id) => void chat.openChat(id)}
+                    onNew={() => void chat.newChat()}
+                    onDelete={(id) => void chat.deleteChat(id)}
+                    onRename={chat.renameChat}
+                  />
+                ) : null}
+                <CharacterList
+                  characters={characters}
+                  selected={selected}
+                  loading={loading}
+                  error={error}
+                  onSelect={handleSelect}
+                  onRefresh={refresh}
+                  onEdit={(avatar) => {
+                    setSelected(avatar);
+                    setEditing(true);
+                  }}
+                />
+              </>
+            ) : null}
+
+            {rightTab === 'lore' ? (
+              <LorePanel
+                books={books}
+                settings={worldInfoSettings}
+                onBooksChanged={refreshBooks}
+                onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
+                activeBooks={lore.active}
+                onBookEdited={lore.invalidate}
               />
             ) : null}
-            <CharacterList
-              characters={characters}
-              selected={selected}
-              loading={loading}
-              error={error}
-              onSelect={handleSelect}
-              onRefresh={refresh}
-              onEdit={(avatar) => {
-                setSelected(avatar);
-                setEditing(true);
-              }}
-            />
+
+            {rightTab === 'you' ? (
+              <PersonaPanel
+                personas={personas}
+                active={chat.persona}
+                defaultId={settings?.personaId ?? null}
+                hasChat={Boolean(chat.state.chatId)}
+                onSelectForChat={chat.setPersona}
+                onSelectDefault={(id) => void patchSettings({ personaId: id })}
+                onChanged={refreshPersonas}
+              />
+            ) : null}
           </Panel>
         )
       }

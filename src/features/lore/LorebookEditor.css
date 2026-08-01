@@ -1,0 +1,194 @@
+/*
+ * The lorebook editor. Structural only — every colour, space and duration comes from
+ * tokens.css. The row layout deliberately mirrors PromptManager's, since both are
+ * "drag-reorderable list with a checkbox and a trailing number".
+ */
+
+.lore-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.lore-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.lore-editor__sort {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--wc-text-sm);
+}
+
+.lore-editor__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.lore-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: 2px var(--wc-space-2) 2px 0;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+  transition: background 120ms ease;
+}
+
+.lore-row:hover {
+  background: var(--wc-surface-hover);
+}
+
+.lore-row[data-selected="true"] {
+  background: var(--wc-accent-subtle);
+}
+
+/* Disabled entries stay legible but visibly inert — they are still reorderable. */
+.lore-row[data-enabled="false"] .lore-row__name,
+.lore-row[data-enabled="false"] .lore-row__order {
+  opacity: 0.45;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.lore-row[data-dragging="true"] {
+  z-index: 1;
+  position: relative;
+  background: var(--wc-surface-raised);
+  box-shadow: var(--wc-shadow);
+}
+
+.lore-row__grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  cursor: grab;
+  touch-action: none;
+}
+
+.lore-row__grip:active {
+  cursor: grabbing;
+}
+
+/* Dragging is only meaningful in custom order; elsewhere the grip says so by fading. */
+.lore-row__grip:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.lore-row:hover .lore-row__grip:not(:disabled) {
+  color: var(--wc-text-muted);
+}
+
+.lore-row__check {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 var(--wc-space-1);
+  cursor: pointer;
+}
+
+.lore-row__check input {
+  accent-color: var(--wc-accent);
+  cursor: pointer;
+  margin: 0;
+}
+
+.lore-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-1) 0;
+  text-align: left;
+}
+
+.lore-row__name {
+  font-size: var(--wc-text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.lore-row__tags {
+  display: flex;
+  gap: var(--wc-space-1);
+  flex-shrink: 0;
+}
+
+.lore-tag {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 4px;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-hover);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lore-tag--constant {
+  color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+}
+
+.lore-tag--depth {
+  color: var(--wc-warning);
+  background: rgba(240, 160, 32, 0.12);
+  font-family: var(--wc-font-mono);
+}
+
+.lore-tag--warn {
+  color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
+}
+
+.lore-row__order {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* --- the entry form ----------------------------------------------------- */
+
+.lore-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding-top: var(--wc-space-3);
+  border-top: 1px solid var(--wc-border);
+}
+
+.lore-form__inherit {
+  align-self: flex-start;
+  font-size: var(--wc-text-xs);
+  margin-top: calc(var(--wc-space-2) * -1);
+}
+
+.lore-form__warn {
+  color: var(--wc-danger);
+}
+
+.lore-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--wc-space-2);
+  border-top: 1px solid var(--wc-border);
+}

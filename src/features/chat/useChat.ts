@@ -14,8 +14,12 @@ import type { ConnectionSettings } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatSummary, Persona } from '@shared/types/chat.ts';
 import type { GenerationType, Preset } from '@shared/types/preset.ts';
+import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
+import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
+import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
+import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
   type ChatAction,
   type ChatState,
@@ -41,10 +45,16 @@ export interface UseChatOptions {
   characterId: string | null;
   character: CardDataV2 | null;
   preset: Preset | null;
-  persona: Persona | null;
+  /** Every persona. Which one applies is resolved in here — see `persona` below. */
+  personas: Persona[];
+  /** The persona new chats start with. `AppSettings.personaId`. */
+  defaultPersonaId: string | null;
   connection: ConnectionSettings | null;
   countTokens: TokenCounter;
   streamingFps: number;
+  /** Lorebooks that apply to this chat, already loaded. */
+  worldInfoSources?: WorldInfoSource[];
+  worldInfoSettings?: WorldInfoSettings;
 }
 
 export interface UseChat {
@@ -73,15 +83,32 @@ export interface UseChat {
   renameChat(title: string): void;
   deleteChat(chatId: string): Promise<void>;
   branchFrom(messageId: string): Promise<void>;
+
+  /** The persona this chat actually uses. Resolved here, not passed in. */
+  persona: Persona | null;
+  setPersona(personaId: string | null): void;
+  /** What World Info did on the last generation, for the inspector. */
+  worldInfo: ActivationResult | null;
 }
 
 export function useChat(options: UseChatOptions): UseChat {
-  const { characterId, character, preset, persona, connection, countTokens, streamingFps } =
-    options;
+  const {
+    characterId,
+    character,
+    preset,
+    personas,
+    defaultPersonaId,
+    connection,
+    countTokens,
+    streamingFps,
+    worldInfoSources,
+    worldInfoSettings,
+  } = options;
 
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [saving, setSaving] = useState(false);
+  const [worldInfo, setWorldInfo] = useState<ActivationResult | null>(null);
 
   const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
   const abortRef = useRef<AbortController | null>(null);
@@ -95,6 +122,34 @@ export function useChat(options: UseChatOptions): UseChat {
   // rebuild the projection for no reason.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the transcript only
   const messages = useMemo(() => toChatMessages(state), [state.messages]);
+
+  // --- Persona ---------------------------------------------------------------
+
+  /**
+   * The chat wins over the app default.
+   *
+   * `AppSettings.personaId` is the persona NEW chats start with; `ChatMetadata.persona` is
+   * the one this chat is using. A chat is a transcript in which "you" said things, so
+   * letting the app default retroactively apply would relabel every past message the
+   * moment the default changed.
+   *
+   * Resolved here rather than in App: computing it up there from `chat.state.metadata` and
+   * feeding it back in as a prop would be a cycle.
+   */
+  const persona = useMemo(() => {
+    const stored = state.metadata.persona;
+    const fromChat =
+      typeof stored === 'string' ? personas.find((item) => item.id === stored) : undefined;
+    if (fromChat) return fromChat;
+
+    // A chat that names a persona which has since been deleted falls back to the default
+    // rather than to nothing — the transcript still reads as somebody.
+    return personas.find((item) => item.id === defaultPersonaId) ?? null;
+  }, [state.metadata.persona, personas, defaultPersonaId]);
+
+  const setPersona = useCallback((personaId: string | null) => {
+    dispatch({ type: 'chat/metadata', patch: { persona: personaId ?? undefined } });
+  }, []);
 
   // --- Chat list -------------------------------------------------------------
 
@@ -224,12 +279,30 @@ export function useChat(options: UseChatOptions): UseChat {
           : '';
 
       const generationType = MODE_TO_GENERATION_TYPE[mode];
+      const chatMessages = toChatMessages(started);
+
+      // Activation runs over the state that already contains the folded user message,
+      // so the message just typed is in the scan buffer for the reply it triggers.
+      const lore = worldInfoForChat({
+        sources: worldInfoSources ?? [],
+        messages: chatMessages,
+        settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
+        preset,
+        chatId: started.chatId,
+        // The same memoised counter assembly gets, or every entry is tokenised twice.
+        countTokens,
+      });
+      setWorldInfo(lore);
+
       const assembled = assemblePrompt({
         preset,
         character,
         persona,
-        messages: toChatMessages(started),
+        messages: chatMessages,
         generationType,
+        worldInfoBefore: lore?.before,
+        worldInfoAfter: lore?.after,
+        worldInfoDepth: lore?.depth,
         countTokens,
         seed: started.chatId ?? '',
       });
@@ -294,7 +367,17 @@ export function useChat(options: UseChatOptions): UseChat {
         void refreshChats();
       }
     },
-    [character, preset, persona, connection, countTokens, stream, refreshChats],
+    [
+      character,
+      preset,
+      persona,
+      connection,
+      countTokens,
+      stream,
+      refreshChats,
+      worldInfoSources,
+      worldInfoSettings,
+    ],
   );
 
   const send = useCallback(
@@ -424,6 +507,9 @@ export function useChat(options: UseChatOptions): UseChat {
     renameChat,
     deleteChat,
     branchFrom,
+    persona,
+    setPersona,
+    worldInfo,
   };
 }
 

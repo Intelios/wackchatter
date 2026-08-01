@@ -87,11 +87,13 @@ export function AppShell({
 interface PanelProps {
   title: string;
   actions?: ReactNode;
+  /** A tab strip under the header. Sits outside the body, so it never scrolls away. */
+  tabs?: ReactNode;
   children: ReactNode;
 }
 
 /** Standard panel chrome: a fixed header and a single scrolling body. */
-export function Panel({ title, actions, children }: PanelProps) {
+export function Panel({ title, actions, tabs, children }: PanelProps) {
   return (
     <>
       <header className="panel__header">
@@ -100,6 +102,7 @@ export function Panel({ title, actions, children }: PanelProps) {
           <div style={{ display: 'flex', gap: 'var(--wc-space-1)' }}>{actions}</div>
         ) : null}
       </header>
+      {tabs}
       <div className="panel__body">{children}</div>
     </>
   );

@@ -1,0 +1,129 @@
+.persona-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.persona-panel__error {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: 1px solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+  font-size: var(--wc-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.persona-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.persona-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid transparent;
+}
+
+.persona-list__item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.persona-list__item[data-active="true"] {
+  background: var(--wc-accent-subtle);
+  border-color: var(--wc-accent);
+}
+
+.persona-list__pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  text-align: left;
+}
+
+.persona-list__pick:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.persona-list__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--wc-radius-sm);
+  overflow: hidden;
+  background: var(--wc-surface-raised);
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.persona-list__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.persona-list__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--wc-text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.persona-list__badge {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 4px;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-hover);
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+}
+
+.persona-list__edit {
+  flex-shrink: 0;
+  font-size: var(--wc-text-xs);
+}
+
+.persona-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+.persona-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding-top: var(--wc-space-3);
+  border-top: 1px solid var(--wc-border);
+}
+
+/* The file input inside is hidden; the label is the button. */
+.persona-editor__avatar {
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+.persona-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--wc-space-2);
+  border-top: 1px solid var(--wc-border);
+}

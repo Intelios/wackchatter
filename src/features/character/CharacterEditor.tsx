@@ -1,9 +1,12 @@
 import type { CardDataV2, CharacterDetail } from '@shared/types/card.ts';
+import type { WorldInfoEntry } from '@shared/types/worldinfo.ts';
+import { bookEntries as bookEntriesOf, toWorldInfoBook } from '@shared/worldinfo/convert.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ListField, TagField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
+import { EmbeddedBook } from './EmbeddedBook.tsx';
 import './CharacterEditor.css';
 
 const AUTOSAVE_DELAY_MS = 700;
@@ -106,6 +109,26 @@ export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: Characte
   }
 
   const lorebookEntries = data.character_book?.entries ?? [];
+
+  // Normalised for the shared editor. The engine consumes this shape too, so converting
+  // here means one conversion boundary rather than one per screen.
+  const bookEntries = useMemo(
+    () =>
+      data.character_book
+        ? bookEntriesOf(toWorldInfoBook(data.character_book))
+        : ([] as WorldInfoEntry[]),
+    [data.character_book],
+  );
+
+  // The book endpoints return the whole updated card, so the local copy follows the
+  // server's rather than being patched twice from two directions.
+  const handleBookSaved = useCallback(
+    (saved: CharacterDetail) => {
+      setData(saved.card.data);
+      onSaved(saved);
+    },
+    [onSaved],
+  );
 
   const statusLabel = useMemo(() => {
     switch (saveState) {
@@ -250,26 +273,18 @@ export function CharacterEditor({ detail, onSaved, onDeleted, onBack }: Characte
         title="Lorebook"
         badge={lorebookEntries.length ? `${lorebookEntries.length}` : 'none'}
       >
-        {lorebookEntries.length === 0 ? (
-          <div className="wc-empty">This character has no embedded lorebook.</div>
-        ) : (
-          <ul className="editor__lore-list">
-            {lorebookEntries.map((entry, index) => (
-              <li className="editor__lore-item" key={entry.id ?? index}>
-                <span className="editor__lore-name">
-                  {entry.comment || entry.name || `Entry ${index + 1}`}
-                </span>
-                <span className="editor__lore-keys">
-                  {entry.constant ? 'always on' : entry.keys.join(', ') || 'no keys'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="wc-hint">
-          Embedded lorebooks are preserved exactly as imported. Editing lands with the World Info
-          engine.
-        </p>
+        {/*
+          Edited through its own endpoints, not the autosave above — each one mutates a
+          single entry on the stored card. The autosave's field list deliberately omits
+          character_book: mergeCardData replaces it wholesale, so sending a client-built
+          book would let a stale tab write a mass deletion into the PNG.
+        */}
+        <EmbeddedBook
+          avatar={avatar}
+          entries={bookEntries}
+          onSaved={handleBookSaved}
+          onError={setSaveError}
+        />
       </Section>
 
       <Section title="Metadata">
