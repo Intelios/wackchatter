@@ -5,7 +5,7 @@ import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from './components/Tabs.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
@@ -98,6 +98,16 @@ export function App() {
       .then(setSettings)
       .catch((err) => setError((err as Error).message));
   }, []);
+
+  const appliedStoredPreset = useRef(false);
+  useEffect(() => {
+    if (appliedStoredPreset.current || !settings || presets.length === 0) return;
+    appliedStoredPreset.current = true;
+    const stored = settings.presetId;
+    if (stored && presets.some((p) => p.id === stored)) {
+      setPresetId(stored);
+    }
+  }, [settings, presets]);
 
   // `presetReload` is not read in here — it is the reload trigger. Bumping it re-runs this
   // effect, which is how Revert discards the working copy: the file on disk is the only
@@ -197,6 +207,14 @@ export function App() {
       }
     },
     [saveSettingsStrict],
+  );
+
+  const selectPreset = useCallback(
+    (id: string) => {
+      setPresetId(id);
+      void patchSettings({ presetId: id });
+    },
+    [patchSettings],
   );
 
   const commitGlobalVariables = useCallback(
@@ -349,7 +367,7 @@ export function App() {
             presets={presets}
             presetId={presetId}
             preset={preset}
-            onSelectPreset={setPresetId}
+            onSelectPreset={selectPreset}
             onPresetChange={setPreset}
             onRevertPreset={() => setPresetReload((n) => n + 1)}
             onPresetsChanged={refreshPresets}

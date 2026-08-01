@@ -28,6 +28,8 @@ export interface AppSettings {
   worldInfo: WorldInfoSettings;
   /** Force a tokenizer encoding instead of inferring it from the model id. */
   tokenizerEncoding: 'auto' | 'o200k_base' | 'cl100k_base';
+  /** The preset selected on startup. Null means "first alphabetically". */
+  presetId: string | null;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
@@ -48,4 +50,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   variables: {},
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
+  presetId: null,
 };
