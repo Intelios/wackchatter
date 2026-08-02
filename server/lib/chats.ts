@@ -41,6 +41,7 @@ interface MessageRow {
 
 export interface ChatStore {
   listChats(characterId?: string): ChatSummary[];
+  listRecent(limit: number): ChatSummary[];
   getChat(id: string): Chat | null;
   createChat(input: {
     characterId: string;
@@ -143,6 +144,9 @@ export function createChatStore(database: Database): ChatStore {
     FROM chats c`;
 
   const listAll = database.query<ChatSummary, []>(`${summarySelect} ORDER BY c.modified DESC`);
+  const listRecent = database.query<ChatSummary, [number]>(
+    `${summarySelect} ORDER BY c.modified DESC LIMIT ?`,
+  );
   const listForCharacter = database.query<ChatSummary, [string]>(
     `${summarySelect} WHERE c.character_id = ? ORDER BY c.modified DESC`,
   );
@@ -294,6 +298,10 @@ export function createChatStore(database: Database): ChatStore {
       const rows = characterId ? listForCharacter.all(characterId) : listAll.all();
       // json_extract returns null for an empty chat; ChatSummary promises a string.
       return rows.map((row) => ({ ...row, lastMessage: row.lastMessage ?? '' }));
+    },
+
+    listRecent(limit: number): ChatSummary[] {
+      return listRecent.all(limit).map((row) => ({ ...row, lastMessage: row.lastMessage ?? '' }));
     },
 
     getChat: readChat,

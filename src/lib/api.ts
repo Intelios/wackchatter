@@ -300,6 +300,8 @@ export const chatApi = {
       characterId ? `/chats?character=${encodeURIComponent(characterId)}` : '/chats',
     ),
 
+  recent: (limit: number) => request<ChatSummary[]>(`/chats?limit=${limit}`),
+
   get: (id: string) => request<Chat>(`/chats/${encodeURIComponent(id)}`),
 
   create: (input: {
@@ -469,3 +471,13 @@ export async function streamGenerate(
   if (final.error) throw new Error(final.error);
   return final;
 }
+
+export interface VersionInfo {
+  version: string;
+  branch: string | null;
+  revision: string | null;
+}
+
+export const versionApi = {
+  get: () => request<VersionInfo>('/version'),
+};

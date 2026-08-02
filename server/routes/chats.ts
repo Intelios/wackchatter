@@ -32,9 +32,16 @@ export async function handleChatRoute(
   const method = request.method;
   const store = chatStore();
 
-  // /api/chats?character=<avatar>
+  // /api/chats?character=<avatar>&limit=<n>
   if (segments.length === 0 && method === 'GET') {
-    const character = new URL(request.url).searchParams.get('character');
+    const params = new URL(request.url).searchParams;
+    const character = params.get('character');
+    const limit = params.get('limit');
+    if (!character && limit) {
+      const n = Number(limit);
+      if (!Number.isInteger(n) || n < 1) return errorResponse('limit must be a positive integer.');
+      return json(store.listRecent(n));
+    }
     return json(store.listChats(character ?? undefined));
   }
 

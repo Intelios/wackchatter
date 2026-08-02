@@ -196,6 +196,34 @@ describe('listing', () => {
 
     expect(store.listChats('a.png')[0]?.id).toBe(newer.id);
   });
+
+  test('listRecent returns at most limit chats across all characters', () => {
+    store.createChat({ characterId: 'a.png', title: 'one' });
+    store.createChat({ characterId: 'b.png', title: 'two' });
+    store.createChat({ characterId: 'c.png', title: 'three' });
+
+    const recent = store.listRecent(2);
+    expect(recent.length).toBe(2);
+  });
+
+  test('listRecent sorts by modified descending', () => {
+    const oldest = store.createChat({ characterId: 'a.png', title: 'oldest' });
+    const middle = store.createChat({ characterId: 'b.png', title: 'middle' });
+    const newest = store.createChat({ characterId: 'c.png', title: 'newest' });
+    database.query('UPDATE chats SET modified = ? WHERE id = ?').run(1, oldest.id);
+    database.query('UPDATE chats SET modified = ? WHERE id = ?').run(2, middle.id);
+    database.query('UPDATE chats SET modified = ? WHERE id = ?').run(3, newest.id);
+
+    const recent = store.listRecent(10);
+    expect(recent.map((c) => c.id)).toEqual([newest.id, middle.id, oldest.id]);
+  });
+
+  test('listRecent returns all when limit exceeds count', () => {
+    store.createChat({ characterId: 'a.png' });
+    store.createChat({ characterId: 'b.png' });
+
+    expect(store.listRecent(100).length).toBe(2);
+  });
 });
 
 describe('replacing', () => {

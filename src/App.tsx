@@ -27,6 +27,7 @@ import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
+import { StartScreen } from './features/start/StartScreen.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
 import {
@@ -41,7 +42,7 @@ import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
-  const [rightPanel, setRightPanel] = useState<RightPanelId | null>('characters');
+  const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -439,7 +440,11 @@ export function App() {
   );
 
   const transitionToCharacter = useCallback(
-    async (avatar: string, editing = false) => {
+    async (
+      avatar: string,
+      options?: { editing?: boolean; chatId?: string; panel?: RightPanelId | null },
+    ) => {
+      const editing = options?.editing ?? false;
       if (avatar !== selected || editing) {
         try {
           await chat.flushSaves();
@@ -447,12 +452,13 @@ export function App() {
           return;
         }
       }
+      if (options?.chatId) chat.pendingChatRef.current = options.chatId;
       if (avatar !== selected) {
         setDetail(null);
         setSelected(avatar);
       }
       setEditing(editing);
-      setRightPanel('characters');
+      setRightPanel(options?.panel === undefined ? 'characters' : options.panel);
     },
     [chat, selected],
   );
@@ -460,6 +466,13 @@ export function App() {
   const handleSelect = useCallback(
     (avatar: string) => {
       void transitionToCharacter(avatar);
+    },
+    [transitionToCharacter],
+  );
+
+  const handleOpenRecentChat = useCallback(
+    (avatar: string, chatId: string) => {
+      void transitionToCharacter(avatar, { chatId, panel: null });
     },
     [transitionToCharacter],
   );
@@ -482,9 +495,7 @@ export function App() {
     setSelected(null);
     setDetail(null);
     setEditing(false);
-    // Land on the character list. Picking a character is the only thing left to do here,
-    // and Lorebooks and Persona both read as dead ends with no chat open.
-    setRightPanel('characters');
+    setRightPanel(null);
   }, [chat, flushRightPanel]);
 
   const handleSaved = useCallback((saved: CharacterDetail) => {
@@ -661,7 +672,7 @@ export function App() {
                   error={error}
                   onSelect={handleSelect}
                   onRefresh={refresh}
-                  onEdit={(avatar) => void transitionToCharacter(avatar, true)}
+                  onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
                 />
               </>
             ) : null}
@@ -728,9 +739,7 @@ export function App() {
           dialogueColors={dialogueColorSettings}
         />
       ) : (
-        <div className="wc-empty">
-          <span>Select a character to begin.</span>
-        </div>
+        <StartScreen characters={characters} onOpenChat={handleOpenRecentChat} />
       )}
     </AppShell>
   );

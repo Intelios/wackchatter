@@ -21,6 +21,7 @@ import { handleLorebookRoute } from './routes/lorebooks.ts';
 import { handlePersonaRoute } from './routes/personas.ts';
 import { handlePresetRoute } from './routes/presets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
+import { handleVersionRoute } from './routes/version.ts';
 
 const PORT = Number(process.env.WC_PORT ?? 8787);
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -60,6 +61,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   chats: handleChatRoute,
   generate: handleGenerateRoute,
   settings: handleSettingsRoute,
+  version: handleVersionRoute,
 };
 
 async function serveApi(request: Request, url: URL): Promise<Response> {

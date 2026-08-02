@@ -27,7 +27,15 @@ import type { GuidanceSettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import { KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
@@ -114,6 +122,8 @@ export interface UseChat {
 
   chats: ChatSummary[];
   openChat(chatId: string): Promise<void>;
+  /** Set before selecting a character to open a specific chat instead of the most recent. */
+  pendingChatRef: RefObject<string | null>;
   newChat(): Promise<void>;
   renameChat(title: string): void;
   deleteChat(chatId: string): Promise<void>;
@@ -189,6 +199,8 @@ export function useChat(options: UseChatOptions): UseChat {
   // dispatch only becomes visible at render, so the user's open can be queued but not yet
   // reflected in `stateRef` when the init settles. The counter moves before any await.
   const userChatAction = useRef(0);
+
+  const pendingChatRef = useRef<string | null>(null);
 
   const captureSnapshot = useCallback((source: ChatState): ChatSaveSnapshot | null => {
     if (!source.chatId) return null;
@@ -298,6 +310,20 @@ export function useChat(options: UseChatOptions): UseChat {
 
     const run = async () => {
       try {
+        const targetChatId = pendingChatRef.current;
+        if (targetChatId) {
+          pendingChatRef.current = null;
+          const [summaries, chat] = await Promise.all([
+            chatApi.list(characterId),
+            chatApi.get(targetChatId),
+          ]);
+          if (cancelled) return;
+          setChats(summaries);
+          setLoadError(null);
+          loadChat(chat);
+          return;
+        }
+
         const resolved = await resolveInitialChat(
           chatApi,
           characterId,
@@ -800,6 +826,7 @@ export function useChat(options: UseChatOptions): UseChat {
     toggleHidden,
     chats,
     openChat,
+    pendingChatRef,
     newChat,
     renameChat,
     deleteChat,
