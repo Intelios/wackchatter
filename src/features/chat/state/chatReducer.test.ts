@@ -345,6 +345,69 @@ describe('retrying', () => {
   });
 });
 
+/*
+ * Guided generations reuse `send` and `swipe` wholesale — the guidance never reaches the
+ * reducer, it is an argument to assembly. These pin that the reuse is safe, so nobody
+ * "simplifies" the guided paths into something that settles differently.
+ */
+describe('guided generations', () => {
+  test('a guided response appends a reply without a user message before it', () => {
+    // The whole point: the instruction steers the reply without becoming part of the story.
+    const before = loaded();
+    const state = run(
+      before,
+      { type: 'gen/started', mode: 'send', newId: 'g1', name: 'S' },
+      { type: 'gen/finished', text: 'Guided reply.' },
+    );
+
+    expect(state.messages.length).toBe(before.messages.length + 1);
+    expect(last(state).is_user).toBe(false);
+    expect(currentText(last(state))).toBe('Guided reply.');
+    expect(state.messages.some((message) => message.is_user)).toBe(false);
+    assertConsistent(state);
+  });
+
+  test('a failed guided response leaves no empty message behind', () => {
+    const before = loaded();
+    const state = run(
+      before,
+      { type: 'gen/started', mode: 'send', newId: 'g1', name: 'S' },
+      { type: 'gen/failed', message: 'Nope.' },
+    );
+
+    expect(state.messages.length).toBe(before.messages.length);
+    assertConsistent(state);
+  });
+
+  test('a failed guided swipe leaves no blank alternate behind', () => {
+    // Every network hiccup would otherwise leave an empty alternate on the reply, and they
+    // accumulate silently — the swipe counter climbs while nothing new is there to read.
+    const before = loaded();
+    const state = run(
+      before,
+      { type: 'gen/started', mode: 'swipe', newId: 'g1', name: 'S' },
+      { type: 'gen/failed', message: 'Nope.' },
+    );
+
+    expect(swipeCount(last(state))).toBe(swipeCount(last(before)));
+    assertConsistent(state);
+  });
+
+  test('a guided swipe from a middle alternate appends rather than overwriting', () => {
+    const before = run(loaded(), { type: 'swipe/select', id: 'm0', index: 1 });
+    const state = run(
+      before,
+      { type: 'gen/started', mode: 'swipe', newId: 'g1', name: 'S' },
+      { type: 'gen/finished', text: 'A fourth.' },
+    );
+
+    expect(swipeCount(last(state))).toBe(swipeCount(last(before)) + 1);
+    expect(currentText(last(state))).toBe('A fourth.');
+    expect(last(state).swipes).toContain('Greetings.');
+    assertConsistent(state);
+  });
+});
+
 describe('regenerating', () => {
   test('regenerate replaces the message and drops its alternates', () => {
     const state = run(

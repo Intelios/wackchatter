@@ -3,6 +3,7 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
+import type { GuidanceSettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useEffect, useState } from 'react';
@@ -20,6 +21,12 @@ export interface PromptPreviewInput {
   worldInfoSettings?: WorldInfoSettings;
   chatId?: string | null;
   chatMetadata?: ChatMetadata;
+  /**
+   * Guidance config only. One-shot guidance is deliberately absent for the same reason
+   * the composer's text is: it is not part of what the next prompt costs until you press
+   * the button, and re-assembling per keystroke would buy nothing.
+   */
+  guidanceSettings?: GuidanceSettings;
   globalVariables?: MacroVariableMap;
 }
 
@@ -53,6 +60,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const worldInfoSettings = input?.worldInfoSettings;
   const chatId = input?.chatId ?? null;
   const chatMetadata = input?.chatMetadata;
+  const guidanceSettings = input?.guidanceSettings;
   const globalVariables = input?.globalVariables;
 
   useEffect(() => {
@@ -86,6 +94,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           scenarioOverride:
             typeof chatMetadata?.scenario === 'string' ? chatMetadata.scenario : undefined,
           authorNote: chatMetadata?.authorNote,
+          guides: chatMetadata?.guides,
+          guidanceSettings,
           localVariables: chatMetadata?.variables ?? {},
           globalVariables: globalVariables ?? {},
           countTokens,
@@ -109,6 +119,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     worldInfoSettings,
     chatId,
     chatMetadata,
+    guidanceSettings,
     globalVariables,
   ]);
 

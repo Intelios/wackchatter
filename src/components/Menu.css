@@ -1,56 +1,11 @@
 /*
- * A popup anchored to its trigger. Structural only — every colour, space and duration
+ * The entries inside a menu popup. Anchoring, sides and alignment belong to Popover.css —
+ * this file is only what a menu adds. Structural only: every colour, space and duration
  * comes from tokens.css.
  */
 
-.menu {
-  position: relative;
-  flex-shrink: 0;
-}
-
 .menu__popup {
-  position: absolute;
   min-width: 220px;
-  /* .chat-column clips its overflow, so a long menu has to scroll rather than grow past
-     the top of the column and get cut off. */
-  max-height: min(60vh, var(--wc-scroll-cap));
-  overflow-y: auto;
-  padding: var(--wc-space-1);
-  border: 1px solid var(--wc-border);
-  border-radius: var(--wc-radius);
-  background: var(--wc-surface-popup);
-  box-shadow: var(--wc-shadow);
-  /* No z-index needed: the composer is a later sibling than the transcript, so this
-     already paints above it. */
-}
-
-/*
- * Side and alignment are independent, because the side can flip at runtime when the
- * preferred one has no room (see the layout effect in Menu.tsx) while the alignment never
- * changes. Four combinations, two rules each.
- */
-.menu[data-side="top"] .menu__popup {
-  bottom: 100%;
-  margin-bottom: var(--wc-space-1);
-}
-
-.menu[data-side="bottom"] .menu__popup {
-  top: 100%;
-  margin-top: var(--wc-space-1);
-}
-
-.menu[data-align="start"] .menu__popup {
-  left: 0;
-}
-
-/*
- * Right-aligned so the popup grows inward, away from the edge it is anchored to. Growing
- * outward would push it under the scroll container's `overflow-x: hidden`.
- */
-.menu[data-align="end"] .menu__popup {
-  right: 0;
-  /* Above later-painting siblings inside the same bubble, such as the swipe row. */
-  z-index: 2;
 }
 
 .menu__item {

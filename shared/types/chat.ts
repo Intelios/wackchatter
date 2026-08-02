@@ -59,7 +59,27 @@ export interface ChatMetadata {
   variables?: MacroVariableMap;
   /** Lightweight, chat-scoped Author's Note configuration. */
   authorNote?: Partial<AuthorNoteSettings>;
+  /** Standing instructions injected into every prompt for this chat. */
+  guides?: PersistentGuide[];
   [key: string]: unknown;
+}
+
+/**
+ * A standing instruction that sits in every prompt for one chat.
+ *
+ * Per chat rather than per character, matching where SillyTavern keeps the same thing
+ * (`chat_metadata.script_injects`): a guide is a steering decision about *this* story, and
+ * one that leaked into every future chat with the character would be invisible the moment
+ * you forgot you set it.
+ *
+ * `id` is opaque and `name` is editable, the persona rule rather than the lorebook one —
+ * renaming a guide must not detach the text from the entry that owns it.
+ */
+export interface PersistentGuide {
+  id: string;
+  name: string;
+  text: string;
+  enabled: boolean;
 }
 
 /** Values supported by SillyTavern's legacy variable macros. */

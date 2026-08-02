@@ -129,7 +129,7 @@
 }
 
 /* An open menu whose trigger has faded out is a trap — you cannot see what you opened. */
-.message:has(.menu__trigger[aria-expanded="true"]) .message__tools {
+.message:has(.popover__trigger[aria-expanded="true"]) .message__tools {
   opacity: 1;
 }
 
@@ -148,13 +148,13 @@
   pointer-events: none;
 }
 
-.message__menu .menu__trigger {
+.message__menu .popover__trigger {
   padding: var(--wc-space-1);
   color: var(--wc-text-faint);
 }
 
-.message__menu .menu__trigger:hover,
-.message__menu .menu__trigger[aria-expanded="true"] {
+.message__menu .popover__trigger:hover,
+.message__menu .popover__trigger[aria-expanded="true"] {
   color: var(--wc-text);
 }
 

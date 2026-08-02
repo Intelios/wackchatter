@@ -3,6 +3,7 @@ import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
+import { DEFAULT_GUIDANCE, type GuidanceSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -243,6 +244,7 @@ export function App() {
   const countTokens = useTokenizer(connection?.model ?? '', settings?.tokenizerEncoding);
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
+  const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
 
   // Global books are opt-in per book; nothing is global until the user says so. Stored in
   // settings so the choice survives a reload.
@@ -355,6 +357,7 @@ export function App() {
     worldInfoSources: lore.sources,
     resolveWorldInfoSources: lore.sourcesForPersona,
     worldInfoSettings,
+    guidanceSettings,
     globalVariables: settings?.variables ?? {},
     onGlobalVariablesChange: commitGlobalVariables,
   });
@@ -378,6 +381,7 @@ export function App() {
           worldInfoSettings,
           chatId: chat.state.chatId,
           chatMetadata: chat.state.metadata,
+          guidanceSettings,
           globalVariables: settings?.variables ?? {},
         }
       : null,
@@ -603,6 +607,10 @@ export function App() {
           ready={ready}
           onCloseChat={() => void handleCloseChat()}
           onOpenPanel={(id) => void showRightPanel(id)}
+          guidance={guidanceSettings}
+          onGuidanceChange={(patch) =>
+            void patchSettings({ guidance: { ...guidanceSettings, ...patch } })
+          }
         />
       ) : (
         <div className="wc-empty">

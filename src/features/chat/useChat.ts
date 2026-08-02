@@ -23,6 +23,7 @@ import type {
   Persona,
 } from '@shared/types/chat.ts';
 import type { GenerationType, Preset } from '@shared/types/preset.ts';
+import type { GuidanceSettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
@@ -69,6 +70,8 @@ export interface UseChatOptions {
   /** Resolve sources after this hook has selected the chat-scoped persona. */
   resolveWorldInfoSources?: (personaLorebookId?: string) => WorldInfoSource[];
   worldInfoSettings?: WorldInfoSettings;
+  /** Template, depth and role for guided generations and persistent guides. */
+  guidanceSettings?: GuidanceSettings;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
@@ -92,6 +95,15 @@ export interface UseChat {
   /** -1 shows a cached swipe; +1 past the end generates a new one. */
   swipe(direction: -1 | 1): Promise<void>;
   continueLast(): Promise<void>;
+  /**
+   * Reply, steered by `guidance`, without writing it into the transcript.
+   *
+   * Not `send` with extra text: the point is a reply shaped by an instruction nobody has
+   * to read back later.
+   */
+  guidedRespond(guidance: string): Promise<void>;
+  /** A new alternate on the last reply, steered the same way. Never a cached swipe. */
+  guidedSwipe(guidance: string): Promise<void>;
   abort(): void;
 
   editMessage(id: string, text: string): void;
@@ -132,6 +144,7 @@ export function useChat(options: UseChatOptions): UseChat {
     worldInfoSources,
     resolveWorldInfoSources,
     worldInfoSettings,
+    guidanceSettings,
     globalVariables,
     onGlobalVariablesChange,
   } = options;
@@ -392,7 +405,7 @@ export function useChat(options: UseChatOptions): UseChat {
    *   into it (as `send` does with the user's message).
    */
   const generate = useCallback(
-    async (mode: GenMode, base?: ChatState) => {
+    async (mode: GenMode, base?: ChatState, guidance?: string) => {
       const current = base ?? stateRef.current;
       if (current.status !== 'idle') return;
       if (!character || !preset || !connection) return;
@@ -456,6 +469,12 @@ export function useChat(options: UseChatOptions): UseChat {
           scenarioOverride:
             typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
           authorNote: started.metadata.authorNote,
+          guides: started.metadata.guides,
+          // One-shot: it exists only as an argument on this call, so unlike an ephemeral
+          // injection parked in metadata there is nothing that could leak into the next
+          // generation, or survive a failure that skipped its own cleanup.
+          guidance,
+          guidanceSettings,
           localVariables: started.metadata.variables ?? {},
           globalVariables,
           countTokens,
@@ -566,6 +585,7 @@ export function useChat(options: UseChatOptions): UseChat {
       worldInfoSources,
       resolveWorldInfoSources,
       worldInfoSettings,
+      guidanceSettings,
       globalVariables,
       onGlobalVariablesChange,
     ],
@@ -617,6 +637,34 @@ export function useChat(options: UseChatOptions): UseChat {
       if (direction === -1) return;
 
       await generate('swipe');
+    },
+    [generate],
+  );
+
+  /*
+   * The two guided entry points.
+   *
+   * `guidedRespond` runs mode `send` without appending a user message, which is what makes
+   * the steering invisible: `gen/started` adds only the assistant placeholder, so the reply
+   * answers the transcript as it stands. `guidedSwipe` goes straight to `generate` rather
+   * than through `swipe`, which would show a cached alternate instead of making a new one.
+   *
+   * Neither needs a reducer change. A failure settles through the same undo table as any
+   * other generation — mode `send` drops the placeholder, mode `swipe` drops the blank
+   * alternate — so a guided attempt that goes nowhere leaves nothing behind.
+   */
+  const guidedRespond = useCallback(
+    async (guidance: string) => {
+      if (!guidance.trim() || stateRef.current.status !== 'idle') return;
+      await generate('send', undefined, guidance);
+    },
+    [generate],
+  );
+
+  const guidedSwipe = useCallback(
+    async (guidance: string) => {
+      if (!guidance.trim() || stateRef.current.status !== 'idle') return;
+      await generate('swipe', undefined, guidance);
     },
     [generate],
   );
@@ -737,6 +785,8 @@ export function useChat(options: UseChatOptions): UseChat {
     regenerate,
     swipe,
     continueLast,
+    guidedRespond,
+    guidedSwipe,
     abort,
     editMessage,
     deleteMessage,

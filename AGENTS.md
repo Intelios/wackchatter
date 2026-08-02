@@ -110,6 +110,43 @@ corrupts users' libraries silently.
   instead); otherwise `continue_nudge_prompt` is appended. `continue_postfix` is the join
   between old text and new, and the client's stream seed must use the same one.
 
+**Guided generations** (`shared/prompt/assemble.ts`, `src/features/chat/GuidesPopover.tsx`)
+
+Ported from SillyTavern's Guided Generations extension, reimplemented rather than copied.
+Three features; the built-in generated guides, the stat tracker and profile switching are
+deliberately not among them.
+
+- **Guidance is a `DepthInjection`, not a message.** The composer text is wrapped in
+  `guidance.template` and spliced in at `guidance.depth` (default 0 — after the last
+  message, the model's last word). It never enters the transcript, which is the whole
+  point: steering a reply should not leave a turn nobody wanted to read.
+- **`{{input}}` rides the macro engine's `extra` hook**, the same mechanism `{{original}}`
+  uses for card overrides — not a string replace. So it expands in the engine's single
+  pass, exactly once, and **macros the user typed stay literal**: a `{{setvar}}` in the
+  steering box must not mutate chat state. The extension's `String.replace('{{input}}', …)`
+  also substitutes only the first occurrence.
+- **One-shot means one-shot.** Guidance exists only as an argument to `generate`, so unlike
+  an ephemeral injection parked in chat metadata there is nothing to leak into the next
+  generation or survive a failure that skipped its cleanup. ST needs a `/flushinject` in a
+  `finally` on top of its own `ephemeral` flag; we need nothing.
+- **Guided response is mode `send` without a user message**; guided swipe is mode `swipe`,
+  bypassing `swipe()`'s cached-alternate branch. Neither touches the reducer, so both
+  settle through the existing undo table — a failed response drops its placeholder, a
+  failed swipe drops its blank alternate.
+- **Persistent guides live in `ChatMetadata.guides`**, per chat, like the Author's Note and
+  like ST's `chat_metadata.script_injects`. `id` is opaque and `name` is editable (the
+  persona rule, not the lorebook one). Each enabled, non-blank guide is pushed as its own
+  injection even though they share a depth and coalesce anyway — that is what attributes a
+  broken macro to `guide:<id>` rather than to a merged blob.
+- Guides and guidance are pushed **last** into `depthInjections`, so when several sources
+  share one wire position `groupDepthInjections` reads world info and the note first, then
+  the standing guides, then the one-shot steer.
+- `tokenCounts.guides` and `.guidance` are **their own keys**, never folded into
+  `worldInfoDepth` — that one is already the sum over every grouped injection.
+- The composer **does not clear on a guided action**. It is an instruction, not a turn, and
+  keeping it makes "guide, then guide the swipe the same way" one retype instead of two.
+  ST clears and then needs a whole Recover Input button to undo that.
+
 **Messages** (`shared/chat/message.ts`)
 - **`mes` is derived, never stored.** The internal `MessageState` has no `mes`,
   `send_date`, `gen_started`, `gen_finished` or `extra` — text comes from
@@ -305,17 +342,21 @@ regex keys are the escape hatches.
   `T | null` where null means "inherit", which a plain checkbox cannot express.
 - `TagField` is **not** safe for World Info keys — `/foo,bar/i` is one legal key. Use
   `KeyField`, which splits via `shared/worldinfo/keys.ts`.
-- **`Menu` is the only popup.** Entries are *data*, not JSX children, which is what lets
-  `buildChatMenu` and `buildMessageMenu` be pure tested functions rather than components.
-  It is non-modal, so it does not contradict the no-modals rule. Anything that focuses an
-  element inside a popup must pass `focus({ preventScroll: true })`: the layout is fixed to
-  the viewport, and a browser scrolling to "reveal" an element drags the whole app out from
-  under it.
-- `Menu` **flips its side when the preferred one has no room**, measured in a layout effect
-  on open. Without it a bubble's ⋯ near the bottom of the window opens a popup that runs
-  off screen, and the last entries — delete among them — cannot be reached. A flip rather
-  than a portal, so the popup stays a DOM child of `.menu` and dismissal keeps working on
-  ordinary containment.
+- **`Popover` is the only popup mechanism**, and `Menu` is its data-driven list variant.
+  Menu entries are *data*, not JSX children, which is what lets `buildChatMenu` and
+  `buildMessageMenu` be pure tested functions rather than components; `GuidesPopover` uses
+  the shell directly because a form is not a list. Both are non-modal, so neither
+  contradicts the no-modals rule. Anything that focuses an element inside a popup must pass
+  `focus({ preventScroll: true })`: the layout is fixed to the viewport, and a browser
+  scrolling to "reveal" an element drags the whole app out from under it.
+- `Popover` **flips its side when the preferred one has no room**, measured in a layout
+  effect on open. Without it a bubble's ⋯ near the bottom of the window opens a popup that
+  runs off screen, and the last entries — delete among them — cannot be reached. A flip
+  rather than a portal, so the popup stays a DOM child of `.popover` and dismissal keeps
+  working on ordinary containment. It is controlled (`open` + `onOpenChange`) because both
+  consumers need to close it from inside their own content. Escape closes **and restores
+  focus to the trigger**; an outside click closes without restoring, since the click has
+  already put focus where the user wanted it.
 - **Disabled beats refused.** SillyTavern toasts "stop the generation first"; we have no
   toast system, so a blocked entry is `disabled` with a `disabledReason` that becomes its
   `title`. Same information, no new machinery.
@@ -388,6 +429,12 @@ regex keys are the escape hatches.
   entry consumes no draw.
 - `server/lib/settings.test.ts` gates the field-wise merge — a partial `worldInfo` patch
   must not reset the fields it did not mention.
+- `shared/prompt/assemble.test.ts`'s `guided generations` block pins the injection rules:
+  guidance last, guides before the last message, disabled and blank guides contributing
+  nothing, several guides sharing one wire message in list order, and that a `{{char}}`
+  typed by the user stays literal while one in the template expands.
+- `src/features/chat/guides.test.ts` covers the list edits, including that `nextGuideName`
+  fills the lowest free slot rather than counting entries.
 - `src/features/chat/ChatMenu.test.ts` pins the chat menu's gating: Continue unavailable
   on a user-final transcript, checkpoint and regenerate unavailable on an empty one, every
   action but the panel jumps disabled mid-generation, and every disabled entry carrying a
@@ -404,7 +451,8 @@ Done: layout shell, PNG codec, card format + editor, preset format + Prompt Mana
 OpenAI-compatible + OpenRouter), SSE streaming, chat storage (SQLite), multiple chats per
 character with branching, swipes/regenerate/continue/edit/delete/hide, prompt inspector,
 real tokenizer, World Info (conversion, activation engine, standalone + embedded book
-editing, inspector report), personas with avatars, Author's Note, the chat options menu.
+editing, inspector report), personas with avatars, Author's Note, the chat options menu,
+guided generations (guided response, guided swipe, per-chat persistent guides).
 
 Not built yet: impersonate.
 

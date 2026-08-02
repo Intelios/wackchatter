@@ -259,3 +259,34 @@ export function MoreIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** Guide the next reply — a wand. */
+export function WandIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 20 14 10" />
+      <path d="m12.4 8.4 3.2 3.2" />
+      <path d="M17 3v4" />
+      <path d="M15 5h4" />
+      <path d="M19.5 10.5v3" />
+      <path d="M18 12h3" />
+    </svg>
+  );
+}
+
+/**
+ * Guided swipe — a fast-forward with a spark.
+ *
+ * Deliberately not `ContinueIcon`, which is the same double chevron: these sit two buttons
+ * apart in the composer and Continue means something else entirely.
+ */
+export function GuidedSwipeIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="m4 8 5 4-5 4" />
+      <path d="m11 8 5 4-5 4" />
+      <path d="M20 4v4" />
+      <path d="M18 6h4" />
+    </svg>
+  );
+}

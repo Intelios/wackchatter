@@ -13,8 +13,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { ConnectionSettings } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS, isProviderId } from '../../shared/providers/types.ts';
-import type { AppSettings } from '../../shared/types/settings.ts';
-import { DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
+import type { AppSettings, GuidanceSettings } from '../../shared/types/settings.ts';
+import { DEFAULT_GUIDANCE, DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { atomicWriteSync } from './fs.ts';
@@ -89,6 +89,42 @@ function normalizeWorldInfo(value: unknown): WorldInfoSettings {
   };
 }
 
+const INJECTION_ROLES = ['system', 'user', 'assistant'] as const;
+
+function normalizeRole(
+  value: unknown,
+  fallback: GuidanceSettings['role'],
+): GuidanceSettings['role'] {
+  return INJECTION_ROLES.includes(value as GuidanceSettings['role'])
+    ? (value as GuidanceSettings['role'])
+    : fallback;
+}
+
+/**
+ * Coerce stored Guided Generations settings, field by field, like `normalizeWorldInfo`.
+ *
+ * The roles cannot go through the same typeof comparison the numbers do: both sides are
+ * `string`, so any word at all would pass and the bad role would only surface as a 400
+ * from the provider, with nothing pointing back at this file.
+ */
+function normalizeGuidance(value: unknown): GuidanceSettings {
+  const stored = isRecord(value) ? value : {};
+  const number = (key: 'depth' | 'guideDepth'): number => {
+    const candidate = stored[key];
+    return typeof candidate === 'number' && Number.isFinite(candidate)
+      ? candidate
+      : DEFAULT_GUIDANCE[key];
+  };
+
+  return {
+    template: typeof stored.template === 'string' ? stored.template : DEFAULT_GUIDANCE.template,
+    depth: number('depth'),
+    role: normalizeRole(stored.role, DEFAULT_GUIDANCE.role),
+    guideDepth: number('guideDepth'),
+    guideRole: normalizeRole(stored.guideRole, DEFAULT_GUIDANCE.guideRole),
+  };
+}
+
 let cache: AppSettings | null = null;
 
 export function getSettings(): AppSettings {
@@ -110,6 +146,7 @@ export function getSettings(): AppSettings {
     connection: normalizeConnection(stored.connection),
     worldInfo: normalizeWorldInfo(stored.worldInfo),
     variables: normalizeVariables(stored.variables),
+    guidance: normalizeGuidance(stored.guidance),
   };
 
   return cache;
@@ -118,9 +155,9 @@ export function getSettings(): AppSettings {
 /**
  * Apply a partial update. Pure, so the merge rules are testable without a filesystem.
  *
- * `connection` and `worldInfo` merge FIELD-WISE. A shallow spread would drop every field
- * the patch didn't mention, so a client changing only the scan depth would silently reset
- * the budget and every match setting along with it.
+ * `connection`, `worldInfo` and `guidance` merge FIELD-WISE. A shallow spread would drop
+ * every field the patch didn't mention, so a client changing only the scan depth would
+ * silently reset the budget and every match setting along with it.
  */
 export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
   return {
@@ -133,6 +170,9 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       ? normalizeWorldInfo({ ...current.worldInfo, ...patch.worldInfo })
       : current.worldInfo,
     variables: patch.variables ? normalizeVariables(patch.variables) : current.variables,
+    guidance: patch.guidance
+      ? normalizeGuidance({ ...current.guidance, ...patch.guidance })
+      : current.guidance,
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
-import type { ApiMessage, ChatMessage } from '../types/chat.ts';
+import type { ApiMessage, ChatMessage, PersistentGuide } from '../types/chat.ts';
 import { CHARACTER_NAMES_BEHAVIOR, INJECTION_POSITION } from '../types/preset.ts';
 import { DEFAULT_USER_NAME, assemblePrompt, parseExampleDialogue } from './assemble.ts';
 import { createDefaultPreset } from './defaults.ts';
@@ -458,6 +458,192 @@ describe('depth injection', () => {
     });
 
     expect(messages).toEqual([{ role: 'system', content: 'first\nsecond' }]);
+  });
+});
+
+describe('guided generations', () => {
+  const historyOnly = () => ({
+    ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+    new_chat_prompt: '',
+  });
+
+  const guide = (overrides: Partial<PersistentGuide> = {}): PersistentGuide => ({
+    id: 'g1',
+    name: 'Tone',
+    text: 'Be rude.',
+    enabled: true,
+    ...overrides,
+  });
+
+  test('guidance is the last thing the model reads', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(3),
+      guidance: 'have her change the subject',
+    });
+
+    expect(messages.at(-1)).toEqual({
+      role: 'system',
+      content:
+        '[Take the following into special consideration for your next message: have her change the subject]',
+    });
+  });
+
+  test('the role and depth come from settings', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(3),
+      guidance: 'louder',
+      guidanceSettings: { template: '{{input}}', depth: 1, role: 'user' },
+    });
+
+    expect(messages.at(-2)).toEqual({ role: 'user', content: 'louder' });
+  });
+
+  test('macros in the template expand, macros the user typed do not', () => {
+    // One pass is the engine's contract, and {{input}} rides the same `extra` hook
+    // {{original}} does — so a {{setvar}} typed into a steering box cannot mutate state.
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(1),
+      guidance: 'annoy {{char}}',
+      guidanceSettings: { template: '[{{char}} note: {{input}}]' },
+    });
+
+    expect(messages.at(-1)!.content).toBe('[Seraphina note: annoy {{char}}]');
+  });
+
+  test('blank guidance injects nothing at all', () => {
+    const plain = assemble({ preset: historyOnly(), messages: makeMessages(2) });
+    const blank = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      guidance: '   \n ',
+    });
+
+    expect(blank.messages).toEqual(plain.messages);
+    expect(blank.tokenCounts.guidance).toBeUndefined();
+  });
+
+  test('a template that resolves to nothing injects nothing', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      guidance: 'ignored',
+      guidanceSettings: { template: '   ' },
+    });
+
+    expect(messages).toHaveLength(2);
+  });
+
+  test('guides sit just before the last message, guidance after it', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      guides: [guide({ text: 'STANDING' })],
+      guidance: 'ONESHOT',
+      guidanceSettings: { template: '{{input}}' },
+    });
+
+    expect(messages.map((m) => m.content)).toEqual([
+      'message number 0',
+      'STANDING',
+      'message number 1',
+      'ONESHOT',
+    ]);
+  });
+
+  test('guides reach an ordinary generation, with no guidance in sight', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      guides: [guide({ text: 'STANDING' })],
+    });
+
+    expect(messages.map((m) => m.content)).toContain('STANDING');
+  });
+
+  test('a disabled guide contributes nothing', () => {
+    const { messages, tokenCounts } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      guides: [guide({ enabled: false, text: 'SILENT' })],
+    });
+
+    expect(messages.map((m) => m.content)).not.toContain('SILENT');
+    expect(tokenCounts.guides).toBeUndefined();
+  });
+
+  test('an empty guide contributes nothing, so a half-written one is not a blank line', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(2),
+      guides: [guide({ id: 'a', text: '  ' }), guide({ id: 'b', text: 'REAL' })],
+    });
+
+    expect(messages.map((m) => m.content)).toEqual([
+      'message number 0',
+      'REAL',
+      'message number 1',
+    ]);
+  });
+
+  test('several guides share one wire message, in list order', () => {
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(1),
+      guides: [
+        guide({ id: 'a', text: 'FIRST' }),
+        guide({ id: 'b', text: 'SECOND' }),
+        guide({ id: 'c', text: 'THIRD' }),
+      ],
+      guidanceSettings: { guideDepth: 0 },
+    });
+
+    expect(messages.at(-1)).toEqual({ role: 'system', content: 'FIRST\nSECOND\nTHIRD' });
+  });
+
+  test('sharing a depth with guidance, guides come first', () => {
+    // They collide in one wire message, so this pins the order inside it: the standing
+    // instructions set the frame, the one-shot steer lands last.
+    const { messages } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(1),
+      guides: [guide({ text: 'STANDING' })],
+      guidance: 'ONESHOT',
+      guidanceSettings: { template: '{{input}}', depth: 0, guideDepth: 0 },
+    });
+
+    expect(messages.at(-1)!.content).toBe('STANDING\nONESHOT');
+  });
+
+  test('both are charged their own tokens and named when the context overflows', () => {
+    const result = assemble({
+      preset: { ...historyOnly(), openai_max_context: 4, openai_max_tokens: 1 },
+      messages: makeMessages(1),
+      guides: [guide({ text: 'one two three' })],
+      guidance: 'four five six',
+      guidanceSettings: { template: '{{input}}' },
+    });
+
+    expect(result.tokenCounts.guides).toBe(3);
+    expect(result.tokenCounts.guidance).toBe(3);
+    // Not folded into worldInfoDepth: that key is already the sum over every grouped
+    // injection, and doubling down on the over-count would make both numbers meaningless.
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected an overflow.');
+    expect(result.error.identifiers).toContain('guides');
+    expect(result.error.identifiers).toContain('guidance');
+  });
+
+  test('a broken macro is attributed to the guide that contains it', () => {
+    const { macroWarnings } = assemble({
+      preset: historyOnly(),
+      messages: makeMessages(1),
+      guides: [guide({ id: 'tone', text: 'Be {{nonsense}}.' })],
+    });
+
+    expect(macroWarnings).toContainEqual({ macro: '{{nonsense}}', source: 'guide:tone' });
   });
 });
 

@@ -46,9 +46,43 @@ export interface AppSettings {
   backgroundDim: number;
   /** Translucent panels and bubbles. Only meaningful with a background set. */
   glass: boolean;
+  /** Guided Generations: how steering text and standing guides reach the prompt. */
+  guidance: GuidanceSettings;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
+
+/**
+ * Guided Generations settings.
+ *
+ * App-scoped rather than per chat, unlike the guides themselves: the template and the
+ * depths are a preference you tune once, while a guide is about one story.
+ *
+ * A nested object rather than flat scalars, so `mergeSettings` grew a fourth field-wise
+ * branch — see the note on `background` for why the appearance keys went the other way.
+ * Five related knobs justify the branch; three unrelated ones did not.
+ */
+export interface GuidanceSettings {
+  /** Wraps the composer text. `{{input}}` is where that text lands. */
+  template: string;
+  /**
+   * Depth for one-shot guidance. 0 puts it after the last message — the last thing the
+   * model reads before it writes, which is the entire point of guiding a reply.
+   */
+  depth: number;
+  role: 'system' | 'user' | 'assistant';
+  /** Depth and role shared by every persistent guide. */
+  guideDepth: number;
+  guideRole: 'system' | 'user' | 'assistant';
+}
+
+export const DEFAULT_GUIDANCE: Readonly<GuidanceSettings> = {
+  template: '[Take the following into special consideration for your next message: {{input}}]',
+  depth: 0,
+  role: 'system',
+  guideDepth: 1,
+  guideRole: 'system',
+};
 
 /** What the client is told about a stored API key. Never the key itself. */
 export interface KeyInfo {
@@ -71,4 +105,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundBlur: 8,
   backgroundDim: 0.55,
   glass: true,
+  guidance: { ...DEFAULT_GUIDANCE },
 };
