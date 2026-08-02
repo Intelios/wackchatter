@@ -1,0 +1,74 @@
+/*
+ * The popup shell: anchoring, sides, alignment. Structural only — every colour, space and
+ * duration comes from tokens.css. What goes inside styles itself.
+ */
+
+.popover {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.popover__trigger {
+  position: relative;
+}
+
+.popover__popup {
+  position: absolute;
+  /* .chat-column clips its overflow, so a long popup has to scroll rather than grow past
+     the top of the column and get cut off. */
+  max-height: min(60vh, var(--wc-scroll-cap));
+  overflow-y: auto;
+  padding: var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+  /* No z-index needed: the composer is a later sibling than the transcript, so this
+     already paints above it. */
+}
+
+/*
+ * Side and alignment are independent, because the side can flip at runtime when the
+ * preferred one has no room (see the layout effect in Popover.tsx) while the alignment
+ * never changes. Four combinations, two rules each.
+ */
+.popover[data-side="top"] .popover__popup {
+  bottom: 100%;
+  margin-bottom: var(--wc-space-1);
+}
+
+.popover[data-side="bottom"] .popover__popup {
+  top: 100%;
+  margin-top: var(--wc-space-1);
+}
+
+.popover[data-align="start"] .popover__popup {
+  left: 0;
+}
+
+/*
+ * Right-aligned so the popup grows inward, away from the edge it is anchored to. Growing
+ * outward would push it under the scroll container's `overflow-x: hidden`.
+ */
+.popover[data-align="end"] .popover__popup {
+  right: 0;
+  /* Above later-painting siblings inside the same bubble, such as the swipe row. */
+  z-index: 2;
+}
+
+/* A count over the trigger's corner. Absolute so it cannot change the button's size and
+   nudge everything in the composer row sideways when it appears. */
+.popover__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--wc-accent);
+  color: var(--wc-accent-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+}

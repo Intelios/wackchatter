@@ -1,11 +1,22 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { SendIcon, StopIcon } from '../../layout/icons.tsx';
+import { GuidedSwipeIcon, SendIcon, StopIcon, WandIcon } from '../../layout/icons.tsx';
 import './Composer.css';
 
 const MAX_ROWS = 12;
 
 interface ComposerProps {
   onSend: (text: string) => void;
+  /**
+   * Guided generations. They take the text rather than reading it from a lifted state, the
+   * same bargain `onSend` makes: the composer keeps owning its draft, and the chat hook
+   * never learns there is a textarea.
+   *
+   * Absent means the button is not rendered at all, so the composer works unguided.
+   */
+  onGuide?: (text: string) => void;
+  onGuidedSwipe?: (text: string) => void;
+  /** Why guided swipe is unavailable. Becomes its title — disabled beats refused. */
+  guidedSwipeDisabledReason?: string;
   onStop: () => void;
   busy: boolean;
   disabled: boolean;
@@ -17,7 +28,17 @@ interface ComposerProps {
   leading?: ReactNode;
 }
 
-export function Composer({ onSend, onStop, busy, disabled, placeholder, leading }: ComposerProps) {
+export function Composer({
+  onSend,
+  onGuide,
+  onGuidedSwipe,
+  guidedSwipeDisabledReason,
+  onStop,
+  busy,
+  disabled,
+  placeholder,
+  leading,
+}: ComposerProps) {
   const [text, setText] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
 
@@ -75,6 +96,21 @@ export function Composer({ onSend, onStop, busy, disabled, placeholder, leading 
     onSend(trimmed);
   }
 
+  /**
+   * Guided actions deliberately leave the text where it is.
+   *
+   * It is not your turn — it is an instruction — so there is nothing to "send away", and
+   * keeping it is what makes "guide, then guide the swipe the same way" one retype rather
+   * than two. The extension this is modelled on clears the box and then needs a whole
+   * Recover Input button to undo that; losing typed text with no way back is worse than
+   * leaving it visible.
+   */
+  function guided(action: (text: string) => void) {
+    const trimmed = text.trim();
+    if (!trimmed || busy || disabled) return;
+    action(trimmed);
+  }
+
   return (
     <div className="composer">
       {leading}
@@ -95,6 +131,43 @@ export function Composer({ onSend, onStop, busy, disabled, placeholder, leading 
           }
         }}
       />
+
+      {/* Hidden mid-generation rather than disabled: Send has already become Stop, and two
+          dead buttons beside it is noise where the row should read as one action. */}
+      {!busy && onGuide ? (
+        <button
+          type="button"
+          className="wc-button wc-button--ghost composer__icon"
+          onClick={() => guided(onGuide)}
+          disabled={disabled || !text.trim()}
+          aria-label="Guide the next reply"
+          title={
+            text.trim()
+              ? 'Guide the next reply — steers it without sending this as a message'
+              : 'Type an instruction to guide the next reply'
+          }
+        >
+          <WandIcon />
+        </button>
+      ) : null}
+
+      {!busy && onGuidedSwipe ? (
+        <button
+          type="button"
+          className="wc-button wc-button--ghost composer__icon"
+          onClick={() => guided(onGuidedSwipe)}
+          disabled={disabled || !text.trim() || Boolean(guidedSwipeDisabledReason)}
+          aria-label="Guided swipe"
+          title={
+            guidedSwipeDisabledReason ??
+            (text.trim()
+              ? 'Guided swipe — a new alternate for the last reply, steered by this'
+              : 'Type an instruction to steer a new alternate')
+          }
+        >
+          <GuidedSwipeIcon />
+        </button>
+      ) : null}
 
       {busy ? (
         <button

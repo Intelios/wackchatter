@@ -24,6 +24,7 @@ import {
   DEFAULT_AUTHOR_NOTE,
   type MacroVariableMap,
   type MacroWarning,
+  type PersistentGuide,
   type Persona,
 } from '../types/chat.ts';
 import type { GenerationType, Preset, Prompt } from '../types/preset.ts';
@@ -33,6 +34,7 @@ import {
   DEFAULT_INJECTION_ORDER,
   INJECTION_POSITION,
 } from '../types/preset.ts';
+import { DEFAULT_GUIDANCE, type GuidanceSettings } from '../types/settings.ts';
 import {
   type MacroEnvironment,
   type MacroRuntime,
@@ -58,6 +60,16 @@ export interface AssembleOptions {
   /** Present, including an empty string, means this chat overrides the card scenario. */
   scenarioOverride?: string;
   authorNote?: Partial<AuthorNoteSettings>;
+  /** Standing per-chat instructions, injected on every generation. */
+  guides?: PersistentGuide[];
+  /**
+   * Raw composer text for a guided generation. Absent or blank means an ordinary one.
+   *
+   * Never part of the transcript: the whole point of guiding a reply is to steer it
+   * without writing a turn nobody wanted to read.
+   */
+  guidance?: string;
+  guidanceSettings?: Partial<GuidanceSettings>;
   localVariables?: MacroVariableMap;
   globalVariables?: MacroVariableMap;
   countTokens: TokenCounter;
@@ -305,6 +317,9 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     worldInfoDepth = [],
     scenarioOverride,
     authorNote: authorNoteInput,
+    guides = [],
+    guidance = '',
+    guidanceSettings,
     localVariables = {},
     globalVariables = {},
     countTokens,
@@ -592,6 +607,51 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     }
   }
 
+  /*
+   * Guided Generations. Pushed last, which is what decides the reading order when several
+   * sources land on one wire position: `groupDepthInjections` joins collisions in array
+   * order, so world info and the note set the scene, the standing guides follow, and the
+   * one-shot steer is the final line.
+   *
+   * Each guide is its own push even though they share a depth, order and role and will be
+   * coalesced anyway — that is what gives every guide its own macro-warning source, so a
+   * broken `{{macro}}` names the guide it came from instead of a merged blob.
+   */
+  const guidanceConfig: GuidanceSettings = { ...DEFAULT_GUIDANCE, ...guidanceSettings };
+
+  let guideTokens = 0;
+  for (const guide of guides) {
+    if (!guide.enabled) continue;
+    const content = substitute(guide.text, `guide:${guide.id}`);
+    if (!content.trim()) continue;
+
+    const injection: DepthInjection = {
+      depth: Math.max(0, Math.floor(guidanceConfig.guideDepth)),
+      order: DEFAULT_INJECTION_ORDER,
+      role: guidanceConfig.guideRole,
+      content,
+    };
+    depthInjections.push(injection);
+    guideTokens += messageCost({ role: injection.role, content: injection.content });
+  }
+
+  let resolvedGuidance = '';
+  if (guidance.trim()) {
+    // {{input}} rides the `extra` hook, the same mechanism {{original}} uses for card
+    // overrides. That is one macro pass over the template, so text the user typed is
+    // placed rather than re-scanned — a {{setvar}} in the composer cannot mutate state.
+    const filled = substitute(guidanceConfig.template, 'guidance', { input: guidance });
+    if (filled.trim()) {
+      resolvedGuidance = filled;
+      depthInjections.push({
+        depth: Math.max(0, Math.floor(guidanceConfig.depth)),
+        order: DEFAULT_INJECTION_ORDER,
+        role: guidanceConfig.role,
+        content: filled,
+      });
+    }
+  }
+
   const groupedInjections = groupDepthInjections([...absolutePrompts, ...depthInjections]);
   const depthTokens = groupedInjections.reduce(
     (sum, injection) => sum + messageCost({ role: injection.role, content: injection.content }),
@@ -605,8 +665,19 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         content: resolvedAuthorNoteDepth,
       });
     }
+    // Their own keys rather than folded into worldInfoDepth, which is already the sum over
+    // every grouped injection. Extending that over-count would make both numbers useless.
+    if (guideTokens > 0) tokenCounts.guides = guideTokens;
+    if (resolvedGuidance) {
+      tokenCounts.guidance = messageCost({
+        role: guidanceConfig.role,
+        content: resolvedGuidance,
+      });
+    }
     mandatoryIdentifiers.push('worldInfoDepth');
     if (resolvedAuthorNoteDepth) mandatoryIdentifiers.push('authorNote');
+    if (guideTokens > 0) mandatoryIdentifiers.push('guides');
+    if (resolvedGuidance) mandatoryIdentifiers.push('guidance');
   }
 
   const newChatMarker =

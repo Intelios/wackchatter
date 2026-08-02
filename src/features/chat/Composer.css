@@ -71,7 +71,8 @@
  * mass then sat 25px right of the bubbles, and the bubbles read as hanging off to the
  * left. Nothing was off centre; the two halves just had nothing to line up against.
  */
-.composer .menu__trigger {
+.composer .popover__trigger,
+.composer__icon {
   height: var(--wc-composer-row);
   width: var(--wc-composer-row);
   padding: 0;
@@ -82,8 +83,14 @@
   transition: border-color var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
 }
 
-.composer .menu__trigger:hover,
-.composer .menu__trigger[aria-expanded="true"] {
+.composer .popover__trigger:hover,
+.composer .popover__trigger[aria-expanded="true"],
+.composer__icon:hover:not(:disabled) {
   border-color: var(--wc-border-strong);
   color: var(--wc-text);
+}
+
+.composer__icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

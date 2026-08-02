@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { AppSettings } from '../../shared/types/settings.ts';
-import { DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
+import { DEFAULT_GUIDANCE, DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { mergeSettings, reassignGlobalLorebooks } from './settings.ts';
 
@@ -76,6 +76,35 @@ describe('mergeSettings', () => {
   test('an empty global-variable map clears all globals', () => {
     const current = mergeSettings(base(), { variables: { score: 10 } });
     expect(mergeSettings(current, { variables: {} }).variables).toEqual({});
+  });
+
+  test('a partial guidance patch keeps every untouched field', () => {
+    const next = mergeSettings(base(), { guidance: { template: 'Do: {{input}}' } as never });
+
+    expect(next.guidance.template).toBe('Do: {{input}}');
+    expect(next.guidance.role).toBe(DEFAULT_GUIDANCE.role);
+    expect(next.guidance.guideDepth).toBe(DEFAULT_GUIDANCE.guideDepth);
+    expect(next.guidance.guideRole).toBe(DEFAULT_GUIDANCE.guideRole);
+  });
+
+  test('guidance depth zero survives, because zero is where guidance belongs', () => {
+    // The default already is 0, so set it away and back — a truthiness guard would pass
+    // the first assertion and fail this one.
+    const moved = mergeSettings(base(), { guidance: { depth: 4 } as never });
+    expect(moved.guidance.depth).toBe(4);
+    expect(mergeSettings(moved, { guidance: { depth: 0 } as never }).guidance.depth).toBe(0);
+  });
+
+  test('an unknown injection role falls back rather than reaching the provider', () => {
+    // Roles are a union, so a typeof check would wave any string through and the request
+    // would 400 at the provider with nothing pointing back here.
+    const next = mergeSettings(base(), { guidance: { role: 'narrator' } as never });
+    expect(next.guidance.role).toBe(DEFAULT_GUIDANCE.role);
+  });
+
+  test('omitting guidance leaves it untouched', () => {
+    const current = mergeSettings(base(), { guidance: { guideDepth: 3 } as never });
+    expect(mergeSettings(current, { streamingFps: 15 }).guidance.guideDepth).toBe(3);
   });
 });
 

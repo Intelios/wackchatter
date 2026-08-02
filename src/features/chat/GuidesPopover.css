@@ -1,0 +1,119 @@
+/*
+ * The persistent-guides popup. Anchoring belongs to Popover.css; this is the contents.
+ */
+
+.guides {
+  /* Wide enough for a sentence of guide text to read as a sentence, narrow enough that the
+     popup does not cover the transcript it is describing. */
+  width: clamp(320px, 28vw, 440px);
+  padding: var(--wc-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.guides__title {
+  margin: 0;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.guides__hint,
+.guides__empty {
+  margin: var(--wc-space-1) 0 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  line-height: 1.5;
+}
+
+.guides__empty {
+  margin: 0;
+  padding: var(--wc-space-3);
+  border: 1px dashed var(--wc-border);
+  border-radius: var(--wc-radius);
+  text-align: center;
+}
+
+.guides__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+/* Dimmed rather than hidden or collapsed: a guide you turned off is still something you
+   wrote, and it has to stay findable to be turned back on. */
+.guide[data-off] {
+  opacity: 0.55;
+}
+
+.guide__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.guide__toggle {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.guide__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.guide__delete {
+  flex-shrink: 0;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.guide__delete:hover,
+.guide__delete[data-confirming] {
+  color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
+}
+
+.guide__text {
+  width: 100%;
+  resize: vertical;
+  font-size: var(--wc-text-sm);
+  line-height: 1.5;
+}
+
+.guides__add {
+  align-self: flex-start;
+}
+
+.guides__row {
+  display: flex;
+  gap: var(--wc-space-2);
+}
+
+.guides__row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.guides__reset {
+  align-self: flex-start;
+  font-size: var(--wc-text-xs);
+}

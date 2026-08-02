@@ -5,12 +5,12 @@
  * and keeping it as data is what lets the entries be built by a pure, testable function
  * instead of by JSX.
  *
- * Unlike `Tabs` it owns its open state — nothing outside cares about it, and dismissal
- * needs the refs anyway. `Section` sets the same precedent.
+ * The popup itself — opening, flipping, dismissal, ARIA — is `Popover`. What lives here is
+ * only what a *menu* adds on top: entry rendering and roving arrow-key focus.
  *
- * Non-modal on purpose: the chat behind it stays live and usable, per the UI conventions.
- * That is also why there is no focus trap — focus may leave, and when it does via Tab the
- * menu simply closes.
+ * It owns its open state because nothing outside cares about it; `Section` sets the same
+ * precedent. Non-modal, so there is no focus trap — focus may leave, and when it does via
+ * Tab the menu simply closes.
  */
 
 import {
@@ -18,11 +18,10 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useId,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
+import { Popover, type PopoverPlacement } from './Popover.tsx';
 import './Menu.css';
 
 export interface MenuAction {
@@ -50,12 +49,7 @@ export function isSeparator(entry: MenuEntry): entry is MenuSeparator {
   return entry.kind === 'separator';
 }
 
-/**
- * Which corner the popup grows from. `top-start` is the composer's burger, which opens
- * upward because it sits at the bottom of the chat column; `bottom-end` is a trigger in
- * the top-right of something, like a message bubble's overflow.
- */
-export type MenuPlacement = 'top-start' | 'bottom-end';
+export type MenuPlacement = PopoverPlacement;
 
 interface MenuProps {
   /** Accessible name for the trigger, and its tooltip. */
@@ -68,67 +62,14 @@ interface MenuProps {
 
 export function Menu({ label, icon, entries, className, placement = 'top-start' }: MenuProps) {
   const [open, setOpen] = useState(false);
-  const [flipped, setFlipped] = useState(false);
-  const id = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
-
-  const [side, align] = placement.split('-') as ['top' | 'bottom', 'start' | 'end'];
-  const effectiveSide = flipped ? (side === 'top' ? 'bottom' : 'top') : side;
-
-  /*
-   * Flip when the preferred side has no room.
-   *
-   * Without this, a bubble's ⋯ near the bottom of the window opens a popup that runs off
-   * the screen — the last entries, delete among them, simply cannot be reached. CSS cannot
-   * measure that, so this does, in a layout effect so the flip lands before paint.
-   *
-   * A flip rather than a portal: the popup stays a child of `.menu`, which keeps the
-   * dismissal and focus handling working on ordinary DOM containment.
-   */
-  useLayoutEffect(() => {
-    if (!open) {
-      setFlipped(false);
-      return;
-    }
-
-    const trigger = triggerRef.current;
-    const popup = popupRef.current;
-    if (!trigger || !popup) return;
-
-    const rect = trigger.getBoundingClientRect();
-    const needed = popup.offsetHeight + 4;
-    const roomAbove = rect.top;
-    const roomBelow = window.innerHeight - rect.bottom;
-
-    // Only flip if the other side is genuinely better — flipping into an equally bad spot
-    // just moves the problem.
-    setFlipped(
-      side === 'top'
-        ? roomAbove < needed && roomBelow > roomAbove
-        : roomBelow < needed && roomAbove > roomBelow,
-    );
-  }, [open, side]);
 
   /** Close and put focus back where it started, so keyboard users are not stranded. */
   const closeAndRestore = useCallback(() => {
     setOpen(false);
-    triggerRef.current?.focus();
+    triggerRef.current?.focus({ preventScroll: true });
   }, []);
-
-  // Dismiss on a click anywhere outside. `pointerdown` rather than `click` so the menu is
-  // gone before the click lands on whatever is underneath.
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
 
   // The enabled items, in order. Queried from the DOM rather than kept in a ref array:
   // the entries are data, so the rendered list is already the only ordering that matters.
@@ -159,12 +100,9 @@ export function Menu({ label, icon, entries, className, placement = 'top-start' 
     list[Math.max(0, Math.min(next, list.length - 1))]?.focus({ preventScroll: true });
   }
 
+  // Escape is Popover's; everything here is the roving-focus behaviour a menu adds.
   function onKeyDown(event: ReactKeyboardEvent) {
     switch (event.key) {
-      case 'Escape':
-        event.preventDefault();
-        closeAndRestore();
-        break;
       case 'ArrowDown':
         event.preventDefault();
         moveFocus(1);
@@ -196,56 +134,44 @@ export function Menu({ label, icon, entries, className, placement = 'top-start' 
   }
 
   return (
-    <div
+    <Popover
+      label={label}
+      icon={icon}
+      open={open}
+      onOpenChange={setOpen}
       className={`menu${className ? ` ${className}` : ''}`}
-      data-side={effectiveSide}
-      data-align={align}
-      ref={rootRef}
+      popupClassName="menu__popup"
+      placement={placement}
+      role="menu"
+      triggerRef={triggerRef}
+      popupRef={popupRef}
       onKeyDown={onKeyDown}
     >
-      <button
-        type="button"
-        ref={triggerRef}
-        className="wc-button wc-button--ghost menu__trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        aria-label={label}
-        title={label}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {icon}
-      </button>
-
-      {open ? (
-        <div className="menu__popup" id={id} ref={popupRef} role="menu" aria-label={label}>
-          {entries.map((entry, index) =>
-            isSeparator(entry) ? (
-              // <hr> rather than a div with role="separator": the role is implicit, and a
-              // div carrying it explicitly is expected to be focusable (a splitter).
-              // biome-ignore lint/suspicious/noArrayIndexKey: separators carry no identity
-              <hr className="menu__separator" key={`sep-${index}`} />
-            ) : (
-              <button
-                type="button"
-                key={entry.label}
-                role="menuitem"
-                className="menu__item"
-                data-danger={entry.danger || undefined}
-                disabled={entry.disabled}
-                title={entry.disabled ? entry.disabledReason : undefined}
-                // -1 because focus is driven by the arrow keys, not the tab order.
-                tabIndex={-1}
-                onClick={() => select(entry)}
-              >
-                <span className="menu__icon">{entry.icon}</span>
-                <span className="menu__label">{entry.label}</span>
-                {entry.hint ? <span className="menu__hint">{entry.hint}</span> : null}
-              </button>
-            ),
-          )}
-        </div>
-      ) : null}
-    </div>
+      {entries.map((entry, index) =>
+        isSeparator(entry) ? (
+          // <hr> rather than a div with role="separator": the role is implicit, and a
+          // div carrying it explicitly is expected to be focusable (a splitter).
+          // biome-ignore lint/suspicious/noArrayIndexKey: separators carry no identity
+          <hr className="menu__separator" key={`sep-${index}`} />
+        ) : (
+          <button
+            type="button"
+            key={entry.label}
+            role="menuitem"
+            className="menu__item"
+            data-danger={entry.danger || undefined}
+            disabled={entry.disabled}
+            title={entry.disabled ? entry.disabledReason : undefined}
+            // -1 because focus is driven by the arrow keys, not the tab order.
+            tabIndex={-1}
+            onClick={() => select(entry)}
+          >
+            <span className="menu__icon">{entry.icon}</span>
+            <span className="menu__label">{entry.label}</span>
+            {entry.hint ? <span className="menu__hint">{entry.hint}</span> : null}
+          </button>
+        ),
+      )}
+    </Popover>
   );
 }
