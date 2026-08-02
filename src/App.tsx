@@ -2,8 +2,16 @@ import { PROVIDERS } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
-import type { SettingsResponse } from '@shared/types/settings.ts';
-import { DEFAULT_GUIDANCE, type GuidanceSettings } from '@shared/types/settings.ts';
+import type {
+  DialogueColorOverride,
+  DialogueColorSettings,
+  SettingsResponse,
+} from '@shared/types/settings.ts';
+import {
+  DEFAULT_DIALOGUE_COLORS,
+  DEFAULT_GUIDANCE,
+  type GuidanceSettings,
+} from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -48,6 +56,10 @@ export function App() {
   const [presetReload, setPresetReload] = useState(0);
 
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [characterAvatarVersions, setCharacterAvatarVersions] = useState<Record<string, number>>(
+    {},
+  );
+  const [personaAvatarVersions, setPersonaAvatarVersions] = useState<Record<string, number>>({});
 
   const [books, setBooks] = useState<LorebookSummary[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -245,6 +257,8 @@ export function App() {
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
+  const dialogueColorSettings: DialogueColorSettings =
+    settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS;
 
   // Global books are opt-in per book; nothing is global until the user says so. Stored in
   // settings so the choice survives a reload.
@@ -273,6 +287,40 @@ export function App() {
     },
     [saveSettingsStrict],
   );
+
+  const patchCharacterDialogueColor = useCallback(
+    (avatar: string, value: DialogueColorOverride | undefined) => {
+      if (!settings) return;
+      const characters = { ...dialogueColorSettings.characters };
+      if (value === undefined) delete characters[avatar];
+      else characters[avatar] = value;
+      void patchSettings({
+        dialogueColors: { ...dialogueColorSettings, characters },
+      });
+    },
+    [dialogueColorSettings, patchSettings, settings],
+  );
+
+  const patchPersonaDialogueColor = useCallback(
+    (id: string, value: DialogueColorOverride | undefined) => {
+      if (!settings) return;
+      const personas = { ...dialogueColorSettings.personas };
+      if (value === undefined) delete personas[id];
+      else personas[id] = value;
+      void patchSettings({
+        dialogueColors: { ...dialogueColorSettings, personas },
+      });
+    },
+    [dialogueColorSettings, patchSettings, settings],
+  );
+
+  const bumpCharacterAvatar = useCallback((avatar: string) => {
+    setCharacterAvatarVersions((current) => ({ ...current, [avatar]: Date.now() }));
+  }, []);
+
+  const bumpPersonaAvatar = useCallback((id: string) => {
+    setPersonaAvatarVersions((current) => ({ ...current, [id]: Date.now() }));
+  }, []);
 
   const selectPreset = useCallback(
     (id: string) => {
@@ -313,8 +361,11 @@ export function App() {
   useEffect(() => {
     return () => {
       if (appearanceTimer.current) clearTimeout(appearanceTimer.current);
+      const pending = appearancePending.current;
+      appearancePending.current = {};
+      if (Object.keys(pending).length > 0) void patchSettings(pending);
     };
-  }, []);
+  }, [patchSettings]);
 
   // Hoisted above the left panel's router: all four left panels edit the same preset, and
   // a Save/Revert bar that unmounts when you switch panels would hide unsaved work.
@@ -449,6 +500,7 @@ export function App() {
    */
   const handleRenamed = useCallback(
     async (saved: CharacterDetail) => {
+      const previousAvatar = selected;
       try {
         await chat.flushSaves();
       } catch {
@@ -457,17 +509,65 @@ export function App() {
       }
       setSelected(saved.avatar);
       setDetail(saved);
+      if (previousAvatar) {
+        setSettings((current) => {
+          if (!current || !Object.hasOwn(current.dialogueColors.characters, previousAvatar)) {
+            return current;
+          }
+          const characters = { ...current.dialogueColors.characters };
+          const value = characters[previousAvatar]!;
+          delete characters[previousAvatar];
+          characters[saved.avatar] = value;
+          return { ...current, dialogueColors: { ...current.dialogueColors, characters } };
+        });
+        setCharacterAvatarVersions((current) => {
+          if (!Object.hasOwn(current, previousAvatar)) return current;
+          const next = { ...current, [saved.avatar]: current[previousAvatar]! };
+          delete next[previousAvatar];
+          return next;
+        });
+      }
       void refresh();
     },
-    [chat, refresh],
+    [chat, refresh, selected],
   );
 
   const handleDeleted = useCallback(() => {
+    const deleted = selected;
+    if (deleted) {
+      setSettings((current) => {
+        if (!current || !Object.hasOwn(current.dialogueColors.characters, deleted)) return current;
+        const characters = { ...current.dialogueColors.characters };
+        delete characters[deleted];
+        return { ...current, dialogueColors: { ...current.dialogueColors, characters } };
+      });
+      setCharacterAvatarVersions((current) => {
+        if (!Object.hasOwn(current, deleted)) return current;
+        const next = { ...current };
+        delete next[deleted];
+        return next;
+      });
+    }
     setSelected(null);
     setDetail(null);
     setEditing(false);
     void refresh();
-  }, [refresh]);
+  }, [refresh, selected]);
+
+  const handlePersonaDeleted = useCallback((id: string) => {
+    setSettings((current) => {
+      if (!current || !Object.hasOwn(current.dialogueColors.personas, id)) return current;
+      const personas = { ...current.dialogueColors.personas };
+      delete personas[id];
+      return { ...current, dialogueColors: { ...current.dialogueColors, personas } };
+    });
+    setPersonaAvatarVersions((current) => {
+      if (!Object.hasOwn(current, id)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }, []);
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
   const showEditor = editing && detail?.avatar === selected ? detail : null;
@@ -525,6 +625,13 @@ export function App() {
               registerPersistence={(controls) => {
                 characterPersistence.current = controls;
               }}
+              dialogueColor={dialogueColorSettings.characters[showEditor.avatar]}
+              dialogueColorsEnabled={dialogueColorSettings.enabled}
+              avatarVersion={characterAvatarVersions[showEditor.avatar]}
+              onDialogueColorChange={(value) =>
+                patchCharacterDialogueColor(showEditor.avatar, value)
+              }
+              onAvatarChanged={() => bumpCharacterAvatar(showEditor.avatar)}
             />
           </Panel>
         ) : (
@@ -589,6 +696,11 @@ export function App() {
                 registerPersistence={(controls) => {
                   personaPersistence.current = controls;
                 }}
+                dialogueColors={dialogueColorSettings}
+                avatarVersions={personaAvatarVersions}
+                onDialogueColorChange={patchPersonaDialogueColor}
+                onAvatarChanged={bumpPersonaAvatar}
+                onDeleted={handlePersonaDeleted}
               />
             ) : null}
 
@@ -604,6 +716,8 @@ export function App() {
           chat={chat}
           characterName={character.name || active.name}
           avatar={active.avatar}
+          characterAvatarVersion={characterAvatarVersions[active.avatar]}
+          personaAvatarVersion={chat.persona ? personaAvatarVersions[chat.persona.id] : undefined}
           ready={ready}
           onCloseChat={() => void handleCloseChat()}
           onOpenPanel={(id) => void showRightPanel(id)}
@@ -611,6 +725,7 @@ export function App() {
           onGuidanceChange={(patch) =>
             void patchSettings({ guidance: { ...guidanceSettings, ...patch } })
           }
+          dialogueColors={dialogueColorSettings}
         />
       ) : (
         <div className="wc-empty">

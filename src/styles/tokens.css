@@ -45,6 +45,9 @@
   --wc-accent-text: #12140a;
   --wc-accent-subtle: rgba(194, 238, 74, 0.12);
 
+  /* Render-only fallback when an avatar has no usable chromatic colour. */
+  --wc-dialogue-default: #e18a24;
+
   /* Status */
   --wc-danger: #e5484d;
   --wc-danger-subtle: rgba(229, 72, 77, 0.12);

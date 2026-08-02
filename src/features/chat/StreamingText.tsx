@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { Reasoning } from './Reasoning.tsx';
+import { dialogueSegments } from './dialogue.ts';
 import type { StreamStore } from './state/streamStore.ts';
 
 /**
@@ -21,7 +22,15 @@ export function StreamingText({ store }: { store: StreamStore }) {
        */}
       {snapshot.reasoning ? <Reasoning text={snapshot.reasoning} defaultOpen /> : null}
       <div className="message__text message__text--streaming">
-        {snapshot.text}
+        {dialogueSegments(snapshot.text).map((segment, index) =>
+          segment.dialogue ? (
+            <span className="message__dialogue" key={`${index}:${segment.text}`}>
+              {segment.text}
+            </span>
+          ) : (
+            segment.text
+          ),
+        )}
         <span className="message__caret" aria-hidden="true" />
       </div>
     </>

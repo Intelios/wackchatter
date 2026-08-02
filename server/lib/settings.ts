@@ -13,8 +13,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { ConnectionSettings } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS, isProviderId } from '../../shared/providers/types.ts';
-import type { AppSettings, GuidanceSettings } from '../../shared/types/settings.ts';
-import { DEFAULT_GUIDANCE, DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
+import type {
+  AppSettings,
+  DialogueColorOverride,
+  DialogueColorSettings,
+  GuidanceSettings,
+} from '../../shared/types/settings.ts';
+import {
+  DEFAULT_DIALOGUE_COLORS,
+  DEFAULT_GUIDANCE,
+  DEFAULT_SETTINGS,
+} from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { atomicWriteSync } from './fs.ts';
@@ -125,6 +134,31 @@ function normalizeGuidance(value: unknown): GuidanceSettings {
   };
 }
 
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+function normalizeDialogueColorMap(value: unknown): Record<string, DialogueColorOverride> {
+  if (!isRecord(value)) return {};
+
+  const entries: Array<[string, DialogueColorOverride]> = [];
+  for (const [id, candidate] of Object.entries(value)) {
+    if (!id) continue;
+    if (candidate === null) entries.push([id, null]);
+    else if (typeof candidate === 'string' && HEX_COLOR.test(candidate)) {
+      entries.push([id, candidate.toLowerCase()]);
+    }
+  }
+  return Object.fromEntries(entries);
+}
+
+function normalizeDialogueColors(value: unknown): DialogueColorSettings {
+  const stored = isRecord(value) ? value : {};
+  return {
+    enabled: typeof stored.enabled === 'boolean' ? stored.enabled : DEFAULT_DIALOGUE_COLORS.enabled,
+    characters: normalizeDialogueColorMap(stored.characters),
+    personas: normalizeDialogueColorMap(stored.personas),
+  };
+}
+
 let cache: AppSettings | null = null;
 
 export function getSettings(): AppSettings {
@@ -147,6 +181,7 @@ export function getSettings(): AppSettings {
     worldInfo: normalizeWorldInfo(stored.worldInfo),
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
+    dialogueColors: normalizeDialogueColors(stored.dialogueColors),
   };
 
   return cache;
@@ -173,6 +208,20 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     guidance: patch.guidance
       ? normalizeGuidance({ ...current.guidance, ...patch.guidance })
       : current.guidance,
+    dialogueColors: patch.dialogueColors
+      ? normalizeDialogueColors({
+          ...current.dialogueColors,
+          ...patch.dialogueColors,
+          characters:
+            patch.dialogueColors.characters === undefined
+              ? current.dialogueColors.characters
+              : patch.dialogueColors.characters,
+          personas:
+            patch.dialogueColors.personas === undefined
+              ? current.dialogueColors.personas
+              : patch.dialogueColors.personas,
+        })
+      : current.dialogueColors,
   };
 }
 
@@ -188,6 +237,33 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
 /** Drop the memoized copy. Used by tests. */
 export function resetSettingsCache(): void {
   cache = null;
+}
+
+/** Re-key or remove the local dialogue colour attached to a character filename. */
+export function reassignCharacterDialogueColor(
+  current: AppSettings,
+  oldAvatar: string,
+  newAvatar: string | null,
+): AppSettings | null {
+  if (!Object.hasOwn(current.dialogueColors.characters, oldAvatar)) return null;
+
+  const characters = { ...current.dialogueColors.characters };
+  const value = characters[oldAvatar]!;
+  delete characters[oldAvatar];
+  if (newAvatar !== null) characters[newAvatar] = value;
+  return { ...current, dialogueColors: { ...current.dialogueColors, characters } };
+}
+
+/** Remove local appearance state when a stable persona id is deleted. */
+export function removePersonaDialogueColor(
+  current: AppSettings,
+  personaId: string,
+): AppSettings | null {
+  if (!Object.hasOwn(current.dialogueColors.personas, personaId)) return null;
+
+  const personas = { ...current.dialogueColors.personas };
+  delete personas[personaId];
+  return { ...current, dialogueColors: { ...current.dialogueColors, personas } };
 }
 
 /**

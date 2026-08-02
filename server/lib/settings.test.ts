@@ -1,8 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import type { AppSettings } from '../../shared/types/settings.ts';
-import { DEFAULT_GUIDANCE, DEFAULT_SETTINGS } from '../../shared/types/settings.ts';
+import {
+  DEFAULT_DIALOGUE_COLORS,
+  DEFAULT_GUIDANCE,
+  DEFAULT_SETTINGS,
+} from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
-import { mergeSettings, reassignGlobalLorebooks } from './settings.ts';
+import {
+  mergeSettings,
+  reassignCharacterDialogueColor,
+  reassignGlobalLorebooks,
+  removePersonaDialogueColor,
+} from './settings.ts';
 
 function base(): AppSettings {
   return structuredClone(DEFAULT_SETTINGS);
@@ -105,6 +114,77 @@ describe('mergeSettings', () => {
   test('omitting guidance leaves it untouched', () => {
     const current = mergeSettings(base(), { guidance: { guideDepth: 3 } as never });
     expect(mergeSettings(current, { streamingFps: 15 }).guidance.guideDepth).toBe(3);
+  });
+
+  test('dialogue colours default on and a partial patch keeps both override maps', () => {
+    const current = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { 'Alice.png': '#AABBCC' },
+        personas: { jack: null },
+      },
+    });
+    const next = mergeSettings(current, { dialogueColors: { enabled: false } as never });
+
+    expect(next.dialogueColors.enabled).toBeFalse();
+    expect(next.dialogueColors.characters).toEqual({ 'Alice.png': '#aabbcc' });
+    expect(next.dialogueColors.personas).toEqual({ jack: null });
+  });
+
+  test('dialogue colour maps replace independently and discard malformed values', () => {
+    const current = mergeSettings(base(), {
+      dialogueColors: {
+        ...DEFAULT_DIALOGUE_COLORS,
+        characters: { kept: '#123456' },
+        personas: { old: '#abcdef' },
+      },
+    });
+    const next = mergeSettings(current, {
+      dialogueColors: {
+        characters: { good: '#ABCDEF', off: null, bad: 'red' },
+      } as never,
+    });
+
+    expect(next.dialogueColors.characters).toEqual({ good: '#abcdef', off: null });
+    expect(next.dialogueColors.personas).toEqual({ old: '#abcdef' });
+  });
+});
+
+describe('dialogue colour identity changes', () => {
+  test('a character rename re-keys its override without disturbing the rest', () => {
+    const current = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { 'Old.png': '#123456', 'Other.png': null },
+        personas: {},
+      },
+    });
+    const next = reassignCharacterDialogueColor(current, 'Old.png', 'New.png');
+
+    expect(next?.dialogueColors.characters).toEqual({
+      'New.png': '#123456',
+      'Other.png': null,
+    });
+    expect(reassignCharacterDialogueColor(current, 'Missing.png', 'New.png')).toBeNull();
+  });
+
+  test('deleting a character or persona removes only its override', () => {
+    const current = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { doomed: null, kept: '#123456' },
+        personas: { doomed: '#abcdef', kept: null },
+      },
+    });
+
+    expect(
+      reassignCharacterDialogueColor(current, 'doomed', null)?.dialogueColors.characters,
+    ).toEqual({
+      kept: '#123456',
+    });
+    expect(removePersonaDialogueColor(current, 'doomed')?.dialogueColors.personas).toEqual({
+      kept: null,
+    });
   });
 });
 

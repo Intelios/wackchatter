@@ -187,6 +187,11 @@
   color: var(--wc-text-muted);
 }
 
+/* The spans always exist, but only an enabled speaker opts into the colour. */
+.message[data-dialogue-colored] .message__dialogue {
+  color: var(--wc-dialogue-color, var(--wc-dialogue-default));
+}
+
 .message__text pre {
   padding: var(--wc-space-3);
   border-radius: var(--wc-radius-sm);

@@ -13,6 +13,7 @@ import {
   savePersona,
   setPersonaAvatar,
 } from '../lib/personas.ts';
+import { cascadePersonaDelete } from '../lib/references.ts';
 
 export async function handlePersonaRoute(
   request: Request,
@@ -82,7 +83,16 @@ export async function handlePersonaRoute(
     }
 
     if (method === 'DELETE') {
-      return deletePersona(id) ? json({ ok: true }) : notFound('Persona not found.');
+      if (!getPersona(id)) return notFound('Persona not found.');
+      const rollback = cascadePersonaDelete(id);
+      try {
+        if (deletePersona(id)) return json({ ok: true });
+        await rollback();
+        return notFound('Persona not found.');
+      } catch (error) {
+        await rollback();
+        throw error;
+      }
     }
   }
 

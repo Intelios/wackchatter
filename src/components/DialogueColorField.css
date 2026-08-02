@@ -1,0 +1,30 @@
+.dialogue-color-field {
+  display: grid;
+  gap: var(--wc-space-3);
+}
+
+.dialogue-color-field__preview-row,
+.dialogue-color-field__custom {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.dialogue-color-field__swatch,
+.dialogue-color-field__picker {
+  width: var(--wc-control);
+  height: var(--wc-control);
+  flex: 0 0 var(--wc-control);
+  border: 1px solid var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-dialogue-default);
+}
+
+.dialogue-color-field__picker {
+  padding: 2px;
+  cursor: pointer;
+}
+
+.dialogue-color-field__warning {
+  color: var(--wc-warning);
+}

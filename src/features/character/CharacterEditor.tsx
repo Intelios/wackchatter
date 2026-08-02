@@ -1,12 +1,15 @@
 import type { CardDataV2, CharacterDetail } from '@shared/types/card.ts';
+import type { DialogueColorOverride } from '@shared/types/settings.ts';
 import type { WorldInfoEntry } from '@shared/types/worldinfo.ts';
 import { bookEntries as bookEntriesOf, toWorldInfoBook } from '@shared/worldinfo/convert.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { ListField, TagField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
+import { useAvatarColor } from '../chat/avatarColor.ts';
 import { EmbeddedBook } from './EmbeddedBook.tsx';
 import './CharacterEditor.css';
 
@@ -45,6 +48,11 @@ interface CharacterEditorProps {
   onDeleted: () => void;
   onBack: () => void;
   registerPersistence?: (controls: PersistenceControls | null) => void;
+  dialogueColor: DialogueColorOverride | undefined;
+  dialogueColorsEnabled: boolean;
+  avatarVersion?: number;
+  onDialogueColorChange: (value: DialogueColorOverride | undefined) => void;
+  onAvatarChanged: () => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -56,6 +64,11 @@ export function CharacterEditor({
   onDeleted,
   onBack,
   registerPersistence,
+  dialogueColor,
+  dialogueColorsEnabled,
+  avatarVersion,
+  onDialogueColorChange,
+  onAvatarChanged,
 }: CharacterEditorProps) {
   const [data, setData] = useState<CardDataV2>(detail.card.data);
   const [nameDraft, setNameDraft] = useState(detail.card.data.name);
@@ -67,6 +80,8 @@ export function CharacterEditor({
   const bookPersistenceRef = useRef<PersistenceControls | null>(null);
 
   const avatar = detail.avatar;
+  const avatarUrl = characterApi.imageUrl(avatar, avatarVersion);
+  const autoDialogueColor = useAvatarColor(dialogueColor === undefined ? avatarUrl : null);
   const revisionRef = useRef(0);
 
   // Stable refs so the long-lived queue's callbacks always read fresh values rather than
@@ -149,6 +164,7 @@ export function CharacterEditor({
       );
       setSaveState('saved');
       onSaved(saved);
+      onAvatarChanged();
     } catch (err) {
       setSaveState('error');
       setSaveError((err as Error).message);
@@ -323,11 +339,7 @@ export function CharacterEditor({
           onClick={() => imageInput.current?.click()}
           title="Replace avatar image"
         >
-          <img
-            className="editor__avatar"
-            src={characterApi.imageUrl(avatar, detail.modified)}
-            alt=""
-          />
+          <img className="editor__avatar" src={avatarUrl} alt="" />
           <span className="editor__avatar-overlay">Replace</span>
         </button>
         <input
@@ -363,6 +375,15 @@ export function CharacterEditor({
           </div>
         </div>
       </div>
+
+      <Section title="Appearance">
+        <DialogueColorField
+          value={dialogueColor}
+          autoColor={autoDialogueColor}
+          globallyEnabled={dialogueColorsEnabled}
+          onChange={onDialogueColorChange}
+        />
+      </Section>
 
       <Section title="Description" defaultOpen badge={`${data.description.length}`}>
         <TextField

@@ -8,13 +8,16 @@
  */
 
 import type { Persona } from '@shared/types/chat.ts';
+import type { DialogueColorOverride, DialogueColorSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import { useEffect, useRef, useState } from 'react';
+import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { TrashIcon } from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
+import { useAvatarColor } from '../chat/avatarColor.ts';
 import './PersonaPanel.css';
 
 const SAVE_DELAY = 500;
@@ -46,6 +49,11 @@ interface PersonaPanelProps {
   onSelectDefault: (id: string | null) => void;
   onChanged: () => void;
   registerPersistence?: (controls: PersistenceControls | null) => void;
+  dialogueColors: DialogueColorSettings;
+  avatarVersions: Readonly<Record<string, number>>;
+  onDialogueColorChange: (id: string, value: DialogueColorOverride | undefined) => void;
+  onAvatarChanged: (id: string) => void;
+  onDeleted: (id: string) => void;
 }
 
 export function PersonaPanel({
@@ -58,11 +66,23 @@ export function PersonaPanel({
   onSelectDefault,
   onChanged,
   registerPersistence,
+  dialogueColors,
+  avatarVersions,
+  onDialogueColorChange,
+  onAvatarChanged,
+  onDeleted,
 }: PersonaPanelProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Persona | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const draftAvatarUrl = draft?.avatar
+    ? personaApi.avatarUrl(draft.id, avatarVersions[draft.id] ?? draft.avatar)
+    : null;
+  const draftDialogueColor = draft ? dialogueColors.personas[draft.id] : undefined;
+  const autoDialogueColor = useAvatarColor(
+    draft && draftDialogueColor === undefined ? draftAvatarUrl : null,
+  );
 
   const revisionRef = useRef(0);
   /**
@@ -184,6 +204,7 @@ export function PersonaPanel({
       // Chats keep the explicit orphaned id and resolve it as no persona. That preserves
       // their snapshot if this persona is restored later.
       if (defaultId === id) onSelectDefault(null);
+      onDeleted(id);
       onChanged();
     } catch (err) {
       setError((err as Error).message);
@@ -192,7 +213,9 @@ export function PersonaPanel({
 
   async function handleAvatar(id: string, file: File) {
     try {
-      await queue.runSerialized(id, () => personaApi.uploadAvatar(id, file));
+      const saved = await queue.runSerialized(id, () => personaApi.uploadAvatar(id, file));
+      setDraft((current) => (current?.id === id ? { ...current, avatar: saved.avatar } : current));
+      onAvatarChanged(id);
       onChanged();
     } catch (err) {
       setError((err as Error).message);
@@ -302,6 +325,13 @@ export function PersonaPanel({
               }}
             />
           </label>
+
+          <DialogueColorField
+            value={draftDialogueColor}
+            autoColor={autoDialogueColor}
+            globallyEnabled={dialogueColors.enabled}
+            onChange={(value) => onDialogueColorChange(draft.id, value)}
+          />
 
           <Section title="Placement">
             <SelectField<'inPrompt' | 'topAuthorNote' | 'bottomAuthorNote' | 'atDepth' | 'none'>

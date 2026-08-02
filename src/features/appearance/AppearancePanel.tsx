@@ -1,4 +1,4 @@
-import type { SettingsResponse } from '@shared/types/settings.ts';
+import { DEFAULT_DIALOGUE_COLORS, type SettingsResponse } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
@@ -190,6 +190,23 @@ export function AppearancePanel({ settings, onPatch }: AppearancePanelProps) {
           checked={settings?.glass !== false}
           onChange={(checked) => onPatch({ glass: checked })}
           hint="Panels and bubbles let the background through. Ignored with no background set."
+        />
+      </Section>
+
+      <Section title="Dialogue colour">
+        <CheckField
+          label="Colour quoted dialogue"
+          checked={settings?.dialogueColors?.enabled ?? DEFAULT_DIALOGUE_COLORS.enabled}
+          onChange={(enabled) =>
+            onPatch({
+              dialogueColors: {
+                enabled,
+                characters: settings?.dialogueColors?.characters ?? {},
+                personas: settings?.dialogueColors?.personas ?? {},
+              },
+            })
+          }
+          hint="Uses each character or persona avatar by default. Individual speakers can use a custom colour or opt out in their editor."
         />
       </Section>
 

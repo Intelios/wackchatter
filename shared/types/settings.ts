@@ -48,9 +48,28 @@ export interface AppSettings {
   glass: boolean;
   /** Guided Generations: how steering text and standing guides reach the prompt. */
   guidance: GuidanceSettings;
+  /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
+  dialogueColors: DialogueColorSettings;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
+
+export type DialogueColorOverride = string | null;
+
+export interface DialogueColorSettings {
+  /** Master switch. Per-speaker overrides remain editable while this is false. */
+  enabled: boolean;
+  /** Missing means avatar-derived, a hex string is custom, and null disables that speaker. */
+  characters: Record<string, DialogueColorOverride>;
+  /** Keyed by stable persona id, with the same missing/custom/null semantics. */
+  personas: Record<string, DialogueColorOverride>;
+}
+
+export const DEFAULT_DIALOGUE_COLORS: Readonly<DialogueColorSettings> = {
+  enabled: true,
+  characters: {},
+  personas: {},
+};
 
 /**
  * Guided Generations settings.
@@ -106,4 +125,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundDim: 0.55,
   glass: true,
   guidance: { ...DEFAULT_GUIDANCE },
+  dialogueColors: {
+    enabled: DEFAULT_DIALOGUE_COLORS.enabled,
+    characters: {},
+    personas: {},
+  },
 };

@@ -15,7 +15,13 @@
 import { updateWorldLinksRecoverable } from './characters.ts';
 import { chatStore } from './chats.ts';
 import { updatePersonaLorebookReferences } from './personas.ts';
-import { getSettings, reassignGlobalLorebooks, saveSettings } from './settings.ts';
+import {
+  getSettings,
+  reassignCharacterDialogueColor,
+  reassignGlobalLorebooks,
+  removePersonaDialogueColor,
+  saveSettings,
+} from './settings.ts';
 
 type Rollback = () => Promise<void> | void;
 
@@ -42,10 +48,30 @@ async function failAfterRollback(error: unknown, rollbacks: Rollback[]): Promise
 
 /** A character's file moved: keep its chats pointed at the new identity. */
 export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Rollback {
-  chatStore().reassignCharacter(oldAvatar, newAvatar);
-  return () => {
-    chatStore().reassignCharacter(newAvatar, oldAvatar);
-  };
+  const current = getSettings();
+  const updated = reassignCharacterDialogueColor(current, oldAvatar, newAvatar);
+  if (updated) saveSettings({ dialogueColors: updated.dialogueColors });
+
+  try {
+    chatStore().reassignCharacter(oldAvatar, newAvatar);
+  } catch (error) {
+    if (updated) saveSettings({ dialogueColors: current.dialogueColors });
+    throw error;
+  }
+
+  return () =>
+    rollbackAll([
+      ...(updated
+        ? [
+            () => {
+              saveSettings({ dialogueColors: current.dialogueColors });
+            },
+          ]
+        : []),
+      () => {
+        chatStore().reassignCharacter(newAvatar, oldAvatar);
+      },
+    ]);
 }
 
 /**
@@ -54,7 +80,28 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
  * card is the honest choice. Messages follow via ON DELETE CASCADE.
  */
 export function cascadeCharacterDelete(avatar: string): void {
-  chatStore().deleteChatsForCharacter(avatar);
+  const current = getSettings();
+  const updated = reassignCharacterDialogueColor(current, avatar, null);
+  if (updated) saveSettings({ dialogueColors: updated.dialogueColors });
+
+  try {
+    chatStore().deleteChatsForCharacter(avatar);
+  } catch (error) {
+    if (updated) saveSettings({ dialogueColors: current.dialogueColors });
+    throw error;
+  }
+}
+
+/** A persona is gone: remove its local-only dialogue colour preference. */
+export function cascadePersonaDelete(personaId: string): Rollback {
+  const current = getSettings();
+  const updated = removePersonaDialogueColor(current, personaId);
+  if (!updated) return () => {};
+
+  saveSettings({ dialogueColors: updated.dialogueColors });
+  return () => {
+    saveSettings({ dialogueColors: current.dialogueColors });
+  };
 }
 
 /** A lorebook's file moved: repoint personas, character-card links, and the global selection. */

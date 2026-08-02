@@ -1,4 +1,4 @@
-import type { GuidanceSettings } from '@shared/types/settings.ts';
+import type { DialogueColorSettings, GuidanceSettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
@@ -7,6 +7,7 @@ import { ChatMenu } from './ChatMenu.tsx';
 import { Composer } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
+import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
 import type { UseChat } from './useChat.ts';
 import { useStickToBottom } from './useStickToBottom.ts';
 import './ChatView.css';
@@ -15,6 +16,8 @@ interface ChatViewProps {
   chat: UseChat;
   characterName: string;
   avatar: string | null;
+  characterAvatarVersion?: number;
+  personaAvatarVersion?: number;
   /** False until an endpoint and model are configured. */
   ready: boolean;
   /** Leave the chat and go back to the no-character state. */
@@ -24,17 +27,21 @@ interface ChatViewProps {
   /** App-wide guided-generation config. The guides themselves live on the chat. */
   guidance: GuidanceSettings;
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
+  dialogueColors: DialogueColorSettings;
 }
 
 export function ChatView({
   chat,
   characterName,
   avatar,
+  characterAvatarVersion,
+  personaAvatarVersion,
   ready,
   onCloseChat,
   onOpenPanel,
   guidance,
   onGuidanceChange,
+  dialogueColors,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -42,14 +49,32 @@ export function ChatView({
 
   const { state, stream, busy } = chat;
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
-  const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar) : null;
+  const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
   // Who "you" are in this chat has a face too. Keyed on the filename so replacing the
   // image busts the cache instead of showing the old one until a reload.
   const persona = chat.persona;
   const personaAvatarUrl = persona?.avatar
-    ? personaApi.avatarUrl(persona.id, persona.avatar)
+    ? personaApi.avatarUrl(persona.id, personaAvatarVersion ?? persona.avatar)
     : null;
+  const characterOverride = avatar ? dialogueColors.characters[avatar] : undefined;
+  const personaOverride = persona ? dialogueColors.personas[persona.id] : undefined;
+  const characterAutoColor = useAvatarColor(
+    dialogueColors.enabled && characterOverride === undefined ? characterAvatarUrl : null,
+  );
+  const personaAutoColor = useAvatarColor(
+    dialogueColors.enabled && personaOverride === undefined ? personaAvatarUrl : null,
+  );
+  const characterDialogue = resolveDialogueColor(
+    dialogueColors.enabled,
+    characterOverride,
+    characterAutoColor,
+  );
+  const personaDialogue = resolveDialogueColor(
+    dialogueColors.enabled,
+    personaOverride,
+    personaAutoColor,
+  );
 
   // Jump to the end when a different chat is opened.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the chat, by design
@@ -110,6 +135,8 @@ export function ChatView({
                 key={message.id}
                 message={message}
                 avatarUrl={message.is_user ? personaAvatarUrl : characterAvatarUrl}
+                dialogueActive={message.is_user ? personaDialogue.active : characterDialogue.active}
+                dialogueColor={message.is_user ? personaDialogue.color : characterDialogue.color}
                 streaming={state.streamingId === message.id}
                 stream={stream}
                 isLast={message.id === lastId}

@@ -2,8 +2,10 @@ import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
+import { rehypeDialogue } from './dialogue.ts';
 
 const PLUGINS = [remarkGfm, remarkBreaks];
+const REHYPE_PLUGINS = [rehypeDialogue];
 
 /**
  * Rendered message text.
@@ -20,7 +22,9 @@ export const Markdown = memo(function Markdown({
 }) {
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={PLUGINS}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 });

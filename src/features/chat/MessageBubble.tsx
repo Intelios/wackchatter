@@ -1,6 +1,6 @@
 import { type MessageState, currentText, swipeCount } from '@shared/chat/message.ts';
 import { PROVIDERS, isProviderId } from '@shared/providers/types.ts';
-import { memo, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
 import {
   ChevronIcon,
   ChevronLeftIcon,
@@ -20,6 +20,9 @@ interface MessageBubbleProps {
   message: MessageState;
   /** Already resolved for this message's speaker — the character's or the persona's. */
   avatarUrl: string | null;
+  dialogueActive: boolean;
+  /** Null means use the token-backed fallback. */
+  dialogueColor: string | null;
   /** True while this message is the one being generated into. */
   streaming: boolean;
   stream: StreamStore;
@@ -56,6 +59,8 @@ interface MessageBubbleProps {
 export const MessageBubble = memo(function MessageBubble({
   message,
   avatarUrl,
+  dialogueActive,
+  dialogueColor,
   streaming,
   stream,
   isLast,
@@ -124,6 +129,10 @@ export const MessageBubble = memo(function MessageBubble({
       className="message"
       data-role={message.is_user ? 'user' : 'assistant'}
       data-hidden={message.is_system || undefined}
+      data-dialogue-colored={dialogueActive || undefined}
+      style={
+        dialogueColor ? ({ '--wc-dialogue-color': dialogueColor } as CSSProperties) : undefined
+      }
     >
       <div className="message__bubble">
         <header className="message__head">
