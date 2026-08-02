@@ -16,8 +16,14 @@
 
   /* Surfaces, from furthest back to closest */
   --wc-bg: #0e0e0f;
-  /* The same colour as channels, for the one place that needs it at a variable alpha. */
-  --wc-bg-rgb: 14 14 15;
+  /*
+   * The dim scrim's colour, as channels for a variable-alpha rgb(). Pure black rather
+   * than the background colour: the bundled backgrounds are near-black gradients, and an
+   * overlay the same colour as its backdrop cannot darken it — the Dim slider moved
+   * through its whole range with nothing to show for it. Black has room to pull every
+   * image down.
+   */
+  --wc-scrim-rgb: 0 0 0;
   --wc-surface: #16161a;
   --wc-surface-raised: #1e1e21;
   --wc-surface-hover: #26262a;

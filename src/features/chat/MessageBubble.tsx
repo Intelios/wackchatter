@@ -44,6 +44,7 @@ interface MessageBubbleProps {
   /** Generate a reply to this turn. Offered when the transcript ends on the user. */
   onRetry: () => void;
   onEdit: (id: string, text: string) => void;
+  onEditReasoning: (id: string, reasoning: string) => void;
   onDelete: (id: string) => void;
   onToggleHidden: (id: string) => void;
   onBranch: (id: string) => void;
@@ -71,6 +72,7 @@ export const MessageBubble = memo(function MessageBubble({
   onContinue,
   onRetry,
   onEdit,
+  onEditReasoning,
   onDelete,
   onToggleHidden,
   onBranch,
@@ -86,7 +88,9 @@ export const MessageBubble = memo(function MessageBubble({
   const info = message.swipe_info[message.swipe_id];
 
   useEffect(() => {
-    if (editing) textarea.current?.focus();
+    // preventScroll: the pencil the user clicked is on screen, so the editor is too —
+    // a plain focus() would still "reveal" the textarea and jump the transcript.
+    if (editing) textarea.current?.focus({ preventScroll: true });
   }, [editing]);
 
   function startEditing() {
@@ -237,7 +241,12 @@ export const MessageBubble = memo(function MessageBubble({
           <StreamingText store={stream} />
         ) : (
           <>
-            {info?.extra?.reasoning ? <Reasoning text={String(info.extra.reasoning)} /> : null}
+            {info?.extra?.reasoning ? (
+              <Reasoning
+                text={String(info.extra.reasoning)}
+                onEdit={(reasoning) => onEditReasoning(message.id, reasoning)}
+              />
+            ) : null}
             <Markdown text={renderedText} />
           </>
         )}

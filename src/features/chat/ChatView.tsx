@@ -94,6 +94,10 @@ export function ChatView({
   const regenerate = useCallback(() => void chat.regenerate(), [chat]);
   const continueLast = useCallback(() => void chat.continueLast(), [chat]);
   const editMessage = useCallback((id: string, text: string) => chat.editMessage(id, text), [chat]);
+  const editReasoning = useCallback(
+    (id: string, reasoning: string) => chat.editReasoning(id, reasoning),
+    [chat],
+  );
   const deleteMessage = useCallback((id: string) => chat.deleteMessage(id), [chat]);
   const toggleHidden = useCallback((id: string) => chat.toggleHidden(id), [chat]);
   const branchFrom = useCallback((id: string) => void chat.branchFrom(id), [chat]);
@@ -147,6 +151,7 @@ export function ChatView({
                 onContinue={continueLast}
                 onRetry={regenerate}
                 onEdit={editMessage}
+                onEditReasoning={editReasoning}
                 onDelete={deleteMessage}
                 onToggleHidden={toggleHidden}
                 onBranch={branchFrom}

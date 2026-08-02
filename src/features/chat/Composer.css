@@ -71,8 +71,14 @@
  * mass then sat 25px right of the bubbles, and the bubbles read as hanging off to the
  * left. Nothing was off centre; the two halves just had nothing to line up against.
  */
+/*
+ * `.composer .composer__icon` rather than `.composer__icon`: the buttons also carry
+ * `wc-button--ghost`, which zeroes the border and background at the same specificity, so
+ * only the ancestor-qualified selector is guaranteed to win regardless of bundle order.
+ * Same reason the popover trigger is qualified.
+ */
 .composer .popover__trigger,
-.composer__icon {
+.composer .composer__icon {
   height: var(--wc-composer-row);
   width: var(--wc-composer-row);
   padding: 0;
@@ -85,12 +91,12 @@
 
 .composer .popover__trigger:hover,
 .composer .popover__trigger[aria-expanded="true"],
-.composer__icon:hover:not(:disabled) {
+.composer .composer__icon:hover:not(:disabled) {
   border-color: var(--wc-border-strong);
   color: var(--wc-text);
 }
 
-.composer__icon:disabled {
+.composer .composer__icon:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

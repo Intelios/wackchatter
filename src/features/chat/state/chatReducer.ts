@@ -102,6 +102,7 @@ export type ChatAction =
   | { type: 'chat/greeting'; id: string; card: CardDataV2 }
   | { type: 'message/appendUser'; id: string; name: string; text: string }
   | { type: 'message/edited'; id: string; text: string }
+  | { type: 'message/reasoningEdited'; id: string; reasoning: string }
   | { type: 'message/deleted'; id: string }
   | { type: 'message/toggleHidden'; id: string }
   | { type: 'swipe/select'; id: string; index: number }
@@ -255,6 +256,20 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: replaceMessage(state.messages, action.id, (message) =>
           setText(message, action.text),
+        ),
+        revision: state.revision + 1,
+      };
+
+    case 'message/reasoningEdited':
+      // The reply text is untouched — reasoning rides in the active swipe's extra. An
+      // empty string clears it (`undefined` drops the key on serialisation), which is
+      // what makes a cleared reasoning box unmount rather than render blank.
+      return {
+        ...state,
+        messages: replaceMessage(state.messages, action.id, (message) =>
+          setText(message, currentText(message), {
+            extra: { reasoning: action.reasoning || undefined },
+          }),
         ),
         revision: state.revision + 1,
       };

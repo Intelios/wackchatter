@@ -42,7 +42,7 @@ export interface AppSettings {
   background: string | null;
   /** Blur applied to the background image, in px. Kills the detail that ruins legibility. */
   backgroundBlur: number;
-  /** Scrim opacity over the background, 0–0.9. The contrast floor. */
+  /** Scrim opacity over the background, 0–1. The contrast floor. */
   backgroundDim: number;
   /** Translucent panels and bubbles. Only meaningful with a background set. */
   glass: boolean;

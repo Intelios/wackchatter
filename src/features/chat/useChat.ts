@@ -107,6 +107,8 @@ export interface UseChat {
   abort(): void;
 
   editMessage(id: string, text: string): void;
+  /** Rewrite or clear the thinking block of the selected swipe, leaving the reply alone. */
+  editReasoning(id: string, reasoning: string): void;
   deleteMessage(id: string): void;
   toggleHidden(id: string): void;
 
@@ -679,6 +681,10 @@ export function useChat(options: UseChatOptions): UseChat {
     dispatch({ type: 'message/edited', id, text });
   }, []);
 
+  const editReasoning = useCallback((id: string, reasoning: string) => {
+    dispatch({ type: 'message/reasoningEdited', id, reasoning });
+  }, []);
+
   const deleteMessage = useCallback((id: string) => {
     dispatch({ type: 'message/deleted', id });
   }, []);
@@ -789,6 +795,7 @@ export function useChat(options: UseChatOptions): UseChat {
     guidedSwipe,
     abort,
     editMessage,
+    editReasoning,
     deleteMessage,
     toggleHidden,
     chats,

@@ -53,6 +53,15 @@
   grid-column: 1 / -1;
   grid-row: 1 / -1;
   pointer-events: none;
+  /*
+   * Not decoration — do not remove. The backdrop's filter and transform make it a
+   * stacking context, which paints above plain in-flow content regardless of DOM order.
+   * A scrim at opacity < 1 forms its own context and stays on top, but at exactly 1 it
+   * does not, and the backdrop paints over it — the Dim slider "turned off" at max.
+   * z-index: 0 (which applies to grid items even unpositioned) pins both layers into
+   * the same paint step, where DOM order decides: scrim over backdrop, content over both.
+   */
+  z-index: 0;
 }
 
 .shell__backdrop {
@@ -66,9 +75,15 @@
  * The contrast floor. Dim alone cannot rescue a busy photo and blur alone cannot rescue a
  * bright one, so both exist — but this is the one that guarantees text stays readable
  * whatever image the user picks.
+ *
+ * The dim rides on `opacity`, not an alpha channel in the colour. A var() in the alpha
+ * slot of rgb() silently invalidated the whole declaration in some browsers — the
+ * scrim painted transparent and the slider appeared dead, while blur next door worked.
+ * opacity is interpreted everywhere, and for a flat solid layer the two are identical.
  */
 .shell__scrim {
-  background: rgb(var(--wc-bg-rgb) / var(--wc-bg-dim, 0.55));
+  background: rgb(var(--wc-scrim-rgb));
+  opacity: var(--wc-bg-dim, 0.55);
 }
 
 /* Everything else stacks above the two background layers. */
@@ -129,6 +144,9 @@
 
   .shell__scrim {
     background: var(--wc-bg);
+    /* The user's dim setting must not make the fallback translucent — the whole point
+       of the override is an opaque, high-contrast floor. */
+    opacity: 1;
   }
 }
 

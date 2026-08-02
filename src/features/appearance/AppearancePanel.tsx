@@ -181,7 +181,7 @@ export function AppearancePanel({ settings, onPatch }: AppearancePanelProps) {
           label="Dim"
           value={Number(settings?.backgroundDim ?? 0.55)}
           min={0}
-          max={0.9}
+          max={1}
           step={0.01}
           onChange={(v) => onPatch({ backgroundDim: v })}
         />

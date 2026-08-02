@@ -493,6 +493,56 @@ describe('editing the transcript', () => {
     assertConsistent(state);
   });
 
+  test('a reasoning edit rewrites only the selected swipe extra, never the reply text', () => {
+    const withReasoning = run(loaded(), {
+      type: 'gen/started',
+      mode: 'send',
+      newId: 'a1',
+      name: 'S',
+    });
+    const settled = run(withReasoning, {
+      type: 'gen/finished',
+      text: 'The answer.',
+      extra: { reasoning: 'Rambling chain of thought.' },
+    });
+
+    const state = run(settled, {
+      type: 'message/reasoningEdited',
+      id: 'a1',
+      reasoning: 'Tidied thinking.',
+    });
+
+    const message = state.messages.find((m) => m.id === 'a1')!;
+    expect(message.swipes[message.swipe_id]).toBe('The answer.');
+    expect(message.swipe_info[message.swipe_id]!.extra?.reasoning).toBe('Tidied thinking.');
+    // The greeting's swipe was not touched by an edit on another message.
+    expect(state.messages[0]!.swipes).toEqual(['Hello.', 'Greetings.', 'Well met.']);
+    assertConsistent(state);
+  });
+
+  test('an empty reasoning edit clears the thinking block, other extra survives', () => {
+    const withReasoning = run(loaded(), {
+      type: 'gen/started',
+      mode: 'send',
+      newId: 'a1',
+      name: 'S',
+    });
+    const settled = run(withReasoning, {
+      type: 'gen/finished',
+      text: 'The answer.',
+      extra: { reasoning: 'Scratchpad.', api: 'custom', model: 'm' },
+    });
+
+    const state = run(settled, { type: 'message/reasoningEdited', id: 'a1', reasoning: '' });
+
+    const message = state.messages.find((m) => m.id === 'a1')!;
+    const extra = message.swipe_info[message.swipe_id]!.extra;
+    expect(extra?.reasoning).toBeFalsy();
+    expect(extra?.api).toBe('custom');
+    expect(extra?.model).toBe('m');
+    assertConsistent(state);
+  });
+
   test('hiding a message keeps it in the transcript', () => {
     const state = run(loaded(), { type: 'message/toggleHidden', id: 'm0' });
     expect(state.messages.length).toBe(1);
@@ -512,6 +562,7 @@ describe('editing the transcript', () => {
     for (const action of [
       { type: 'message/appendUser', id: 'u', name: 'J', text: 'x' },
       { type: 'message/edited', id: 'm0', text: 'y' },
+      { type: 'message/reasoningEdited', id: 'm0', reasoning: 'z' },
       { type: 'message/deleted', id: 'm0' },
       { type: 'message/toggleHidden', id: 'm0' },
       { type: 'swipe/select', id: 'm0', index: 1 },

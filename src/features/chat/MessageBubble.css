@@ -260,6 +260,7 @@
  * the model working, not the story, and mistaking one for the other spoils both.
  */
 .reasoning {
+  position: relative;
   margin-bottom: var(--wc-space-3);
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius);
@@ -284,6 +285,57 @@
   line-height: 1.6;
   color: var(--wc-text-muted);
   white-space: pre-wrap;
+}
+
+/*
+ * Editing lives inside the expanded box, so the pencil only exists when there is
+ * something to edit — and stays out of the message's own edit mode.
+ *
+ * Floated over the summary row rather than given a row of its own: an in-flow toolbar
+ * reserved a band of empty space under the thinking that read as a few blank lines.
+ * Revealed on hover, the same bargain the message header's tools make.
+ */
+.reasoning__tools {
+  position: absolute;
+  top: var(--wc-space-2);
+  right: var(--wc-space-2);
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.reasoning:hover .reasoning__tools,
+.reasoning:focus-within .reasoning__tools {
+  opacity: 1;
+}
+
+.reasoning__edit {
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+}
+
+.reasoning__edit:hover {
+  color: var(--wc-text);
+  background: var(--wc-surface-hover);
+}
+
+.reasoning__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: 0 var(--wc-space-3) var(--wc-space-3);
+}
+
+/* Reads like the thinking it replaces: smaller and greyer than the prose editor. */
+.reasoning__input {
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+}
+
+.reasoning__editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
 }
 
 /* --- Foot --------------------------------------------------------------- */
