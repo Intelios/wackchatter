@@ -90,14 +90,32 @@ async function serveStatic(url: URL): Promise<Response> {
 
   const requested = join(DIST_DIR, url.pathname);
   if (url.pathname !== '/' && existsSync(requested)) {
-    return new Response(Bun.file(requested));
+    // Vite puts a content hash in every filename under /assets, so these are safe to keep
+    // forever: a changed file is a changed URL. Anything else gets revalidated.
+    const immutable = url.pathname.startsWith('/assets/');
+    return new Response(Bun.file(requested), {
+      headers: {
+        'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+      },
+    });
   }
 
   const index = join(DIST_DIR, 'index.html');
   if (!existsSync(index)) {
     return new Response('Frontend not built. Run `bun run build`.', { status: 503 });
   }
-  return new Response(Bun.file(index), { headers: { 'content-type': 'text/html' } });
+  /*
+   * Never cached, and this is load-bearing rather than tidy.
+   *
+   * index.html is the only unhashed file, and it is what names the hashed bundles. Served
+   * with no cache-control and no validator, it falls to Chrome's heuristic caching — so a
+   * rebuild lands on disk, the server restarts, and the browser still runs the previous
+   * build out of its own cache, bundles and all, with nothing to revalidate against. The
+   * app looks unchanged and the rebuild looks broken.
+   */
+  return new Response(Bun.file(index), {
+    headers: { 'content-type': 'text/html', 'cache-control': 'no-cache' },
+  });
 }
 
 const server = Bun.serve({

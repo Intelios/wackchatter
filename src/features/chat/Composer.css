@@ -9,11 +9,24 @@
   margin: 0 auto;
   padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
   flex-shrink: 0;
+  /*
+   * One row of the textarea: its line box, its vertical padding, its two borders.
+   *
+   * Everything in the row is sized to this rather than to a fixed control height, so the
+   * three tops line up on an empty composer. They are bottom-aligned, so any mismatch
+   * lands entirely at the top — a flat 42px against the textarea's 47 read as the buttons
+   * sitting low in the row. Deriving it from the same tokens the textarea uses is what
+   * stops the two drifting apart again the next time the type scale moves.
+   */
+  --wc-composer-row: calc(var(--wc-text-base) * 1.5 + var(--wc-space-3) * 2 + 2px);
 }
 
 .composer__input {
   flex: 1;
   min-width: 0;
+  /* Pins the empty state to exactly one row, so the buttons cannot be measured against a
+     textarea the browser sized fractionally differently. */
+  min-height: var(--wc-composer-row);
   padding: var(--wc-space-3);
   background: var(--wc-surface);
   border: 1px solid var(--wc-border);
@@ -42,20 +55,35 @@
 }
 
 .composer__button {
-  height: var(--wc-control-lg);
+  height: var(--wc-composer-row);
   flex-shrink: 0;
 }
 
-/* Matches the send button's height so the menu trigger sits on the textarea's baseline —
-   .composer aligns its children to flex-end. */
+/*
+ * Matches the send button's height so the menu trigger sits on the textarea's baseline —
+ * .composer aligns its children to flex-end.
+ *
+ * Given a surface and a border rather than left as a ghost icon, because this button is
+ * what anchors the row's left edge. The composer already spans the transcript's measure
+ * exactly: this button's left edge and Send's right edge land on the bubble's two edges.
+ * But a faint glyph over a background image does not read as content, so the row appeared
+ * to start 50px in — at the textarea — while still ending flush on the right. The visual
+ * mass then sat 25px right of the bubbles, and the bubbles read as hanging off to the
+ * left. Nothing was off centre; the two halves just had nothing to line up against.
+ */
 .composer .menu__trigger {
-  height: var(--wc-control-lg);
-  width: var(--wc-control-lg);
+  height: var(--wc-composer-row);
+  width: var(--wc-composer-row);
   padding: 0;
-  color: var(--wc-text-faint);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  color: var(--wc-text-muted);
+  transition: border-color var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
 }
 
 .composer .menu__trigger:hover,
 .composer .menu__trigger[aria-expanded="true"] {
+  border-color: var(--wc-border-strong);
   color: var(--wc-text);
 }

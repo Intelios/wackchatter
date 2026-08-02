@@ -16,6 +16,14 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /*
+   * Both edges, so the transcript keeps the composer's centre line.
+   *
+   * `margin: 0 auto` centres inside the *content* box, which a classic scrollbar eats into
+   * from one side only — the transcript would sit half a scrollbar left of the composer
+   * below it. No-op under the overlay scrollbars macOS defaults to, which reserve nothing.
+   */
+  scrollbar-gutter: stable both-edges;
   /* Content-anchoring would fight the ResizeObserver that follows the stream. */
   overflow-anchor: none;
 }

@@ -16,6 +16,18 @@
    */
   grid-template-rows: var(--wc-topbar-height) 1fr;
   height: 100%;
+  /*
+   * The backdrop's overscan is *scrollable* overflow, not just ink: scale(1.06) puts ~38px
+   * of it past the right edge at a 1280px window, and nothing else in the tree clips it.
+   * `body { overflow: hidden }` only stops the user scrolling that space — it does not stop
+   * the browser, which scrolls into it the moment focus lands on a right-hand bar button.
+   * The whole app then sits 38px left of centre with no way to scroll back, until a reload.
+   *
+   * `clip` rather than `hidden` because it is not a scroll container at all: there is no
+   * scroll position for anything to move. Nothing legitimately escapes the shell — it is
+   * the viewport — and the panels and the chat column clip their own popups already.
+   */
+  overflow: clip;
   transition: grid-template-columns var(--wc-duration) var(--wc-ease);
 }
 
@@ -197,6 +209,17 @@
 .panel--right {
   grid-column: 3;
   border-left: 1px solid var(--wc-border);
+}
+
+/*
+ * A closed panel is a zero-width track, but `box-sizing: border-box` cannot shrink a box
+ * below its own border — so the seam survives the close as a stray hairline down the very
+ * edge of the screen, and on the right as one more pixel of scrollable overflow. The
+ * border belongs to the open panel, so drop it with the panel.
+ */
+.shell[data-left-open="false"] .panel--left,
+.shell[data-right-open="false"] .panel--right {
+  border-width: 0;
 }
 
 /*
