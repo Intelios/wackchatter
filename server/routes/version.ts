@@ -27,6 +27,7 @@ async function resolveVersion(): Promise<VersionInfo> {
       Bun.spawn(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], opts),
       Bun.spawn(['git', 'rev-parse', '--short', 'HEAD'], opts),
     ]);
+    await Promise.all([branchProc.exited, revProc.exited]);
     if (branchProc.exitCode === 0) branch = (await new Response(branchProc.stdout).text()).trim();
     if (revProc.exitCode === 0) revision = (await new Response(revProc.stdout).text()).trim();
   } catch {}
