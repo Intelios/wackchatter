@@ -118,6 +118,7 @@ export const PRESET_DEFAULTS = {
   continue_postfix: ' ',
   seed: -1,
   n: 1,
+  reasoning_effort: 'auto',
 } as const satisfies Partial<Preset>;
 
 export function createDefaultPreset(): Preset {

@@ -1,4 +1,8 @@
-import { CHARACTER_NAMES_BEHAVIOR, type Preset } from '@shared/types/preset.ts';
+import {
+  CHARACTER_NAMES_BEHAVIOR,
+  type Preset,
+  type ReasoningEffort,
+} from '@shared/types/preset.ts';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
@@ -114,6 +118,20 @@ export function GenerationPanel({
             onChange={(value) => setField('n', Math.max(1, Math.round(value)))}
           />
         </div>
+        <SelectField<ReasoningEffort>
+          label="Reasoning effort"
+          value={preset.reasoning_effort ?? 'auto'}
+          options={[
+            { label: 'Auto', value: 'auto' },
+            { label: 'Min', value: 'min' },
+            { label: 'Low', value: 'low' },
+            { label: 'Medium', value: 'medium' },
+            { label: 'High', value: 'high' },
+            { label: 'Max', value: 'max' },
+          ]}
+          onChange={(value) => setField('reasoning_effort', value)}
+          hint="Only reasoning models use this. Auto sends nothing, which suits every other model."
+        />
       </Section>
 
       <Section title="Formatting">
@@ -192,7 +210,7 @@ export function GenerationPanel({
           label="Max context"
           value={preset.openai_max_context ?? 4095}
           min={512}
-          max={200000}
+          max={1000000}
           step={1}
           onChange={(v) => setField('openai_max_context', Math.round(v))}
         />

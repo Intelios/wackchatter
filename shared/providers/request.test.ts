@@ -203,6 +203,45 @@ describe('reasoning and usage', () => {
   });
 });
 
+describe('reasoning effort', () => {
+  test('auto sends nothing, so unsupported models see an unchanged request', () => {
+    const custom = build({ reasoning_effort: 'auto' });
+    expect(Object.hasOwn(custom, 'reasoning_effort')).toBe(false);
+
+    const openrouter = build({ reasoning_effort: 'auto' }, connection({ provider: 'openrouter' }));
+    expect(openrouter.reasoning).toEqual({ exclude: false });
+  });
+
+  test('an absent effort sends nothing either', () => {
+    const body = build({ reasoning_effort: undefined });
+    expect(Object.hasOwn(body, 'reasoning_effort')).toBe(false);
+  });
+
+  test('low, medium and high pass through on a plain endpoint', () => {
+    expect(build({ reasoning_effort: 'low' }).reasoning_effort).toBe('low');
+    expect(build({ reasoning_effort: 'medium' }).reasoning_effort).toBe('medium');
+    expect(build({ reasoning_effort: 'high' }).reasoning_effort).toBe('high');
+  });
+
+  test('min and max are UI conveniences that resolve to low and high', () => {
+    expect(build({ reasoning_effort: 'min' }).reasoning_effort).toBe('low');
+    expect(build({ reasoning_effort: 'max' }).reasoning_effort).toBe('high');
+  });
+
+  test('OpenRouter nests effort inside its reasoning object', () => {
+    const body = build({ reasoning_effort: 'medium' }, connection({ provider: 'openrouter' }));
+    expect(body.reasoning).toEqual({ exclude: false, effort: 'medium' });
+  });
+
+  test('effort coexists with excluded reasoning on OpenRouter', () => {
+    const body = build(
+      { reasoning_effort: 'high' },
+      connection({ provider: 'openrouter', showReasoning: false }),
+    );
+    expect(body.reasoning).toEqual({ exclude: true, effort: 'high' });
+  });
+});
+
 describe('headers', () => {
   test('a key becomes a bearer token', () => {
     const headers = buildHeaders(connection(), 'sk-test', 'http://localhost:5173');

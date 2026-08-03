@@ -14,6 +14,7 @@
  *    a truthiness check.
  */
 
+import type { Preset } from '../types/preset.ts';
 import type {
   ChatCompletionBody,
   ConnectionSettings,
@@ -60,6 +61,16 @@ export function buildHeaders(
 
   // User-supplied headers win, so a proxy needing its own auth scheme can override.
   return { ...headers, ...connection.headers };
+}
+
+/** `min`/`max` are UI conveniences; the wire only knows low/medium/high. */
+const REASONING_EFFORT_MAP: Record<string, string> = { min: 'low', max: 'high' };
+
+/** `auto` (and absent) sends nothing — unsupported models must see an unchanged request. */
+function resolveReasoningEffort(preset: Preset): string | undefined {
+  const effort = preset.reasoning_effort;
+  if (!effort || effort === 'auto') return undefined;
+  return REASONING_EFFORT_MAP[effort] ?? effort;
 }
 
 export function buildRequestBody(request: GenerationRequest): ChatCompletionBody {
@@ -115,12 +126,17 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     if (routing?.middleOut) body.transforms = ['middle-out'];
   }
 
+  const reasoningEffort = resolveReasoningEffort(preset);
+
   if (connection.provider === 'openrouter') {
-    body.reasoning = { exclude: connection.showReasoning === false };
+    const reasoning: Record<string, unknown> = { exclude: connection.showReasoning === false };
+    if (reasoningEffort) reasoning.effort = reasoningEffort;
+    body.reasoning = reasoning;
     // OpenRouter's own usage flag. It does not accept OpenAI's stream_options.
     if (connection.reportUsage) body.usage = { include: true };
-  } else if (connection.reportUsage && stream) {
-    body.stream_options = { include_usage: true };
+  } else {
+    if (reasoningEffort) body.reasoning_effort = reasoningEffort;
+    if (connection.reportUsage && stream) body.stream_options = { include_usage: true };
   }
 
   return body;

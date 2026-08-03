@@ -76,6 +76,14 @@ export type CharacterNamesBehavior =
   (typeof CHARACTER_NAMES_BEHAVIOR)[keyof typeof CHARACTER_NAMES_BEHAVIOR];
 
 /**
+ * How hard a reasoning model should think. SillyTavern's key and values verbatim, so
+ * presets round-trip untouched. `auto` means the field is never sent — the default, since
+ * plenty of models and proxies reject the parameter. `min`/`max` are UI conveniences that
+ * resolve to `low`/`high` on the wire.
+ */
+export type ReasoningEffort = 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
+
+/**
  * A preset. Typed for the fields we act on; the index signature carries everything else
  * through untouched so a preset can round-trip via SillyTavern without losing provider
  * settings we don't implement.
@@ -94,6 +102,7 @@ export interface Preset {
   repetition_penalty?: number;
   seed?: number;
   n?: number;
+  reasoning_effort?: ReasoningEffort;
 
   // Budget
   openai_max_context?: number;
