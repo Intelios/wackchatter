@@ -472,10 +472,8 @@ guided generations (guided response, guided swipe, per-chat persistent guides),
 deleted-chat backups (a restorable trash bin in data/backups, filled on chat delete and
 on character cascade), chat export/import (our own JSON wire format).
 
-Not built yet: impersonate.
-
-Out of scope for V1: group chats, instruct mode, extensions, image generation, TTS,
-local models.
+Not planned: impersonate, group chats, instruct mode, extensions, image generation,
+TTS, local models.
 
 World Info features deliberately **not** implemented, all of which can only ever make an
 entry fire *less*, so ignoring them is noisier than ST but never silently wrong:
