@@ -15,6 +15,7 @@
 import { updateWorldLinksRecoverable } from './characters.ts';
 import { chatStore } from './chats.ts';
 import { updatePersonaLorebookReferences } from './personas.ts';
+import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
   reassignCharacterDialogueColor,
@@ -23,28 +24,7 @@ import {
   saveSettings,
 } from './settings.ts';
 
-type Rollback = () => Promise<void> | void;
-
-async function rollbackAll(rollbacks: Rollback[]): Promise<void> {
-  const failures: unknown[] = [];
-  for (const rollback of [...rollbacks].reverse()) {
-    try {
-      await rollback();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  if (failures.length > 0) throw new AggregateError(failures, 'Reference rollback failed.');
-}
-
-async function failAfterRollback(error: unknown, rollbacks: Rollback[]): Promise<never> {
-  try {
-    await rollbackAll(rollbacks);
-  } catch (rollbackError) {
-    throw new AggregateError([error, rollbackError], 'Reference migration and rollback failed.');
-  }
-  throw error;
-}
+const WHAT = 'reference update';
 
 /** A character's file moved: keep its chats pointed at the new identity. */
 export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Rollback {
@@ -60,18 +40,21 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
   }
 
   return () =>
-    rollbackAll([
-      ...(updated
-        ? [
-            () => {
-              saveSettings({ dialogueColors: current.dialogueColors });
-            },
-          ]
-        : []),
-      () => {
-        chatStore().reassignCharacter(newAvatar, oldAvatar);
-      },
-    ]);
+    rollbackAll(
+      [
+        ...(updated
+          ? [
+              () => {
+                saveSettings({ dialogueColors: current.dialogueColors });
+              },
+            ]
+          : []),
+        () => {
+          chatStore().reassignCharacter(newAvatar, oldAvatar);
+        },
+      ],
+      WHAT,
+    );
 }
 
 /**
@@ -122,10 +105,10 @@ export async function cascadeLorebookRename(oldId: string, newId: string): Promi
       });
     }
   } catch (error) {
-    return failAfterRollback(error, rollbacks);
+    return failAfterRollback(error, rollbacks, WHAT);
   }
 
-  return () => rollbackAll(rollbacks);
+  return () => rollbackAll(rollbacks, WHAT);
 }
 
 /** A lorebook is gone: clear every reference that pointed at it. */
@@ -145,8 +128,8 @@ export async function cascadeLorebookDelete(id: string): Promise<Rollback> {
       });
     }
   } catch (error) {
-    return failAfterRollback(error, rollbacks);
+    return failAfterRollback(error, rollbacks, WHAT);
   }
 
-  return () => rollbackAll(rollbacks);
+  return () => rollbackAll(rollbacks, WHAT);
 }

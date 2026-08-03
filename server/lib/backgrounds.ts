@@ -72,6 +72,11 @@ export function deleteBackground(name: string): void {
  * Deliberately not a request parameter: a caller-supplied source directory would turn
  * this into "copy any directory the server can read into data/", which buys nothing here.
  * Point it elsewhere with WC_ST_DIR, the same way WC_DATA_DIR works.
+ *
+ * lib/location.ts *does* take a directory from the client, which is the same policy rather
+ * than an exception to it: this reads arbitrary directories into a location that is served
+ * over HTTP, where that one writes the user's own library to a folder they named and exposes
+ * nothing new. The reasoning is spelled out there; read both before relaxing either.
  */
 function sillyTavernBackgroundDir(): string {
   const root = process.env.WC_ST_DIR

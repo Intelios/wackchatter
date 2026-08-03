@@ -6,15 +6,18 @@ import { Slider } from '../../components/Slider.tsx';
 import { TrashIcon, UploadIcon } from '../../layout/icons.tsx';
 import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
+import { DataLocationSection } from './DataLocationSection.tsx';
 import './AppearancePanel.css';
 
 interface AppearancePanelProps {
   settings: SettingsResponse | null;
   onPatch: (patch: Record<string, unknown>) => void;
+  /** Moving the data folder reloads the app, which would take an unsaved draft with it. */
+  unsavedPreset?: boolean;
 }
 
-/** How the app looks: background, glass, and the two settings that had no UI at all. */
-export function AppearancePanel({ settings, onPatch }: AppearancePanelProps) {
+/** How the app looks, plus the app-level settings that have nowhere better to live. */
+export function AppearancePanel({ settings, onPatch, unsavedPreset }: AppearancePanelProps) {
   const [uploads, setUploads] = useState<BackgroundSummary[]>([]);
   const [status, setStatus] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -235,6 +238,8 @@ export function AppearancePanel({ settings, onPatch }: AppearancePanelProps) {
           hint="Counts are exact for OpenAI models and an estimate everywhere else."
         />
       </Section>
+
+      <DataLocationSection unsavedPreset={unsavedPreset} />
     </div>
   );
 }

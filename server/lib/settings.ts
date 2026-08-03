@@ -234,7 +234,12 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
   return next;
 }
 
-/** Drop the memoized copy. Used by tests. */
+/**
+ * Drop the memoized copy, so the next read comes from whatever settings.json is current.
+ *
+ * Used by tests, and by the data-directory move — the cached settings belong to the old
+ * root and would otherwise be written back over the new one.
+ */
 export function resetSettingsCache(): void {
   cache = null;
 }

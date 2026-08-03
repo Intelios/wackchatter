@@ -1,0 +1,85 @@
+.data-location__current {
+  margin-bottom: var(--wc-space-3);
+}
+
+/* The path is the thing being talked about, so it gets to wrap rather than be truncated —
+   a folder you cannot read in full is a folder you cannot verify. */
+.data-location__path {
+  display: block;
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+  word-break: break-all;
+  color: var(--wc-text);
+}
+
+.data-location__note {
+  margin: 0 0 var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  font-size: var(--wc-text-sm);
+  line-height: 1.45;
+}
+
+.data-location__note[data-tone="warn"] {
+  background: var(--wc-warning-subtle);
+  color: var(--wc-text);
+}
+
+.data-location__note[data-tone="danger"] {
+  background: var(--wc-danger-subtle);
+  color: var(--wc-text);
+}
+
+/* The field grows; the button keeps its natural width and sits on the field's baseline. */
+.data-location__pick {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wc-space-2);
+}
+
+.data-location__pick .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.data-location__browse {
+  flex: none;
+  margin-bottom: var(--wc-space-2);
+}
+
+.data-location__verdict {
+  margin-bottom: var(--wc-space-3);
+  padding-left: var(--wc-space-3);
+  border-left: 2px solid var(--wc-border);
+  font-size: var(--wc-text-sm);
+  line-height: 1.45;
+  color: var(--wc-text-muted);
+}
+
+.data-location__verdict[data-tone="warn"] {
+  border-left-color: var(--wc-warning);
+}
+
+.data-location__verdict[data-tone="danger"] {
+  border-left-color: var(--wc-danger);
+}
+
+.data-location__verdict p {
+  margin: 0 0 var(--wc-space-1);
+}
+
+/* The first line carries the warning or the headline finding, so it reads at full strength. */
+.data-location__verdict p:first-child {
+  color: var(--wc-text);
+}
+
+.data-location__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+.data-location__actions .wc-button[data-confirming] {
+  background: var(--wc-danger);
+  color: #fff;
+}

@@ -11,13 +11,16 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorResponse, handle, notFound } from './lib/http.ts';
-import { ensureDataDirs, PROJECT_ROOT } from './lib/paths.ts';
+import { initDataLocation } from './lib/location.ts';
+import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
+import { degradedReason, isSwitching } from './lib/relocate.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
+import { handleLocationRoute } from './routes/location.ts';
 import { handleLorebookRoute } from './routes/lorebooks.ts';
 import { handlePersonaRoute } from './routes/personas.ts';
 import { handlePresetRoute } from './routes/presets.ts';
@@ -48,6 +51,8 @@ function forbiddenOrigin(request: Request): boolean {
   }
 }
 
+// Must come first: this decides which directory everything below reads and writes.
+const dataLocation = initDataLocation();
 ensureDataDirs();
 await ensureDefaultPreset();
 
@@ -58,6 +63,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   backups: handleBackupRoute,
   characters: handleCharacterRoute,
   presets: handlePresetRoute,
+  location: handleLocationRoute,
   lorebooks: handleLorebookRoute,
   personas: handlePersonaRoute,
   chats: handleChatRoute,
@@ -74,6 +80,19 @@ async function serveApi(request: Request, url: URL): Promise<Response> {
   const [group, ...segments] = parts;
 
   if (!group) return notFound('No API route specified.');
+
+  /*
+   * While the data folder is moving, every route but the one the panel polls is refused.
+   * Half of them would read the old root and half the new one, and a concurrent POST to
+   * /api/location hits this too — which makes the switch single-flight without a lock.
+   *
+   * Static assets are deliberately not gated: the browser has to be able to reload the app.
+   */
+  const restart = degradedReason();
+  if (restart) return errorResponse(restart, 503);
+  if (isSwitching() && !(group === 'location' && request.method === 'GET')) {
+    return errorResponse('Moving your data folder — try again in a moment.', 503);
+  }
 
   const route = API_ROUTES[group];
   if (!route) return notFound(`Unknown API route "/${group}".`);
@@ -144,8 +163,16 @@ const server = Bun.serve({
 });
 
 const appUrl = IS_PROD ? `http://localhost:${server.port}` : 'http://localhost:5173';
+const dataNote =
+  dataLocation.source === 'env'
+    ? ' (WC_DATA_DIR)'
+    : dataLocation.source === 'pointer'
+      ? ' (custom)'
+      : '';
+
 console.log(`  WackChatter API   http://localhost:${server.port}`);
 console.log(`  App               ${appUrl}`);
+console.log(`  Data              ${PATHS.root}${dataNote}`);
 
 if (IS_PROD && process.env.WC_NO_OPEN !== '1') {
   const opener =

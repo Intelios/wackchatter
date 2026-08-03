@@ -40,6 +40,35 @@ export function withResourceLock<T>(key: string, task: () => Promise<T> | T): Pr
 }
 
 /**
+ * Wait for every in-flight locked operation to settle.
+ *
+ * Used before the data directory moves. An atomicWrite in flight has its data in a
+ * temporary sibling that has not been renamed into place yet, so copying the tree at that
+ * moment captures the old file and strands the new one. Returns false on timeout, and the
+ * caller is expected to abandon rather than press on: making the user retry is a far better
+ * outcome than a torn copy of their library.
+ */
+export async function drainLocks(timeoutMs = 5000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  // Locks released while we wait can be replaced by new ones, so re-check rather than
+  // awaiting a single snapshot of the map.
+  while (locks.size > 0) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled([...locks.values()]),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, remaining);
+      }),
+    ]);
+    clearTimeout(timer);
+  }
+  return true;
+}
+
+/**
  * Lock one file for a complete read/modify/write operation.
  *
  * The supplied replacement function writes without reacquiring the same lock. Calling

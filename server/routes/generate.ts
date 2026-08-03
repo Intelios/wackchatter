@@ -13,7 +13,7 @@
  */
 
 import type { ChatCompletionBody } from '../../shared/providers/types.ts';
-import { callUpstream, describeFailure } from '../lib/generate.ts';
+import { callUpstream, describeFailure, trackGeneration } from '../lib/generate.ts';
 import { errorResponse, readJson } from '../lib/http.ts';
 
 export async function handleGenerateRoute(
@@ -29,10 +29,17 @@ export async function handleGenerateRoute(
 
   console.debug('Chat Completion request:', payload.body);
 
+  // Held until the reply is done, so the data folder cannot move out from under the save
+  // that follows it. Releasing on abort as well as on completion, because a client that
+  // hangs up mid-stream never reaches the transform's flush.
+  const finished = trackGeneration();
+  request.signal.addEventListener('abort', finished, { once: true });
+
   let upstream: Response;
   try {
     upstream = await callUpstream(payload.body, request.signal);
   } catch (error) {
+    finished();
     // A client that hung up mid-connect is not an error worth reporting back.
     if (request.signal.aborted) return new Response(null, { status: 499 });
 
@@ -47,6 +54,7 @@ export async function handleGenerateRoute(
   }
 
   if (!upstream.ok) {
+    finished();
     const errorText = await upstream.text();
     console.error(`Chat Completion error ${upstream.status}:`, errorText);
     return errorResponse(describeFailure(upstream.status, errorText), upstream.status);
@@ -63,6 +71,7 @@ export async function handleGenerateRoute(
     console.info('Streaming request in progress');
     const transform = new TransformStream({
       flush() {
+        finished();
         console.info('Streaming request finished');
       },
     });
@@ -70,6 +79,7 @@ export async function handleGenerateRoute(
   }
 
   const text = await upstream.text();
+  finished();
   try {
     console.debug('Chat Completion response:', JSON.parse(text));
   } catch {

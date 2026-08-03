@@ -6,6 +6,8 @@
  */
 
 import { Database } from 'bun:sqlite';
+import { existsSync, unlinkSync } from 'node:fs';
+import { detectCloudProvider } from './location.ts';
 import { PATHS } from './paths.ts';
 
 const SCHEMA_VERSION = 2;
@@ -69,7 +71,17 @@ export function openDatabase(path: string): Database {
   // here, ON DELETE CASCADE silently does nothing and orphaned message rows accumulate
   // invisibly.
   database.exec('PRAGMA foreign_keys = ON');
-  database.exec('PRAGMA journal_mode = WAL');
+
+  /*
+   * WAL is faster, but it spreads the database across chats.db, -wal and -shm — and the one
+   * thing every sync client gets wrong is treating three interdependent files as three
+   * independent ones, uploading them at different moments. In a synced folder that is
+   * corruption waiting to happen, so trade write throughput for a single self-contained
+   * file. journal_mode is persisted in the file header, so a library moved back off a synced
+   * folder picks WAL up again on the next open.
+   */
+  const synced = detectCloudProvider(path) !== null;
+  database.exec(`PRAGMA journal_mode = ${synced ? 'DELETE' : 'WAL'}`);
   database.exec('PRAGMA synchronous = NORMAL');
 
   createSchema(database);
@@ -77,9 +89,85 @@ export function openDatabase(path: string): Database {
 }
 
 let instance: Database | null = null;
+/** Where `instance` was opened. Remembered so a close still finds it after PATHS moves. */
+let instancePath: string | null = null;
 
 /** The application database, opened on first use. */
 export function getDb(): Database {
-  instance ??= openDatabase(PATHS.db);
+  if (!instance) {
+    instancePath = PATHS.db;
+    instance = openDatabase(instancePath);
+  }
   return instance;
+}
+
+/** Fold the write-ahead log into the main file and switch it off, leaving one file. */
+function settle(database: Database): void {
+  // TRUNCATE rather than PASSIVE (which can leave frames behind) or FULL (which does not
+  // shrink the log). This is the step that matters: in WAL mode most of the database can be
+  // sitting in chats.db-wal, so moving chats.db alone without it loses nearly everything.
+  database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  // Bun caches prepared statements, so close() does not release the connection the way a
+  // plain sqlite3_close would, and SQLite never gets round to deleting the sidecars itself.
+  // Leaving WAL removes chats.db-wal explicitly — the one that carries data.
+  database.exec('PRAGMA journal_mode = DELETE');
+}
+
+/**
+ * Put the database at rest so its file can be moved as a single self-contained unit.
+ *
+ * Handles the case where nothing has opened it in this process but a previous run left a log
+ * behind: that log holds real data, so it is folded in rather than treated as an obstacle.
+ */
+export function closeDatabase(): void {
+  const path = instancePath ?? PATHS.db;
+  let settled = false;
+
+  if (instance) {
+    try {
+      settle(instance);
+      settled = true;
+    } catch {
+      // Releasing the handle still matters more than settling cleanly. The sidecars stay
+      // where they are, and the caller refuses to move a database that still has them.
+    }
+    instance.close();
+    instance = null;
+    instancePath = null;
+  } else if (existsSync(`${path}-wal`)) {
+    /*
+     * A log left by a run that did not shut down cleanly, or by another process holding the
+     * database right now. Folding it in is worth attempting, because the data in it is real —
+     * but failing is not worth throwing over: nothing is moved until the caller has checked
+     * that the sidecars are gone.
+     */
+    try {
+      const recovered = new Database(path, { readwrite: true });
+      try {
+        settle(recovered);
+        settled = true;
+      } finally {
+        recovered.close();
+      }
+    } catch {
+      return;
+    }
+  } else {
+    settled = true;
+  }
+
+  /*
+   * Only once settle succeeded. chats.db-wal holds real data until it has been checkpointed,
+   * so deleting it on the failure path would be the exact data loss this function exists to
+   * prevent. -shm is pure scratch and is rebuilt on demand.
+   */
+  if (!settled) return;
+
+  for (const suffix of ['-wal', '-shm']) {
+    try {
+      unlinkSync(`${path}${suffix}`);
+    } catch {
+      // Already gone, which is the expected case.
+    }
+  }
 }

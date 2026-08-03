@@ -25,10 +25,16 @@ import {
 } from '../../shared/worldinfo/convert.ts';
 import { createBlankCard, mergeCardData, normalizeCard, readCard, writeCard } from './card.ts';
 import { atomicWrite, withFileLock, withFileLocks, withResourceLock } from './fs.ts';
-import { PATHS, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
+import { PATHS, PROJECT_ROOT, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
 
-/** Placeholder used when a character is created without an uploaded image. */
-const BLANK_AVATAR_PATH = join(PATHS.root, '..', 'assets', 'blank-avatar.png');
+/**
+ * Placeholder used when a character is created without an uploaded image.
+ *
+ * Anchored to PROJECT_ROOT, not the data directory: this is a shipped asset, so it must not
+ * travel when the user moves their library. It is also the one place that captured a PATHS
+ * field at module scope, which a movable root makes actively wrong.
+ */
+const BLANK_AVATAR_PATH = join(PROJECT_ROOT, 'assets', 'blank-avatar.png');
 
 function summarize(avatar: string, card: TavernCard, modified: number): CharacterSummary {
   return {

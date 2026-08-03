@@ -1,5 +1,104 @@
-import { describe, expect, test } from 'bun:test';
-import { safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  DEFAULT_DATA_DIR,
+  ensureDataDirs,
+  MARKER_FILENAME,
+  PATHS,
+  safeJoin,
+  sanitizeFilename,
+  setDataDir,
+  uniqueName,
+} from './paths.ts';
+
+/*
+ * !! paths.ts is module state shared by every test file in the process. !!
+ *
+ * setDataDir mutates one object that the whole suite reads through, so a test that leaves it
+ * pointed somewhere else does not fail here — it repoints every file that runs afterwards,
+ * and the failure surfaces somewhere unrelated. Always put it back.
+ */
+afterEach(() => {
+  setDataDir(DEFAULT_DATA_DIR);
+});
+
+describe('setDataDir', () => {
+  test('rewrites every path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-paths-'));
+    try {
+      setDataDir(dir);
+      expect(PATHS.root).toBe(dir);
+      expect(PATHS.characters).toBe(join(dir, 'characters'));
+      expect(PATHS.personaAvatars).toBe(join(dir, 'personas', 'avatars'));
+      expect(PATHS.db).toBe(join(dir, 'chats.db'));
+      expect(PATHS.marker).toBe(join(dir, MARKER_FILENAME));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /*
+   * The invariant the whole design rests on. ~60 call sites read PATHS.x rather than taking a
+   * getter, which only works because the object's identity never changes — it is rewritten in
+   * place. If this ever fails, every one of those sites is silently pinned to the old root.
+   */
+  test('rewrites in place, so an already-held reference follows the move', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-paths-'));
+    try {
+      const held = PATHS;
+      setDataDir(dir);
+      expect(held).toBe(PATHS);
+      expect(held.root).toBe(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('ensureDataDirs', () => {
+  test('creates every directory and marks the folder as ours', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-paths-'));
+    try {
+      setDataDir(dir);
+      ensureDataDirs();
+
+      for (const path of [
+        PATHS.characters,
+        PATHS.presets,
+        PATHS.lorebooks,
+        PATHS.personas,
+        PATHS.personaAvatars,
+        PATHS.backgrounds,
+        PATHS.backups,
+      ]) {
+        expect(statSync(path).isDirectory()).toBe(true);
+      }
+      expect(JSON.parse(readFileSync(PATHS.marker, 'utf8'))).toMatchObject({
+        app: 'wackchatter',
+        version: 1,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('is idempotent, and never rewrites when the folder was first used', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-paths-'));
+    try {
+      setDataDir(dir);
+      ensureDataDirs();
+      const created = JSON.parse(readFileSync(PATHS.marker, 'utf8')).created;
+
+      ensureDataDirs();
+      expect(JSON.parse(readFileSync(PATHS.marker, 'utf8')).created).toBe(created);
+      expect(existsSync(PATHS.backups)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('sanitizeFilename', () => {
   test('keeps ordinary names, including spaces and hyphens', () => {
