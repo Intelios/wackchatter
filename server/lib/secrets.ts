@@ -5,11 +5,12 @@
  * response body. The client is told only whether a key is present and its last four
  * characters, which is enough to render "configured" state without the value ever
  * reaching the browser.
+ *
+ * Keys are stored per connection, keyed by the connection's opaque id. Two connections
+ * to the same provider are two separate keys; deleting a connection deletes its key.
  */
 
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import type { ProviderId } from '../../shared/providers/types.ts';
-import { PROVIDER_IDS } from '../../shared/providers/types.ts';
 import { PATHS } from './paths.ts';
 
 export interface KeyInfo {
@@ -18,7 +19,7 @@ export interface KeyInfo {
   hint: string;
 }
 
-type SecretsFile = Partial<Record<ProviderId, string>>;
+type SecretsFile = Record<string, string>;
 
 function read(): SecretsFile {
   if (!existsSync(PATHS.secrets)) return {};
@@ -38,29 +39,54 @@ function write(secrets: SecretsFile): void {
   chmodSync(PATHS.secrets, 0o600);
 }
 
-export function getApiKey(provider: ProviderId): string | null {
-  return read()[provider]?.trim() || null;
+export function getApiKey(connectionId: string): string | null {
+  return read()[connectionId]?.trim() || null;
 }
 
-export function setApiKey(provider: ProviderId, key: string | null): void {
+export function setApiKey(connectionId: string, key: string | null): void {
   const secrets = read();
   const trimmed = key?.trim();
 
-  if (trimmed) secrets[provider] = trimmed;
-  else delete secrets[provider];
+  if (trimmed) secrets[connectionId] = trimmed;
+  else delete secrets[connectionId];
 
   write(secrets);
 }
 
 /** The only shape of key information allowed to cross the wire. */
-export function describeKeys(): Record<ProviderId, KeyInfo> {
+export function describeKeys(connectionIds: string[]): Record<string, KeyInfo> {
   const secrets = read();
-  const result = {} as Record<ProviderId, KeyInfo>;
+  const result: Record<string, KeyInfo> = {};
 
-  for (const provider of PROVIDER_IDS) {
-    const key = secrets[provider]?.trim();
-    result[provider] = { present: Boolean(key), hint: key ? key.slice(-4) : '' };
+  for (const id of connectionIds) {
+    const key = secrets[id]?.trim();
+    result[id] = { present: Boolean(key), hint: key ? key.slice(-4) : '' };
   }
 
   return result;
+}
+
+/**
+ * Drop keys whose connection no longer exists. Called after every settings save, so a
+ * deleted connection takes its key with it — a key with no connection is a key that can
+ * only ever leak.
+ */
+export function pruneApiKeys(connectionIds: string[]): void {
+  const secrets = read();
+  const valid = new Set(connectionIds);
+  const entries = Object.entries(secrets);
+  if (entries.every(([id]) => valid.has(id))) return;
+
+  write(Object.fromEntries(entries.filter(([id]) => valid.has(id))));
+}
+
+/** One-time rename for the legacy provider-keyed format. No-op when `from` has no key. */
+export function rekeyApiKey(from: string, to: string): void {
+  const secrets = read();
+  const key = secrets[from];
+  if (key === undefined) return;
+
+  delete secrets[from];
+  secrets[to] = key;
+  write(secrets);
 }

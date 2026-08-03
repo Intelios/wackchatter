@@ -8,7 +8,8 @@ import {
 } from '@shared/providers/sse.ts';
 import type {
   ChatCompletionBody,
-  ConnectionSettings,
+  Connection,
+  ProviderId,
   ProviderModel,
 } from '@shared/providers/types.ts';
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
@@ -382,6 +383,7 @@ export const backupApi = {
 export const settingsApi = {
   get: () => request<SettingsResponse>('/settings'),
 
+  /** Cannot touch the connection list — that mutates only through the endpoints below. */
   save: (patch: Partial<AppSettings>) =>
     request<SettingsResponse>('/settings', {
       method: 'PUT',
@@ -389,9 +391,30 @@ export const settingsApi = {
       body: JSON.stringify(patch),
     }),
 
+  /** Id and name are minted server-side, so concurrent creates cannot collide. */
+  createConnection: (provider?: ProviderId) =>
+    request<SettingsResponse>('/settings/connections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    }),
+
+  patchConnection: (id: string, patch: Partial<Connection>) =>
+    request<SettingsResponse>(`/settings/connections/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+
+  /** The server deletes the connection's stored key along with it. */
+  removeConnection: (id: string) =>
+    request<SettingsResponse>(`/settings/connections/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
   /** The key is written and never read back; only its presence is reported. */
-  setKey: (provider: string, key: string | null) =>
-    request<{ ok: true; present: boolean }>(`/settings/keys/${encodeURIComponent(provider)}`, {
+  setKey: (connectionId: string, key: string | null) =>
+    request<{ ok: true; present: boolean }>(`/settings/keys/${encodeURIComponent(connectionId)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ key }),
@@ -399,7 +422,8 @@ export const settingsApi = {
 
   models: () => request<{ models: ProviderModel[] }>('/settings/models'),
 
-  test: (connection: ConnectionSettings) =>
+  /** The id must name a stored connection — the server uses it to pick the key. */
+  test: (connection: Connection) =>
     request<{ ok: true; models: number } | { ok: false; error: string }>('/settings/test', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

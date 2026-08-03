@@ -24,7 +24,7 @@ import type {
 import { PROVIDERS } from './types.ts';
 
 /** Strip trailing slashes so a user pasting ".../v1/" still works. */
-function normalizeBase(baseUrl: string): string {
+export function normalizeBase(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 

@@ -11,7 +11,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import type { ConnectionSettings } from '../../shared/providers/types.ts';
+import { normalizeBase } from '../../shared/providers/request.ts';
+import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
 import type {
   AppSettings,
@@ -28,6 +29,7 @@ import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { atomicWriteSync } from './fs.ts';
 import { PATHS } from './paths.ts';
+import { rekeyApiKey } from './secrets.ts';
 
 export type { AppSettings };
 
@@ -46,9 +48,16 @@ function normalizeVariables(value: unknown): AppSettings['variables'] {
   );
 }
 
-/** Coerce a stored connection into a valid one, falling back field by field. */
-function normalizeConnection(value: unknown): ConnectionSettings {
-  if (!isRecord(value)) return { ...DEFAULT_CONNECTION };
+/**
+ * Coerce one stored connection entry into a valid one, falling back field by field.
+ * Returns null for entries that cannot identify a connection — without a usable id the
+ * key store and the selection cannot address it.
+ */
+function normalizeConnectionEntry(value: unknown): Connection | null {
+  if (!isRecord(value)) return null;
+
+  const id = typeof value.id === 'string' && value.id.trim() ? value.id.trim() : null;
+  if (!id) return null;
 
   const provider = isProviderId(value.provider) ? value.provider : DEFAULT_CONNECTION.provider;
   const baseUrl =
@@ -56,7 +65,12 @@ function normalizeConnection(value: unknown): ConnectionSettings {
       ? value.baseUrl.trim()
       : PROVIDERS[provider].defaultBaseUrl;
 
-  const connection: ConnectionSettings = {
+  const connection: Connection = {
+    id,
+    name:
+      typeof value.name === 'string' && value.name.trim()
+        ? value.name.trim()
+        : PROVIDERS[provider].label,
     provider,
     baseUrl,
     model: typeof value.model === 'string' ? value.model : '',
@@ -68,6 +82,100 @@ function normalizeConnection(value: unknown): ConnectionSettings {
   if (value.reportUsage === true) connection.reportUsage = true;
 
   return connection;
+}
+
+/** Coerce a stored connection list. Entries without a usable id are dropped. */
+function normalizeConnections(value: unknown): Connection[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const connections: Connection[] = [];
+  for (const entry of value) {
+    const connection = normalizeConnectionEntry(entry);
+    // A duplicate id would let one connection read the other's key; first one wins.
+    if (!connection || seen.has(connection.id)) continue;
+    seen.add(connection.id);
+    connections.push(connection);
+  }
+  return connections;
+}
+
+/** A selection that does not name an existing connection falls back to the first. */
+function normalizeConnectionId(value: unknown, connections: Connection[]): string | null {
+  if (typeof value === 'string' && connections.some((connection) => connection.id === value)) {
+    return value;
+  }
+  return connections[0]?.id ?? null;
+}
+
+export interface LegacyConnectionMigration {
+  settings: Record<string, unknown>;
+  /** The stored API key that must move with the migrated connection, if any. */
+  keyMove: { from: ProviderId; to: string } | null;
+}
+
+/**
+ * The id the migrated connection gets. Deliberately fixed, not a uuid: the migration
+ * writes two files, and a deterministic id is what makes a crash between the writes
+ * converge on retry instead of stranding the key under the first attempt's id.
+ */
+export const MIGRATION_CONNECTION_ID = 'legacy';
+
+/**
+ * Rewrite the pre-connections shape into the current one, purely.
+ *
+ * The old format had a single `connection` object and keys stored per provider id. The
+ * rewrite wraps that object in a one-entry list and reports the key move, so an upgrade
+ * loses neither the connection nor its key. A key stored for a provider other than the
+ * active one had no connection to follow and is left behind.
+ */
+export function migrateLegacyConnection(
+  stored: Record<string, unknown>,
+  newId: string,
+): LegacyConnectionMigration | null {
+  if (stored.connections !== undefined || !isRecord(stored.connection)) return null;
+
+  const connection = normalizeConnectionEntry({ ...stored.connection, id: newId });
+  if (!connection) return null;
+
+  const settings: Record<string, unknown> = {
+    ...stored,
+    connections: [connection],
+    connectionId: connection.id,
+  };
+  delete settings.connection;
+
+  return { settings, keyMove: { from: connection.provider, to: connection.id } };
+}
+
+/**
+ * Apply `migrateLegacyConnection` to the files on disk.
+ *
+ * Runs from `getSettings` rather than at startup only: the data directory can move, and
+ * a library never opened by a new build must migrate on its first read too. The
+ * `connection` check makes it idempotent — once rewritten, this is a no-op.
+ *
+ * The secret is re-keyed BEFORE the settings write, and the id is deterministic. A
+ * crash between the two writes leaves the key already under its new id while settings
+ * is still legacy — so the retry re-keys (a no-op, the old provider id is empty by
+ * then) and writes the same settings. The opposite order, with a fresh uuid per
+ * attempt, would leave the key under the first attempt's id and the settings pointing
+ * at the second's, and the next settings save would prune the orphan.
+ */
+function applyLegacyConnectionMigration(stored: Record<string, unknown>): Record<string, unknown> {
+  const migration = migrateLegacyConnection(stored, MIGRATION_CONNECTION_ID);
+  if (!migration) return stored;
+
+  // A failed write must not take every request down: the session continues on the
+  // in-memory migration and the files are retried on the next cache reset.
+  try {
+    if (migration.keyMove) rekeyApiKey(migration.keyMove.from, migration.keyMove.to);
+    atomicWriteSync(PATHS.settings, `${JSON.stringify(migration.settings, null, 2)}\n`);
+  } catch (error) {
+    console.error('[wackchatter] Could not persist the connections migration:', error);
+  }
+
+  return migration.settings;
 }
 
 /**
@@ -174,10 +282,20 @@ export function getSettings(): AppSettings {
     }
   }
 
+  stored = applyLegacyConnectionMigration(stored);
+
+  // A missing list gets the seeded default connection; an explicitly empty list is the
+  // user having deleted them all, and stays empty.
+  const connections =
+    stored.connections === undefined
+      ? DEFAULT_SETTINGS.connections.map((connection) => ({ ...connection }))
+      : normalizeConnections(stored.connections);
+
   cache = {
     ...DEFAULT_SETTINGS,
     ...stored,
-    connection: normalizeConnection(stored.connection),
+    connections,
+    connectionId: normalizeConnectionId(stored.connectionId, connections),
     worldInfo: normalizeWorldInfo(stored.worldInfo),
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
@@ -190,17 +308,25 @@ export function getSettings(): AppSettings {
 /**
  * Apply a partial update. Pure, so the merge rules are testable without a filesystem.
  *
- * `connection`, `worldInfo` and `guidance` merge FIELD-WISE. A shallow spread would drop
- * every field the patch didn't mention, so a client changing only the scan depth would
- * silently reset the budget and every match setting along with it.
+ * `worldInfo` and `guidance` merge FIELD-WISE. A shallow spread would drop every field
+ * the patch didn't mention, so a client changing only the scan depth would silently
+ * reset the budget and every match setting along with it.
+ *
+ * `connections` is PINNED: the list mutates only through `addConnection`,
+ * `patchConnectionEntry` and `deleteConnectionEntry` — the per-connection endpoints.
+ * A wholesale array from a client would let a stale tab (or a malformed body like
+ * `{"connections": null}`) delete every connection, and the key pruning that follows a
+ * deletion would make that irreversible. This is the character-book rule.
  */
 export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
   return {
     ...current,
     ...patch,
-    connection: patch.connection
-      ? normalizeConnection({ ...current.connection, ...patch.connection })
-      : current.connection,
+    connections: current.connections,
+    connectionId: normalizeConnectionId(
+      patch.connectionId !== undefined ? patch.connectionId : current.connectionId,
+      current.connections,
+    ),
     worldInfo: patch.worldInfo
       ? normalizeWorldInfo({ ...current.worldInfo, ...patch.worldInfo })
       : current.worldInfo,
@@ -242,6 +368,133 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
  */
 export function resetSettingsCache(): void {
   cache = null;
+}
+
+/**
+ * Whether two connections name the same endpoint. The API key belongs to the endpoint
+ * — provider plus base URL — not to the connection's identity, so this is the test for
+ * "does the stored key still apply?" after an edit or in a client-submitted probe.
+ * Compared after `normalizeBase`, because `http://x/v1` and `http://x/v1/` are one
+ * endpoint and a trailing-slash edit must not look like a move.
+ */
+export function sameEndpoint(
+  a: Pick<Connection, 'provider' | 'baseUrl'>,
+  b: Pick<Connection, 'provider' | 'baseUrl'>,
+): boolean {
+  return a.provider === b.provider && normalizeBase(a.baseUrl) === normalizeBase(b.baseUrl);
+}
+
+/** The lowest free `<provider label> N`; the first connection takes the bare label. */
+export function nextConnectionName(connections: Connection[], provider: ProviderId): string {
+  const base = PROVIDERS[provider].label;
+  const taken = new Set(connections.map((connection) => connection.name));
+
+  let n = 1;
+  let candidate = base;
+  while (taken.has(candidate)) {
+    n += 1;
+    candidate = `${base} ${n}`;
+  }
+  return candidate;
+}
+
+/**
+ * Merge a patch into one entry, normalising the result. Pure, so the merge rules are
+ * testable without a filesystem. Returns null when the id names no entry. The id is
+ * forced back: it keys the secret store and the selection, so a patch cannot move an
+ * entry to a new identity (which would read another connection's key).
+ */
+export function applyConnectionPatch(
+  connections: Connection[],
+  id: string,
+  patch: Record<string, unknown>,
+): Connection[] | null {
+  const index = connections.findIndex((connection) => connection.id === id);
+  if (index === -1) return null;
+
+  const merged = normalizeConnectionEntry({ ...connections[index], ...patch, id });
+  if (!merged) return null;
+
+  const next = [...connections];
+  next[index] = merged;
+  return next;
+}
+
+/**
+ * Remove one entry and fix the selection. Pure. Returns null when the id names no
+ * entry. A selection pointing at the deleted entry falls back per
+ * `normalizeConnectionId`; one pointing elsewhere is kept.
+ */
+export function dropConnection(
+  connections: Connection[],
+  selectedId: string | null,
+  id: string,
+): { connections: Connection[]; connectionId: string | null } | null {
+  if (!connections.some((connection) => connection.id === id)) return null;
+
+  const rest = connections.filter((connection) => connection.id !== id);
+  return {
+    connections: rest,
+    connectionId: normalizeConnectionId(selectedId === id ? null : selectedId, rest),
+  };
+}
+
+/** Persist settings built by the connection mutators below. */
+function writeSettings(next: AppSettings): AppSettings {
+  atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
+  cache = next;
+  return next;
+}
+
+/**
+ * Create a connection server-side and activate it.
+ *
+ * The id and the name are minted here, not by the client: two fast "New connection"
+ * clicks — or two tabs — then serialize through this process and each gets its own
+ * entry and a collision-free name, instead of one overwriting the other's captured
+ * array.
+ */
+export function addConnection(provider: ProviderId): AppSettings {
+  const current = getSettings();
+  const connection: Connection = {
+    id: crypto.randomUUID(),
+    name: nextConnectionName(current.connections, provider),
+    provider,
+    baseUrl: PROVIDERS[provider].defaultBaseUrl,
+    model: '',
+    showReasoning: true,
+  };
+
+  return writeSettings({
+    ...current,
+    connections: [...current.connections, connection],
+    connectionId: connection.id,
+  });
+}
+
+/** Edit one entry. Returns null when the id names no entry. */
+export function patchConnectionEntry(
+  id: string,
+  patch: Record<string, unknown>,
+): AppSettings | null {
+  const current = getSettings();
+  const connections = applyConnectionPatch(current.connections, id, patch);
+  if (!connections) return null;
+
+  return writeSettings({ ...current, connections });
+}
+
+/** Remove one entry and fix the selection. Returns null when the id names no entry. */
+export function deleteConnectionEntry(id: string): AppSettings | null {
+  const current = getSettings();
+  const dropped = dropConnection(current.connections, current.connectionId, id);
+  if (!dropped) return null;
+
+  return writeSettings({
+    ...current,
+    connections: dropped.connections,
+    connectionId: dropped.connectionId,
+  });
 }
 
 /** Re-key or remove the local dialogue colour attached to a character filename. */

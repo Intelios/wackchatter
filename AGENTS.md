@@ -62,14 +62,22 @@ so the inspector shows the wire payload rather than a reconstruction of it.
 **Connection settings are ours, not the preset's.** Connections live in
 `data/settings.json` as a list (`connections`) plus an active selection (`connectionId`,
 null means "the first one"); keys live in `data/secrets.json` keyed by the connection's
-opaque id and never reach the browser. A deleted connection prunes its key on the next
-settings save. Each connection is `{id, name}` over the wire settings — the persona rule:
-id is opaque, name is editable, nothing references a connection by name. `showReasoning`
-and `reportUsage` are per-connection but edited from the Generation panel, write-through;
-they describe how the active endpoint is asked, not the preset. A
-preset's own connection keys (`custom_url`, `openrouter_model`, `chat_completion_source`)
-round-trip untouched but are never read, so importing someone else's preset cannot
-silently repoint your endpoint and exporting yours cannot leak it.
+opaque id and never reach the browser. The list mutates only through the
+per-connection endpoints (`POST/PATCH/DELETE /api/settings/connections…`) — the
+character-book rule, for the same reason: `mergeSettings` pins the list, so a stale
+tab or a malformed body like `{"connections": null}` cannot delete connections, and a
+deleted connection's key is removed by its own DELETE, never by pruning from a
+client-supplied list. **The key belongs to the endpoint** (provider + baseUrl), not to
+the entry: a PATCH that changes either drops the key rather than sending it somewhere
+it was never meant for, and `/settings/test` attaches the stored key only when the
+probed endpoint matches the stored one — a real id paired with a forged baseUrl is
+probed keyless. Each connection is `{id, name}` over the wire settings — the persona
+rule: id is opaque, name is editable, nothing references a connection by name.
+`showReasoning` and `reportUsage` are per-connection but edited from the Generation
+panel, write-through; they describe how the active endpoint is asked, not the preset.
+A preset's own connection keys (`custom_url`, `openrouter_model`,
+`chat_completion_source`) round-trip untouched but are never read, so importing someone
+else's preset cannot silently repoint your endpoint and exporting yours cannot leak it.
 
 ## The data directory moves
 

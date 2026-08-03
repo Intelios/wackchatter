@@ -33,7 +33,7 @@ export interface PanelSpec<T extends string> {
 
 /** Left is how the model behaves. */
 export const LEFT_PANELS: readonly PanelSpec<LeftPanelId>[] = [
-  { id: 'connection', label: 'Connection', icon: <PlugIcon /> },
+  { id: 'connection', label: 'Connections', icon: <PlugIcon /> },
   { id: 'prompts', label: 'Prompts', icon: <MessagesIcon /> },
   { id: 'generation', label: 'Generation', icon: <SlidersIcon /> },
   { id: 'inspect', label: 'Inspect', icon: <SearchIcon /> },

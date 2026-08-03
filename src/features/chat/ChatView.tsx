@@ -299,7 +299,7 @@ export function ChatView({
             ? 'Retry loading this character before sending a message.'
             : ready
               ? `Message ${characterName}…`
-              : 'Configure an endpoint and model in Settings → Connection first.'
+              : 'Configure an endpoint and model in the Connections panel first.'
         }
       />
     </div>

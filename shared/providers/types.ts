@@ -45,6 +45,23 @@ export interface ConnectionSettings {
   showReasoning?: boolean;
 }
 
+/**
+ * A saved connection: wire settings plus identity.
+ *
+ * `id` is an opaque uuid and `name` is an editable field — the persona rule, not the
+ * lorebook one. Nothing references a connection by name (transcripts record provider
+ * and model per reply), so a rename is a plain field edit and the id never has to be
+ * shown. API keys key off the id too, so each connection's key is its own.
+ *
+ * The list of connections is mutated only through the server's per-connection
+ * endpoints, never by sending the whole array — the character-book rule, for the
+ * same reason: a stale tab must not be able to write a mass deletion.
+ */
+export interface Connection extends ConnectionSettings {
+  id: string;
+  name: string;
+}
+
 export interface GenerationRequest {
   messages: ApiMessage[];
   preset: Preset;

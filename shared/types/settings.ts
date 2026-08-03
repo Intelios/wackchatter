@@ -6,14 +6,20 @@
  * else's preset cannot silently repoint your endpoint, and exporting yours cannot leak it.
  */
 
-import type { ConnectionSettings, ProviderId } from '../providers/types.ts';
-import { DEFAULT_CONNECTION } from '../providers/types.ts';
+import type { Connection } from '../providers/types.ts';
+import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { MacroVariableMap } from './chat.ts';
 import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
 export interface AppSettings {
-  connection: ConnectionSettings;
+  /**
+   * Every saved connection. Generations use `activeConnection` — `connectionId` with a
+   * fallback to the first entry — so a stale or cleared selection never strands the app.
+   */
+  connections: Connection[];
+  /** The connection generations use. Null means "the first one". */
+  connectionId: string | null;
   /** UI refresh rate during streaming. */
   streamingFps: number;
   /**
@@ -110,10 +116,29 @@ export interface KeyInfo {
   hint: string;
 }
 
-export type SettingsResponse = AppSettings & { keys: Record<ProviderId, KeyInfo> };
+/** Keyed by connection id — each connection's key is its own. */
+export type SettingsResponse = AppSettings & { keys: Record<string, KeyInfo> };
+
+/**
+ * The id of the connection fresh installs start with. Deliberately not a uuid: the
+ * default is a known quantity, and a fixed id keeps DEFAULT_SETTINGS deterministic.
+ */
+export const DEFAULT_CONNECTION_ID = 'default';
+
+/** The connection generations use, or null when none exist. */
+export function activeConnection(
+  settings: Pick<AppSettings, 'connections' | 'connectionId'>,
+): Connection | null {
+  return (
+    settings.connections.find((connection) => connection.id === settings.connectionId) ??
+    settings.connections[0] ??
+    null
+  );
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  connection: { ...DEFAULT_CONNECTION },
+  connections: [{ ...DEFAULT_CONNECTION, id: DEFAULT_CONNECTION_ID, name: PROVIDERS.custom.label }],
+  connectionId: DEFAULT_CONNECTION_ID,
   streamingFps: 30,
   personaId: null,
   variables: {},

@@ -16,9 +16,10 @@ import {
 import { extractError } from '../../shared/providers/sse.ts';
 import type {
   ChatCompletionBody,
-  ConnectionSettings,
+  Connection,
   ProviderModel,
 } from '../../shared/providers/types.ts';
+import { activeConnection } from '../../shared/types/settings.ts';
 import { getApiKey } from './secrets.ts';
 import { getSettings } from './settings.ts';
 
@@ -71,26 +72,34 @@ export async function callUpstream(
   body: ChatCompletionBody,
   signal: AbortSignal,
 ): Promise<Response> {
-  const connection = getSettings().connection;
+  const connection = activeConnection(getSettings());
 
-  if (!connection.baseUrl) throw new Error('No endpoint configured. Set one in Connection.');
-  if (!connection.model) throw new Error('No model selected. Choose one in Connection.');
+  if (!connection) throw new Error('No connection configured. Add one in Connections.');
+  if (!connection.baseUrl) throw new Error('No endpoint configured. Set one in Connections.');
+  if (!connection.model) throw new Error('No model selected. Choose one in Connections.');
 
   return fetch(completionsUrl(connection), {
     method: 'POST',
-    headers: buildHeaders(connection, getApiKey(connection.provider), appUrl()),
+    headers: buildHeaders(connection, getApiKey(connection.id), appUrl()),
     body: JSON.stringify(body),
     signal,
   });
 }
 
-/** Fetch the model catalogue for a connection, defaulting to the configured one. */
-export async function listModels(connection?: ConnectionSettings): Promise<ProviderModel[]> {
-  const target = connection ?? getSettings().connection;
+/**
+ * Fetch the model catalogue for a connection, defaulting to the active one.
+ *
+ * `useKey` is false only for probes of a client-supplied endpoint that differs from
+ * the stored one — the key belongs to the stored endpoint, and attaching it to a
+ * different URL would hand it to whoever controls that URL.
+ */
+export async function listModels(connection?: Connection, useKey = true): Promise<ProviderModel[]> {
+  const target = connection ?? activeConnection(getSettings());
+  if (!target) throw new Error('No connection configured. Add one in Connections.');
   if (!target.baseUrl) throw new Error('No endpoint configured.');
 
   const response = await fetch(modelsUrl(target), {
-    headers: buildHeaders(target, getApiKey(target.provider), appUrl()),
+    headers: buildHeaders(target, useKey ? getApiKey(target.id) : null, appUrl()),
     // A model list that hangs should not hold a request open indefinitely.
     signal: AbortSignal.timeout(15_000),
   });
@@ -110,9 +119,9 @@ export async function listModels(connection?: ConnectionSettings): Promise<Provi
 export type TestResult = { ok: true; models: number } | { ok: false; error: string };
 
 /** Probe a connection without committing to it, for the "Test" button. */
-export async function testConnection(connection: ConnectionSettings): Promise<TestResult> {
+export async function testConnection(connection: Connection, useKey: boolean): Promise<TestResult> {
   try {
-    const models = await listModels(connection);
+    const models = await listModels(connection, useKey);
     return { ok: true, models: models.length };
   } catch (error) {
     return { ok: false, error: (error as Error).message };

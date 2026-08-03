@@ -1,3 +1,4 @@
+import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { ChatBackupSummary, Persona } from '@shared/types/chat.ts';
@@ -8,6 +9,7 @@ import type {
   SettingsResponse,
 } from '@shared/types/settings.ts';
 import {
+  activeConnection,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   type GuidanceSettings,
@@ -257,7 +259,7 @@ export function App() {
     };
   }, [selected]);
 
-  const connection = settings?.connection ?? null;
+  const connection = settings ? activeConnection(settings) : null;
   // Detail resolves asynchronously. Never let the previous card accompany a newly
   // selected avatar into useChat's auto-open effect.
   const character = detail?.avatar === selected ? detail.card.data : null;
@@ -296,6 +298,25 @@ export function App() {
       }
     },
     [saveSettingsStrict],
+  );
+
+  /**
+   * Write-through patch of the active connection, for the Generation panel's
+   * provider-behaviour toggles. Connection settings save immediately — they are not
+   * part of the preset draft. Goes through the per-connection endpoint, never a
+   * wholesale array, so a stale snapshot here cannot drop another connection.
+   */
+  const patchActiveConnection = useCallback(
+    (patch: Partial<Connection>) => {
+      if (!settings) return;
+      const active = activeConnection(settings);
+      if (!active) return;
+      settingsApi
+        .patchConnection(active.id, patch)
+        .then(setSettings)
+        .catch((err) => setError((err as Error).message));
+    },
+    [settings],
   );
 
   const patchCharacterDialogueColor = useCallback(
@@ -699,6 +720,8 @@ export function App() {
           extraSamplersSent={
             connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
           }
+          connection={connection}
+          onConnectionPatch={patchActiveConnection}
           // The last generation's result when there is one, else the live preview — so the
           // report answers "why didn't it fire?" before you send, too.
           worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}

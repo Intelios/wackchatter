@@ -1,3 +1,4 @@
+import type { Connection } from '@shared/providers/types.ts';
 import type { MacroWarning } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
@@ -26,6 +27,9 @@ interface LeftPanelProps {
   tokenCounts?: Record<string, number>;
   macroWarnings?: MacroWarning[];
   extraSamplersSent: boolean;
+  /** The active connection, for the Generation panel's provider-behaviour toggles. */
+  connection: Connection | null;
+  onConnectionPatch: (patch: Partial<Connection>) => void;
   worldInfo: ActivationResult | null;
   inspection: PromptInspection | null;
 }
@@ -52,6 +56,8 @@ export function LeftPanel({
   tokenCounts,
   macroWarnings,
   extraSamplersSent,
+  connection,
+  onConnectionPatch,
   worldInfo,
   inspection,
 }: LeftPanelProps) {
@@ -97,7 +103,13 @@ export function LeftPanel({
 
       {active === 'generation' ? (
         preset ? (
-          <GenerationPanel preset={preset} draft={draft} extraSamplersSent={extraSamplersSent} />
+          <GenerationPanel
+            preset={preset}
+            draft={draft}
+            extraSamplersSent={extraSamplersSent}
+            connection={connection}
+            onConnectionPatch={onConnectionPatch}
+          />
         ) : (
           <div className="wc-empty">Loading presets…</div>
         )

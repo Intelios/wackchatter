@@ -1,17 +1,44 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Connection } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import {
+  DEFAULT_CONNECTION_ID,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
 } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
+import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
+import { getApiKey } from './secrets.ts';
 import {
+  applyConnectionPatch,
+  dropConnection,
+  getSettings,
+  MIGRATION_CONNECTION_ID,
   mergeSettings,
+  migrateLegacyConnection,
+  nextConnectionName,
   reassignCharacterDialogueColor,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
+  resetSettingsCache,
+  sameEndpoint,
 } from './settings.ts';
+
+function connection(id: string, name: string, overrides?: Partial<Connection>): Connection {
+  return {
+    id,
+    name,
+    provider: 'custom',
+    baseUrl: `http://${id}`,
+    model: '',
+    showReasoning: true,
+    ...overrides,
+  };
+}
 
 function base(): AppSettings {
   return structuredClone(DEFAULT_SETTINGS);
@@ -51,15 +78,29 @@ describe('mergeSettings', () => {
     expect(mergeSettings(current, { streamingFps: 15 }).worldInfo.depth).toBe(9);
   });
 
-  test('a partial connection patch keeps the rest of the connection', () => {
-    const current = mergeSettings(base(), {
-      connection: { provider: 'openrouter', baseUrl: 'https://x/api', model: 'a/b' },
-    });
-    const next = mergeSettings(current, { connection: { model: 'c/d' } as never });
+  test('a connections patch is ignored — the list mutates only per-connection', () => {
+    // The wholesale array was how a stale tab (or a body like `{"connections": null}`)
+    // could delete every connection, and the key pruning that follows a deletion made
+    // that irreversible. Pinning the list is what the per-connection endpoints rely on.
+    const current = base();
+    for (const patch of [
+      { connections: [] },
+      { connections: null },
+      { connections: [{ id: 'intruder', name: 'X' }] },
+    ]) {
+      const next = mergeSettings(current, patch as never);
+      expect(next.connections).toEqual(current.connections);
+    }
+  });
 
-    expect(next.connection.model).toBe('c/d');
-    expect(next.connection.baseUrl).toBe('https://x/api');
-    expect(next.connection.provider).toBe('openrouter');
+  test('an unknown connectionId falls back to the first connection', () => {
+    const next = mergeSettings(base(), { connectionId: 'missing' });
+    expect(next.connectionId).toBe(DEFAULT_CONNECTION_ID);
+  });
+
+  test('a known connectionId is kept and revalidated against the pinned list', () => {
+    const next = mergeSettings(base(), { connectionId: DEFAULT_CONNECTION_ID });
+    expect(next.connectionId).toBe(DEFAULT_CONNECTION_ID);
   });
 
   test('unknown keys survive, so a newer build cannot be downgraded into data loss', () => {
@@ -185,6 +226,260 @@ describe('dialogue colour identity changes', () => {
     expect(removePersonaDialogueColor(current, 'doomed')?.dialogueColors.personas).toEqual({
       kept: null,
     });
+  });
+});
+
+describe('applyConnectionPatch', () => {
+  function list(): Connection[] {
+    return [connection('a', 'Local'), connection('b', 'OpenRouter')];
+  }
+
+  test('merges into one entry, normalising per field', () => {
+    const next = applyConnectionPatch(list(), 'b', { model: 'x/y', showReasoning: false });
+    expect(next?.[1]).toMatchObject({ id: 'b', model: 'x/y', showReasoning: false });
+    expect(next?.[0]).toEqual(list()[0]);
+  });
+
+  test('a bad provider falls back rather than reaching the wire', () => {
+    const next = applyConnectionPatch(list(), 'a', { provider: 'nope' });
+    expect(next?.[0]?.provider).toBe('custom');
+  });
+
+  test('clearing the baseUrl falls back to the provider default', () => {
+    const next = applyConnectionPatch(list(), 'a', { baseUrl: '   ' });
+    expect(next?.[0]?.baseUrl).toBe('https://api.openai.com/v1');
+  });
+
+  test('reportUsage can be switched off', () => {
+    const on = applyConnectionPatch(list(), 'a', { reportUsage: true });
+    expect(on?.[0]?.reportUsage).toBe(true);
+    const off = applyConnectionPatch(on!, 'a', { reportUsage: false });
+    expect(off?.[0]?.reportUsage).toBeUndefined();
+  });
+
+  test('the id cannot be patched away — it keys the secret store', () => {
+    const next = applyConnectionPatch(list(), 'a', { id: 'evil' });
+    expect(next?.[0]?.id).toBe('a');
+  });
+
+  test('an unknown id changes nothing', () => {
+    expect(applyConnectionPatch(list(), 'zzz', { model: 'x' })).toBeNull();
+  });
+
+  test('edits do not mutate the input', () => {
+    const original = list();
+    const snapshot = structuredClone(original);
+    applyConnectionPatch(original, 'a', { name: 'changed' });
+    expect(original).toEqual(snapshot);
+  });
+});
+
+describe('dropConnection', () => {
+  function list(): Connection[] {
+    return [connection('a', 'A'), connection('b', 'B'), connection('c', 'C')];
+  }
+
+  test('dropping the selected entry falls back to the first remaining', () => {
+    const next = dropConnection(list(), 'b', 'b');
+    expect(next?.connections.map((entry) => entry.id)).toEqual(['a', 'c']);
+    expect(next?.connectionId).toBe('a');
+  });
+
+  test('a selection pointing elsewhere survives the deletion', () => {
+    expect(dropConnection(list(), 'c', 'a')?.connectionId).toBe('c');
+  });
+
+  test('dropping the only connection clears the selection', () => {
+    const next = dropConnection([connection('a', 'Solo')], 'a', 'a');
+    expect(next?.connections).toEqual([]);
+    expect(next?.connectionId).toBeNull();
+  });
+
+  test('an unknown id changes nothing', () => {
+    expect(dropConnection(list(), 'a', 'zzz')).toBeNull();
+  });
+});
+
+describe('nextConnectionName', () => {
+  test('the first connection takes the bare provider label', () => {
+    expect(nextConnectionName([], 'custom')).toBe('OpenAI-compatible');
+  });
+
+  test('fills the lowest free slot rather than counting entries', () => {
+    const connections = [
+      connection('a', 'OpenAI-compatible'),
+      connection('c', 'OpenAI-compatible 3'),
+    ];
+    expect(nextConnectionName(connections, 'custom')).toBe('OpenAI-compatible 2');
+  });
+
+  test('a user-chosen name never blocks a slot', () => {
+    expect(nextConnectionName([connection('a', 'Groq')], 'custom')).toBe('OpenAI-compatible');
+  });
+});
+
+describe('sameEndpoint', () => {
+  test('same provider and base URL is the same endpoint', () => {
+    expect(sameEndpoint(connection('a', 'A'), connection('b', 'B', { baseUrl: 'http://a' }))).toBe(
+      true,
+    );
+  });
+
+  test('trailing slashes and surrounding whitespace are not a move', () => {
+    expect(
+      sameEndpoint(connection('a', 'A', { baseUrl: 'http://a' }), {
+        provider: 'custom',
+        baseUrl: '  http://a/  ',
+      }),
+    ).toBe(true);
+  });
+
+  test('a different URL or provider is a different endpoint', () => {
+    expect(
+      sameEndpoint(connection('a', 'A'), connection('a', 'A', { baseUrl: 'http://elsewhere' })),
+    ).toBe(false);
+    expect(
+      sameEndpoint(connection('a', 'A'), connection('a', 'A', { provider: 'openrouter' })),
+    ).toBe(false);
+  });
+});
+
+describe('migrateLegacyConnection', () => {
+  function legacy() {
+    return {
+      connection: {
+        provider: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'anthropic/claude',
+        showReasoning: false,
+        reportUsage: true,
+      },
+      streamingFps: 30,
+    };
+  }
+
+  test('wraps the legacy connection in a one-entry list and reports the key move', () => {
+    const migration = migrateLegacyConnection(legacy(), 'new-id');
+    expect(migration).not.toBeNull();
+    if (!migration) return;
+
+    const connections = migration.settings.connections as Connection[];
+    expect(connections).toHaveLength(1);
+    expect(connections[0]).toMatchObject({
+      id: 'new-id',
+      // No name existed in the old format; the provider label is the fallback.
+      name: 'OpenRouter',
+      provider: 'openrouter',
+      model: 'anthropic/claude',
+      showReasoning: false,
+      reportUsage: true,
+    });
+    expect(migration.settings.connectionId).toBe('new-id');
+    expect(migration.settings.connection).toBeUndefined();
+    // Unrelated keys ride along untouched.
+    expect(migration.settings.streamingFps).toBe(30);
+    expect(migration.keyMove).toEqual({ from: 'openrouter', to: 'new-id' });
+  });
+
+  test('a file that already has connections is left alone', () => {
+    expect(migrateLegacyConnection({ connections: [] }, 'new-id')).toBeNull();
+  });
+
+  test('a file without a legacy connection is left alone', () => {
+    expect(migrateLegacyConnection({ streamingFps: 30 }, 'new-id')).toBeNull();
+  });
+});
+
+/*
+ * !! paths.ts and the settings cache are module state shared by every test file in the
+ * process. !! These tests repoint both at a temp directory; the afterEach puts them
+ * back, same rule as paths.test.ts.
+ */
+describe('legacy migration on disk', () => {
+  afterEach(() => {
+    setDataDir(DEFAULT_DATA_DIR);
+    resetSettingsCache();
+  });
+
+  function seedLegacy(dir: string, secrets: Record<string, string>) {
+    writeFileSync(
+      join(dir, 'settings.json'),
+      JSON.stringify({
+        connection: {
+          provider: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          model: 'anthropic/claude',
+        },
+        streamingFps: 30,
+      }),
+    );
+    writeFileSync(join(dir, 'secrets.json'), JSON.stringify(secrets), { mode: 0o600 });
+  }
+
+  test('migrates on first read, and the key moves with the connection', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-migrate-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      seedLegacy(dir, { openrouter: 'sk-or-1234', custom: 'sk-leftover' });
+
+      const settings = getSettings();
+      expect(settings.connections.map((connection) => connection.id)).toEqual([
+        MIGRATION_CONNECTION_ID,
+      ]);
+      expect(settings.connectionId).toBe(MIGRATION_CONNECTION_ID);
+      expect(settings.streamingFps).toBe(30);
+
+      expect(getApiKey(MIGRATION_CONNECTION_ID)).toBe('sk-or-1234');
+      expect(getApiKey('openrouter')).toBeNull();
+      // A key for a provider with no connection has nowhere to move and is left alone.
+      expect(getApiKey('custom')).toBe('sk-leftover');
+
+      // The file on disk caught up, so the migration never runs again.
+      const stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
+      expect(stored.connectionId).toBe(MIGRATION_CONNECTION_ID);
+      expect(stored.connection).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a crash between the re-key and the settings write converges on retry', () => {
+    // The deterministic id is what makes this safe: the retry computes the same id, so
+    // the key the first attempt already moved is exactly where the second looks. With a
+    // fresh uuid per attempt, the key would sit under the first attempt's id while
+    // settings pointed at the second's, and the next prune would delete it.
+    const dir = mkdtempSync(join(tmpdir(), 'wc-migrate-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({
+          connection: {
+            provider: 'openrouter',
+            baseUrl: 'https://openrouter.ai/api/v1',
+            model: 'x',
+          },
+        }),
+      );
+      // Secrets already re-keyed by the interrupted first attempt.
+      writeFileSync(
+        join(dir, 'secrets.json'),
+        JSON.stringify({ [MIGRATION_CONNECTION_ID]: 'sk-or-1234' }),
+        { mode: 0o600 },
+      );
+
+      const settings = getSettings();
+      expect(settings.connections[0]?.id).toBe(MIGRATION_CONNECTION_ID);
+      expect(getApiKey(MIGRATION_CONNECTION_ID)).toBe('sk-or-1234');
+
+      const stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
+      expect(stored.connectionId).toBe(MIGRATION_CONNECTION_ID);
+      expect(stored.connection).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
