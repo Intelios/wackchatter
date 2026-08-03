@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type MacroEnvironment, createMacroRuntime, substituteMacros } from './macros.ts';
+import { createMacroRuntime, type MacroEnvironment, substituteMacros } from './macros.ts';
 
 const env: MacroEnvironment = {
   char: 'Seraphina',

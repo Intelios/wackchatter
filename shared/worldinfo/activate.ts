@@ -43,14 +43,14 @@ import type {
 } from '../types/worldinfo.ts';
 import { WI_POSITION, WI_ROLE_TO_STRING } from '../types/worldinfo.ts';
 import {
-  type MatchSettings,
-  type RegexCache,
   createRegexCache,
   evaluateSecondary,
+  type MatchSettings,
   matchAny,
   matchSettingsFor,
+  type RegexCache,
 } from './match.ts';
-import { type Rng, createRng, weightedPick } from './rng.ts';
+import { createRng, type Rng, weightedPick } from './rng.ts';
 import { ScanBuffer } from './scan.ts';
 
 /**

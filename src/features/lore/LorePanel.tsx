@@ -7,8 +7,12 @@
  * the content box isn't one request per keystroke.
  */
 
-import type { WorldInfoEntry, WorldInfoSettings } from '@shared/types/worldinfo.ts';
-import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
+import type {
+  LorebookSummary,
+  WorldInfoBook,
+  WorldInfoEntry,
+  WorldInfoSettings,
+} from '@shared/types/worldinfo.ts';
 import { createWorldInfoEntry } from '@shared/types/worldinfo.ts';
 import { bookEntries, nextUid, removeEntry } from '@shared/worldinfo/convert.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

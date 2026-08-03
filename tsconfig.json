@@ -21,7 +21,6 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
 
-    "baseUrl": ".",
     "paths": {
       "@shared/*": ["./shared/*"],
       "@server/*": ["./server/*"],

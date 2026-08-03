@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { readCard } from '../../server/lib/card.ts';
 import type { CharacterBook } from '../types/card.ts';
 import type { WorldInfoBook } from '../types/worldinfo.ts';
-import { WI_LOGIC, WI_POSITION, WI_ROLE, createWorldInfoEntry } from '../types/worldinfo.ts';
+import { createWorldInfoEntry, WI_LOGIC, WI_POSITION, WI_ROLE } from '../types/worldinfo.ts';
 import {
   bookEntries,
   nextUid,

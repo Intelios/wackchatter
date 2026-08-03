@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ApiMessage, ChatMessage, PersistentGuide } from '../types/chat.ts';
 import { CHARACTER_NAMES_BEHAVIOR, INJECTION_POSITION } from '../types/preset.ts';
-import { DEFAULT_USER_NAME, assemblePrompt, parseExampleDialogue } from './assemble.ts';
+import { assemblePrompt, DEFAULT_USER_NAME, parseExampleDialogue } from './assemble.ts';
 import { createDefaultPreset } from './defaults.ts';
 import { setPromptOrder, updatePrompt } from './preset-io.ts';
 import type { TokenCounter } from './token-cache.ts';

@@ -156,10 +156,8 @@
 /*
  * The accessibility answer to glass: honour it, in both spellings.
  *
- * biome-ignore lint/correctness/noUnknownMediaFeatureName: prefers-reduced-transparency is
- * Media Queries 5, shipped in Safari 17 and Chrome 118 — Biome's feature list is stale.
- * A browser that does not know it drops the whole query, which is why prefers-contrast is
- * a separate condition rather than an `and`.
+ * A browser that does not know `prefers-reduced-transparency` drops the whole query, which
+ * is why `prefers-contrast` is a separate condition rather than an `and`.
  */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .shell[data-glass="true"] {

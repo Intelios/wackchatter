@@ -38,9 +38,9 @@ import {
 } from '../types/preset.ts';
 import { DEFAULT_GUIDANCE, type GuidanceSettings } from '../types/settings.ts';
 import {
+  createMacroRuntime,
   type MacroEnvironment,
   type MacroRuntime,
-  createMacroRuntime,
   substituteMacros,
 } from './macros.ts';
 import { getPromptOrder } from './preset-io.ts';

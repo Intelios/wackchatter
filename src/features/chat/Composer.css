@@ -86,7 +86,9 @@
   border-radius: var(--wc-radius);
   background: var(--wc-surface);
   color: var(--wc-text-muted);
-  transition: border-color var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease;
 }
 
 .composer .popover__trigger:hover,

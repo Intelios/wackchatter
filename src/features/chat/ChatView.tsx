@@ -3,15 +3,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
+import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
 import { ChatMenu } from './ChatMenu.tsx';
 import { Composer } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
-import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
 import {
-  TRANSCRIPT_PAGE_SIZE,
   initialTranscriptStart,
   prependTranscriptPage,
+  TRANSCRIPT_PAGE_SIZE,
 } from './transcriptWindow.ts';
 import type { UseChat } from './useChat.ts';
 import { useStickToBottom } from './useStickToBottom.ts';

@@ -49,14 +49,6 @@
   background: var(--wc-accent-subtle);
 }
 
-/* Disabled entries stay legible but visibly inert — they are still reorderable. */
-.lore-row[data-enabled="false"] .lore-row__name,
-.lore-row[data-enabled="false"] .lore-row__order {
-  opacity: 0.45;
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-}
-
 .lore-row[data-dragging="true"] {
   z-index: 1;
   position: relative;
@@ -164,6 +156,14 @@
   min-width: 34px;
   text-align: right;
   flex-shrink: 0;
+}
+
+/* Disabled entries stay legible but visibly inert — they are still reorderable. */
+.lore-row[data-enabled="false"] .lore-row__name,
+.lore-row[data-enabled="false"] .lore-row__order {
+  opacity: 0.45;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 /* --- the entry form ----------------------------------------------------- */

@@ -176,13 +176,19 @@ export function Popover({
     onKeyDown?.(event);
   }
 
+  const popupProps = {
+    className: `popover__popup${popupClassName ? ` ${popupClassName}` : ''}`,
+    id,
+    ref: popupRef,
+    onKeyDown: handleKeyDown,
+  };
+
   return (
     <div
       className={`popover${className ? ` ${className}` : ''}`}
       data-side={effectiveSide}
       data-align={align}
       ref={rootRef}
-      onKeyDown={handleKeyDown}
     >
       {renderTrigger ? (
         renderTrigger({
@@ -215,15 +221,19 @@ export function Popover({
       )}
 
       {open ? (
-        <div
-          className={`popover__popup${popupClassName ? ` ${popupClassName}` : ''}`}
-          id={id}
-          ref={popupRef}
-          role={role}
-          aria-label={label}
-        >
-          {children}
-        </div>
+        role === 'menu' ? (
+          <div {...popupProps} role="menu" aria-label={label}>
+            {children}
+          </div>
+        ) : role === 'listbox' ? (
+          <div {...popupProps} role="listbox" aria-label={label}>
+            {children}
+          </div>
+        ) : (
+          <div {...popupProps} role="dialog" aria-label={label}>
+            {children}
+          </div>
+        )
       ) : null}
     </div>
   );

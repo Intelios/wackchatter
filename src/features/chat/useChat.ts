@@ -6,8 +6,8 @@
  * goes through the store and never touches React state.
  */
 
-import { type MessageState, currentText } from '@shared/chat/message.ts';
-import { DEFAULT_USER_NAME, assemblePrompt } from '@shared/prompt/assemble.ts';
+import { currentText, type MessageState } from '@shared/chat/message.ts';
+import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
@@ -43,14 +43,14 @@ import { ChatSaveQueue } from './chatPersistence.ts';
 import {
   type ChatAction,
   type ChatState,
-  type GenMode,
-  type PromptInspection,
   chatReducer,
+  type GenMode,
   initialChatState,
+  type PromptInspection,
   toChatMessages,
   toPersistedChatMessages,
 } from './state/chatReducer.ts';
-import { type StreamStore, createStreamStore } from './state/streamStore.ts';
+import { createStreamStore, type StreamStore } from './state/streamStore.ts';
 
 /** Debounce for saves that are not worth a round trip each. */
 const SAVE_DELAY_MS = 400;

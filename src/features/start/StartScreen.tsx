@@ -1,7 +1,7 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { type VersionInfo, characterApi, chatApi, versionApi } from '../../lib/api.ts';
+import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
 import './StartScreen.css';
 
 const COLLAPSED_COUNT = 3;

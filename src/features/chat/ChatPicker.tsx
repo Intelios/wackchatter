@@ -8,8 +8,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { PlusIcon, TrashIcon, UploadIcon } from '../../layout/icons.tsx';
-import { Markdown } from './Markdown.tsx';
 import { formatTimestamp } from './formatDate.ts';
+import { Markdown } from './Markdown.tsx';
 import './ChatPicker.css';
 
 interface ChatPickerProps {

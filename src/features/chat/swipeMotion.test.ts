@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type SwipeMotionSnapshot, resolveSwipeMotion } from './swipeMotion.ts';
+import { resolveSwipeMotion, type SwipeMotionSnapshot } from './swipeMotion.ts';
 
 function snap(overrides: Partial<SwipeMotionSnapshot> = {}): SwipeMotionSnapshot {
   return {

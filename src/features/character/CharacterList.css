@@ -53,7 +53,9 @@
   padding: var(--wc-space-1);
   color: var(--wc-text-faint);
   flex-shrink: 0;
-  transition: opacity var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease;
 }
 
 .character-card:hover .character-card__edit,

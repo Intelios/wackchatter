@@ -86,26 +86,6 @@
   opacity: var(--wc-bg-dim, 0.55);
 }
 
-/* Everything else stacks above the two background layers. */
-.shell > .shell__bar,
-.shell > .panel,
-.shell > .chat-column {
-  position: relative;
-  z-index: 1;
-}
-
-/* --- Glass --------------------------------------------------------------- */
-
-/*
- * The surface values themselves live in tokens.css, because redefining tokens is the
- * whole trick — every component already reads var(--wc-surface), so the app turns to
- * glass without one component file changing. Only the filter is applied here.
- */
-.shell[data-glass="true"] .shell__bar,
-.shell[data-glass="true"] .panel {
-  backdrop-filter: blur(20px) saturate(140%);
-}
-
 /*
  * Deliberately NOT on message bubbles.
  *
@@ -121,34 +101,6 @@
  * For the same reason the bar must stay in its own grid row rather than floating over the
  * chat. Treat that as a constraint of this design, not a coincidence.
  */
-
-/*
- * The opaque fallbacks for these two conditions are in tokens.css, alongside the values
- * they override. This is only the part that cannot live there: dropping the filter and
- * the image itself.
- *
- * biome-ignore lint/correctness/noUnknownMediaFeatureName: prefers-reduced-transparency is
- * Media Queries 5, shipped in Safari 17 and Chrome 118 — Biome's feature list is stale.
- * A browser that does not know it drops the whole query, which is why prefers-contrast is
- * a separate condition rather than an `and`.
- */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .shell[data-glass="true"] .shell__bar,
-  .shell[data-glass="true"] .panel {
-    backdrop-filter: none;
-  }
-
-  .shell__backdrop {
-    display: none;
-  }
-
-  .shell__scrim {
-    background: var(--wc-bg);
-    /* The user's dim setting must not make the fallback translucent — the whole point
-       of the override is an opaque, high-contrast floor. */
-    opacity: 1;
-  }
-}
 
 /* --- Top bar ------------------------------------------------------------ */
 
@@ -317,6 +269,24 @@
   overflow: hidden;
 }
 
+/* Everything else stacks above the two background layers. */
+.shell > .shell__bar,
+.shell > .panel,
+.shell > .chat-column {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * The surface values themselves live in tokens.css, because redefining tokens is the
+ * whole trick — every component already reads var(--wc-surface), so the app turns to
+ * glass without one component file changing. Only the filter is applied here.
+ */
+.shell[data-glass="true"] .shell__bar,
+.shell[data-glass="true"] .panel {
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
 /* --- Panel toggle ------------------------------------------------------- */
 
 .panel-toggle {
@@ -331,7 +301,9 @@
   text-shadow: var(--wc-shadow-text);
   font-size: var(--wc-text-sm);
   white-space: nowrap;
-  transition: background var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
+  transition:
+    background var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease;
   /* Paints above the cluster's indicator: both are positioned, DOM order breaks the tie. */
   position: relative;
 }
@@ -392,7 +364,9 @@
  * transition exists, and only genuine moves animate from then on.
  */
 .shell__cluster-indicator[data-ready="true"] {
-  transition: transform var(--wc-duration) var(--wc-ease), width var(--wc-duration) var(--wc-ease),
+  transition:
+    transform var(--wc-duration) var(--wc-ease),
+    width var(--wc-duration) var(--wc-ease),
     opacity var(--wc-duration-fast) ease;
 }
 
@@ -406,5 +380,31 @@
     width: var(--wc-control);
     padding: 0;
     justify-content: center;
+  }
+}
+
+/*
+ * The opaque fallbacks for these two conditions are in tokens.css, alongside the values
+ * they override. This is only the part that cannot live there: dropping the filter and
+ * the image itself.
+ *
+ * A browser that does not know `prefers-reduced-transparency` drops the whole query, which
+ * is why `prefers-contrast` is a separate condition rather than an `and`.
+ */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .shell[data-glass="true"] .shell__bar,
+  .shell[data-glass="true"] .panel {
+    backdrop-filter: none;
+  }
+
+  .shell__backdrop {
+    display: none;
+  }
+
+  .shell__scrim {
+    background: var(--wc-bg);
+    /* The user's dim setting must not make the fallback translucent — the whole point
+       of the override is an opaque, high-contrast floor. */
+    opacity: 1;
   }
 }

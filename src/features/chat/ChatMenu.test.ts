@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { type MenuAction, type MenuEntry, isSeparator } from '../../components/Menu.tsx';
+import { isSeparator, type MenuAction, type MenuEntry } from '../../components/Menu.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
-import { type ChatMenuActions, type ChatMenuState, buildChatMenu } from './ChatMenu.tsx';
+import { buildChatMenu, type ChatMenuActions, type ChatMenuState } from './ChatMenu.tsx';
 
 /** A transcript ending on the character's turn — the ordinary case, everything available. */
 const healthy: ChatMenuState = {

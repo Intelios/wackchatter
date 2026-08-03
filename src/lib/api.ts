@@ -1,11 +1,11 @@
 /** Typed client for the local API. */
 
+import type { StreamState } from '@shared/providers/sse.ts';
 import {
   createSseParser,
   createStreamAccumulator,
   parseCompletion,
 } from '@shared/providers/sse.ts';
-import type { StreamState } from '@shared/providers/sse.ts';
 import type {
   ChatCompletionBody,
   ConnectionSettings,
@@ -19,9 +19,9 @@ import type {
   ChatMetadata,
   ChatSaveSnapshot,
   ChatSummary,
+  Persona,
   StaleChatRevision,
 } from '@shared/types/chat.ts';
-import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';

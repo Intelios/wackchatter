@@ -135,7 +135,9 @@ select {
   font-size: var(--wc-text-sm);
   font-weight: 500;
   white-space: nowrap;
-  transition: background var(--wc-duration-fast) ease, border-color var(--wc-duration-fast) ease;
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease;
 }
 
 /* Icons inherit their box from the button, never their intrinsic SVG size. */

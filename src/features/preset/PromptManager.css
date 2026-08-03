@@ -14,7 +14,9 @@
   padding: 2px var(--wc-space-2) 2px 0;
   border-radius: var(--wc-radius-sm);
   background: var(--wc-surface);
-  transition: background var(--wc-duration-fast) ease, opacity var(--wc-duration-fast) ease;
+  transition:
+    background var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease;
 }
 
 .prompt-row:hover {
@@ -23,14 +25,6 @@
 
 .prompt-row[data-selected="true"] {
   background: var(--wc-accent-subtle);
-}
-
-/* Disabled prompts stay legible but visibly inert — they are still reorderable. */
-.prompt-row[data-enabled="false"] .prompt-row__name,
-.prompt-row[data-enabled="false"] .prompt-row__tokens {
-  opacity: 0.45;
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
 }
 
 .prompt-row[data-dragging="true"] {
@@ -126,4 +120,12 @@
   min-width: 34px;
   text-align: right;
   flex-shrink: 0;
+}
+
+/* Disabled prompts stay legible but visibly inert — they are still reorderable. */
+.prompt-row[data-enabled="false"] .prompt-row__name,
+.prompt-row[data-enabled="false"] .prompt-row__tokens {
+  opacity: 0.45;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }

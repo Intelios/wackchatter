@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type SseFrame, createSseParser, createStreamAccumulator, parseCompletion } from './sse.ts';
+import { createSseParser, createStreamAccumulator, parseCompletion, type SseFrame } from './sse.ts';
 
 /** Wrap a delta the way an OpenAI-compatible stream does. */
 function chunk(content: string): string {

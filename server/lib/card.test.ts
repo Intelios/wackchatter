@@ -273,7 +273,7 @@ describe('mergeCardData and character_book', () => {
     });
 
     expect(edited.data.character_book?.entries).toHaveLength(1);
-    expect(edited.data.character_book?.entries[0]!.content).toBe('only');
+    expect(edited.data.character_book?.entries[0]?.content).toBe('only');
   });
 
   test('a book edited through the converter survives the PNG round-trip with its unknown keys', () => {

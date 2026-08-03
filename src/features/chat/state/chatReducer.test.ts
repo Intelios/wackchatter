@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type MessageState, currentText, swipeCount } from '@shared/chat/message.ts';
+import { currentText, type MessageState, swipeCount } from '@shared/chat/message.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { Chat } from '@shared/types/chat.ts';
 import {

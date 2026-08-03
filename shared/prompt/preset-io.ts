@@ -8,8 +8,8 @@
  */
 
 import type { Preset, Prompt, PromptOrderEntry, PromptOrderList } from '../types/preset.ts';
-import { INJECTION_POSITION, PROMPT_ORDER_LIVE_ID, isBuiltinIdentifier } from '../types/preset.ts';
-import { DEFAULT_PROMPTS, DEFAULT_PROMPT_ORDER, PRESET_DEFAULTS } from './defaults.ts';
+import { INJECTION_POSITION, isBuiltinIdentifier, PROMPT_ORDER_LIVE_ID } from '../types/preset.ts';
+import { DEFAULT_PROMPT_ORDER, DEFAULT_PROMPTS, PRESET_DEFAULTS } from './defaults.ts';
 
 /**
  * Field renames applied on load, mirroring SillyTavern's migrateChatCompletionSettings.

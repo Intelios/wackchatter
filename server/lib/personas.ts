@@ -7,7 +7,7 @@
  * the file every chat that referenced the persona would be orphaned by a typo fix.
  */
 
-import { existsSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { Persona } from '../../shared/types/chat.ts';
 import { withFileLock } from './fs.ts';

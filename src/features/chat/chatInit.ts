@@ -27,11 +27,7 @@ export class KeyedSerialQueue {
 export interface InitialChatApi {
   list(characterId: string): Promise<ChatSummary[]>;
   get(chatId: string): Promise<Chat>;
-  create(input: {
-    characterId: string;
-    title: string;
-    metadata: ChatMetadata;
-  }): Promise<Chat>;
+  create(input: { characterId: string; title: string; metadata: ChatMetadata }): Promise<Chat>;
 }
 
 export interface InitialChatResult {
@@ -74,4 +70,5 @@ export async function resolveInitialChat(
     ],
   };
 }
+
 import type { Chat, ChatMetadata, ChatSummary } from '@shared/types/chat.ts';

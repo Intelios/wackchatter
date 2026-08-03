@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { memoizeCounter } from './token-cache.ts';
 import type { TokenCounter } from './token-cache.ts';
+import { memoizeCounter } from './token-cache.ts';
 
 /** A counter that records how often it was actually invoked. */
 function tracking() {

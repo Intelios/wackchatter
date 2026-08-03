@@ -11,12 +11,12 @@
  */
 
 import {
-  type MessageState,
   appendSwipe,
   assistantPlaceholder,
   currentText,
   fromChatMessage,
   greetingMessage,
+  type MessageState,
   removeSwipe,
   selectSwipe,
   setText,
@@ -27,8 +27,14 @@ import {
 import type { ContextOverflow } from '@shared/prompt/assemble.ts';
 import type { ChatCompletionBody } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import type { ChatMessage, ChatMetadata, MacroWarning, MessageExtra } from '@shared/types/chat.ts';
-import type { ApiMessage, Chat } from '@shared/types/chat.ts';
+import type {
+  ApiMessage,
+  Chat,
+  ChatMessage,
+  ChatMetadata,
+  MacroWarning,
+  MessageExtra,
+} from '@shared/types/chat.ts';
 import type { GenerationType } from '@shared/types/preset.ts';
 
 export type GenMode = 'send' | 'regenerate' | 'swipe' | 'continue';

@@ -1,5 +1,5 @@
-import { type MessageState, currentText, swipeCount } from '@shared/chat/message.ts';
-import { PROVIDERS, isProviderId } from '@shared/providers/types.ts';
+import { currentText, type MessageState, swipeCount } from '@shared/chat/message.ts';
+import { isProviderId, PROVIDERS } from '@shared/providers/types.ts';
 import { type CSSProperties, memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ChevronIcon,
@@ -8,14 +8,14 @@ import {
   PlugIcon,
   RefreshIcon,
 } from '../../layout/icons.tsx';
+import { formatTimestamp } from './formatDate.ts';
 import { Markdown } from './Markdown.tsx';
 import { MessageMenu } from './MessageMenu.tsx';
 import { Reasoning } from './Reasoning.tsx';
 import { StreamingText } from './StreamingText.tsx';
-import { formatTimestamp } from './formatDate.ts';
 import type { GenMode } from './state/chatReducer.ts';
 import type { StreamStore } from './state/streamStore.ts';
-import { type SwipeMotionDir, resolveSwipeMotion } from './swipeMotion.ts';
+import { resolveSwipeMotion, type SwipeMotionDir } from './swipeMotion.ts';
 import './MessageBubble.css';
 
 interface MessageBubbleProps {

@@ -28,12 +28,12 @@ import type {
   WorldInfoEntry,
 } from '../types/worldinfo.ts';
 import {
+  createWorldInfoEntry,
   WI_DEFAULT_DEPTH,
   WI_DEFAULT_WEIGHT,
   WI_LOGIC,
   WI_POSITION,
   WI_ROLE,
-  createWorldInfoEntry,
 } from '../types/worldinfo.ts';
 
 /* --- reading ------------------------------------------------------------- */

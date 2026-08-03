@@ -1,4 +1,4 @@
-import { type TokenCounter, memoizeCounter } from '@shared/prompt/token-cache.ts';
+import { memoizeCounter, type TokenCounter } from '@shared/prompt/token-cache.ts';
 import { useEffect, useMemo, useState } from 'react';
 import {
   approximateChatTokens,

@@ -12,7 +12,7 @@
  * here — the same reason chat export uses it.
  */
 
-import { existsSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Chat, ChatBackupSummary } from '../../shared/types/chat.ts';
 import type { ChatStore } from './chats.ts';

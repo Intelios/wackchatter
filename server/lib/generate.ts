@@ -7,8 +7,12 @@
  * never has to leave the machine.
  */
 
-import { parseModelList } from '../../shared/providers/request.ts';
-import { buildHeaders, completionsUrl, modelsUrl } from '../../shared/providers/request.ts';
+import {
+  buildHeaders,
+  completionsUrl,
+  modelsUrl,
+  parseModelList,
+} from '../../shared/providers/request.ts';
 import { extractError } from '../../shared/providers/sse.ts';
 import type {
   ChatCompletionBody,

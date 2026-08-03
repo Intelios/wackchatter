@@ -2,8 +2,7 @@
 
 import type { CardDataV2 } from '../../shared/types/card.ts';
 import type { WorldInfoEntry } from '../../shared/types/worldinfo.ts';
-import { stripPrivateFields } from '../lib/card.ts';
-import { writeCard } from '../lib/card.ts';
+import { stripPrivateFields, writeCard } from '../lib/card.ts';
 import {
   addBookEntry,
   createBlankCard,
@@ -62,7 +61,7 @@ export async function handleCharacterRoute(
   if (segments[1] === 'image' && method === 'GET') {
     const image = getCharacterImage(avatar);
     if (!image) return notFound('Character image not found.');
-    return new Response(image, {
+    return new Response(new Uint8Array(image), {
       headers: {
         'content-type': 'image/png',
         // The filename is stable but contents change on edit, so revalidate.
@@ -90,7 +89,7 @@ export async function handleCharacterRoute(
     }
 
     const image = getCharacterImage(avatar)!;
-    return new Response(writeCard(image, exported), {
+    return new Response(new Uint8Array(writeCard(image, exported)), {
       headers: {
         'content-type': 'image/png',
         'content-disposition': `attachment; filename="${base}.png"`,

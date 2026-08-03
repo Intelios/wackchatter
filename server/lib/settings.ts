@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import type { ConnectionSettings } from '../../shared/providers/types.ts';
-import { DEFAULT_CONNECTION, PROVIDERS, isProviderId } from '../../shared/providers/types.ts';
+import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
 import type {
   AppSettings,
   DialogueColorOverride,

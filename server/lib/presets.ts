@@ -3,7 +3,7 @@
  * exact byte format so files can be copied between the two apps directly.
  */
 
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createDefaultPreset } from '../../shared/prompt/defaults.ts';
 import { normalizePreset, serializePreset } from '../../shared/prompt/preset-io.ts';

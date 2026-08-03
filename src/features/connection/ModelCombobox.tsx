@@ -167,12 +167,14 @@ export function ModelCombobox({
       event.stopPropagation();
       intentRef.current = 'revert';
       handleOpenChange(false);
+      return;
     }
+    onRootKeyDown(event);
   }
 
-  // Escape on an option: revert + close + restore focus to the input. Stopped at the list
-  // wrapper so it never reaches `Popover`'s root handler.
-  function onListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  // Escape on an option: revert + close + restore focus to the input. Stopped at the
+  // button so it never reaches `Popover`'s root handler.
+  function onOptionKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -305,7 +307,6 @@ export function ModelCombobox({
       className="model-combobox"
       popupClassName="model-combobox__popup"
       placement="bottom-start"
-      // biome-ignore lint/a11y/useSemanticElements: a <select> cannot host a search input; the listbox role on a styled container is the WAI-ARIA combobox pattern.
       role="listbox"
       popupRef={popupRef}
       onKeyDown={onRootKeyDown}
@@ -313,7 +314,7 @@ export function ModelCombobox({
       disabled={disabled}
       disabledReason={disabledReason}
     >
-      <div className="model-combobox__list" onKeyDown={onListKeyDown}>
+      <div className="model-combobox__list">
         {filtered.length > 0 ? (
           filtered.map((model) => {
             const hint = formatHint(model);
@@ -321,7 +322,6 @@ export function ModelCombobox({
               <button
                 type="button"
                 key={model.id}
-                // biome-ignore lint/a11y/useSemanticElements: an <option> only works inside a <select>; a styled <button> with role="option" is the combobox list pattern.
                 role="option"
                 className="model-combobox__option"
                 data-model-id={model.id}
@@ -329,6 +329,7 @@ export function ModelCombobox({
                 aria-selected={model.id === committed}
                 tabIndex={-1}
                 onClick={() => selectOption(model)}
+                onKeyDown={onOptionKeyDown}
               >
                 <span className="model-combobox__option-name">{model.name}</span>
                 {hint ? <span className="model-combobox__option-hint">{hint}</span> : null}

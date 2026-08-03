@@ -18,7 +18,9 @@
   text-align: left;
   font-size: var(--wc-text-sm);
   color: var(--wc-text);
-  transition: background var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
+  transition:
+    background var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease;
 }
 
 .menu__item:hover:not(:disabled),

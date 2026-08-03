@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  TRANSCRIPT_PAGE_SIZE,
   initialTranscriptStart,
   prependTranscriptPage,
+  TRANSCRIPT_PAGE_SIZE,
 } from './transcriptWindow.ts';
 
 describe('transcript window', () => {

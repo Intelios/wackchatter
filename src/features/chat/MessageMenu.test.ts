@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { type MenuAction, type MenuEntry, isSeparator } from '../../components/Menu.tsx';
+import { isSeparator, type MenuAction, type MenuEntry } from '../../components/Menu.tsx';
 import {
+  buildMessageMenu,
   type MessageMenuActions,
   type MessageMenuState,
-  buildMessageMenu,
 } from './MessageMenu.tsx';
 
 /** The last reply from the character — the ordinary case, everything available. */

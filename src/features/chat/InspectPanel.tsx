@@ -1,8 +1,8 @@
 import type { ActivationResult } from '@shared/worldinfo/activate.ts';
 import { Section } from '../../components/Section.tsx';
 import { PromptInspector } from './PromptInspector.tsx';
-import { WorldInfoReport } from './WorldInfoReport.tsx';
 import type { PromptInspection } from './state/chatReducer.ts';
+import { WorldInfoReport } from './WorldInfoReport.tsx';
 
 interface InspectPanelProps {
   /** The last generation's result when there is one, else the live preview. */

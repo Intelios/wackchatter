@@ -2,9 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { WI_LOGIC } from '../types/worldinfo.ts';
 import { splitKeys } from './keys.ts';
 import {
-  type MatchSettings,
   createRegexCache,
   evaluateSecondary,
+  type MatchSettings,
   matchAny,
   matchKey,
   matchSettingsFor,

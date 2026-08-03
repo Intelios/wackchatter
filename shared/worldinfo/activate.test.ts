@@ -2,16 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import type { ChatMessage } from '../types/chat.ts';
 import type { WorldInfoEntry, WorldInfoSettings } from '../types/worldinfo.ts';
 import {
+  createWorldInfoEntry,
   DEFAULT_WI_SETTINGS,
   WI_LOGIC,
   WI_POSITION,
   WI_ROLE,
-  createWorldInfoEntry,
 } from '../types/worldinfo.ts';
 import {
   type ActivateOptions,
-  type WorldInfoSource,
   activateWorldInfo,
+  type WorldInfoSource,
   worldInfoBudget,
 } from './activate.ts';
 

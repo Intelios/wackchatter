@@ -11,7 +11,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorResponse, handle, notFound } from './lib/http.ts';
-import { PROJECT_ROOT, ensureDataDirs } from './lib/paths.ts';
+import { ensureDataDirs, PROJECT_ROOT } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';

@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode, useSyncExternalStore } from 'react';
-import { Reasoning } from './Reasoning.tsx';
 import { streamSegments } from './dialogue.ts';
+import { Reasoning } from './Reasoning.tsx';
 import type { StreamStore } from './state/streamStore.ts';
 
 /**
@@ -14,6 +14,8 @@ import type { StreamStore } from './state/streamStore.ts';
  */
 export function StreamingText({ store }: { store: StreamStore }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const segments = streamSegments(snapshot.text);
+  let offset = 0;
 
   return (
     <>
@@ -24,7 +26,11 @@ export function StreamingText({ store }: { store: StreamStore }) {
        */}
       {snapshot.reasoning ? <Reasoning text={snapshot.reasoning} defaultOpen /> : null}
       <div className="message__text message__text--streaming">
-        {streamSegments(snapshot.text).map((segment, index) => {
+        {segments.map((segment) => {
+          // The source offset stays stable as a stream grows, unlike an array index when
+          // emphasis delimiters split or merge adjacent display segments.
+          const key = `${offset}:${segment.text}`;
+          offset += segment.text.length;
           if (segment.hidden) return null;
           let content: ReactNode = segment.text;
           if (segment.dialogue) {
@@ -33,7 +39,7 @@ export function StreamingText({ store }: { store: StreamStore }) {
           for (const kind of [...segment.emphasis].reverse()) {
             content = kind === 'strong' ? <strong>{content}</strong> : <em>{content}</em>;
           }
-          return <Fragment key={`${index}:${segment.text}`}>{content}</Fragment>;
+          return <Fragment key={key}>{content}</Fragment>;
         })}
         <span className="message__caret" aria-hidden="true" />
       </div>

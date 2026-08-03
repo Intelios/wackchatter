@@ -390,12 +390,10 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
           metadata: JSON.stringify(source.metadata),
         },
         // Fresh ids: the copies are independent messages from here on.
-        source.messages
-          .slice(0, cut + 1)
-          .map((message) => ({
-            ...message,
-            id: crypto.randomUUID(),
-          })),
+        source.messages.slice(0, cut + 1).map((message) => ({
+          ...message,
+          id: crypto.randomUUID(),
+        })),
       );
 
       return readChat(branchId);

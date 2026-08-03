@@ -5,7 +5,7 @@
  * SillyTavern — the `avatar` field inside the card JSON is vestigial and always "none".
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { rename, unlink } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import type {

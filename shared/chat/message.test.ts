@@ -2,12 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage } from '../types/chat.ts';
 import {
-  type MessageState,
   appendSwipe,
   assistantPlaceholder,
   currentText,
   fromChatMessage,
   greetingMessage,
+  type MessageState,
   removeSwipe,
   resetSwipes,
   selectSwipe,
