@@ -1,5 +1,5 @@
 import type { DialogueColorSettings, GuidanceSettings } from '@shared/types/settings.ts';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
@@ -8,6 +8,11 @@ import { Composer } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
+import {
+  TRANSCRIPT_PAGE_SIZE,
+  initialTranscriptStart,
+  prependTranscriptPage,
+} from './transcriptWindow.ts';
 import type { UseChat } from './useChat.ts';
 import { useStickToBottom } from './useStickToBottom.ts';
 import './ChatView.css';
@@ -46,6 +51,8 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom } = useStickToBottom(scrollRef, contentRef);
+  const [window, setWindow] = useState({ chatId: null as string | null, start: 0 });
+  const restorePrependScroll = useRef<{ height: number; top: number } | null>(null);
 
   const { state, stream, busy } = chat;
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
@@ -79,8 +86,43 @@ export function ChatView({
   // Jump to the end when a different chat is opened.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the chat, by design
   useEffect(() => {
+    setWindow({ chatId: state.chatId, start: initialTranscriptStart(state.messages.length) });
     scrollToBottom();
   }, [state.chatId]);
+
+  // A chat can render its loaded messages before the chat-change effect has set state.
+  // Deriving the initial tail page here prevents that first paint from mounting every
+  // Markdown bubble in a long chat.
+  const visibleStart =
+    window.chatId === state.chatId
+      ? Math.min(window.start, state.messages.length)
+      : initialTranscriptStart(state.messages.length);
+  const visibleMessages = state.messages.slice(visibleStart);
+
+  // Prepending adds DOM above the reader. Restore the same document position after the
+  // layout commits, rather than leaving them unexpectedly at the oldest newly loaded row.
+  useLayoutEffect(() => {
+    const restore = restorePrependScroll.current;
+    const scroll = scrollRef.current;
+    if (!restore || !scroll) return;
+    scroll.scrollTop = restore.top + scroll.scrollHeight - restore.height;
+    restorePrependScroll.current = null;
+  });
+
+  function loadOlderMessages() {
+    const scroll = scrollRef.current;
+    if (scroll) {
+      restorePrependScroll.current = { height: scroll.scrollHeight, top: scroll.scrollTop };
+    }
+    setWindow((current) => ({
+      chatId: state.chatId,
+      start: prependTranscriptPage(
+        current.chatId === state.chatId
+          ? current.start
+          : initialTranscriptStart(state.messages.length),
+      ),
+    }));
+  }
 
   /*
    * Hoisted so `memo` on MessageBubble is worth anything.
@@ -134,29 +176,47 @@ export function ChatView({
               <span>No messages yet. Say something to {characterName}.</span>
             </div>
           ) : (
-            state.messages.map((message, index) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                avatarUrl={message.is_user ? personaAvatarUrl : characterAvatarUrl}
-                dialogueActive={message.is_user ? personaDialogue.active : characterDialogue.active}
-                dialogueColor={message.is_user ? personaDialogue.color : characterDialogue.color}
-                streaming={state.streamingId === message.id}
-                stream={stream}
-                isLast={message.id === lastId}
-                busy={busy}
-                displayText={index === 0 ? greeting : undefined}
-                onSwipe={swipe}
-                onRegenerate={regenerate}
-                onContinue={continueLast}
-                onRetry={regenerate}
-                onEdit={editMessage}
-                onEditReasoning={editReasoning}
-                onDelete={deleteMessage}
-                onToggleHidden={toggleHidden}
-                onBranch={branchFrom}
-              />
-            ))
+            <>
+              {visibleStart > 0 ? (
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost chat-view__load-older"
+                  onClick={loadOlderMessages}
+                >
+                  Load {Math.min(visibleStart, TRANSCRIPT_PAGE_SIZE)} older messages
+                </button>
+              ) : null}
+              {visibleMessages.map((message, index) => {
+                const messageIndex = visibleStart + index;
+                return (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    avatarUrl={message.is_user ? personaAvatarUrl : characterAvatarUrl}
+                    dialogueActive={
+                      message.is_user ? personaDialogue.active : characterDialogue.active
+                    }
+                    dialogueColor={
+                      message.is_user ? personaDialogue.color : characterDialogue.color
+                    }
+                    streaming={state.streamingId === message.id}
+                    stream={stream}
+                    isLast={message.id === lastId}
+                    busy={busy}
+                    displayText={messageIndex === 0 ? greeting : undefined}
+                    onSwipe={swipe}
+                    onRegenerate={regenerate}
+                    onContinue={continueLast}
+                    onRetry={regenerate}
+                    onEdit={editMessage}
+                    onEditReasoning={editReasoning}
+                    onDelete={deleteMessage}
+                    onToggleHidden={toggleHidden}
+                    onBranch={branchFrom}
+                  />
+                );
+              })}
+            </>
           )}
         </div>
       </div>

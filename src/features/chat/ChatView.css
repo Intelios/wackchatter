@@ -38,6 +38,11 @@
   padding: var(--wc-space-4) var(--wc-space-4) var(--wc-space-5);
 }
 
+/* Paging keeps long transcripts contiguous: no estimated-height placeholders or holes. */
+.chat-view__load-older {
+  align-self: center;
+}
+
 .chat-view__error {
   display: flex;
   align-items: center;
