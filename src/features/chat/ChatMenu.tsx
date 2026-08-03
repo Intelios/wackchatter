@@ -14,6 +14,7 @@ import {
   BranchIcon,
   CloseIcon,
   ContinueIcon,
+  DownloadIcon,
   MenuIcon,
   MessagesIcon,
   PlusIcon,
@@ -21,6 +22,7 @@ import {
   UserIcon,
 } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
+import { chatApi } from '../../lib/api.ts';
 import type { UseChat } from './useChat.ts';
 
 export interface ChatMenuState {
@@ -39,6 +41,7 @@ export interface ChatMenuActions {
   continueLast: () => void;
   openPanel: (panel: RightPanelId) => void;
   closeChat: () => void;
+  exportChat: () => void;
 }
 
 const BUSY = 'Wait for the current reply to finish.';
@@ -80,6 +83,14 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       disabled: busy || empty || lastIsUser,
       disabledReason: busy ? BUSY : empty ? EMPTY : 'The last message is yours.',
       onSelect: actions.continueLast,
+    },
+    {
+      label: 'Export chat',
+      icon: <DownloadIcon />,
+      // The in-flight reply is not in the database yet; an export would miss it.
+      disabled: busy,
+      disabledReason: BUSY,
+      onSelect: actions.exportChat,
     },
 
     { kind: 'separator' },
@@ -130,6 +141,18 @@ export function ChatMenu({ chat, onCloseChat, onOpenPanel }: ChatMenuProps) {
       continueLast: () => void chat.continueLast(),
       openPanel: onOpenPanel,
       closeChat: onCloseChat,
+      exportChat: () => {
+        const chatId = chat.state.chatId;
+        if (!chatId) return;
+        // The download attribute pattern used everywhere else, from inside a menu where
+        // there is no place to put an anchor element.
+        const anchor = document.createElement('a');
+        anchor.href = chatApi.exportUrl(chatId);
+        anchor.download = '';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      },
     },
   );
 

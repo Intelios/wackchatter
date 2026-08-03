@@ -121,6 +121,8 @@ export interface UseChat {
   toggleHidden(id: string): void;
 
   chats: ChatSummary[];
+  /** Re-fetch the chat list — structural changes such as restore or import call this. */
+  refreshChats(): Promise<void>;
   openChat(chatId: string): Promise<void>;
   /** Set before selecting a character to open a specific chat instead of the most recent. */
   pendingChatRef: RefObject<string | null>;
@@ -830,6 +832,7 @@ export function useChat(options: UseChatOptions): UseChat {
     deleteMessage,
     toggleHidden,
     chats,
+    refreshChats,
     openChat,
     pendingChatRef,
     newChat,

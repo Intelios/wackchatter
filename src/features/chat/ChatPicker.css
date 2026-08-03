@@ -116,6 +116,18 @@
   font-weight: 500;
 }
 
+.chat-picker__backup-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25em;
+  padding: 0 0.3em;
+  border-radius: 999px;
+  background: var(--wc-surface-hover);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+}
+
 .chat-picker__context-body {
   display: flex;
   flex-direction: column;

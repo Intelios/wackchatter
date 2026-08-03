@@ -1,6 +1,6 @@
 import { PROVIDERS } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
-import type { Persona } from '@shared/types/chat.ts';
+import type { ChatBackupSummary, Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type {
   DialogueColorOverride,
@@ -36,7 +36,15 @@ import {
   RIGHT_PANELS,
   type RightPanelId,
 } from './layout/panels.tsx';
-import { characterApi, lorebookApi, personaApi, presetApi, settingsApi } from './lib/api.ts';
+import {
+  backupApi,
+  characterApi,
+  chatApi,
+  lorebookApi,
+  personaApi,
+  presetApi,
+  settingsApi,
+} from './lib/api.ts';
 import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
@@ -64,6 +72,7 @@ export function App() {
 
   const [books, setBooks] = useState<LorebookSummary[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [backups, setBackups] = useState<ChatBackupSummary[]>([]);
   const characterPersistence = useRef<PersistenceControls | null>(null);
   const lorePersistence = useRef<PersistenceControls | null>(null);
   const personaPersistence = useRef<PersistenceControls | null>(null);
@@ -498,6 +507,79 @@ export function App() {
     setRightPanel(null);
   }, [chat, flushRightPanel]);
 
+  /**
+   * The trash bin, scoped to the selected character. Every delete, restore and purge
+   * touches it, so it is refetched after each rather than kept in sync by hand.
+   */
+  const refreshBackups = useCallback(async () => {
+    try {
+      setBackups(await backupApi.list(selected ?? undefined));
+    } catch {
+      // Keep the last good list; a stale bin is better than a blank one.
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    void refreshBackups();
+  }, [refreshBackups]);
+
+  const handleDeleteChat = useCallback(
+    async (id: string) => {
+      try {
+        await chat.deleteChat(id);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        void refreshBackups();
+      }
+    },
+    [chat, refreshBackups],
+  );
+
+  /** Bring a deleted chat back and open it. */
+  const handleRestoreBackup = useCallback(
+    async (backupId: string) => {
+      try {
+        const restored = await backupApi.restore(backupId);
+        await chat.refreshChats();
+        void chat.openChat(restored.id);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        void refreshBackups();
+      }
+    },
+    [chat, refreshBackups],
+  );
+
+  /** Empty one slot of the bin for good. */
+  const handlePurgeBackup = useCallback(
+    async (backupId: string) => {
+      try {
+        await backupApi.remove(backupId);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        void refreshBackups();
+      }
+    },
+    [refreshBackups],
+  );
+
+  const handleImportChat = useCallback(
+    async (file: File) => {
+      if (!selected) return;
+      try {
+        const imported = await chatApi.import(file, selected);
+        await chat.refreshChats();
+        void chat.openChat(imported.id);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [selected, chat],
+  );
+
   const handleSaved = useCallback((saved: CharacterDetail) => {
     setDetail(saved);
     setCharacters((prev) => prev.map((c) => (c.avatar === saved.avatar ? { ...c, ...saved } : c)));
@@ -657,11 +739,15 @@ export function App() {
                     metadata={chat.state.metadata}
                     inheritedScenario={character?.scenario ?? ''}
                     creatorNotes={character?.creator_notes ?? ''}
+                    backups={backups}
                     onOpen={(id) => void chat.openChat(id)}
                     onNew={() => void chat.newChat()}
-                    onDelete={(id) => void chat.deleteChat(id)}
+                    onDelete={(id) => void handleDeleteChat(id)}
                     onRename={chat.renameChat}
                     onMetadataChange={chat.updateMetadata}
+                    onRestore={(backupId) => void handleRestoreBackup(backupId)}
+                    onPurge={(backupId) => void handlePurgeBackup(backupId)}
+                    onImportChat={(file) => void handleImportChat(file)}
                   />
                 ) : null}
                 <CharacterList

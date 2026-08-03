@@ -14,6 +14,7 @@ import { errorResponse, handle, notFound } from './lib/http.ts';
 import { PROJECT_ROOT, ensureDataDirs } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
+import { handleBackupRoute } from './routes/backups.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
@@ -54,6 +55,7 @@ type RouteHandler = (request: Request, segments: string[]) => Promise<Response |
 
 const API_ROUTES: Record<string, RouteHandler> = {
   backgrounds: handleBackgroundRoute,
+  backups: handleBackupRoute,
   characters: handleCharacterRoute,
   presets: handlePresetRoute,
   lorebooks: handleLorebookRoute,

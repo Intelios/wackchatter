@@ -24,6 +24,8 @@ export const PATHS = {
   personas: join(DATA_DIR, 'personas'),
   personaAvatars: join(DATA_DIR, 'personas', 'avatars'),
   backgrounds: join(DATA_DIR, 'backgrounds'),
+  /** Deleted chats wait here, restorable, until pruned by the retention cap. */
+  backups: join(DATA_DIR, 'backups'),
   settings: join(DATA_DIR, 'settings.json'),
   secrets: join(DATA_DIR, 'secrets.json'),
   db: join(DATA_DIR, 'chats.db'),
@@ -38,6 +40,7 @@ export function ensureDataDirs(): void {
     PATHS.personas,
     PATHS.personaAvatars,
     PATHS.backgrounds,
+    PATHS.backups,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

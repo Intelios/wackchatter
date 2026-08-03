@@ -16,7 +16,9 @@ import type {
   ChatSummary,
   StaleChatRevision,
 } from '../../shared/types/chat.ts';
+import { writeChatBackup } from './backups.ts';
 import { getDb } from './db.ts';
+import { PATHS } from './paths.ts';
 
 interface ChatRow {
   id: string;
@@ -58,6 +60,10 @@ export interface ChatStore {
     id: string,
     updates: { revision: number; title?: string; metadata?: ChatMetadata },
   ): ChatSaveResult;
+  /**
+   * Delete one chat. Backed up first, so a misclick on the trash is recoverable — and a
+   * backup failure aborts the delete instead of destroying the transcript unrecorded.
+   */
   deleteChat(id: string): boolean;
   /** Copy a chat up to and including a message, as a new chat. */
   branchChat(id: string, afterMessageId: string, title?: string): Chat | null;
@@ -67,8 +73,20 @@ export interface ChatStore {
    * without this the transcripts are orphaned from the renamed card. Returns the count moved.
    */
   reassignCharacter(oldCharacterId: string, newCharacterId: string): number;
-  /** Delete every chat belonging to a character, for a character deletion. Returns the count. */
+  /**
+   * Delete every chat belonging to a character, for a character deletion. Each chat is
+   * backed up first — the character's file delete is rolled back if a backup fails, so a
+   * card cannot be destroyed without a restorable copy of its transcripts. Returns the count.
+   */
   deleteChatsForCharacter(characterId: string): number;
+}
+
+/**
+ * Where deleted chats are backed up before their rows go.
+ * `null` disables the backup (tests); undefined uses the default directory.
+ */
+export interface ChatStoreOptions {
+  backupDir?: string | null;
 }
 
 export type ChatSaveResult =
@@ -101,7 +119,10 @@ function rowToMessage(row: MessageRow): ChatMessage {
   );
 }
 
-export function createChatStore(database: Database): ChatStore {
+export function createChatStore(database: Database, options: ChatStoreOptions = {}): ChatStore {
+  // undefined means the default directory; null means no backups at all (tests).
+  const backupDir = options.backupDir === undefined ? PATHS.backups : options.backupDir;
+
   const statements = {
     insertChat: database.query(
       `INSERT INTO chats (id, character_id, title, created, modified, revision, metadata)
@@ -119,6 +140,9 @@ export function createChatStore(database: Database): ChatStore {
     ),
     countChatsForCharacter: database.query<{ count: number }, [string]>(
       'SELECT COUNT(*) AS count FROM chats WHERE character_id = ?',
+    ),
+    chatIdsForCharacter: database.query<{ id: string }, [string]>(
+      'SELECT id FROM chats WHERE character_id = ?',
     ),
     deleteChatsForCharacter: database.query('DELETE FROM chats WHERE character_id = ?'),
 
@@ -335,6 +359,11 @@ export function createChatStore(database: Database): ChatStore {
     },
 
     deleteChat(id): boolean {
+      const existing = readChat(id);
+      if (!existing) return false;
+      // The backup is the only way back after this. Write it before the rows go, and let
+      // a failure abort the delete rather than destroy the transcript unrecorded.
+      if (backupDir) writeChatBackup(existing, backupDir);
       // Messages go with it via ON DELETE CASCADE — which only fires because
       // openDatabase sets foreign_keys on the connection.
       return statements.deleteChat.run(id).changes > 0;
@@ -384,7 +413,16 @@ export function createChatStore(database: Database): ChatStore {
       // Count first: the DELETE's `.changes` also counts the message rows removed by
       // ON DELETE CASCADE, so it would overstate how many CHATS went. Messages follow.
       const count = statements.countChatsForCharacter.get(characterId)?.count ?? 0;
-      if (count > 0) statements.deleteChatsForCharacter.run(characterId);
+      if (count === 0) return 0;
+      // Back up every chat before any row goes, so a failure (which aborts the whole
+      // character delete through the tombstone rollback) leaves nothing half-removed.
+      if (backupDir) {
+        for (const row of statements.chatIdsForCharacter.all(characterId)) {
+          const chat = readChat(row.id);
+          if (chat) writeChatBackup(chat, backupDir);
+        }
+      }
+      statements.deleteChatsForCharacter.run(characterId);
       return count;
     },
   };

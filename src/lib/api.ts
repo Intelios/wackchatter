@@ -14,6 +14,7 @@ import type {
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type {
   Chat,
+  ChatBackupSummary,
   ChatMessage,
   ChatMetadata,
   ChatSaveSnapshot,
@@ -344,6 +345,31 @@ export const chatApi = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ afterMessageId, title }),
     }),
+
+  /** Whole-chat download in our own format; `import` is its counterpart. */
+  exportUrl: (id: string) => `/api/chats/${encodeURIComponent(id)}/export`,
+
+  import: (file: File, characterId: string) => {
+    const form = new FormData();
+    form.set('file', file);
+    form.set('characterId', characterId);
+    return request<Chat>('/chats/import', { method: 'POST', body: form });
+  },
+};
+
+export const backupApi = {
+  list: (characterId?: string) =>
+    request<ChatBackupSummary[]>(
+      characterId ? `/backups?character=${encodeURIComponent(characterId)}` : '/backups',
+    ),
+
+  /** Recreate the chat and move it out of the bin. */
+  restore: (backupId: string) =>
+    request<Chat>(`/backups/${encodeURIComponent(backupId)}/restore`, { method: 'POST' }),
+
+  /** Permanently empty this slot of the bin. */
+  remove: (backupId: string) =>
+    request<{ ok: true }>(`/backups/${encodeURIComponent(backupId)}`, { method: 'DELETE' }),
 };
 
 export const settingsApi = {

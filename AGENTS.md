@@ -46,7 +46,7 @@ src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/.
 data/            Gitignored. characters/*.png, presets/*.json, chats.db, settings.json,
-                 secrets.json, lorebooks/, personas/.
+                 secrets.json, lorebooks/, personas/, backups/ (the deleted-chat trash bin).
 ```
 
 **Prompt assembly runs client-side**, like SillyTavern. The server only proxies. This keeps
@@ -452,7 +452,9 @@ OpenAI-compatible + OpenRouter), SSE streaming, chat storage (SQLite), multiple 
 character with branching, swipes/regenerate/continue/edit/delete/hide, prompt inspector,
 real tokenizer, World Info (conversion, activation engine, standalone + embedded book
 editing, inspector report), personas with avatars, Author's Note, the chat options menu,
-guided generations (guided response, guided swipe, per-chat persistent guides).
+guided generations (guided response, guided swipe, per-chat persistent guides),
+deleted-chat backups (a restorable trash bin in data/backups, filled on chat delete and
+on character cascade), chat export/import (our own JSON wire format).
 
 Not built yet: impersonate.
 

@@ -1,5 +1,8 @@
 import { Database } from 'bun:sqlite';
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Chat, ChatMessage } from '../../shared/types/chat.ts';
 import { type ChatSaveResult, type ChatStore, createChatStore } from './chats.ts';
 import { createSchema } from './db.ts';
@@ -13,7 +16,9 @@ beforeEach(() => {
   // would silently pass the cascade check below against a database that never cascades.
   database.exec('PRAGMA foreign_keys = ON');
   createSchema(database);
-  store = createChatStore(database);
+  // Backup writes are file I/O on the real data dir; this suite is about the database,
+  // so the store is built without the backup hook except where a test opts in.
+  store = createChatStore(database, { backupDir: null });
 });
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -329,7 +334,7 @@ describe('schema migration', () => {
     `);
 
     createSchema(legacy);
-    const migrated = createChatStore(legacy).getChat('legacy');
+    const migrated = createChatStore(legacy, { backupDir: null }).getChat('legacy');
 
     expect(migrated?.revision).toBe(0);
     expect(migrated?.title).toBe('Old chat');
@@ -441,6 +446,60 @@ describe('character identity cascades', () => {
 
   test('deleteChatsForCharacter on an unknown character reports zero', () => {
     expect(store.deleteChatsForCharacter('Nobody.png')).toBe(0);
+  });
+});
+
+describe('backups on delete', () => {
+  let backupDir: string;
+
+  beforeEach(() => {
+    backupDir = mkdtempSync(join(tmpdir(), 'wc-chat-backups-'));
+    store = createChatStore(database, { backupDir });
+  });
+
+  afterEach(() => {
+    rmSync(backupDir, { recursive: true, force: true });
+  });
+
+  test('deleting a chat writes a backup file holding the full chat', () => {
+    const doomed = store.createChat({
+      characterId: 'a.png',
+      title: 'Doomed',
+      metadata: { persona: 'jack' },
+      messages: [message({ mes: 'kept' })],
+    });
+
+    expect(store.deleteChat(doomed.id)).toBe(true);
+    expect(readdirSync(backupDir).length).toBe(1);
+    const files = readdirSync(backupDir);
+    expect(files[0]).toMatch(/^\d+__Doomed__.+\.json$/);
+    expect(JSON.parse(readFileSync(join(backupDir, files[0]!), 'utf8'))).toEqual(doomed);
+  });
+
+  test('deleting an unknown chat writes nothing', () => {
+    expect(store.deleteChat('nope')).toBe(false);
+    expect(readdirSync(backupDir)).toEqual([]);
+  });
+
+  test('a character cascade backs up every one of its chats, and only its own', () => {
+    store.createChat({ characterId: 'Gone.png', title: 'one', messages: [message()] });
+    store.createChat({ characterId: 'Gone.png', title: 'two', messages: [message()] });
+    store.createChat({ characterId: 'Kept.png', title: 'three' });
+
+    expect(store.deleteChatsForCharacter('Gone.png')).toBe(2);
+    expect(readdirSync(backupDir).length).toBe(2);
+  });
+
+  test('a failed backup aborts the delete and leaves the chat', () => {
+    const doomed = store.createChat({
+      characterId: 'a.png',
+      messages: [message({ mes: 'still here' })],
+    });
+    store = createChatStore(database, { backupDir: join(backupDir, 'does-not-exist') });
+
+    // The directory is gone, so the backup write throws before any row is removed.
+    expect(() => store.deleteChat(doomed.id)).toThrow();
+    expect(store.getChat(doomed.id)?.messages.map((m) => m.mes)).toEqual(['still here']);
   });
 });
 

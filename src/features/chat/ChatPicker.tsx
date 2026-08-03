@@ -1,13 +1,15 @@
 import {
   type AuthorNotePosition,
+  type ChatBackupSummary,
   type ChatMetadata,
   type ChatSummary,
   DEFAULT_AUTHOR_NOTE,
 } from '@shared/types/chat.ts';
 import { useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
-import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
+import { PlusIcon, TrashIcon, UploadIcon } from '../../layout/icons.tsx';
 import { Markdown } from './Markdown.tsx';
+import { formatTimestamp } from './formatDate.ts';
 import './ChatPicker.css';
 
 interface ChatPickerProps {
@@ -17,11 +19,17 @@ interface ChatPickerProps {
   inheritedScenario: string;
   /** The card's `creator_notes`, shown read-only. Empty hides the section entirely. */
   creatorNotes: string;
+  /** Deleted chats still restorable, scoped to the selected character. */
+  backups: ChatBackupSummary[];
   onOpen: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (title: string) => void;
   onMetadataChange: (patch: Partial<ChatMetadata>) => void;
+  onRestore: (backupId: string) => void;
+  /** Permanently remove a backup from the trash bin. */
+  onPurge: (backupId: string) => void;
+  onImportChat: (file: File) => void;
 }
 
 export function ChatPicker({
@@ -30,21 +38,32 @@ export function ChatPicker({
   metadata,
   inheritedScenario,
   creatorNotes,
+  backups,
   onOpen,
   onNew,
   onDelete,
   onRename,
   onMetadataChange,
+  onRestore,
+  onPurge,
+  onImportChat,
 }: ChatPickerProps) {
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [purging, setPurging] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const renameInput = useRef<HTMLInputElement>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   const scenarioOverridden = typeof metadata.scenario === 'string';
   const authorNote = { ...DEFAULT_AUTHOR_NOTE, ...metadata.authorNote };
 
   function updateAuthorNote(patch: Partial<typeof authorNote>) {
     onMetadataChange({ authorNote: { ...authorNote, ...patch } });
+  }
+
+  function deletedLabel(deleted: number): string {
+    const formatted = formatTimestamp(new Date(deleted).toISOString());
+    return formatted?.short ?? '';
   }
 
   // Focus on appearance rather than autoFocus, which would also grab focus on page load.
@@ -64,6 +83,27 @@ export function ChatPicker({
         >
           <PlusIcon />
         </button>
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          onClick={() => importInput.current?.click()}
+          title="Import a chat export"
+          aria-label="Import chat"
+        >
+          <UploadIcon />
+        </button>
+        <input
+          ref={importInput}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            if (file) onImportChat(file);
+            // Allow re-selecting the same file: the value is not cleared by selection.
+            event.currentTarget.value = '';
+          }}
+        />
       </div>
 
       {chats.length > 0 ? (
@@ -122,6 +162,58 @@ export function ChatPicker({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {/*
+        The trash bin: chats deleted (or cascade-deleted with their character) wait here,
+        restorable as long as the character still exists. Restore is a move — one click
+        brings the chat back and empties this slot.
+      */}
+      {backups.length > 0 ? (
+        <details className="chat-picker__context">
+          <summary>
+            Recently deleted <span className="chat-picker__backup-count">{backups.length}</span>
+          </summary>
+          <ul className="chat-picker__list">
+            {backups.map((backup) => (
+              <li key={backup.backupId} className="chat-picker__item">
+                <button
+                  type="button"
+                  className="chat-picker__open"
+                  onClick={() => onRestore(backup.backupId)}
+                  title="Restore this chat"
+                >
+                  <span className="chat-picker__name">{backup.title}</span>
+                  <span className="chat-picker__preview">
+                    {backup.messageCount} messages · deleted {deletedLabel(backup.deleted)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost wc-button--danger"
+                  onClick={() =>
+                    purging === backup.backupId
+                      ? onPurge(backup.backupId)
+                      : setPurging(backup.backupId)
+                  }
+                  onBlur={() => setPurging(null)}
+                  title={
+                    purging === backup.backupId
+                      ? 'Click again to delete forever'
+                      : 'Delete this backup forever'
+                  }
+                  aria-label={
+                    purging === backup.backupId
+                      ? 'Click again to delete forever'
+                      : 'Delete backup forever'
+                  }
+                >
+                  <TrashIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
 
       {/*

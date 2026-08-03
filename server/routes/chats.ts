@@ -6,6 +6,7 @@ import type {
   ChatMetadata,
   StaleChatRevision,
 } from '../../shared/types/chat.ts';
+import { parseChatExport } from '../lib/backups.ts';
 import { chatStore } from '../lib/chats.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 
@@ -63,7 +64,52 @@ export async function handleChatRoute(
   }
 
   if (segments.length === 0) return null;
+
+  // /api/chats/import
+  if (segments[0] === 'import' && method === 'POST') {
+    const form = await request.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) return errorResponse('No file provided.');
+
+    const characterId = form.get('characterId');
+    if (typeof characterId !== 'string' || !characterId.trim()) {
+      return errorResponse('A characterId is required.');
+    }
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(await file.text());
+    } catch {
+      return errorResponse('The file is not valid JSON.');
+    }
+
+    const exported = parseChatExport(raw);
+    if (!exported) return errorResponse('The file is not a WackChatter chat export.');
+
+    return json(
+      store.createChat({
+        characterId: characterId.trim(),
+        ...exported,
+      }),
+      { status: 201 },
+    );
+  }
+
   const id = decodeURIComponent(segments[0]!);
+
+  // /api/chats/:id/export
+  if (segments[1] === 'export' && method === 'GET') {
+    const chat = store.getChat(id);
+    if (!chat) return notFound('Chat not found.');
+
+    const base = chat.title.replace(/[^\w\-. ]/g, '') || 'chat';
+    return new Response(JSON.stringify(chat, null, 4), {
+      headers: {
+        'content-type': 'application/json',
+        'content-disposition': `attachment; filename="${base}.json"`,
+      },
+    });
+  }
 
   // /api/chats/:id/branch
   if (segments[1] === 'branch' && method === 'POST') {

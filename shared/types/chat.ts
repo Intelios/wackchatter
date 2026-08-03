@@ -150,6 +150,19 @@ export interface ChatSummary {
   lastMessage: string;
 }
 
+/** A deleted chat waiting in the trash bin (data/backups), still restorable. */
+export interface ChatBackupSummary {
+  /** The backup file stem — the id the restore and delete endpoints take. */
+  backupId: string;
+  /** The chat as it was deleted. Restore recreates it under a fresh id. */
+  chatId: string;
+  characterId: string;
+  title: string;
+  messageCount: number;
+  /** Epoch ms when the chat was deleted, which is when the backup was taken. */
+  deleted: number;
+}
+
 export interface Persona {
   id: string;
   name: string;

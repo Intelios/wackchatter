@@ -21,6 +21,7 @@ function spies() {
     continueLast: () => calls.push('continueLast'),
     openPanel: (tab) => panels.push(tab),
     closeChat: () => calls.push('closeChat'),
+    exportChat: () => calls.push('exportChat'),
   };
   return { calls, panels, actions };
 }
@@ -51,6 +52,7 @@ describe('buildChatMenu', () => {
       'Save checkpoint',
       'Regenerate',
       'Continue',
+      'Export chat',
       ...JUMPS,
       'Close chat',
     ]);
@@ -111,11 +113,20 @@ describe('buildChatMenu', () => {
     item(entries, 'New chat').onSelect();
     item(entries, 'Regenerate').onSelect();
     item(entries, 'Continue').onSelect();
+    item(entries, 'Export chat').onSelect();
     item(entries, 'Close chat').onSelect();
-    expect(calls).toEqual(['newChat', 'regenerate', 'continueLast', 'closeChat']);
+    expect(calls).toEqual(['newChat', 'regenerate', 'continueLast', 'exportChat', 'closeChat']);
 
     for (const label of JUMPS) item(entries, label).onSelect();
     expect(panels).toEqual(['characters', 'lorebooks', 'persona']);
+  });
+
+  test('Export chat is disabled mid-generation, since the reply is not saved yet', () => {
+    const entries = build({ busy: true });
+    expect(item(entries, 'Export chat').disabled).toBe(true);
+    expect(item(entries, 'Export chat').disabledReason).toBe(
+      'Wait for the current reply to finish.',
+    );
   });
 
   test('separators only ever sit between groups', () => {
