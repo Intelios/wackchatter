@@ -27,6 +27,24 @@ import {
 import './Popover.css';
 
 /**
+ * Props handed to a custom trigger rendered via `renderTrigger`.
+ *
+ * Spread these onto the element that should act as the trigger, then add the element's own
+ * props (value, onChange, onFocus…). The `ref` callback is what lets `Popover` measure the
+ * trigger for the flip and restore focus to it on Escape — it must land on the focusable
+ * element, not a wrapper.
+ */
+export interface PopoverTriggerProps {
+  ref: (node: HTMLElement | null) => void;
+  'aria-haspopup': 'menu' | 'dialog' | 'listbox';
+  'aria-expanded': boolean;
+  'aria-controls'?: string;
+  'aria-label'?: string;
+  title: string;
+  disabled?: boolean;
+}
+
+/**
  * Which corner the popup grows from. `top-start` is the composer's buttons, which open
  * upward because they sit at the bottom of the chat column; `bottom-end` is a trigger in
  * the top-right of something, like a message bubble's overflow.
@@ -45,8 +63,9 @@ interface PopoverProps {
   className?: string;
   popupClassName?: string;
   placement?: PopoverPlacement;
-  /** `menu` for a list of actions, `dialog` for content with its own controls. */
-  role?: 'menu' | 'dialog';
+  /** `menu` for a list of actions, `dialog` for content with its own controls, `listbox`
+   * for a combobox's option list. */
+  role?: 'menu' | 'dialog' | 'listbox';
   disabled?: boolean;
   /** Why it is disabled. Becomes the title, so a greyed trigger still explains itself. */
   disabledReason?: string;
@@ -55,6 +74,14 @@ interface PopoverProps {
   popupRef?: RefObject<HTMLDivElement | null>;
   /** Extra key handling on the root. Escape is already taken care of. */
   onKeyDown?: (event: ReactKeyboardEvent) => void;
+  /**
+   * Render a custom trigger instead of the built-in button. Receives the props to spread
+   * onto the focusable element so the popup still wires up `aria-haspopup`,
+   * `aria-expanded`, `aria-controls`, the tooltip and disabled state, plus a `ref` callback
+   * that feeds the flip measurement and Escape focus-restore. The trigger is responsible
+   * for opening the popup itself (e.g. on focus or click) by calling `onOpenChange`.
+   */
+  renderTrigger?: (props: PopoverTriggerProps) => ReactNode;
 }
 
 export function Popover({
@@ -73,13 +100,16 @@ export function Popover({
   triggerRef: externalTriggerRef,
   popupRef: externalPopupRef,
   onKeyDown,
+  renderTrigger,
 }: PopoverProps) {
   const [flipped, setFlipped] = useState(false);
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const ownTriggerRef = useRef<HTMLButtonElement>(null);
+  // `HTMLElement` rather than `HTMLButtonElement`: a custom trigger (via `renderTrigger`)
+  // may be an `<input>`, and the flip measurement + focus-restore only need a generic node.
+  const ownTriggerRef = useRef<HTMLElement | null>(null);
   const ownPopupRef = useRef<HTMLDivElement>(null);
-  const triggerRef = externalTriggerRef ?? ownTriggerRef;
+  const triggerRef = (externalTriggerRef as RefObject<HTMLElement | null>) ?? ownTriggerRef;
   const popupRef = externalPopupRef ?? ownPopupRef;
 
   const [side, align] = placement.split('-') as ['top' | 'bottom', 'start' | 'end'];
@@ -154,21 +184,35 @@ export function Popover({
       ref={rootRef}
       onKeyDown={handleKeyDown}
     >
-      <button
-        type="button"
-        ref={triggerRef}
-        className="wc-button wc-button--ghost popover__trigger"
-        aria-haspopup={role}
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        aria-label={label}
-        title={disabled ? disabledReason : label}
-        disabled={disabled}
-        onClick={() => onOpenChange(!open)}
-      >
-        {icon}
-        {badge}
-      </button>
+      {renderTrigger ? (
+        renderTrigger({
+          ref: (node: HTMLElement | null) => {
+            ownTriggerRef.current = node;
+          },
+          'aria-haspopup': role,
+          'aria-expanded': open,
+          'aria-controls': open ? id : undefined,
+          'aria-label': label,
+          title: disabled ? (disabledReason ?? label) : label,
+          disabled,
+        })
+      ) : (
+        <button
+          type="button"
+          ref={triggerRef as RefObject<HTMLButtonElement | null>}
+          className="wc-button wc-button--ghost popover__trigger"
+          aria-haspopup={role}
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          aria-label={label}
+          title={disabled ? disabledReason : label}
+          disabled={disabled}
+          onClick={() => onOpenChange(!open)}
+        >
+          {icon}
+          {badge}
+        </button>
+      )}
 
       {open ? (
         <div

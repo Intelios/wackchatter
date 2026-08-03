@@ -1,0 +1,98 @@
+/*
+ * The model combobox in the Connection panel. The popup shell (anchoring, sides, flip)
+ * belongs to Popover.css — this file is only the field, the option rows and the empty
+ * state. Structural only: every colour, space and duration comes from tokens.css.
+ */
+
+.model-combobox {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-combobox__field {
+  position: relative;
+}
+
+.model-combobox__input {
+  width: 100%;
+  padding-right: var(--wc-space-5);
+}
+
+.model-combobox__chevron {
+  position: absolute;
+  right: var(--wc-space-2);
+  top: 50%;
+  transform: translateY(-50%) rotate(90deg);
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  pointer-events: none;
+  transition: transform var(--wc-duration-fast) var(--wc-ease);
+}
+
+.model-combobox__field[data-open] .model-combobox__chevron {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+.model-combobox__popup {
+  min-width: 100%;
+  max-width: 480px;
+}
+
+.model-combobox__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-combobox__option {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text);
+  transition: background var(--wc-duration-fast) ease;
+}
+
+.model-combobox__option:hover:not(:disabled),
+.model-combobox__option:focus-visible {
+  background: var(--wc-surface-hover);
+}
+
+/* The current model gets an accent left-border so it is visible at a glance, the way a
+   native <select>'s selected <option> would be. */
+.model-combobox__option[data-active] {
+  box-shadow: inset 2px 0 0 var(--wc-accent);
+}
+
+.model-combobox__option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-combobox__option-hint {
+  font-size: var(--wc-text-xs);
+  font-family: var(--wc-font-mono);
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+}
+
+.model-combobox__empty {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-faint);
+}
+
+.model-combobox__empty code {
+  font-family: var(--wc-font-mono);
+  color: var(--wc-text-muted);
+}

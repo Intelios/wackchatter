@@ -3,6 +3,7 @@ import { PROVIDERS } from '@shared/providers/types.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { settingsApi } from '../../lib/api.ts';
+import { ModelCombobox } from './ModelCombobox.tsx';
 import './ConnectionPanel.css';
 
 interface ConnectionPanelProps {
@@ -153,33 +154,13 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
         Model
       </label>
       <div className="connection__row">
-        {models.length > 0 ? (
-          <select
-            id="wc-model"
-            className="wc-select"
-            value={connection.model}
-            onChange={(event) => void patch({ model: event.target.value })}
-          >
-            <option value="">Select a model…</option>
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-                {model.contextLength ? ` — ${Math.round(model.contextLength / 1000)}k ctx` : ''}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            id="wc-model"
-            className="wc-input"
-            value={connection.model}
-            placeholder="Model id"
-            onChange={(event) =>
-              onChange({ ...settings!, connection: { ...connection, model: event.target.value } })
-            }
-            onBlur={(event) => void patch({ model: event.target.value })}
-          />
-        )}
+        <ModelCombobox
+          models={models}
+          value={connection.model}
+          onCommit={(model) => void patch({ model })}
+          disabled={!connection.baseUrl}
+          disabledReason="Set an endpoint first"
+        />
         <button
           type="button"
           className="wc-button"
