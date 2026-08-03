@@ -14,22 +14,11 @@
   gap: var(--wc-space-2);
 }
 
-.chat-picker__title {
+.chat-picker__rename {
   flex: 1;
   min-width: 0;
-  text-align: left;
-  padding: var(--wc-space-1) var(--wc-space-2);
-  border-radius: var(--wc-radius-sm);
   font-size: var(--wc-text-sm);
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: background var(--wc-duration-fast) ease;
-}
-
-.chat-picker__title:hover {
-  background: var(--wc-surface-hover);
 }
 
 .chat-picker__list {

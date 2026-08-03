@@ -654,7 +654,6 @@ export function App() {
                   <ChatPicker
                     chats={chat.chats}
                     activeId={chat.state.chatId}
-                    title={chat.state.title}
                     metadata={chat.state.metadata}
                     inheritedScenario={character?.scenario ?? ''}
                     creatorNotes={character?.creator_notes ?? ''}

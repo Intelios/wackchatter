@@ -755,6 +755,11 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const renameChat = useCallback((title: string) => {
     dispatch({ type: 'chat/renamed', title });
+    const chatId = stateRef.current.chatId;
+    if (chatId) {
+      // The list only re-fetches on structural changes, so reflect the rename at once.
+      setChats((list) => list.map((chat) => (chat.id === chatId ? { ...chat, title } : chat)));
+    }
   }, []);
 
   const deleteChat = useCallback(

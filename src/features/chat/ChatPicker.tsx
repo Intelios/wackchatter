@@ -13,7 +13,6 @@ import './ChatPicker.css';
 interface ChatPickerProps {
   chats: ChatSummary[];
   activeId: string | null;
-  title: string;
   metadata: ChatMetadata;
   inheritedScenario: string;
   /** The card's `creator_notes`, shown read-only. Empty hides the section entirely. */
@@ -28,7 +27,6 @@ interface ChatPickerProps {
 export function ChatPicker({
   chats,
   activeId,
-  title,
   metadata,
   inheritedScenario,
   creatorNotes,
@@ -39,7 +37,7 @@ export function ChatPicker({
   onMetadataChange,
 }: ChatPickerProps) {
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const renameInput = useRef<HTMLInputElement>(null);
   const scenarioOverridden = typeof metadata.scenario === 'string';
@@ -51,41 +49,12 @@ export function ChatPicker({
 
   // Focus on appearance rather than autoFocus, which would also grab focus on page load.
   useEffect(() => {
-    if (renaming) renameInput.current?.select();
-  }, [renaming]);
+    if (renamingId) renameInput.current?.select();
+  }, [renamingId]);
 
   return (
     <div className="chat-picker">
       <div className="chat-picker__top">
-        {renaming ? (
-          <input
-            ref={renameInput}
-            className="wc-input"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onBlur={() => {
-              if (draft.trim()) onRename(draft.trim());
-              setRenaming(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur();
-              if (event.key === 'Escape') setRenaming(false);
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className="chat-picker__title"
-            onClick={() => {
-              setDraft(title);
-              setRenaming(true);
-            }}
-            title="Rename this chat"
-          >
-            {title || 'Untitled chat'}
-          </button>
-        )}
-
         <button
           type="button"
           className="wc-button wc-button--ghost"
@@ -97,17 +66,47 @@ export function ChatPicker({
         </button>
       </div>
 
-      {chats.length > 1 ? (
+      {chats.length > 0 ? (
         <ul className="chat-picker__list">
           {chats.map((chat) => (
             <li key={chat.id} className="chat-picker__item" data-active={chat.id === activeId}>
-              <button type="button" className="chat-picker__open" onClick={() => onOpen(chat.id)}>
-                <span className="chat-picker__name">{chat.title}</span>
-                <span className="chat-picker__preview">
-                  {chat.lastMessage || 'No messages yet'}
-                </span>
-                <span className="chat-picker__count">{chat.messageCount} messages</span>
-              </button>
+              {renamingId === chat.id ? (
+                <input
+                  ref={renameInput}
+                  className="wc-input chat-picker__rename"
+                  value={draft}
+                  aria-label={`Rename ${chat.title}`}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onBlur={() => {
+                    // Renaming targets the open chat; the guard drops a commit that raced
+                    // the click-to-open of an inactive row.
+                    if (draft.trim() && renamingId === activeId) onRename(draft.trim());
+                    setRenamingId(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.currentTarget.blur();
+                    if (event.key === 'Escape') setRenamingId(null);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="chat-picker__open"
+                  onClick={() => onOpen(chat.id)}
+                  onDoubleClick={() => {
+                    setDraft(chat.title);
+                    setRenamingId(chat.id);
+                  }}
+                >
+                  <span className="chat-picker__name" title="Double-click to rename">
+                    {chat.title}
+                  </span>
+                  <span className="chat-picker__preview">
+                    {chat.lastMessage || 'No messages yet'}
+                  </span>
+                  <span className="chat-picker__count">{chat.messageCount} messages</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="wc-button wc-button--ghost wc-button--danger"
