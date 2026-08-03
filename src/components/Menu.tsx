@@ -58,18 +58,39 @@ interface MenuProps {
   entries: MenuEntry[];
   className?: string;
   placement?: MenuPlacement;
+  /**
+   * Told when the menu opens or closes. The menu still owns the state — this is for a caller
+   * holding state *about* an entry, such as a two-click confirm that has to disarm itself
+   * when the user dismisses the menu instead of confirming.
+   */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function Menu({ label, icon, entries, className, placement = 'top-start' }: MenuProps) {
+export function Menu({
+  label,
+  icon,
+  entries,
+  className,
+  placement = 'top-start',
+  onOpenChange,
+}: MenuProps) {
   const [open, setOpen] = useState(false);
+
+  const setOpenState = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      onOpenChange?.(next);
+    },
+    [onOpenChange],
+  );
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
   /** Close and put focus back where it started, so keyboard users are not stranded. */
   const closeAndRestore = useCallback(() => {
-    setOpen(false);
+    setOpenState(false);
     triggerRef.current?.focus({ preventScroll: true });
-  }, []);
+  }, [setOpenState]);
 
   // The enabled items, in order. Queried from the DOM rather than kept in a ref array:
   // the entries are data, so the rendered list is already the only ordering that matters.
@@ -121,7 +142,7 @@ export function Menu({ label, icon, entries, className, placement = 'top-start' 
         break;
       case 'Tab':
         // Let focus move on naturally; the menu just gets out of the way.
-        setOpen(false);
+        setOpenState(false);
         break;
       default:
         break;
@@ -138,7 +159,7 @@ export function Menu({ label, icon, entries, className, placement = 'top-start' 
       label={label}
       icon={icon}
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={setOpenState}
       className={`menu${className ? ` ${className}` : ''}`}
       popupClassName="menu__popup"
       placement={placement}

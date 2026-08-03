@@ -58,6 +58,8 @@ export function App() {
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+  /** Folder paths under data/characters, including empty ones. */
+  const [folders, setFolders] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CharacterDetail | null>(null);
   const [editing, setEditing] = useState(false);
@@ -227,7 +229,13 @@ export function App() {
 
   const refresh = useCallback(async () => {
     try {
-      setCharacters(await characterApi.list());
+      // Together, so the list never renders cards whose folder row has not arrived yet.
+      const [nextCharacters, nextFolders] = await Promise.all([
+        characterApi.list(),
+        characterApi.folders.list(),
+      ]);
+      setCharacters(nextCharacters);
+      setFolders(nextFolders);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -283,6 +291,16 @@ export function App() {
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
   const dialogueColorSettings: DialogueColorSettings =
     settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS;
+
+  // Which character folders are shut. Round-trips through settings on every toggle, the same
+  // way the default persona does — the write is a small local file and the list is short.
+  const collapsedCharacterFolders = useMemo(
+    () =>
+      Array.isArray(settings?.collapsedCharacterFolders)
+        ? (settings.collapsedCharacterFolders as string[])
+        : [],
+    [settings?.collapsedCharacterFolders],
+  );
 
   // Global books are opt-in per book; nothing is global until the user says so. Stored in
   // settings so the choice survives a reload.
@@ -793,12 +811,17 @@ export function App() {
                 ) : null}
                 <CharacterList
                   characters={characters}
+                  folders={folders}
+                  collapsedFolders={collapsedCharacterFolders}
                   selected={selected}
                   loading={loading}
                   error={error}
                   onSelect={handleSelect}
                   onRefresh={refresh}
                   onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
+                  onCollapsedFoldersChange={(next) =>
+                    void patchSettings({ collapsedCharacterFolders: next })
+                  }
                 />
               </>
             ) : null}

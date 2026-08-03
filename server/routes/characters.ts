@@ -19,6 +19,13 @@ import {
   updateBookEntry,
   updateCharacter,
 } from '../lib/characters.ts';
+import {
+  createFolder,
+  deleteFolder,
+  listFolders,
+  moveCharacterToFolder,
+  renameFolder,
+} from '../lib/folders.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import { cascadeCharacterDelete, cascadeCharacterRename } from '../lib/references.ts';
 
@@ -33,10 +40,12 @@ export async function handleCharacterRoute(
     if (method === 'GET') return json(listCharacters());
 
     if (method === 'POST') {
-      const body = await readJson<{ name?: string }>(request);
+      const body = await readJson<{ name?: string; folder?: string }>(request);
       const name = body?.name?.trim();
       if (!name) return errorResponse('A character name is required.');
-      return json(await createCharacter(createBlankCard(name)), { status: 201 });
+      return json(await createCharacter(createBlankCard(name), undefined, body?.folder ?? ''), {
+        status: 201,
+      });
     }
     return null;
   }
@@ -47,12 +56,62 @@ export async function handleCharacterRoute(
     const file = form.get('file');
     if (!(file instanceof File)) return errorResponse('No file provided.');
 
+    const folder = form.get('folder');
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
-      return json(await importCharacter(bytes, file.name), { status: 201 });
+      return json(
+        await importCharacter(bytes, file.name, typeof folder === 'string' ? folder : ''),
+        { status: 201 },
+      );
     } catch (error) {
       return errorResponse((error as Error).message);
     }
+  }
+
+  /*
+   * /api/characters/folders...
+   *
+   * Above the :avatar decode, for the same reason `import` is: a literal segment has to be
+   * claimed before anything treats it as an identity.
+   *
+   * A folder path contains slashes, so it travels as one percent-encoded segment exactly as
+   * :avatar does — encodeURIComponent('a/b') survives URL parsing intact and decodes back.
+   */
+  if (segments[0] === 'folders') {
+    if (segments.length === 1) {
+      if (method === 'GET') return json(listFolders());
+
+      if (method === 'POST') {
+        const body = await readJson<{ path?: string }>(request);
+        const created = createFolder(body?.path ?? '');
+        if (!created) return errorResponse('That folder name cannot be used.');
+        return json({ path: created }, { status: 201 });
+      }
+      return null;
+    }
+
+    // /api/characters/folders/rename — POST-gated, so a folder actually named "rename"
+    // is still deletable through the branch below.
+    if (segments[1] === 'rename' && segments.length === 2 && method === 'POST') {
+      const body = await readJson<{ from?: string; to?: string }>(request);
+      if (!body?.from || !body?.to) {
+        return errorResponse('Both the current and the new folder path are required.');
+      }
+      try {
+        const renamed = await renameFolder(body.from, body.to);
+        return renamed === null ? notFound('Folder not found.') : json({ path: renamed });
+      } catch (error) {
+        return errorResponse((error as Error).message, 409);
+      }
+    }
+
+    // /api/characters/folders/:path
+    if (segments.length === 2 && method === 'DELETE') {
+      const removed = await deleteFolder(decodeURIComponent(segments[1]!));
+      return removed ? json(removed) : notFound('Folder not found.');
+    }
+
+    return null;
   }
 
   const avatar = decodeURIComponent(segments[0]!);
@@ -144,6 +203,25 @@ export async function handleCharacterRoute(
     }
 
     return null;
+  }
+
+  /*
+   * /api/characters/:avatar/folder
+   *
+   * Beside rename, and deliberately unlike it: a rename changes the identity and needs the
+   * full cascade, while a move changes only where the file sits. Nothing else refers to a
+   * card's folder, so there is nothing to keep in step.
+   */
+  if (segments[1] === 'folder' && method === 'POST') {
+    const body = await readJson<{ folder?: string }>(request);
+    if (typeof body?.folder !== 'string') return errorResponse('A destination folder is required.');
+
+    try {
+      const moved = await moveCharacterToFolder(avatar, body.folder);
+      return moved === null ? notFound('Character not found.') : json({ avatar, folder: moved });
+    } catch (error) {
+      return errorResponse((error as Error).message, 409);
+    }
   }
 
   // /api/characters/:avatar/rename

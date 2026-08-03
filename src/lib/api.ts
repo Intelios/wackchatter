@@ -86,11 +86,11 @@ export const characterApi = {
 
   get: (avatar: string) => request<CharacterDetail>(`/characters/${encodeURIComponent(avatar)}`),
 
-  create: (name: string) =>
+  create: (name: string, folder = '') =>
     request<CharacterDetail>('/characters', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, folder }),
     }),
 
   update: (avatar: string, updates: Partial<CardDataV2>) =>
@@ -121,10 +121,54 @@ export const characterApi = {
   remove: (avatar: string) =>
     request<{ ok: true }>(`/characters/${encodeURIComponent(avatar)}`, { method: 'DELETE' }),
 
-  import: (file: File) => {
+  import: (file: File, folder = '') => {
     const form = new FormData();
     form.set('file', file);
+    form.set('folder', folder);
     return request<CharacterDetail>('/characters/import', { method: 'POST', body: form });
+  },
+
+  /**
+   * Move a card into a folder; '' is the top level.
+   *
+   * Separate from `rename` because it is a far smaller operation: the avatar filename is the
+   * identity, so a move rewrites no references and the character's chats follow by themselves.
+   */
+  setFolder: (avatar: string, folder: string) =>
+    request<{ avatar: string; folder: string }>(
+      `/characters/${encodeURIComponent(avatar)}/folder`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ folder }),
+      },
+    ),
+
+  /** Folders are real directories under data/characters, so these are directory operations. */
+  folders: {
+    list: () => request<string[]>('/characters/folders'),
+
+    create: (path: string) =>
+      request<{ path: string }>('/characters/folders', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path }),
+      }),
+
+    /** `to` is a full path, so this both renames a folder and moves it under a new parent. */
+    rename: (from: string, to: string) =>
+      request<{ path: string }>('/characters/folders/rename', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ from, to }),
+      }),
+
+    /** Cards inside are lifted to the top level, not deleted. */
+    remove: (path: string) =>
+      request<{ moved: number; skipped: string[]; removed: boolean }>(
+        `/characters/folders/${encodeURIComponent(path)}`,
+        { method: 'DELETE' },
+      ),
   },
 
   imageUrl: (avatar: string, cacheKey?: number) =>

@@ -8,7 +8,9 @@ import {
   MARKER_FILENAME,
   PATHS,
   safeJoin,
+  safeJoinFolder,
   sanitizeFilename,
+  sanitizeFolderPath,
   setDataDir,
   uniqueName,
 } from './paths.ts';
@@ -170,6 +172,55 @@ describe('safeJoin', () => {
   test('returns null for unusable names', () => {
     expect(safeJoin(base, '')).toBeNull();
     expect(safeJoin(base, '   ')).toBeNull();
+  });
+});
+
+describe('sanitizeFolderPath', () => {
+  test('keeps an ordinary path and normalises separators', () => {
+    expect(sanitizeFolderPath('Favourites')).toBe('Favourites');
+    expect(sanitizeFolderPath('Fantasy/Elves')).toBe('Fantasy/Elves');
+    expect(sanitizeFolderPath('Fantasy\\Elves')).toBe('Fantasy/Elves');
+    expect(sanitizeFolderPath('/Fantasy//Elves/')).toBe('Fantasy/Elves');
+  });
+
+  test('the empty path is the root, not an error', () => {
+    expect(sanitizeFolderPath('')).toBe('');
+    expect(sanitizeFolderPath('   ')).toBe('');
+  });
+
+  test('cannot climb out, because every segment goes through sanitizeFilename', () => {
+    expect(sanitizeFolderPath('../../etc')).toBe('etc');
+    expect(sanitizeFolderPath('Fav/../Evil')).toBe('Fav/Evil');
+    expect(sanitizeFolderPath('..')).toBeNull();
+    expect(sanitizeFolderPath('../..')).toBeNull();
+  });
+
+  test('cannot make a hidden folder', () => {
+    expect(sanitizeFolderPath('.hidden')).toBe('hidden');
+    expect(sanitizeFolderPath('Fav/.git')).toBe('Fav/git');
+  });
+
+  test('refuses a path deeper than the cap', () => {
+    expect(sanitizeFolderPath(Array(16).fill('a').join('/'))).toBe(Array(16).fill('a').join('/'));
+    expect(sanitizeFolderPath(Array(17).fill('a').join('/'))).toBeNull();
+  });
+});
+
+describe('safeJoinFolder', () => {
+  const base = '/tmp/wc-test/characters';
+
+  test('joins an ordinary folder path', () => {
+    expect(safeJoinFolder(base, 'Fantasy/Elves')).toBe('/tmp/wc-test/characters/Fantasy/Elves');
+  });
+
+  test('the root resolves to the base itself', () => {
+    expect(safeJoinFolder(base, '')).toBe(base);
+  });
+
+  test('refuses to escape the base directory', () => {
+    expect(safeJoinFolder(base, '../../../etc')).toBe('/tmp/wc-test/characters/etc');
+    expect(safeJoinFolder(base, '..')).toBeNull();
+    expect(safeJoinFolder(base, '/etc/passwd')).toBe('/tmp/wc-test/characters/etc/passwd');
   });
 });
 

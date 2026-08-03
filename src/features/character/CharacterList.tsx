@@ -1,11 +1,36 @@
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import type { CharacterSummary } from '@shared/types/card.ts';
-import { useMemo, useRef, useState } from 'react';
-import { EditIcon, PlusIcon, UploadIcon } from '../../layout/icons.tsx';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { Menu, type MenuEntry } from '../../components/Menu.tsx';
+import {
+  ChevronIcon,
+  EditIcon,
+  FolderIcon,
+  GripIcon,
+  MoreIcon,
+  PlusIcon,
+  UploadIcon,
+} from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
+import { buildCharacterTree, type TreeRow } from './characterTree.ts';
 import './CharacterList.css';
 
 interface CharacterListProps {
   characters: CharacterSummary[];
+  /** Folder paths from the server, including empty ones. */
+  folders: string[];
+  collapsedFolders: string[];
   selected: string | null;
   loading: boolean;
   error: string | null;
@@ -14,32 +39,65 @@ interface CharacterListProps {
   /** Open this character's card in the editor. */
   onEdit: (avatar: string) => void;
   onRefresh: () => void;
+  onCollapsedFoldersChange: (next: string[]) => void;
 }
+
+/**
+ * Drop targets are folder paths, and '' is a legitimate one (the top level), so the id has
+ * to be prefixed — a bare '' is falsy and dnd-kit would treat it as no target at all.
+ */
+const DROP_PREFIX = 'folder:';
 
 export function CharacterList({
   characters,
+  folders,
+  collapsedFolders,
   selected,
   loading,
   error,
   onSelect,
   onEdit,
   onRefresh,
+  onCollapsedFoldersChange,
 }: CharacterListProps) {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<CharacterSummary | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return characters;
-    return characters.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.tags.some((tag) => tag.toLowerCase().includes(q)) ||
-        c.creator.toLowerCase().includes(q),
+  const searching = query.trim().length > 0;
+
+  const rows = useMemo(
+    () => buildCharacterTree({ characters, folders, collapsed: collapsedFolders, query }),
+    [characters, folders, collapsedFolders, query],
+  );
+
+  // Matching PromptManager: a small distance threshold so a plain click on the grip is still
+  // a click, and a drag only begins once the pointer has actually moved.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  function toggleFolder(path: string) {
+    onCollapsedFoldersChange(
+      collapsedFolders.includes(path)
+        ? collapsedFolders.filter((entry) => entry !== path)
+        : [...collapsedFolders, path],
     );
-  }, [characters, query]);
+  }
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await action();
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setBusy(false);
+      onRefresh();
+    }
+  }
 
   async function handleImport(files: FileList | null) {
     if (!files?.length) return;
@@ -76,6 +134,29 @@ export function CharacterList({
     }
   }
 
+  function handleNewFolder(parent = '') {
+    const base = parent ? `${parent}/New folder` : 'New folder';
+    void run(async () => {
+      const { path } = await characterApi.folders.create(freeFolderName(base, folders));
+      // Straight into rename: a folder called "New folder" is never what anyone wanted.
+      setRenaming(path);
+    });
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setDragging(null);
+
+    const over = event.over?.id;
+    if (typeof over !== 'string' || !over.startsWith(DROP_PREFIX)) return;
+
+    const avatar = String(event.active.id);
+    const target = over.slice(DROP_PREFIX.length);
+    const current = characters.find((character) => character.avatar === avatar);
+    if (!current || current.folder === target) return;
+
+    void run(() => characterApi.setFolder(avatar, target));
+  }
+
   const message = error ?? actionError;
 
   return (
@@ -93,70 +174,87 @@ export function CharacterList({
 
       {message ? <div className="character-list__error">{message}</div> : null}
 
-      <div className="character-list__items">
-        {loading ? (
-          <div className="wc-empty">Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="wc-empty">
-            {characters.length === 0 ? (
-              <>
-                <span>No characters yet.</span>
-                <span>Import a SillyTavern card to get started.</span>
-              </>
-            ) : (
-              <span>No characters match “{query}”.</span>
-            )}
-          </div>
-        ) : (
-          filtered.map((character) => (
-            // A row rather than one big button: the card needs two distinct actions,
-            // and a button inside a button is invalid.
-            <div
-              key={character.avatar}
-              className="character-card"
-              data-current={character.avatar === selected || undefined}
-            >
-              <button
-                type="button"
-                className="character-card__open"
-                aria-current={character.avatar === selected}
-                onClick={() => onSelect(character.avatar)}
-                title={`Chat with ${character.name}`}
-              >
-                <img
-                  className="character-card__avatar"
-                  src={characterApi.imageUrl(character.avatar, character.modified)}
-                  alt=""
-                  loading="lazy"
-                />
-                <span className="character-card__text">
-                  <span className="character-card__name">{character.name}</span>
-                  <span className="character-card__meta">
-                    {character.creator ? `by ${character.creator}` : 'Unknown creator'}
-                    {character.tags.length ? ` · ${character.tags.slice(0, 3).join(', ')}` : ''}
-                  </span>
-                </span>
-                <span className="character-card__badges">
-                  {character.hasLorebook ? <span className="badge">Lore</span> : null}
-                  {character.alternateGreetingCount > 0 ? (
-                    <span className="badge">+{character.alternateGreetingCount}</span>
-                  ) : null}
-                </span>
-              </button>
+      <DndContext
+        sensors={sensors}
+        // pointerWithin rather than closestCenter: these are containers, not a sorted list, so
+        // a drop should only register when the pointer is genuinely over a folder. Releasing
+        // in empty space means "never mind", not "put it in whatever was nearest".
+        collisionDetection={pointerWithin}
+        onDragStart={(event: DragStartEvent) =>
+          setDragging(characters.find((c) => c.avatar === String(event.active.id)) ?? null)
+        }
+        onDragCancel={() => setDragging(null)}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="character-list__items">
+          {/* Only while dragging a card that is in a folder — otherwise it is a target that
+              would do nothing, taking up space at the top of every library. */}
+          {dragging?.folder ? <RootDropZone /> : null}
 
-              <button
-                type="button"
-                className="wc-button wc-button--ghost character-card__edit"
-                onClick={() => onEdit(character.avatar)}
-                title={`Edit ${character.name}`}
-                aria-label={`Edit ${character.name}`}
-              >
-                <EditIcon />
-              </button>
+          {loading ? (
+            <div className="wc-empty">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="wc-empty">
+              {characters.length === 0 ? (
+                <>
+                  <span>No characters yet.</span>
+                  <span>Import a SillyTavern card to get started.</span>
+                </>
+              ) : (
+                <span>No characters match “{query}”.</span>
+              )}
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            rows.map((row) =>
+              row.kind === 'folder' ? (
+                <FolderRow
+                  key={`folder:${row.path}`}
+                  row={row}
+                  renaming={renaming === row.path}
+                  busy={busy}
+                  onToggle={() => toggleFolder(row.path)}
+                  onStartRename={() => setRenaming(row.path)}
+                  onRename={(name) => {
+                    setRenaming(null);
+                    const parent = row.path.slice(0, row.path.length - row.name.length);
+                    if (name && name !== row.name) {
+                      void run(() => characterApi.folders.rename(row.path, `${parent}${name}`));
+                    }
+                  }}
+                  onNewSubfolder={() => handleNewFolder(row.path)}
+                  onDelete={() => void run(() => characterApi.folders.remove(row.path))}
+                />
+              ) : (
+                <CharacterRow
+                  key={row.character.avatar}
+                  character={row.character}
+                  depth={row.depth}
+                  showFolder={searching}
+                  draggable={!searching}
+                  current={row.character.avatar === selected}
+                  onSelect={() => onSelect(row.character.avatar)}
+                  onEdit={() => onEdit(row.character.avatar)}
+                />
+              ),
+            )
+          )}
+        </div>
+
+        {/* The ghost under the cursor. Rendered outside the scroll container so it is not
+            clipped when dragging past the top or bottom edge of the list. */}
+        <DragOverlay dropAnimation={null}>
+          {dragging ? (
+            <div className="character-card character-card--ghost">
+              <img
+                className="character-card__avatar"
+                src={characterApi.imageUrl(dragging.avatar, dragging.modified)}
+                alt=""
+              />
+              <span className="character-card__name">{dragging.name}</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <div className="character-list__footer">
         <button
@@ -172,6 +270,16 @@ export function CharacterList({
           <PlusIcon />
           New
         </button>
+        <button
+          type="button"
+          className="wc-button"
+          disabled={busy}
+          onClick={() => handleNewFolder()}
+          title="New folder"
+        >
+          <FolderIcon />
+          Folder
+        </button>
         <input
           ref={fileInput}
           type="file"
@@ -186,4 +294,246 @@ export function CharacterList({
       </div>
     </div>
   );
+}
+
+/** The way back out of a folder. Only mounted mid-drag, so it never sits there at rest. */
+function RootDropZone() {
+  const { setNodeRef, isOver } = useDroppable({ id: DROP_PREFIX });
+  return (
+    <div ref={setNodeRef} className="character-list__root-drop" data-over={isOver || undefined}>
+      Move to top level
+    </div>
+  );
+}
+
+interface FolderRowProps {
+  row: Extract<TreeRow, { kind: 'folder' }>;
+  renaming: boolean;
+  busy: boolean;
+  onToggle: () => void;
+  onStartRename: () => void;
+  onRename: (name: string) => void;
+  onNewSubfolder: () => void;
+  onDelete: () => void;
+}
+
+function FolderRow({
+  row,
+  renaming,
+  busy,
+  onToggle,
+  onStartRename,
+  onRename,
+  onNewSubfolder,
+  onDelete,
+}: FolderRowProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${DROP_PREFIX}${row.path}` });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const entries: MenuEntry[] = [
+    { label: 'New subfolder', onSelect: onNewSubfolder },
+    { label: 'Rename', onSelect: onStartRename },
+    { kind: 'separator' },
+    {
+      // Says what it does, because it does not do the frightening thing: the cards come out
+      // to the top level and keep their chats. Only the container goes.
+      label: confirmDelete ? 'Really delete folder?' : 'Delete folder',
+      danger: true,
+      keepOpen: !confirmDelete,
+      disabled: busy,
+      onSelect: () => {
+        if (confirmDelete) onDelete();
+        else setConfirmDelete(true);
+      },
+    },
+  ];
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="character-folder"
+      style={{ '--depth': row.depth } as CSSProperties}
+      data-over={isOver || undefined}
+      data-collapsed={row.collapsed || undefined}
+    >
+      {/*
+       * Renaming swaps the whole toggle out rather than putting the field inside it. An input
+       * nested in a button is invalid HTML, and the button swallows the Enter key that is
+       * supposed to commit the name — the same reason a card row is a row and not one button.
+       */}
+      {renaming ? (
+        <div className="character-folder__toggle">
+          <ChevronIcon className="character-folder__chevron" />
+          <FolderIcon className="character-folder__icon" />
+          <RenameField initial={row.name} onCommit={onRename} />
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="character-folder__toggle"
+          onClick={onToggle}
+          aria-expanded={!row.collapsed}
+        >
+          <ChevronIcon className="character-folder__chevron" />
+          <FolderIcon className="character-folder__icon" />
+          <span className="character-folder__name">{row.name}</span>
+          <span className="character-folder__count">{row.count}</span>
+        </button>
+      )}
+
+      <Menu
+        label={`Actions for ${row.name}`}
+        icon={<MoreIcon />}
+        className="wc-button wc-button--ghost character-folder__menu"
+        entries={entries}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(false);
+        }}
+      />
+    </div>
+  );
+}
+
+/** Inline rename, the same shape as ChatPicker's: commit on blur or Enter, Escape abandons. */
+function RenameField({ initial, onCommit }: { initial: string; onCommit: (name: string) => void }) {
+  const [value, setValue] = useState(initial);
+  const input = useRef<HTMLInputElement>(null);
+
+  // Focused on appear rather than with autoFocus, and with preventScroll: the panel is fixed
+  // to the viewport, so letting the browser scroll to reveal the field moves the whole app.
+  useEffect(() => {
+    input.current?.focus({ preventScroll: true });
+    input.current?.select();
+  }, []);
+
+  return (
+    <input
+      ref={input}
+      className="wc-input character-folder__rename"
+      value={value}
+      aria-label={`Rename ${initial}`}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onCommit(value.trim())}
+      onKeyDown={(e) => {
+        // Enter commits via blur, so the two paths cannot disagree.
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') onCommit('');
+      }}
+    />
+  );
+}
+
+interface CharacterRowProps {
+  character: CharacterSummary;
+  depth: number;
+  /** Under search the tree is flat, so each match says which folder it came from. */
+  showFolder: boolean;
+  draggable: boolean;
+  current: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+}
+
+function CharacterRow({
+  character,
+  depth,
+  showFolder,
+  draggable,
+  current,
+  onSelect,
+  onEdit,
+}: CharacterRowProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: character.avatar,
+    disabled: !draggable,
+  });
+
+  const meta = showFolder
+    ? character.folder || 'Top level'
+    : character.creator
+      ? `by ${character.creator}`
+      : 'Unknown creator';
+
+  return (
+    // A row rather than one big button: the card needs two distinct actions,
+    // and a button inside a button is invalid.
+    <div
+      className="character-card"
+      style={{ '--depth': depth } as CSSProperties}
+      data-current={current || undefined}
+      data-dragging={isDragging || undefined}
+    >
+      {/*
+       * A dedicated grip rather than making the whole row draggable, exactly as PromptManager
+       * does. Hanging the listeners off the row would put dnd-kit's role and tabIndex on a
+       * div that already contains two buttons, and every click would have to be disambiguated
+       * from the start of a drag.
+       */}
+      {draggable ? (
+        <button
+          type="button"
+          className="character-card__grip"
+          ref={setNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Move ${character.name}`}
+          title="Drag into a folder"
+        >
+          <GripIcon />
+        </button>
+      ) : (
+        <span className="character-card__grip character-card__grip--placeholder" />
+      )}
+
+      <button
+        type="button"
+        className="character-card__open"
+        aria-current={current}
+        onClick={onSelect}
+        title={`Chat with ${character.name}`}
+      >
+        <img
+          className="character-card__avatar"
+          src={characterApi.imageUrl(character.avatar, character.modified)}
+          alt=""
+          loading="lazy"
+        />
+        <span className="character-card__text">
+          <span className="character-card__name">{character.name}</span>
+          <span className="character-card__meta">
+            {meta}
+            {!showFolder && character.tags.length
+              ? ` · ${character.tags.slice(0, 3).join(', ')}`
+              : ''}
+          </span>
+        </span>
+        <span className="character-card__badges">
+          {character.hasLorebook ? <span className="badge">Lore</span> : null}
+          {character.alternateGreetingCount > 0 ? (
+            <span className="badge">+{character.alternateGreetingCount}</span>
+          ) : null}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        className="wc-button wc-button--ghost character-card__edit"
+        onClick={onEdit}
+        title={`Edit ${character.name}`}
+        aria-label={`Edit ${character.name}`}
+      >
+        <EditIcon />
+      </button>
+    </div>
+  );
+}
+
+/** "New folder", "New folder 2", … so the button can be pressed twice without an error. */
+function freeFolderName(base: string, existing: readonly string[]): string {
+  const taken = new Set(existing);
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 1000; i++) {
+    if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
+  }
+  return base;
 }

@@ -147,6 +147,57 @@ export function sanitizeFilename(name: string): string | null {
 }
 
 /**
+ * Deep enough for any real organisation scheme, shallow enough that a malformed request
+ * cannot ask for a thousand nested mkdirs.
+ */
+const MAX_FOLDER_DEPTH = 16;
+
+/**
+ * Make a user-supplied folder path safe: a `/`-separated chain of sanitised segments,
+ * relative to a store's root. `''` is valid and means that root.
+ *
+ * Separate from sanitizeFilename rather than a relaxation of it, because the two want
+ * opposite things from a slash. A filename must never contain one — that is what stops
+ * `../../etc/passwd` becoming a path at all — while a folder path is *made* of them. So
+ * the slash is split on here and each segment is handed to the stricter helper, which
+ * keeps one implementation of what a safe name is and leaves every existing caller of
+ * safeJoin guarded exactly as before.
+ *
+ * Unusable segments are dropped rather than failing the whole path, matching
+ * sanitizeFilename's salvage-what-is-usable behaviour: `Fav/../Evil` lands on `Fav/Evil`,
+ * which is contained and visible. Containment is still enforced by safeJoinFolder, which
+ * is the actual guard — this only decides what the name looks like.
+ */
+export function sanitizeFolderPath(folder: string): string | null {
+  if (!folder.trim()) return '';
+
+  const segments: string[] = [];
+  for (const raw of folder.split(/[/\\]/)) {
+    if (!raw) continue;
+    const safe = sanitizeFilename(raw);
+    if (safe) segments.push(safe);
+  }
+
+  if (segments.length === 0) return null;
+  if (segments.length > MAX_FOLDER_DEPTH) return null;
+  return segments.join('/');
+}
+
+/** Resolve a folder path inside `dir`, refusing to escape it. `''` resolves to `dir`. */
+export function safeJoinFolder(dir: string, folder: string): string | null {
+  const safe = sanitizeFolderPath(folder);
+  if (safe === null) return null;
+
+  const base = resolve(dir);
+  if (!safe) return base;
+
+  const full = resolve(base, safe);
+  if (!full.startsWith(`${base}/`)) return null;
+  if (!isAbsolute(full)) return null;
+  return full;
+}
+
+/**
  * Resolve `name` inside `dir`, refusing to escape it.
  * Guards every path that comes from a request.
  */

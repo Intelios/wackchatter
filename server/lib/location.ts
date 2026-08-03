@@ -387,9 +387,13 @@ function probeWritable(dir: string): boolean {
   }
 }
 
-function countEntries(dir: string, predicate: (name: string) => boolean): number {
+function countEntries(
+  dir: string,
+  predicate: (name: string) => boolean,
+  recursive = false,
+): number {
   try {
-    return readdirSync(dir).filter(predicate).length;
+    return (readdirSync(dir, { recursive }) as string[]).filter(predicate).length;
   } catch {
     return 0;
   }
@@ -412,8 +416,12 @@ function newestMtime(paths: string[]): number | null {
 export function readLibraryStats(dir: string): LibraryStats {
   return {
     markerMissing: !hasMarker(dir),
-    characters: countEntries(join(dir, 'characters'), (name) =>
-      name.toLowerCase().endsWith('.png'),
+    // Recursive: cards live in user-made folders, and a flat count would tell someone about
+    // to adopt a library that most of it is not there.
+    characters: countEntries(
+      join(dir, 'characters'),
+      (name) => name.toLowerCase().endsWith('.png'),
+      true,
     ),
     presets: countEntries(join(dir, 'presets'), (name) => name.toLowerCase().endsWith('.json')),
     lorebooks: countEntries(join(dir, 'lorebooks'), (name) => name.toLowerCase().endsWith('.json')),

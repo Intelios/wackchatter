@@ -118,6 +118,14 @@ export interface TavernCard {
 export interface CharacterSummary {
   /** PNG filename including extension — the unique ID, e.g. "Seraphina.png". */
   avatar: string;
+  /**
+   * Which folder the card's file sits in: '' at the top level, otherwise a '/'-separated
+   * path below data/characters.
+   *
+   * Deliberately NOT part of the identity. Chats key on `avatar` alone, so a card can be
+   * reorganised — in the app or in a file browser — without anything else having to follow.
+   */
+  folder: string;
   name: string;
   description: string;
   creator: string;

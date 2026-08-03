@@ -1,13 +1,17 @@
 /**
- * Character storage: cards live as PNG files in data/characters, one file per character.
+ * Character storage: cards live as PNG files under data/characters, one file per character.
  *
  * The filename (including extension) is the character's identity, exactly as in
  * SillyTavern — the `avatar` field inside the card JSON is vestigial and always "none".
+ *
+ * Cards may sit in subdirectories, which are the user-facing folders. The folder is NOT part
+ * of the identity, so every path here is resolved by searching the tree for the filename
+ * rather than by joining it onto the root. See folders.ts for why that matters.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { rename, unlink } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type {
   CardDataV2,
   CharacterDetail,
@@ -24,8 +28,21 @@ import {
   toWorldInfoBook,
 } from '../../shared/worldinfo/convert.ts';
 import { createBlankCard, mergeCardData, normalizeCard, readCard, writeCard } from './card.ts';
+import {
+  CHARACTER_IDENTITIES,
+  folderOf,
+  resolveCharacterFile,
+  walkCharacterFiles,
+} from './folders.ts';
 import { atomicWrite, withFileLock, withFileLocks, withResourceLock } from './fs.ts';
-import { PATHS, PROJECT_ROOT, safeJoin, sanitizeFilename, uniqueName } from './paths.ts';
+import {
+  PATHS,
+  PROJECT_ROOT,
+  safeJoinFolder,
+  sanitizeFilename,
+  sanitizeFolderPath,
+  uniqueName,
+} from './paths.ts';
 
 /**
  * Placeholder used when a character is created without an uploaded image.
@@ -36,9 +53,15 @@ import { PATHS, PROJECT_ROOT, safeJoin, sanitizeFilename, uniqueName } from './p
  */
 const BLANK_AVATAR_PATH = join(PROJECT_ROOT, 'assets', 'blank-avatar.png');
 
-function summarize(avatar: string, card: TavernCard, modified: number): CharacterSummary {
+function summarize(
+  avatar: string,
+  card: TavernCard,
+  modified: number,
+  folder = '',
+): CharacterSummary {
   return {
     avatar,
+    folder,
     name: card.data.name || basename(avatar, extname(avatar)),
     description: card.data.description,
     creator: card.data.creator,
@@ -55,17 +78,24 @@ function summarize(avatar: string, card: TavernCard, modified: number): Characte
  * failing the whole listing — one bad card should not hide the rest of a library.
  */
 export function listCharacters(): CharacterSummary[] {
-  if (!existsSync(PATHS.characters)) return [];
-
   const summaries: CharacterSummary[] = [];
-  for (const file of readdirSync(PATHS.characters)) {
-    if (!file.toLowerCase().endsWith('.png')) continue;
-    const full = join(PATHS.characters, file);
+  const seen = new Set<string>();
+
+  for (const file of walkCharacterFiles()) {
+    // The walk is ordered shallowest-first, so a duplicate basename made outside the app
+    // resolves to the same file here as it does in resolveCharacterFile. Listing both would
+    // put two rows in the UI that load and save the same card.
+    if (seen.has(file.avatar)) {
+      console.warn(`[characters] duplicate name "${file.avatar}" in "${file.folder}" is hidden`);
+      continue;
+    }
+    seen.add(file.avatar);
+
     try {
-      const card = readCard(new Uint8Array(readFileSync(full)));
-      summaries.push(summarize(file, card, statSync(full).mtimeMs));
+      const card = readCard(new Uint8Array(readFileSync(file.path)));
+      summaries.push(summarize(file.avatar, card, statSync(file.path).mtimeMs, file.folder));
     } catch (error) {
-      console.warn(`[characters] skipping "${file}": ${(error as Error).message}`);
+      console.warn(`[characters] skipping "${file.avatar}": ${(error as Error).message}`);
     }
   }
 
@@ -73,46 +103,59 @@ export function listCharacters(): CharacterSummary[] {
 }
 
 export function getCharacter(avatar: string): CharacterDetail | null {
-  const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return null;
+  const path = resolveCharacterFile(avatar);
+  if (!path) return null;
 
   const card = readCard(new Uint8Array(readFileSync(path)));
-  return { ...summarize(avatar, card, statSync(path).mtimeMs), card };
+  return { ...summarize(avatar, card, statSync(path).mtimeMs, folderOf(path)), card };
 }
 
 /** Raw PNG bytes, for serving the avatar image. */
 export function getCharacterImage(avatar: string): Uint8Array | null {
-  const path = safeJoin(PATHS.characters, avatar);
-  if (!path || !existsSync(path)) return null;
+  const path = resolveCharacterFile(avatar);
+  if (!path) return null;
   return new Uint8Array(readFileSync(path));
 }
 
-function characterExists(name: string): boolean {
-  return existsSync(join(PATHS.characters, `${name}.png`));
+/**
+ * Every filename currently in use, anywhere in the tree, lowercased.
+ *
+ * Built once and closed over rather than probed per candidate: uniqueName can ask up to ten
+ * thousand times, and a tree walk each time would be absurd. Lowercased because macOS and
+ * Windows are case-insensitive, so "alice.png" and "Alice.png" are one file there — folding
+ * case makes an identity collision impossible on every platform rather than most of them.
+ */
+function takenAvatars(): Set<string> {
+  return new Set(walkCharacterFiles().map((file) => file.avatar.toLowerCase()));
 }
 
 type Rollback = () => Promise<void> | void;
 
-/** Filename allocation and file moves share this lock; ordinary edits use the file lock. */
-const CHARACTER_IDENTITIES = 'character-identities';
-
 /**
  * Write a card into a new PNG file, choosing a free filename derived from the name.
  * @param image PNG bytes to embed into; a blank placeholder is used if omitted.
+ * @param folder Where to put it; '' is the top level. Created if it does not exist.
  */
 export async function createCharacter(
   card: TavernCard,
   image?: Uint8Array,
+  folder = '',
 ): Promise<CharacterDetail> {
   return withResourceLock(CHARACTER_IDENTITIES, async () => {
+    const targetFolder = sanitizeFolderPath(folder) ?? '';
+    const directory = safeJoinFolder(PATHS.characters, targetFolder) ?? PATHS.characters;
+
     const safeName = sanitizeFilename(card.data.name) ?? 'Character';
-    const filename = `${uniqueName(safeName, characterExists)}.png`;
-    const path = join(PATHS.characters, filename);
+    // Uniqueness spans the whole tree, not just the destination folder: the filename alone
+    // is the identity, so two cards called Alice in different folders would be one character.
+    const taken = takenAvatars();
+    const filename = `${uniqueName(safeName, (candidate) => taken.has(`${candidate.toLowerCase()}.png`))}.png`;
 
+    mkdirSync(directory, { recursive: true });
     const base = image ?? loadBlankAvatar();
-    await atomicWrite(path, writeCard(base, card));
+    await atomicWrite(join(directory, filename), writeCard(base, card));
 
-    return { ...summarize(filename, card, Date.now()), card };
+    return { ...summarize(filename, card, Date.now(), targetFolder), card };
   });
 }
 
@@ -127,7 +170,7 @@ export async function updateCharacter(
   updates: Partial<CardDataV2>,
   image?: Uint8Array,
 ): Promise<CharacterDetail | null> {
-  const path = safeJoin(PATHS.characters, avatar);
+  const path = resolveCharacterFile(avatar);
   if (!path) return null;
 
   return withFileLock(path, async (replace) => {
@@ -136,7 +179,7 @@ export async function updateCharacter(
     const merged = mergeCardData(readCard(existing), updates);
 
     await replace(writeCard(image ?? existing, merged));
-    return { ...summarize(avatar, merged, Date.now()), card: merged };
+    return { ...summarize(avatar, merged, Date.now(), folderOf(path)), card: merged };
   });
 }
 
@@ -147,14 +190,16 @@ export async function renameCharacter(
   onStaged?: (newAvatar: string) => Promise<Rollback | undefined>,
 ): Promise<CharacterDetail | null> {
   return withResourceLock(CHARACTER_IDENTITIES, async () => {
-    const path = safeJoin(PATHS.characters, avatar);
+    const path = resolveCharacterFile(avatar);
     if (!path) return null;
 
     const safeName = sanitizeFilename(newName);
     if (!safeName) return null;
 
-    const filename = `${uniqueName(safeName, characterExists)}.png`;
-    const newPath = join(PATHS.characters, filename);
+    const taken = takenAvatars();
+    const filename = `${uniqueName(safeName, (candidate) => taken.has(`${candidate.toLowerCase()}.png`))}.png`;
+    // A rename is not a move: the card stays in whichever folder it is already in.
+    const newPath = join(dirname(path), filename);
 
     return withFileLocks([path, newPath], async (replace) => {
       if (!existsSync(path)) return null;
@@ -187,7 +232,7 @@ export async function renameCharacter(
         throw error;
       }
 
-      return { ...summarize(filename, card, Date.now()), card };
+      return { ...summarize(filename, card, Date.now(), folderOf(newPath)), card };
     });
   });
 }
@@ -196,7 +241,7 @@ export async function deleteCharacter(
   avatar: string,
   onStaged?: () => Promise<void>,
 ): Promise<boolean> {
-  const path = safeJoin(PATHS.characters, avatar);
+  const path = resolveCharacterFile(avatar);
   if (!path) return false;
 
   return withResourceLock(CHARACTER_IDENTITIES, () =>
@@ -264,7 +309,11 @@ async function rewriteWorldLinks(
 ): Promise<string[]> {
   if (!existsSync(dir)) return [];
 
-  const files = readdirSync(dir).filter((file) => file.toLowerCase().endsWith('.png'));
+  // Recursive: cards live in user-made subfolders, and a flat listing here would silently
+  // strand every foldered card that links to the lorebook being renamed.
+  const files = (readdirSync(dir, { recursive: true }) as string[]).filter((file) =>
+    file.toLowerCase().endsWith('.png'),
+  );
   const changed: string[] = [];
   try {
     for (const file of files) {
@@ -346,7 +395,7 @@ async function mutateBook(
   avatar: string,
   mutate: (book: WorldInfoBook) => WorldInfoBook | null,
 ): Promise<CharacterDetail | null> {
-  const path = safeJoin(PATHS.characters, avatar);
+  const path = resolveCharacterFile(avatar);
   if (!path) return null;
 
   return withFileLock(path, async (replace) => {
@@ -363,7 +412,7 @@ async function mutateBook(
     });
 
     await replace(writeCard(existing, merged));
-    return { ...summarize(avatar, merged, Date.now()), card: merged };
+    return { ...summarize(avatar, merged, Date.now(), folderOf(path)), card: merged };
   });
 }
 
@@ -452,7 +501,7 @@ export async function updateBook(
 
 /** Remove the embedded book entirely. */
 export async function deleteBook(avatar: string): Promise<CharacterDetail | null> {
-  const path = safeJoin(PATHS.characters, avatar);
+  const path = resolveCharacterFile(avatar);
   if (!path) return null;
 
   return withFileLock(path, async (replace) => {
@@ -463,7 +512,7 @@ export async function deleteBook(avatar: string): Promise<CharacterDetail | null
 
     const merged = mergeCardData(card, { character_book: undefined });
     await replace(writeCard(existing, merged));
-    return { ...summarize(avatar, merged, Date.now()), card: merged };
+    return { ...summarize(avatar, merged, Date.now(), folderOf(path)), card: merged };
   });
 }
 
@@ -474,12 +523,13 @@ export async function deleteBook(avatar: string): Promise<CharacterDetail | null
 export async function importCharacter(
   bytes: Uint8Array,
   filename: string,
+  folder = '',
 ): Promise<CharacterDetail> {
   const isPng = filename.toLowerCase().endsWith('.png');
 
   if (isPng) {
     const card = readCard(bytes);
-    return createCharacter(card, bytes);
+    return createCharacter(card, bytes, folder);
   }
 
   const text = new TextDecoder().decode(bytes);
@@ -489,7 +539,7 @@ export async function importCharacter(
   } catch {
     throw new Error('Import failed: file is neither a PNG card nor valid JSON.');
   }
-  return createCharacter(normalizeCard(parsed));
+  return createCharacter(normalizeCard(parsed), undefined, folder);
 }
 
 let blankAvatarCache: Uint8Array | null = null;

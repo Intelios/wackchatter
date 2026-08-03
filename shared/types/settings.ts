@@ -58,6 +58,16 @@ export interface AppSettings {
   summary: SummarySettings;
   /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
   dialogueColors: DialogueColorSettings;
+  /**
+   * Character folders the user has collapsed in the list.
+   *
+   * Stores the collapsed set rather than the expanded one so the default is open: a folder
+   * that appears while the app is running — made in a file browser, or by a drop — must not
+   * arrive already hidden. A flat array, so `mergeSettings`'s spread carries it and no
+   * field-wise branch is needed. Nothing keys on it, so a stale entry for a folder that has
+   * been renamed away is inert.
+   */
+  collapsedCharacterFolders: string[];
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
@@ -185,4 +195,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     characters: {},
     personas: {},
   },
+  collapsedCharacterFolders: [],
 };

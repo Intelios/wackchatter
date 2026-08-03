@@ -30,6 +30,7 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/png.ts     PNG chunk parse/encode + CRC32 + tEXt. Pure TS, no deps.
   lib/card.ts    Card read/normalise/merge/write.
   lib/paths.ts   Data dirs, filename sanitising, traversal guards.
+  lib/folders.ts Character folders as real directories. Identity stays flat — see below.
   lib/location.ts Which directory that is: pointer file, validation, cloud detection.
   lib/transfer.ts Moving a library between directories, verified and reversible.
   lib/relocate.ts Orchestrates a live move: gate, quiesce, commit.
@@ -48,7 +49,7 @@ shared/          Pure, no I/O. Imported by both server and client.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/.
-data/            Gitignored. characters/*.png, presets/*.json, chats.db, settings.json,
+data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
                  secrets.json, lorebooks/, personas/, backups/ (the deleted-chat trash bin),
                  .wackchatter (marks the folder as a library).
                  The default location, not a fixed one — see "The data directory moves".
@@ -132,6 +133,18 @@ corrupts users' libraries silently.
   (`nickname`, `creation_date`, `assets`, `source`, `group_only_greetings`, `chub`,
   `risuai`) survive an edit. SillyTavern relies on the same mechanism.
 - The card's own `avatar` field is vestigial (`"none"`). **The PNG filename is the identity.**
+- **A folder is a real directory, and never part of the identity.** Cards may sit anywhere
+  under `data/characters`, so paths resolve by searching the tree for the filename
+  (`resolveCharacterFile`) rather than by joining it onto the root. That is what makes a move
+  a plain `rename(2)` with no reference cascade — chats, dialogue colours and backups all key
+  on the bare filename, so reorganising in a file browser, which this feature exists to
+  permit, would otherwise orphan every chat with no way to reconnect them. The price is that
+  `characterExists` spans the whole tree, so names are unique library-wide rather than per
+  folder. Same reasoning as the persona rule: an id something else stores must not change for
+  a cosmetic reorganisation.
+- Anything that walks the character directory must **recurse**. A flat `readdirSync` there is
+  a bug now: it silently skips every foldered card. `rewriteWorldLinks` and
+  `readLibraryStats` were both fixed for this and both would fail quietly, not loudly.
 - Always emit `character_book.extensions`, even as `{}` — ST omits it but its own
   validator requires it.
 
@@ -533,6 +546,11 @@ regex keys are the escape hatches.
   containment guard is trivially walked past). The cloud table asserts its negatives too —
   `Documents/Dropboxes` must not match, because a false alarm teaches users to click through
   the warning that matters.
+- `server/lib/folders.test.ts` and `characters.test.ts` gate the folder rules: traversal is
+  contained, a duplicate basename resolves to the same file every time (shallowest wins),
+  a move leaves the avatar untouched, deleting a folder lifts its cards rather than deleting
+  them, and a lorebook rename reaches a card inside a folder — that last one is the flat-walk
+  regression, and it is the kind that corrupts a library in silence.
 - `server/lib/paths.test.ts` pins that `setDataDir` rewrites `PATHS` **in place**, so a
   reference taken beforehand follows the move. That single assertion is what the ~60
   untouched call sites rest on. Note the loud comment at the top: `paths.ts` is module state
