@@ -178,6 +178,13 @@
   align-items: center;
   gap: var(--wc-space-1);
   min-width: 0;
+  /*
+   * The containing block for the sliding highlight. It has to be the cluster itself:
+   * the pill is measured with offsetLeft/offsetWidth, which resolve against the nearest
+   * positioned ancestor — a resolved position elsewhere would make the measurement
+   * wrong in a way only a build with differing metrics would catch.
+   */
+  position: relative;
 }
 
 .shell__cluster--left {
@@ -325,6 +332,8 @@
   font-size: var(--wc-text-sm);
   white-space: nowrap;
   transition: background var(--wc-duration-fast) ease, color var(--wc-duration-fast) ease;
+  /* Paints above the cluster's indicator: both are positioned, DOM order breaks the tie. */
+  position: relative;
 }
 
 .panel-toggle:hover {
@@ -332,15 +341,59 @@
   color: var(--wc-text);
 }
 
+/*
+ * The pressed fill lives on the sliding indicator, not the button — a button painting
+ * its own background here would sit over the pill as a grey-on-green double layer.
+ */
 .panel-toggle[aria-pressed="true"] {
   color: var(--wc-accent);
-  background: var(--wc-accent-subtle);
+}
+
+/* Hovering the active button must not paint the grey hover fill over the indicator. */
+.panel-toggle[aria-pressed="true"]:hover {
+  background: transparent;
+  color: var(--wc-accent-hover);
 }
 
 .panel-toggle svg {
   width: var(--wc-icon);
   height: var(--wc-icon);
   flex-shrink: 0;
+}
+
+/*
+ * The sliding highlight. One pill per cluster, moved by PanelCluster to sit behind the
+ * active button. transform/width carry the slide, opacity carries the fade on close —
+ * the pill keeps its last position while the panel is closed, so it fades in place
+ * rather than animating off to nowhere.
+ *
+ * It paints behind the buttons: it is the first child, and both it and the buttons are
+ * positioned, so DOM order breaks the tie in the buttons' favour.
+ */
+.shell__cluster-indicator {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-accent-subtle);
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+}
+
+.shell__cluster-indicator[data-active="true"] {
+  opacity: 1;
+}
+
+/*
+ * Transitions switch on one frame after first placement. Without the delay the pill
+ * would animate out of its initial width-0 / translateX-0 state — a slide in from the
+ * cluster's left edge on the very first paint. The position is painted first, then the
+ * transition exists, and only genuine moves animate from then on.
+ */
+.shell__cluster-indicator[data-ready="true"] {
+  transition: transform var(--wc-duration) var(--wc-ease), width var(--wc-duration) var(--wc-ease),
+    opacity var(--wc-duration-fast) ease;
 }
 
 /* The clusters are the first thing to give up room when the window is narrow. */

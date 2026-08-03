@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { PanelSpec } from './panels.tsx';
 import './AppShell.css';
@@ -9,19 +10,81 @@ interface PanelClusterProps<T extends string> {
   side: 'left' | 'right';
 }
 
+/** Where the sliding highlight sits, relative to the cluster. */
+interface IndicatorRect {
+  x: number;
+  width: number;
+}
+
 /**
  * A side's button group.
  *
  * These are toggle buttons, not tabs: `role="tab"` would promise arrow-key navigation
  * between siblings, and these panels are not siblings under one container. `aria-pressed`
  * says "this is on", `aria-expanded` + `aria-controls` say "and it revealed that".
+ *
+ * The active state is one pill per cluster, measured to sit behind the active button and
+ * moved with transform/width transitions — so hopping from Generation to Inspect slides
+ * the highlight across the gap instead of two independent buttons toggling fills. The
+ * pill keeps its last position when the panel closes and just fades.
  */
 function PanelCluster<T extends string>({ buttons, active, onSelect, side }: PanelClusterProps<T>) {
+  const clusterRef = useRef<HTMLDivElement>(null);
+  const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const readyRef = useRef(false);
+  const [rect, setRect] = useState<IndicatorRect | null>(null);
+  const [ready, setReady] = useState(false);
+
+  /*
+   * Layout effect, not effect: the pill must be at its final position for the very first
+   * paint, or a no-transition frame shows it at width 0 before the position lands.
+   */
+  useLayoutEffect(() => {
+    const button = active ? buttonRefs.current.get(active) : undefined;
+    if (!button) return;
+    setRect({ x: button.offsetLeft, width: button.offsetWidth });
+    if (!readyRef.current) {
+      readyRef.current = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
+    }
+  }, [active]);
+
+  /*
+   * Button widths are not fixed: the <=1100px query drops the labels, and loading fonts
+   * shift text widths. Either changes the cluster's size, so observing the cluster
+   * catches both. The offset reads are stable inside the callback — layout is current
+   * when ResizeObserver callbacks run.
+   */
+  useEffect(() => {
+    const cluster = clusterRef.current;
+    if (!cluster) return;
+    const observer = new ResizeObserver(() => {
+      const button = active ? buttonRefs.current.get(active) : undefined;
+      if (!button) return;
+      setRect({ x: button.offsetLeft, width: button.offsetWidth });
+    });
+    observer.observe(cluster);
+    return () => observer.disconnect();
+  }, [active]);
+
   return (
-    <div className={`shell__cluster shell__cluster--${side}`}>
+    <div ref={clusterRef} className={`shell__cluster shell__cluster--${side}`}>
+      {rect ? (
+        <span
+          aria-hidden="true"
+          className="shell__cluster-indicator"
+          data-active={active !== null}
+          data-ready={ready}
+          style={{ transform: `translateX(${rect.x}px)`, width: rect.width }}
+        />
+      ) : null}
       {buttons.map((button) => (
         <button
           key={button.id}
+          ref={(el) => {
+            if (el) buttonRefs.current.set(button.id, el);
+            else buttonRefs.current.delete(button.id);
+          }}
           type="button"
           className="panel-toggle"
           aria-pressed={active === button.id}
