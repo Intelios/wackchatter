@@ -801,7 +801,11 @@ export function App() {
             ) : null}
 
             {rightPanel === 'appearance' ? (
-              <AppearancePanel settings={settings} onPatch={patchAppearance} />
+              <AppearancePanel
+                settings={settings}
+                onPatch={patchAppearance}
+                unsavedPreset={presetDraft.dirty}
+              />
             ) : null}
           </Panel>
         )

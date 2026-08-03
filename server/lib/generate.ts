@@ -22,6 +22,36 @@ import type {
 import { getApiKey } from './secrets.ts';
 import { getSettings } from './settings.ts';
 
+/**
+ * Replies believed to be streaming right now, by start time.
+ *
+ * The data folder must not move mid-generation: the stream itself holds no files and would
+ * survive, but the request that saves the finished reply would land on a gated server and
+ * the reply would be lost. Entries older than the cap are ignored rather than trusted — a
+ * client that hangs up without draining the stream may never run the transform's flush, and
+ * one leaked entry would otherwise block the folder from ever moving again. Ten minutes is
+ * far longer than any real reply takes.
+ */
+const inFlight = new Set<{ started: number }>();
+const STALE_AFTER_MS = 10 * 60 * 1000;
+
+export function activeGenerations(): number {
+  const cutoff = Date.now() - STALE_AFTER_MS;
+  for (const entry of inFlight) {
+    if (entry.started < cutoff) inFlight.delete(entry);
+  }
+  return inFlight.size;
+}
+
+/** Mark a generation as started. The returned function is safe to call more than once. */
+export function trackGeneration(): () => void {
+  const entry = { started: Date.now() };
+  inFlight.add(entry);
+  return () => {
+    inFlight.delete(entry);
+  };
+}
+
 /** Sent to OpenRouter as HTTP-Referer. Dev and prod differ; either is a valid origin. */
 function appUrl(): string {
   const port = process.env.WC_PORT ?? '8787';

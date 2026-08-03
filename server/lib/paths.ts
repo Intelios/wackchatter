@@ -2,34 +2,102 @@
  * Data directory resolution and creation.
  *
  * Everything the user owns lives under one directory so it can be backed up or moved
- * wholesale. Override with WC_DATA_DIR.
+ * wholesale. Which directory that is gets decided at boot by lib/location.ts — WC_DATA_DIR
+ * first, then the pointer file, then <repo>/data — and the user can move it while the
+ * server runs.
+ *
+ * This module deliberately does not read the pointer file itself: location.ts imports
+ * paths.ts, never the reverse. Until initDataLocation() runs, PATHS names the env override
+ * or the default.
  */
 
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = resolve(serverDir, '../..');
+export const DEFAULT_DATA_DIR = join(PROJECT_ROOT, 'data');
 
-export const DATA_DIR = process.env.WC_DATA_DIR
-  ? resolve(process.env.WC_DATA_DIR)
-  : join(PROJECT_ROOT, 'data');
+/** Names a directory as a WackChatter library, so one can be told from a stranger's folder. */
+export const MARKER_FILENAME = '.wackchatter';
 
-export const PATHS = {
-  root: DATA_DIR,
-  characters: join(DATA_DIR, 'characters'),
-  presets: join(DATA_DIR, 'presets'),
-  lorebooks: join(DATA_DIR, 'lorebooks'),
-  personas: join(DATA_DIR, 'personas'),
-  personaAvatars: join(DATA_DIR, 'personas', 'avatars'),
-  backgrounds: join(DATA_DIR, 'backgrounds'),
+export interface DataPaths {
+  root: string;
+  characters: string;
+  presets: string;
+  lorebooks: string;
+  personas: string;
+  personaAvatars: string;
+  backgrounds: string;
   /** Deleted chats wait here, restorable, until pruned by the retention cap. */
-  backups: join(DATA_DIR, 'backups'),
-  settings: join(DATA_DIR, 'settings.json'),
-  secrets: join(DATA_DIR, 'secrets.json'),
-  db: join(DATA_DIR, 'chats.db'),
-} as const;
+  backups: string;
+  settings: string;
+  secrets: string;
+  db: string;
+  marker: string;
+}
+
+function buildPaths(dataDir: string): DataPaths {
+  return {
+    root: dataDir,
+    characters: join(dataDir, 'characters'),
+    presets: join(dataDir, 'presets'),
+    lorebooks: join(dataDir, 'lorebooks'),
+    personas: join(dataDir, 'personas'),
+    personaAvatars: join(dataDir, 'personas', 'avatars'),
+    backgrounds: join(dataDir, 'backgrounds'),
+    backups: join(dataDir, 'backups'),
+    settings: join(dataDir, 'settings.json'),
+    secrets: join(dataDir, 'secrets.json'),
+    db: join(dataDir, 'chats.db'),
+    marker: join(dataDir, MARKER_FILENAME),
+  };
+}
+
+const mutablePaths = buildPaths(
+  process.env.WC_DATA_DIR ? resolve(process.env.WC_DATA_DIR) : DEFAULT_DATA_DIR,
+);
+
+/**
+ * A LIVE VIEW of the current data directory, not a snapshot.
+ *
+ * setDataDir rewrites this object in place, so the ~60 sites that read PATHS.x at call time
+ * follow the move with no changes of their own. The corollary is a rule with teeth: never
+ * destructure PATHS, and never capture PATHS.x into a module-level const. Doing either pins
+ * a path to whatever the root was at import time — which is exactly the bug the old
+ * BLANK_AVATAR_PATH had, and it would survive a move silently.
+ *
+ * Readonly here means immutable *to consumers*. The module keeps a mutable alias.
+ */
+export const PATHS: Readonly<DataPaths> = mutablePaths;
+
+/** Point every path at a new root. Callers must reset anything memoised from the old one. */
+export function setDataDir(dataDir: string): void {
+  Object.assign(mutablePaths, buildPaths(resolve(dataDir)));
+}
+
+/**
+ * Stamp a directory as a WackChatter library.
+ *
+ * Idempotent, and `created` is never rewritten — it is the only field here with any history
+ * in it. A corrupt marker is replaced rather than trusted. Written with a plain write rather
+ * than through fs.ts: a torn marker is self-healing (the next call rewrites it) and keeping
+ * this module free of local imports keeps the dependency graph acyclic.
+ */
+export function writeMarker(dir: string): void {
+  const path = join(dir, MARKER_FILENAME);
+  if (existsSync(path)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      if (parsed && typeof parsed === 'object' && 'created' in parsed) return;
+    } catch {
+      // Unreadable or not JSON — fall through and replace it.
+    }
+  }
+  const marker = { app: 'wackchatter', version: 1, created: new Date().toISOString() };
+  writeFileSync(path, `${JSON.stringify(marker, null, 2)}\n`);
+}
 
 export function ensureDataDirs(): void {
   for (const dir of [
@@ -44,6 +112,8 @@ export function ensureDataDirs(): void {
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+  // Every existing library picks up a marker here at next boot, so nothing needs migrating.
+  writeMarker(PATHS.root);
 }
 
 /** Control characters (0x00-0x1F and 0x7F) are illegal in filenames on every platform. */

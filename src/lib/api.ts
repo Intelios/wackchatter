@@ -22,6 +22,13 @@ import type {
   Persona,
   StaleChatRevision,
 } from '@shared/types/chat.ts';
+import type {
+  BrowseResult,
+  LocationInfo,
+  LocationKind,
+  LocationVerdict,
+  SwitchResult,
+} from '@shared/types/location.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
@@ -398,6 +405,32 @@ export const settingsApi = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(connection),
     }),
+};
+
+export const locationApi = {
+  /** `withSize` walks the whole library, so the panel renders first and fills it in after. */
+  get: (withSize = false) => request<LocationInfo>(`/location${withSize ? '?size=1' : ''}`),
+
+  inspect: (path: string) =>
+    request<LocationVerdict>('/location/inspect', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path }),
+    }),
+
+  /**
+   * `expect` is the classification the user was actually shown. The server re-checks it and
+   * refuses if the folder changed in between, so the confirm means what it said.
+   */
+  move: (path: string, expect: LocationKind) =>
+    request<SwitchResult>('/location', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path, expect }),
+    }),
+
+  /** Opens a native folder dialog on the machine running the server. Sends no path. */
+  browse: () => request<BrowseResult>('/location/browse', { method: 'POST' }),
 };
 
 export interface StreamHandlers {

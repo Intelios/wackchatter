@@ -433,3 +433,13 @@ export function chatStore(): ChatStore {
   store ??= createChatStore(getDb());
   return store;
 }
+
+/**
+ * Drop the memoized store, so the next call rebuilds it against the current data directory.
+ *
+ * It holds prepared statements bound to one connection and a backup directory captured at
+ * construction, so it has to go before the database closes — not after.
+ */
+export function resetChatStore(): void {
+  store = null;
+}

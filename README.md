@@ -16,6 +16,7 @@ Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
 - **Prompt Manager** — drag-reorder, marker prompts, depth injection, real tokenizer
 - **Providers** — any OpenAI-compatible endpoint plus OpenRouter; keys stored server-side (mode 0600), never sent to the browser
 - **Appearance** — backgrounds, glass effects, dialogue colors, all themable from one token file
+- **Movable library** — keep your data anywhere (external drive, synced folder), changed from the UI with no restart
 
 ## Getting started
 
@@ -36,7 +37,7 @@ bun run build        # typecheck + Vite build to dist/
 bun run start        # serves dist/ + API on one port, opens the browser
 ```
 
-Environment variables: `WC_PORT` (API port), `WC_DATA_DIR` (data directory), `WC_NO_OPEN=1` (don't launch browser).
+Environment variables: `WC_PORT` (API port), `WC_DATA_DIR` (pins the data folder and locks the in-app setting), `WC_NO_OPEN=1` (don't launch browser).
 
 On first run, add a provider API key in **Connection** (left panel) and pick a model. Character cards (`.png`) drop into `data/characters/` or import via the Characters panel.
 
@@ -50,9 +51,42 @@ data/personas/     Personas + avatars.
 data/chats.db      Chat history (SQLite).
 data/backups/      Deleted chats, restorable.
 data/settings.json App settings. data/secrets.json API keys (never sent to browser).
+data/.wackchatter  Marks the folder as a library, so the app can tell it from any other.
 ```
 
-`data/` is gitignored. Everything in it is portable — copy the folder to move your library.
+`data/` is gitignored, and everything in it is one portable unit.
+
+### Moving it somewhere else
+
+`<repo>/data` is the default, not a requirement. **Appearance → Data location** moves the whole
+library anywhere — an external drive, a synced folder, wherever you actually keep things — and
+the app repoints itself without a restart. Point it at a folder that already holds a library and
+it adopts that one instead, moving nothing, which is also how you switch back.
+
+Where it lands is remembered outside the library (it cannot live inside the folder it names):
+
+```
+macOS    ~/Library/Application Support/WackChatter/location.json
+Windows  %APPDATA%\WackChatter\location.json
+Linux    ${XDG_CONFIG_HOME:-~/.config}/wackchatter/location.json
+```
+
+`WC_DATA_DIR` overrides that file and locks the setting in the UI. If the configured folder is
+missing at startup — an unplugged drive, a folder that hasn't synced yet — the app says so and
+falls back to `<repo>/data` **without changing the setting**, so reconnecting the folder and
+restarting is all it takes.
+
+### Cloud folders
+
+Putting the library in Dropbox, iCloud Drive, OneDrive or Google Drive works, with two caveats
+worth knowing before you do it:
+
+- **SQLite and sync clients disagree.** A sync client can upload `chats.db` mid-write, or let two
+  machines write it at once, and either corrupts it. WackChatter detects a synced folder and turns
+  off SQLite's write-ahead log there, which removes the sidecar files that cause most of this —
+  but run it from **one machine at a time**, and let the folder finish syncing before you quit.
+- **Your API keys go with it.** `secrets.json` lives in the library, so moving it to a synced
+  folder uploads your keys to that service. They are no longer only on your machine.
 
 ## Testing
 

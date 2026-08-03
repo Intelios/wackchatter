@@ -1,6 +1,8 @@
 node_modules/
 dist/
 data/
+# A cross-disk move renames the old library aside rather than deleting it.
+data.moved-*/
 *.log
 .DS_Store
 .env

@@ -21,7 +21,7 @@ research; we reimplement, we do not copy).
 - `bun test` — all tests. `npx tsc --noEmit` for types. `bun run lint` for Biome.
 
 `WC_PORT` overrides the API port, `WC_DATA_DIR` the data directory, `WC_NO_OPEN=1` stops
-the browser launching.
+the browser launching. `WC_DATA_DIR` beats the pointer file and locks the setting in the UI.
 
 ## Layout
 
@@ -30,6 +30,9 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/png.ts     PNG chunk parse/encode + CRC32 + tEXt. Pure TS, no deps.
   lib/card.ts    Card read/normalise/merge/write.
   lib/paths.ts   Data dirs, filename sanitising, traversal guards.
+  lib/location.ts Which directory that is: pointer file, validation, cloud detection.
+  lib/transfer.ts Moving a library between directories, verified and reversible.
+  lib/relocate.ts Orchestrates a live move: gate, quiesce, commit.
   lib/db.ts      bun:sqlite connection + schema.
   lib/chats.ts   createChatStore(db) — the whole persistence boundary.
   lib/secrets.ts API keys. Mode 0600. Never leaves the machine.
@@ -46,7 +49,9 @@ src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/.
 data/            Gitignored. characters/*.png, presets/*.json, chats.db, settings.json,
-                 secrets.json, lorebooks/, personas/, backups/ (the deleted-chat trash bin).
+                 secrets.json, lorebooks/, personas/, backups/ (the deleted-chat trash bin),
+                 .wackchatter (marks the folder as a library).
+                 The default location, not a fixed one — see "The data directory moves".
 ```
 
 **Prompt assembly runs client-side**, like SillyTavern. The server only proxies. This keeps
@@ -59,6 +64,43 @@ so the inspector shows the wire payload rather than a reconstruction of it.
 preset's own connection keys (`custom_url`, `openrouter_model`, `chat_completion_source`)
 round-trip untouched but are never read, so importing someone else's preset cannot
 silently repoint your endpoint and exporting yours cannot leak it.
+
+## The data directory moves
+
+`<repo>/data` is the default, not a fixed location. The user can relocate the whole library
+from Appearance → Data location, and the server repoints itself without restarting. Three
+invariants make that safe, and each one is a real bug that was possible before it existed.
+
+**1. `PATHS` is a live view, never a snapshot.** `setDataDir` rewrites one object in place,
+which is the only reason ~60 call sites that read `PATHS.x` follow a move without being
+touched. So: never destructure `PATHS`, and never capture `PATHS.x` into a module-level
+const. The old `BLANK_AVATAR_PATH` did exactly that — and was anchored to the data dir's
+parent, so it would have travelled with the library it had no business following.
+`server/lib/paths.test.ts` pins the object identity; if that test ever fails, every one of
+those call sites is silently stuck on the old root.
+
+**2. Anything memoised from `PATHS` needs a reset, wired into `quiesce()`.** Today that is
+the database handle (`db.ts`), the chat store (`chats.ts`, which holds prepared statements
+bound to that handle, so it resets first) and the settings cache (`settings.ts`). Note what
+is *not* on the list: `blankAvatarCache` is anchored to `PROJECT_ROOT`, which never moves.
+Fixing an anchor deletes a reset obligation — prefer that to adding one.
+
+**3. The pointer write is the commit point.** It goes immediately after the last operation
+that changes where the data physically is. Before it, unwind. After it, never unwind: report
+the failure and ask for a restart, because a restart reads the pointer and lands correctly.
+Writing the pointer last instead — the obvious ordering — means a crash leaves the library
+moved and the config saying otherwise, and the next boot finds an empty directory that
+`ensureDataDirs()` helpfully recreates.
+
+Two supporting rules. **The database moves as one file**: `closeDatabase()` checkpoints with
+`TRUNCATE` and leaves WAL, because Bun caches prepared statements and a plain `close()` never
+gets SQLite to drop its own sidecars — and a `-wal` that still has content is never deleted.
+**A synced folder gets `journal_mode = DELETE`**, since the specific thing every sync client
+mishandles is three interdependent files pretending to be independent ones.
+
+`lib/backgrounds.ts` refuses caller-supplied directories and this feature accepts them; the
+comments in both places explain why that is one policy rather than two. Read them together
+before relaxing either.
 
 ## Format rules that must not be broken
 
@@ -457,6 +499,24 @@ regex keys are the escape hatches.
   reason. There is no DOM test harness in this project, so menu logic lives in a pure
   `buildChatMenu` and the React wrapper stays thin — the same split as
   `composeLorebookSources` in `useLorebooks`.
+- `server/lib/location.test.ts` gates the data-directory rules. Two are load-bearing rather
+  than thorough: an unreachable pointer must fall back **and leave the pointer file's bytes
+  untouched** (rewriting it is how an unplugged drive silently becomes a lost setting), and a
+  symlink pointing at `/usr` must be refused (without resolving symlinks first, every
+  containment guard is trivially walked past). The cloud table asserts its negatives too —
+  `Documents/Dropboxes` must not match, because a false alarm teaches users to click through
+  the warning that matters.
+- `server/lib/paths.test.ts` pins that `setDataDir` rewrites `PATHS` **in place**, so a
+  reference taken beforehand follows the move. That single assertion is what the ~60
+  untouched call sites rest on. Note the loud comment at the top: `paths.ts` is module state
+  shared by the whole `bun test` process, so any test that repoints it must put it back or
+  the failure lands in an unrelated file.
+- `server/lib/transfer.test.ts` runs the same move both ways (`rename` and, via `forceCopy`,
+  the cross-disk copy) against a real seeded database, and checks what would actually hurt:
+  the chat row still reads back, `quick_check` passes, no `-wal` reaches the destination,
+  `secrets.json` is still 0600, and a failed copy leaves the source untouched.
+- `src/features/appearance/dataLocation.test.ts` covers `describeVerdict`, including that
+  every disabled state carries a reason — same convention as `ChatMenu.test.ts`.
 
 When touching a format, add the test before the code.
 
