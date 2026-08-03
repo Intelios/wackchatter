@@ -401,7 +401,7 @@ describe('depth injection', () => {
     expect(messages.at(-1)!.content).toBe('LAST');
   });
 
-  test('injection_order breaks ties at the same depth, descending', () => {
+  test('higher injection_order sits closer to the end at the same depth', () => {
     const preset = {
       ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
       new_chat_prompt: '',
@@ -417,7 +417,28 @@ describe('depth injection', () => {
     });
 
     const contents = messages.map((m) => m.content);
-    expect(contents.indexOf('HIGH')).toBeLessThan(contents.indexOf('LOW'));
+    expect(contents.indexOf('LOW')).toBeLessThan(contents.indexOf('HIGH'));
+  });
+
+  test('at one order, roles read assistant, user, system toward the end', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      new_chat_prompt: '',
+    };
+
+    const { messages } = assemble({
+      preset,
+      messages: makeMessages(1),
+      worldInfoDepth: [
+        { depth: 0, order: 100, role: 'system', content: 'SYSTEM' },
+        { depth: 0, order: 100, role: 'assistant', content: 'ASSISTANT' },
+        { depth: 0, order: 100, role: 'user', content: 'USER' },
+      ],
+    });
+
+    const contents = messages.map((m) => m.content);
+    expect(contents.indexOf('ASSISTANT')).toBeLessThan(contents.indexOf('USER'));
+    expect(contents.indexOf('USER')).toBeLessThan(contents.indexOf('SYSTEM'));
   });
 
   test('mixed depths are measured against the original history, not prior insertions', () => {

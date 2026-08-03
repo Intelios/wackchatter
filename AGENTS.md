@@ -100,8 +100,14 @@ corrupts users' libraries silently.
 - Budget is `openai_max_context - openai_max_tokens`. History packs **newest-first** and
   stops hard at the first message that doesn't fit.
 - `injection_position: ABSOLUTE` leaves the ordered walk and splices into the history at
-  `injection_depth` (0 = after the last message), ties broken by `injection_order`
-  **descending**.
+  `injection_depth` (0 = after the last message). Ties at one depth read **low→high
+  `injection_order`**, and within one order **assistant→user→system**, toward the model's
+  last word — so a higher order sits **closer to the end**. That is SillyTavern's ordering
+  (`populationInjectionPrompts` in `openai.js`: it walks order groups high→low over the
+  newest-first array, then reverses; the UI's "low/top to high/bottom" says the same), and
+  it is what makes presets with tuned priorities read the same in both apps. The author's
+  note riding an absolute scenario uses `order − 1` for beforeScenario / `order + 1` for
+  afterScenario, which only works under this reading.
 - A card's `system_prompt` / `post_history_instructions` override `main` / `jailbreak`
   unless the prompt sets `forbid_overrides`.
 - `is_system` on a message means "hidden from prompt" — still shown in the transcript.

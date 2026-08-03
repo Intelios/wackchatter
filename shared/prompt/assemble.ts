@@ -11,7 +11,9 @@
  *  - The token budget is `openai_max_context - openai_max_tokens`. Chat history packs
  *    newest-first and stops hard at the first message that doesn't fit.
  *  - `injection_position: ABSOLUTE` prompts leave the ordered walk and splice into the
- *    history at `injection_depth`, ties broken by `injection_order` descending.
+ *    history at `injection_depth`. Ties at one depth read low→high `injection_order` and,
+ *    within an order, assistant→user→system toward the model's last word — SillyTavern's
+ *    ordering, so a higher order sits closer to the end.
  *  - A character card's system_prompt / post_history_instructions override the `main` /
  *    `jailbreak` prompts unless the prompt sets `forbid_overrides`.
  */
@@ -212,9 +214,12 @@ function applyDepthInjections(history: ApiMessage[], injections: DepthInjection[
 
   for (const depth of depths) {
     const group = byDepth.get(depth)!;
-    // Higher injection_order goes first at the same depth.
+    // SillyTavern semantics (openai.js populationInjectionPrompts): the splice lands the
+    // LAST sorted entry closest to the model's last word, so sort low→high order and,
+    // within one order, assistant→user→system. A higher injection_order — and the system
+    // role — therefore reads closer to the end.
     const roleOrder = { system: 0, user: 1, assistant: 2 } as const;
-    group.sort((a, b) => b.order - a.order || roleOrder[a.role] - roleOrder[b.role]);
+    group.sort((a, b) => a.order - b.order || roleOrder[b.role] - roleOrder[a.role]);
 
     const index = Math.max(0, originalLength - depth);
     result.splice(index, 0, ...group.map((item) => ({ role: item.role, content: item.content })));
@@ -537,7 +542,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         if (noteContent.trim()) {
           const noteInjection: DepthInjection = {
             depth: injection.depth,
-            order: injection.order + (authorNote.position === 'beforeScenario' ? 1 : -1),
+            order: injection.order + (authorNote.position === 'beforeScenario' ? -1 : 1),
             role: authorNote.role,
             content: noteContent,
           };
