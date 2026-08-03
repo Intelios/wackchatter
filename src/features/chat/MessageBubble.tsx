@@ -1,6 +1,6 @@
 import { type MessageState, currentText, swipeCount } from '@shared/chat/message.ts';
 import { PROVIDERS, isProviderId } from '@shared/providers/types.ts';
-import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ChevronIcon,
   ChevronLeftIcon,
@@ -13,7 +13,9 @@ import { MessageMenu } from './MessageMenu.tsx';
 import { Reasoning } from './Reasoning.tsx';
 import { StreamingText } from './StreamingText.tsx';
 import { formatTimestamp } from './formatDate.ts';
+import type { GenMode } from './state/chatReducer.ts';
 import type { StreamStore } from './state/streamStore.ts';
+import { type SwipeMotionDir, resolveSwipeMotion } from './swipeMotion.ts';
 import './MessageBubble.css';
 
 interface MessageBubbleProps {
@@ -25,6 +27,8 @@ interface MessageBubbleProps {
   dialogueColor: string | null;
   /** True while this message is the one being generated into. */
   streaming: boolean;
+  /** The generation in flight, or null when idle. Lets the bubble tell a re-roll from a send. */
+  mode: GenMode | null;
   stream: StreamStore;
   /** The final message in the transcript, which is the only one that can be acted on. */
   isLast: boolean;
@@ -63,6 +67,7 @@ export const MessageBubble = memo(function MessageBubble({
   dialogueActive,
   dialogueColor,
   streaming,
+  mode,
   stream,
   isLast,
   busy,
@@ -82,6 +87,36 @@ export const MessageBubble = memo(function MessageBubble({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
 
+  /*
+   * The swipe entrance animation, presentation-only.
+   *
+   * The body below is keyed on a bump of this state, so a new motion value remounts it
+   * and replays the CSS entrance. It starts null — nothing animates on mount, which is
+   * what keeps loading a chat quiet — and is set only when a transition actually looks
+   * like a swipe or a re-roll (see resolveSwipeMotion). The keyed remount is also what
+   * makes consecutive swipes in the same direction each animate.
+   */
+  const [motion, setMotion] = useState<{ n: number; dir: SwipeMotionDir } | null>(null);
+  const prevSwipeRef = useRef(message.swipe_id);
+  // Deliberately not seeded with the current value: a bubble that mounts already
+  // streaming (a regenerate's placeholder) must read as a stream just started.
+  const prevStreamingRef = useRef(false);
+
+  // useLayoutEffect, not useEffect: the class has to land before the first paint, or
+  // the swapped text shows one unanimated frame and then jumps into its `from` frame.
+  useLayoutEffect(() => {
+    const dir = resolveSwipeMotion({
+      swipeId: message.swipe_id,
+      streaming,
+      mode,
+      prevSwipeId: prevSwipeRef.current,
+      prevStreaming: prevStreamingRef.current,
+    });
+    prevSwipeRef.current = message.swipe_id;
+    prevStreamingRef.current = streaming;
+    if (dir) setMotion((m) => ({ n: (m?.n ?? 0) + 1, dir }));
+  }, [message.swipe_id, streaming, mode]);
+
   const text = currentText(message);
   const renderedText = displayText ?? text;
   const swipes = swipeCount(message);
@@ -95,6 +130,9 @@ export const MessageBubble = memo(function MessageBubble({
 
   function startEditing() {
     setDraft(text);
+    // The editor replaces the body; without clearing, closing it would remount the body
+    // with a stale motion class and replay the last swipe's entrance for no reason.
+    setMotion(null);
     setEditing(true);
   }
 
@@ -235,20 +273,36 @@ export const MessageBubble = memo(function MessageBubble({
               <span className="wc-hint">⌘↵ to save, Esc to cancel</span>
             </div>
           </div>
-        ) : streaming ? (
-          // Must stay an ordinary child: useStickToBottom follows the transcript by
-          // observing its box, and only this leaf re-renders while tokens arrive.
-          <StreamingText store={stream} />
         ) : (
-          <>
-            {info?.extra?.reasoning ? (
-              <Reasoning
-                text={String(info.extra.reasoning)}
-                onEdit={(reasoning) => onEditReasoning(message.id, reasoning)}
-              />
-            ) : null}
-            <Markdown text={renderedText} />
-          </>
+          /*
+           * Keyed on the motion counter so a swipe or re-roll remounts this region and
+           * replays its entrance; the avatar, header and footer never move. The plain
+           * wrapper is fine for useStickToBottom, which observes the transcript box — the
+           * streaming leaf still sits in ordinary flow and only this region re-renders
+           * while tokens arrive.
+           */
+          <div
+            key={motion?.n}
+            className={
+              motion
+                ? `message__body message__body--motion message__body--${motion.dir}`
+                : 'message__body'
+            }
+          >
+            {streaming ? (
+              <StreamingText store={stream} />
+            ) : (
+              <>
+                {info?.extra?.reasoning ? (
+                  <Reasoning
+                    text={String(info.extra.reasoning)}
+                    onEdit={(reasoning) => onEditReasoning(message.id, reasoning)}
+                  />
+                ) : null}
+                <Markdown text={renderedText} />
+              </>
+            )}
+          </div>
         )}
 
         {!editing && !streaming ? (

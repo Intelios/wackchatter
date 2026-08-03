@@ -200,6 +200,7 @@ export function ChatView({
                       message.is_user ? personaDialogue.color : characterDialogue.color
                     }
                     streaming={state.streamingId === message.id}
+                    mode={state.mode}
                     stream={stream}
                     isLast={message.id === lastId}
                     busy={busy}

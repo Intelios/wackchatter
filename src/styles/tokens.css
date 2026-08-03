@@ -115,6 +115,8 @@
   --wc-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --wc-duration: 260ms;
   --wc-duration-fast: 120ms;
+  /* How far an incoming swipe or re-roll travels before settling. */
+  --wc-swipe-distance: 28px;
 
   --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }

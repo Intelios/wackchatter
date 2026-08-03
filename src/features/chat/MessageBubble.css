@@ -253,6 +253,51 @@
   }
 }
 
+/* --- Swipe motion -------------------------------------------------------- */
+
+/*
+ * The body's swipe entrance. The `--motion` class is applied by a state bump that fires
+ * only on a real swipe or re-roll transition (see resolveSwipeMotion), never on mount —
+ * so loading a chat does not rain entrances across the transcript. The region is keyed
+ * on that bump, so a fresh key replays the animation, which is what makes consecutive
+ * swipes each animate.
+ */
+.message__body--motion {
+  animation: wc-swipe-in-right var(--wc-duration) var(--wc-ease);
+}
+
+/* Equal specificity to the rule above, so the one declared later wins: the modifiers only
+   swap which keyframes the shared animation plays. */
+.message__body--prev {
+  animation-name: wc-swipe-in-left;
+}
+
+.message__body--next {
+  animation-name: wc-swipe-in-right;
+}
+
+@keyframes wc-swipe-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(var(--wc-swipe-distance));
+  }
+}
+
+@keyframes wc-swipe-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--wc-swipe-distance)));
+  }
+}
+
+/* Deliberately explicit on top of the duration-zeroing in tokens.css: a 0ms animation
+   would still flash its `from` frame on the keyed remount. */
+@media (prefers-reduced-motion: reduce) {
+  .message__body--motion {
+    animation: none;
+  }
+}
+
 /* --- Reasoning ---------------------------------------------------------- */
 
 /*
