@@ -141,6 +141,24 @@ describe('creating and reading', () => {
     expect(loaded.send_date).toBe('2026-04-04T00:00:00.000Z');
   });
 
+  test('a recorded speaker survives the round trip, in all three states', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      messages: [
+        message({ is_user: true, name: 'Jack', persona_id: 'persona-1' }),
+        message({ is_user: true, name: 'Jack', persona_id: null }),
+        message({ is_user: true, name: 'Jack' }),
+      ],
+    });
+
+    const loaded = store.getChat(created.id)!.messages;
+    expect(loaded[0]!.persona_id).toBe('persona-1');
+    expect(loaded[1]!.persona_id).toBeNull();
+    // Missing means "speaker not recorded" — it must not come back as null.
+    expect(loaded[2]!.persona_id).toBeUndefined();
+    expect(Object.hasOwn(loaded[2]!, 'persona_id')).toBe(false);
+  });
+
   test('a message whose mes disagrees with its swipe slot is repaired on write', () => {
     // The client cannot store a desynced message even by sending one.
     const created = store.createChat({
@@ -343,7 +361,40 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('2');
+    ).toBe('3');
+  });
+
+  test('adds persona_id to a v2 database without losing its messages', () => {
+    const legacy = new Database(':memory:');
+    legacy.exec(`
+      CREATE TABLE chats (
+        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
+        created INTEGER NOT NULL, modified INTEGER NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE messages (
+        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
+        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, swipe_id INTEGER NOT NULL DEFAULT 0,
+        swipes TEXT NOT NULL, swipe_info TEXT NOT NULL, PRIMARY KEY (chat_id, id)
+      ) WITHOUT ROWID;
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta VALUES ('schema_version', '2');
+      INSERT INTO chats VALUES ('legacy', 'a.png', 'Old chat', 1, 2, 5, '{}');
+      INSERT INTO messages VALUES ('legacy', 'm1', 0, 'User', 1, 0, 0, '["hello"]', '[{"send_date":""}]');
+    `);
+
+    createSchema(legacy);
+    const migrated = createChatStore(legacy, { backupDir: null }).getChat('legacy');
+
+    expect(migrated?.revision).toBe(5);
+    expect(migrated?.messages.map((item) => item.mes)).toEqual(['hello']);
+    // A row from before speakers were recorded reads as unrecorded, not as no-persona.
+    expect(migrated?.messages[0]?.persona_id).toBeUndefined();
+    expect(
+      legacy
+        .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
+        .get('schema_version')?.value,
+    ).toBe('3');
   });
 });
 

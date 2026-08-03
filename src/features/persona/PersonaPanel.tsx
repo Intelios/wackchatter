@@ -1,10 +1,14 @@
 /**
  * The "You" tab: who you are in the chat.
  *
- * Two different selections live here and they are not the same thing. The radio picks the
- * persona THIS chat uses (`ChatMetadata.persona`); the "default for new chats" control
- * sets `AppSettings.personaId`. They change independently: selecting a row affects only
- * the open chat, and the checkbox is the sole control for new-chat defaults.
+ * Picking a card means two different things depending on whether a chat is open, and
+ * that is deliberate. With a chat open it sets the persona THIS chat uses
+ * (`ChatMetadata.persona`) — the chat wins, so the app default never retroactively
+ * relabels a transcript. With no chat open there is no transcript to attach to, so the
+ * same click picks the persona NEW chats start with (`AppSettings.personaId`): choose
+ * who you are first, then open a character, and the new chat already knows. The
+ * "default for new chats" checkbox in the editor is the same setting, reachable from
+ * inside a chat too.
  */
 
 import type { Persona } from '@shared/types/chat.ts';
@@ -43,7 +47,7 @@ interface PersonaPanelProps {
   active: Persona | null;
   /** The default for new chats. */
   defaultId: string | null;
-  /** True when a chat is open, so the per-chat control has something to act on. */
+  /** True when a chat is open; a pick then acts on the chat, otherwise on new chats. */
   hasChat: boolean;
   onSelectForChat: (id: string | null) => void;
   onSelectDefault: (id: string | null) => void;
@@ -371,16 +375,19 @@ export function PersonaPanel({
                 <li
                   key={persona.id}
                   className="persona-card"
-                  data-active={active?.id === persona.id || undefined}
+                  data-active={
+                    (hasChat ? active?.id === persona.id : defaultId === persona.id) || undefined
+                  }
                 >
                   {/* A container rather than one big button: the card needs two distinct
                       actions, and a button inside a button is invalid. */}
                   <button
                     type="button"
                     className="persona-card__pick"
-                    onClick={() => onSelectForChat(persona.id)}
-                    disabled={!hasChat}
-                    title={hasChat ? 'Use in this chat' : 'Open a chat first'}
+                    onClick={() =>
+                      hasChat ? onSelectForChat(persona.id) : onSelectDefault(persona.id)
+                    }
+                    title={hasChat ? 'Use in this chat' : 'Use for new chats'}
                   >
                     <span className="persona-card__image">
                       {persona.avatar ? (
@@ -423,14 +430,23 @@ export function PersonaPanel({
               <PlusIcon />
               New persona
             </button>
-            {active ? (
+            {hasChat ? (
+              active ? (
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost"
+                  onClick={() => onSelectForChat(null)}
+                >
+                  Use none in this chat
+                </button>
+              ) : null
+            ) : defaultId ? (
               <button
                 type="button"
                 className="wc-button wc-button--ghost"
-                onClick={() => onSelectForChat(null)}
-                disabled={!hasChat}
+                onClick={() => onSelectDefault(null)}
               >
-                Use none in this chat
+                Use none for new chats
               </button>
             ) : null}
           </div>

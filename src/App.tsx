@@ -871,7 +871,7 @@ export function App() {
           characterName={character.name || active.name}
           avatar={active.avatar}
           characterAvatarVersion={characterAvatarVersions[active.avatar]}
-          personaAvatarVersion={chat.persona ? personaAvatarVersions[chat.persona.id] : undefined}
+          personaAvatarVersions={personaAvatarVersions}
           ready={ready}
           onCloseChat={() => void handleCloseChat()}
           onOpenPanel={(id) => void showRightPanel(id)}

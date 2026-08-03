@@ -106,7 +106,14 @@ export type ChatAction =
   | { type: 'chat/renamed'; title: string }
   | { type: 'chat/metadata'; patch: Partial<ChatMetadata> }
   | { type: 'chat/greeting'; id: string; card: CardDataV2 }
-  | { type: 'message/appendUser'; id: string; name: string; text: string }
+  | {
+      type: 'message/appendUser';
+      id: string;
+      name: string;
+      /** The persona speaking — recorded on the message so history keeps its faces. */
+      personaId: string | null;
+      text: string;
+    }
   | { type: 'message/edited'; id: string; text: string }
   | { type: 'message/reasoningEdited'; id: string; reasoning: string }
   | { type: 'message/deleted'; id: string }
@@ -207,15 +214,28 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const metadata = missingPersona
         ? { ...action.chat.metadata, persona: action.defaultPersonaId ?? null }
         : action.chat.metadata;
+
+      // User messages from before speakers were recorded have no persona_id. They were
+      // sent as whoever the chat's persona is, so stamp that in now: a later persona
+      // switch must not re-face the transcript, and this one migration revision is the
+      // price of freezing the history while it can still be reconstructed.
+      let stamped = false;
+      const messages = action.chat.messages.map((raw) => {
+        const message = fromChatMessage(raw);
+        if (!message.is_user || message.persona_id !== undefined) return message;
+        stamped = true;
+        return { ...message, persona_id: metadata.persona ?? null };
+      });
+
       return {
         ...initialChatState,
         chatId: action.chat.id,
         characterId: action.chat.characterId,
         title: action.chat.title,
         metadata,
-        messages: action.chat.messages.map(fromChatMessage),
+        messages,
         inspections: state.inspections,
-        revision: action.chat.revision + (missingPersona ? 1 : 0),
+        revision: action.chat.revision + (missingPersona || stamped ? 1 : 0),
         persistedRevision: action.chat.revision,
       };
     }
@@ -252,7 +272,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'message/appendUser':
       return {
         ...state,
-        messages: [...state.messages, userMessage(action.id, action.name, action.text)],
+        messages: [
+          ...state.messages,
+          userMessage(action.id, action.name, action.text, action.personaId),
+        ],
         error: null,
         revision: state.revision + 1,
       };

@@ -1,5 +1,20 @@
-import type { DialogueColorSettings, GuidanceSettings } from '@shared/types/settings.ts';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { MessageState } from '@shared/chat/message.ts';
+import type { Persona } from '@shared/types/chat.ts';
+import type {
+  DialogueColorOverride,
+  DialogueColorSettings,
+  GuidanceSettings,
+} from '@shared/types/settings.ts';
+import {
+  type ComponentProps,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
@@ -22,7 +37,8 @@ interface ChatViewProps {
   characterName: string;
   avatar: string | null;
   characterAvatarVersion?: number;
-  personaAvatarVersion?: number;
+  /** Cache-busting versions per persona id — a row's speaker is not always the chat's. */
+  personaAvatarVersions?: Readonly<Record<string, number>>;
   /** False until an endpoint and model are configured. */
   ready: boolean;
   /** Leave the chat and go back to the no-character state. */
@@ -40,7 +56,7 @@ export function ChatView({
   characterName,
   avatar,
   characterAvatarVersion,
-  personaAvatarVersion,
+  personaAvatarVersions,
   ready,
   onCloseChat,
   onOpenPanel,
@@ -58,29 +74,28 @@ export function ChatView({
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
-  // Who "you" are in this chat has a face too. Keyed on the filename so replacing the
-  // image busts the cache instead of showing the old one until a reload.
-  const persona = chat.persona;
-  const personaAvatarUrl = persona?.avatar
-    ? personaApi.avatarUrl(persona.id, personaAvatarVersion ?? persona.avatar)
-    : null;
   const characterOverride = avatar ? dialogueColors.characters[avatar] : undefined;
-  const personaOverride = persona ? dialogueColors.personas[persona.id] : undefined;
   const characterAutoColor = useAvatarColor(
     dialogueColors.enabled && characterOverride === undefined ? characterAvatarUrl : null,
-  );
-  const personaAutoColor = useAvatarColor(
-    dialogueColors.enabled && personaOverride === undefined ? personaAvatarUrl : null,
   );
   const characterDialogue = resolveDialogueColor(
     dialogueColors.enabled,
     characterOverride,
     characterAutoColor,
   );
-  const personaDialogue = resolveDialogueColor(
-    dialogueColors.enabled,
-    personaOverride,
-    personaAutoColor,
+
+  // Who "you" are can change mid-conversation, but a message keeps the face it was
+  // spoken with: each user row resolves its own recorded speaker rather than borrowing
+  // the chat's current persona. A missing record — a legacy message, from before
+  // speakers were stamped — falls back to the chat's persona, its behaviour so far.
+  const chatPersona = chat.persona;
+  const resolvePersona = chat.resolvePersona;
+  const speakerOf = useCallback(
+    (message: MessageState): Persona | null => {
+      const id = message.persona_id === undefined ? (chatPersona?.id ?? null) : message.persona_id;
+      return resolvePersona(id);
+    },
+    [resolvePersona, chatPersona],
   );
 
   // Jump to the end when a different chat is opened.
@@ -188,33 +203,47 @@ export function ChatView({
               ) : null}
               {visibleMessages.map((message, index) => {
                 const messageIndex = visibleStart + index;
+                const shared = {
+                  message,
+                  streaming: state.streamingId === message.id,
+                  mode: state.mode,
+                  stream,
+                  isLast: message.id === lastId,
+                  busy,
+                  summaryRunning: chat.summaryStatus.running,
+                  displayText: messageIndex === 0 ? greeting : undefined,
+                  onSwipe: swipe,
+                  onRegenerate: regenerate,
+                  onContinue: continueLast,
+                  onRetry: regenerate,
+                  onEdit: editMessage,
+                  onEditReasoning: editReasoning,
+                  onDelete: deleteMessage,
+                  onToggleHidden: toggleHidden,
+                  onBranch: branchFrom,
+                };
+                if (message.is_user) {
+                  const speaker = speakerOf(message);
+                  return (
+                    <UserMessageBubble
+                      key={message.id}
+                      {...shared}
+                      persona={speaker}
+                      avatarVersion={speaker ? personaAvatarVersions?.[speaker.id] : undefined}
+                      // Lookups, not the settings object: an unrelated settings change
+                      // must not re-render every user row.
+                      dialogueEnabled={dialogueColors.enabled}
+                      override={speaker ? dialogueColors.personas[speaker.id] : undefined}
+                    />
+                  );
+                }
                 return (
                   <MessageBubble
                     key={message.id}
-                    message={message}
-                    avatarUrl={message.is_user ? personaAvatarUrl : characterAvatarUrl}
-                    dialogueActive={
-                      message.is_user ? personaDialogue.active : characterDialogue.active
-                    }
-                    dialogueColor={
-                      message.is_user ? personaDialogue.color : characterDialogue.color
-                    }
-                    streaming={state.streamingId === message.id}
-                    mode={state.mode}
-                    stream={stream}
-                    isLast={message.id === lastId}
-                    busy={busy}
-                    summaryRunning={chat.summaryStatus.running}
-                    displayText={messageIndex === 0 ? greeting : undefined}
-                    onSwipe={swipe}
-                    onRegenerate={regenerate}
-                    onContinue={continueLast}
-                    onRetry={regenerate}
-                    onEdit={editMessage}
-                    onEditReasoning={editReasoning}
-                    onDelete={deleteMessage}
-                    onToggleHidden={toggleHidden}
-                    onBranch={branchFrom}
+                    {...shared}
+                    avatarUrl={characterAvatarUrl}
+                    dialogueActive={characterDialogue.active}
+                    dialogueColor={characterDialogue.color}
                   />
                 );
               })}
@@ -306,3 +335,47 @@ export function ChatView({
     </div>
   );
 }
+
+type UserMessageBubbleProps = Omit<
+  ComponentProps<typeof MessageBubble>,
+  'avatarUrl' | 'dialogueActive' | 'dialogueColor'
+> & {
+  /** The persona this message was sent as, already resolved from its recorded id. */
+  persona: Persona | null;
+  avatarVersion: number | undefined;
+  dialogueEnabled: boolean;
+  /** This speaker's colour override, if any. */
+  override: DialogueColorOverride | undefined;
+};
+
+/**
+ * A user row with its speaker's presentation resolved per message.
+ *
+ * The avatar-colour extraction is a hook, so it cannot run in the transcript loop for an
+ * arbitrary number of speakers — it lives here, one leaf per row. Repeat rows for one
+ * persona hit the module-level colour cache, so the extraction still runs once per avatar.
+ */
+const UserMessageBubble = memo(function UserMessageBubble({
+  persona,
+  avatarVersion,
+  dialogueEnabled,
+  override,
+  ...rest
+}: UserMessageBubbleProps) {
+  // Keyed on the filename so replacing the image busts the cache instead of showing the
+  // old one until a reload.
+  const avatarUrl = persona?.avatar
+    ? personaApi.avatarUrl(persona.id, avatarVersion ?? persona.avatar)
+    : null;
+  const autoColor = useAvatarColor(dialogueEnabled && override === undefined ? avatarUrl : null);
+  const dialogue = resolveDialogueColor(dialogueEnabled, override, autoColor);
+
+  return (
+    <MessageBubble
+      {...rest}
+      avatarUrl={avatarUrl}
+      dialogueActive={dialogue.active}
+      dialogueColor={dialogue.color}
+    />
+  );
+});

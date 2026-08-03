@@ -34,6 +34,12 @@ export interface ChatMessage {
    * This is ST's "hide message from prompt" mechanism.
    */
   is_system: boolean;
+  /**
+   * User messages only: the persona this message was sent as, recorded at send time so a
+   * later persona switch cannot re-face the transcript. Null means it was sent with no
+   * persona; missing means a legacy message from before speakers were recorded.
+   */
+  persona_id?: string | null;
   mes: string;
   send_date: string;
   gen_started?: string;

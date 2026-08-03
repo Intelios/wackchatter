@@ -158,6 +158,8 @@ export interface UseChat {
   /** The persona this chat actually uses. Resolved here, not passed in. */
   persona: Persona | null;
   setPersona(personaId: string | null): void;
+  /** Resolve a persona by id, for messages that recorded who spoke them. */
+  resolvePersona(personaId: string | null): Persona | null;
   updateMetadata(patch: Partial<ChatMetadata>): void;
   /** Resolve a stored greeting for display without committing variable macro effects. */
   renderGreeting(text: string): string;
@@ -306,6 +308,17 @@ export function useChat(options: UseChatOptions): UseChat {
   const setPersona = useCallback((personaId: string | null) => {
     dispatch({ type: 'chat/metadata', patch: { persona: personaId } });
   }, []);
+
+  /**
+   * Resolve any persona id — not just the chat's own. Each user message records the
+   * persona it was sent as, and the transcript needs that one, not whoever is speaking
+   * now. A deleted persona resolves as none, the same orphan rule the panel applies.
+   */
+  const resolvePersona = useCallback(
+    (id: string | null): Persona | null =>
+      id ? (personas.find((item) => item.id === id) ?? null) : null,
+    [personas],
+  );
 
   const updateMetadata = useCallback((patch: Partial<ChatMetadata>) => {
     dispatch({ type: 'chat/metadata', patch });
@@ -694,10 +707,12 @@ export function useChat(options: UseChatOptions): UseChat {
       const userAction: ChatAction = {
         // The name becomes message.name, which names_behavior can put into the prompt
         // text — so it has to be the same name {{user}} expands to, not a friendlier
-        // label. See DEFAULT_USER_NAME.
+        // label. See DEFAULT_USER_NAME. The persona id is recorded the same way: the
+        // message keeps the face it was spoken with.
         type: 'message/appendUser',
         id: crypto.randomUUID(),
         name: persona?.name ?? DEFAULT_USER_NAME,
+        personaId: persona?.id ?? null,
         text: trimmed,
       };
 
@@ -1173,6 +1188,7 @@ export function useChat(options: UseChatOptions): UseChat {
     retryLoad,
     persona,
     setPersona,
+    resolvePersona,
     updateMetadata,
     renderGreeting,
     worldInfo,

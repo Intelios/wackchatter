@@ -10,7 +10,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { detectCloudProvider } from './location.ts';
 import { PATHS } from './paths.ts';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -57,6 +57,14 @@ export function createSchema(database: Database): void {
   const chatColumns = database.query<{ name: string }, []>('PRAGMA table_info(chats)').all();
   if (!chatColumns.some((column) => column.name === 'revision')) {
     database.exec('ALTER TABLE chats ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // The persona a user message was sent as. NULL means "speaker not recorded" — rows
+  // from before this column existed — while an empty string is the explicit "sent with
+  // no persona", so the two states cannot collapse into one.
+  const messageColumns = database.query<{ name: string }, []>('PRAGMA table_info(messages)').all();
+  if (!messageColumns.some((column) => column.name === 'persona_id')) {
+    database.exec('ALTER TABLE messages ADD COLUMN persona_id TEXT');
   }
 
   database

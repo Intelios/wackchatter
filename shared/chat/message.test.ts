@@ -175,6 +175,68 @@ describe('adopting a stored message', () => {
     expect(toChatMessage(fromChatMessage(original))).toEqual(original);
   });
 
+  test('a recorded speaker survives the round trip, null included', () => {
+    // Null is the message "sent with no persona" and must not collapse into the missing
+    // key that means "legacy, speaker unknown".
+    const withPersona: ChatMessage = {
+      id: 'u1',
+      name: 'Jack',
+      is_user: true,
+      is_system: false,
+      persona_id: 'persona-1',
+      mes: 'hi',
+      send_date: '2026-01-01T00:00:00.000Z',
+      swipes: ['hi'],
+      swipe_id: 0,
+      swipe_info: [{ send_date: '2026-01-01T00:00:00.000Z' }],
+    };
+    expect(toChatMessage(fromChatMessage(withPersona))).toEqual(withPersona);
+
+    const noPersona: ChatMessage = { ...withPersona, persona_id: null };
+    expect(toChatMessage(fromChatMessage(noPersona))).toEqual(noPersona);
+    expect(Object.hasOwn(toChatMessage(fromChatMessage(noPersona)), 'persona_id')).toBe(true);
+  });
+
+  test('a legacy message without a speaker keeps no key at all', () => {
+    const legacy: ChatMessage = {
+      id: 'u1',
+      name: 'Jack',
+      is_user: true,
+      is_system: false,
+      mes: 'hi',
+      send_date: '2026-01-01T00:00:00.000Z',
+      swipes: ['hi'],
+      swipe_id: 0,
+      swipe_info: [{ send_date: '2026-01-01T00:00:00.000Z' }],
+    };
+    expect(toChatMessage(fromChatMessage(legacy))).toEqual(legacy);
+    expect(Object.hasOwn(toChatMessage(fromChatMessage(legacy)), 'persona_id')).toBe(false);
+  });
+
+  test('a nonsense speaker value degrades to unknown, an empty one to none', () => {
+    const garbage = fromChatMessage({
+      id: 'u1',
+      name: 'Jack',
+      is_user: true,
+      is_system: false,
+      persona_id: 42 as unknown as string,
+      mes: 'hi',
+      send_date: 'd',
+    });
+    expect(garbage.persona_id).toBeUndefined();
+
+    const blank = fromChatMessage({
+      id: 'u1',
+      name: 'Jack',
+      is_user: true,
+      is_system: false,
+      persona_id: '',
+      mes: 'hi',
+      send_date: 'd',
+    });
+    expect(blank.persona_id).toBeNull();
+  });
+
   test('a foreign message with a nonsense swipe entry survives', () => {
     const state = fromChatMessage({
       id: '1',
@@ -257,7 +319,7 @@ describe('swipe mutation', () => {
   });
 
   test('the final swipe is emptied rather than removed', () => {
-    const single = userMessage('1', 'Jack', 'hi');
+    const single = userMessage('1', 'Jack', 'hi', null);
     const removed = removeSwipe(single, 0);
     expect(removed.swipes).toEqual(['']);
     assertConsistent(removed);
@@ -304,6 +366,26 @@ describe('construction', () => {
   test('macros in a greeting are left unresolved for the assembler', () => {
     const message = greetingMessage('m0', card({ first_mes: 'Hello {{user}}.' }));
     expect(currentText(message)).toBe('Hello {{user}}.');
+  });
+
+  test('a user message records the persona it was sent as', () => {
+    // Captured at construction, like `name`: a later persona switch must not re-face
+    // the transcript.
+    const spoken = userMessage('u1', 'Jack', 'hi', 'persona-1');
+    expect(spoken.persona_id).toBe('persona-1');
+    assertConsistent(spoken);
+
+    const unspoken = userMessage('u2', 'You', 'hi', null);
+    expect(unspoken.persona_id).toBeNull();
+    expect(Object.hasOwn(toChatMessage(unspoken), 'persona_id')).toBe(true);
+  });
+
+  test('assistant messages carry no speaker key', () => {
+    expect(greetingMessage('m0', card()).persona_id).toBeUndefined();
+    expect(assistantPlaceholder('m1', 'Seraphina').persona_id).toBeUndefined();
+    expect(
+      Object.hasOwn(toChatMessage(assistantPlaceholder('m1', 'Seraphina')), 'persona_id'),
+    ).toBe(false);
   });
 
   test('a placeholder starts empty so the assembler skips it', () => {

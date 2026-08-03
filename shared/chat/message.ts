@@ -25,6 +25,12 @@ export interface MessageState {
   is_user: boolean;
   /** Hidden from the prompt, still shown in the transcript. */
   is_system: boolean;
+  /**
+   * User messages only: the persona this message was sent as. Null means no persona;
+   * missing means a legacy message from before speakers were recorded. Like `name`, it
+   * is captured at send time — a transcript records who you were when you wrote it.
+   */
+  persona_id?: string | null;
   /** Source of truth for the text. Always at least one entry. */
   swipes: string[];
   /** Always a valid index into `swipes`. */
@@ -82,6 +88,10 @@ export function toChatMessage(message: MessageState): ChatMessage {
     swipe_info: message.swipe_info.map((entry) => ({ ...entry })),
   };
 
+  // Null is a real value — "sent with no persona" — so the key cannot be dropped by a
+  // truthiness check; only a missing (legacy) speaker omits it.
+  if (message.persona_id !== undefined) result.persona_id = message.persona_id;
+
   if (info.gen_started !== undefined) result.gen_started = info.gen_started;
   if (info.gen_finished !== undefined) result.gen_finished = info.gen_finished;
   if (info.extra !== undefined) result.extra = { ...info.extra };
@@ -95,6 +105,7 @@ export interface LooseMessageState {
   name: string;
   is_user?: unknown;
   is_system?: unknown;
+  persona_id?: unknown;
   swipes?: unknown;
   swipe_id?: unknown;
   swipe_info?: unknown;
@@ -130,7 +141,7 @@ export function normalizeState(input: LooseMessageState): MessageState {
       : blankInfo(fallback);
   });
 
-  return {
+  const state: MessageState = {
     id: input.id,
     name: input.name,
     is_user: Boolean(input.is_user),
@@ -139,6 +150,15 @@ export function normalizeState(input: LooseMessageState): MessageState {
     swipe_id,
     swipe_info,
   };
+
+  // Three states: a persona id, an explicit null ("sent with no persona"), and missing
+  // (legacy, from before speakers were recorded). Anything else — an empty string from
+  // the storage encoding, a number from foreign JSON — normalises toward one of those:
+  // blank means none, garbage means unknown.
+  if (typeof input.persona_id === 'string') state.persona_id = input.persona_id || null;
+  else if (input.persona_id === null) state.persona_id = null;
+
+  return state;
 }
 
 /**
@@ -249,12 +269,18 @@ export function resetSwipes(message: MessageState): MessageState {
 // Construction
 // ---------------------------------------------------------------------------
 
-export function userMessage(id: string, name: string, text: string): MessageState {
+export function userMessage(
+  id: string,
+  name: string,
+  text: string,
+  personaId: string | null,
+): MessageState {
   return {
     id,
     name,
     is_user: true,
     is_system: false,
+    persona_id: personaId,
     swipes: [text],
     swipe_id: 0,
     swipe_info: [blankInfo()],

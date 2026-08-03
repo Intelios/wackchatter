@@ -90,6 +90,90 @@ describe('chat snapshots', () => {
     expect(state.persistedRevision).toBe(7);
   });
 
+  test('loading stamps legacy user messages with the chat persona and marks the migration dirty', () => {
+    // Messages from before speakers were recorded were sent as whoever the chat's persona
+    // is. Freezing that at load keeps a later persona switch from re-facing the transcript.
+    const state = run(initialChatState, {
+      type: 'chat/loaded',
+      chat: {
+        ...chat([
+          {
+            id: 'm0',
+            name: 'Seraphina',
+            is_user: false,
+            is_system: false,
+            mes: 'Hello.',
+            send_date: 'a',
+          },
+          { id: 'u1', name: 'Jack', is_user: true, is_system: false, mes: 'Hi.', send_date: 'b' },
+        ]),
+        revision: 4,
+        metadata: { persona: 'ari' },
+      },
+    });
+
+    expect(state.messages[0]!.persona_id).toBeUndefined();
+    expect(state.messages[1]!.persona_id).toBe('ari');
+    expect(state.persistedRevision).toBe(4);
+    expect(state.revision).toBe(5);
+  });
+
+  test('a recorded speaker is never re-stamped by the migration', () => {
+    // A transcript that changed persona mid-conversation keeps both faces, and a message
+    // sent with no persona keeps its explicit null. Nothing to migrate, no dirty revision.
+    const state = run(initialChatState, {
+      type: 'chat/loaded',
+      chat: {
+        ...chat([
+          {
+            id: 'u1',
+            name: 'Jack',
+            is_user: true,
+            is_system: false,
+            persona_id: 'old-face',
+            mes: 'a',
+            send_date: 'a',
+          },
+          {
+            id: 'u2',
+            name: 'Jack',
+            is_user: true,
+            is_system: false,
+            persona_id: null,
+            mes: 'b',
+            send_date: 'b',
+          },
+        ]),
+        revision: 4,
+        metadata: { persona: 'ari' },
+      },
+    });
+
+    expect(state.messages[0]!.persona_id).toBe('old-face');
+    expect(state.messages[1]!.persona_id).toBeNull();
+    expect(state.revision).toBe(4);
+    expect(state.persistedRevision).toBe(4);
+  });
+
+  test('a legacy chat with no persona key migrates metadata and speakers in one revision bump', () => {
+    const state = run(initialChatState, {
+      type: 'chat/loaded',
+      chat: {
+        ...chat([
+          { id: 'u1', name: 'Jack', is_user: true, is_system: false, mes: 'Hi.', send_date: 'a' },
+        ]),
+        revision: 7,
+        metadata: {},
+      },
+      defaultPersonaId: 'ari',
+    });
+
+    expect(state.metadata.persona).toBe('ari');
+    expect(state.messages[0]!.persona_id).toBe('ari');
+    expect(state.revision).toBe(8);
+    expect(state.persistedRevision).toBe(7);
+  });
+
   test('a server acknowledgement advances persisted revision without losing a newer local edit', () => {
     const edited = run(loaded(), { type: 'chat/renamed', title: 'First' });
     const newer = run(edited, { type: 'chat/renamed', title: 'Second' });
@@ -105,6 +189,7 @@ describe('chat snapshots', () => {
       type: 'message/appendUser',
       id: 'u1',
       name: 'Jack',
+      personaId: null,
       text: 'Hello',
     });
     const generating = run(withUser, {
@@ -119,10 +204,24 @@ describe('chat snapshots', () => {
 });
 
 describe('sending', () => {
+  test('a sent message records the persona speaking at that moment', () => {
+    const state = run(loaded(), {
+      type: 'message/appendUser',
+      id: 'u1',
+      name: 'Jack',
+      personaId: 'ari',
+      text: 'Hello',
+    });
+
+    expect(last(state).persona_id).toBe('ari');
+    // The wire form carries it too — that is how it reaches storage.
+    expect(toChatMessages(state).at(-1)?.persona_id).toBe('ari');
+  });
+
   test('send then finish leaves one assistant message with a single swipe', () => {
     const state = run(
       loaded(),
-      { type: 'message/appendUser', id: 'u1', name: 'Jack', text: 'Where am I?' },
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Where am I?' },
       { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
       { type: 'gen/streaming' },
       { type: 'gen/finished', text: 'Eldoria.', extra: { model: 'gpt-4o' } },
@@ -267,7 +366,7 @@ describe('swiping', () => {
   test('swiping targets the last assistant message, not the last message', () => {
     const state = run(
       loaded(),
-      { type: 'message/appendUser', id: 'u1', name: 'Jack', text: 'Hi' },
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Hi' },
       { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' },
       { type: 'gen/finished', text: 'Reply.' },
       { type: 'gen/started', mode: 'swipe', newId: 'x', name: 'S' },
@@ -283,7 +382,7 @@ describe('retrying', () => {
   function awaitingReply() {
     return run(
       loaded(),
-      { type: 'message/appendUser', id: 'u1', name: 'Jack', text: 'Where am I?' },
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Where am I?' },
       { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' },
       { type: 'gen/failed', message: 'Rate limited.' },
     );
@@ -560,7 +659,7 @@ describe('editing the transcript', () => {
   test('every transcript change bumps revision so it reaches the database', () => {
     const before = loaded();
     for (const action of [
-      { type: 'message/appendUser', id: 'u', name: 'J', text: 'x' },
+      { type: 'message/appendUser', id: 'u', name: 'J', personaId: null, text: 'x' },
       { type: 'message/edited', id: 'm0', text: 'y' },
       { type: 'message/reasoningEdited', id: 'm0', reasoning: 'z' },
       { type: 'message/deleted', id: 'm0' },
@@ -703,7 +802,7 @@ describe('the invariant holds across a long mixed session', () => {
     let state = loaded();
 
     const script: ChatAction[] = [
-      { type: 'message/appendUser', id: 'u1', name: 'Jack', text: 'Where am I?' },
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Where am I?' },
       { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' },
       { type: 'gen/streaming' },
       { type: 'gen/finished', text: 'Eldoria.' },

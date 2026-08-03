@@ -220,6 +220,14 @@ deliberately not among them.
   slot, `mes` wins — it is what the user last saw.
 - `swipe_info` is always exactly `swipes.length`. A short one becomes `undefined` at the
   first swipe-right under `noUncheckedIndexedAccess`.
+- **A user message records the persona it was sent as** (`persona_id`), the same way it
+  records `name`: switching persona mid-chat must not re-face or re-colour the transcript.
+  Null means "sent with no persona", missing means a legacy message; `chat/loaded` stamps
+  legacy user messages with the chat's persona so the history freezes while it can still
+  be reconstructed. In storage the column is NULL for "not recorded" and `''` for the
+  explicit none — the two states must not collapse. Rendering resolves each row's speaker
+  (`ChatView`'s `UserMessageBubble`), falling back to the chat persona only for the
+  not-recorded case.
 
 **Generation** (`src/features/chat/state/chatReducer.ts`)
 - A placeholder's text starts **empty**, which is what excludes the message being
@@ -315,6 +323,11 @@ deliberately not among them.
 - **The chat wins.** `AppSettings.personaId` is the default for *new* chats;
   `ChatMetadata.persona` is what *this* chat uses. A transcript records who you were when
   you wrote it, so changing the default must not relabel past messages.
+- **Picking before a chat is picking for the next one.** With no chat open there is no
+  `ChatMetadata.persona` to write, so the persona grid's click sets `AppSettings.personaId`
+  instead — choose who you are, then open a character, and the new chat starts with it.
+  With a chat open the same click writes the chat's persona. One control, two targets,
+  routed by `hasChat`; the pick button is never disabled for want of an open chat.
 
 ### Deliberate divergence from SillyTavern
 
