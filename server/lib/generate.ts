@@ -19,6 +19,7 @@ import type {
   Connection,
   ProviderModel,
 } from '../../shared/providers/types.ts';
+import type { AppSettings } from '../../shared/types/settings.ts';
 import { activeConnection } from '../../shared/types/settings.ts';
 import { getApiKey } from './secrets.ts';
 import { getSettings } from './settings.ts';
@@ -53,6 +54,17 @@ export function trackGeneration(): () => void {
   };
 }
 
+/** Resolve only from the server-owned list; a request can select an id, never an endpoint. */
+export function generationConnection(
+  settings: Pick<AppSettings, 'connections' | 'connectionId'>,
+  connectionId?: string,
+): Connection | null {
+  if (connectionId === undefined) return activeConnection(settings);
+  const connection = settings.connections.find((entry) => entry.id === connectionId);
+  if (!connection) throw new Error(`Unknown connection "${connectionId}".`);
+  return connection;
+}
+
 /** Sent to OpenRouter as HTTP-Referer. Dev and prod differ; either is a valid origin. */
 function appUrl(): string {
   const port = process.env.WC_PORT ?? '8787';
@@ -71,8 +83,10 @@ function appUrl(): string {
 export async function callUpstream(
   body: ChatCompletionBody,
   signal: AbortSignal,
+  connectionId?: string,
 ): Promise<Response> {
-  const connection = activeConnection(getSettings());
+  const settings = getSettings();
+  const connection = generationConnection(settings, connectionId);
 
   if (!connection) throw new Error('No connection configured. Add one in Connections.');
   if (!connection.baseUrl) throw new Error('No endpoint configured. Set one in Connections.');

@@ -19,11 +19,13 @@ import type {
   DialogueColorOverride,
   DialogueColorSettings,
   GuidanceSettings,
+  SummarySettings,
 } from '../../shared/types/settings.ts';
 import {
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
+  DEFAULT_SUMMARY,
 } from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
@@ -242,6 +244,43 @@ function normalizeGuidance(value: unknown): GuidanceSettings {
   };
 }
 
+const SUMMARY_POSITIONS: SummarySettings['position'][] = [
+  'none',
+  'beforeMain',
+  'afterMain',
+  'atDepth',
+];
+
+/** Coerce summary preferences and revalidate their optional connection reference. */
+function normalizeSummary(value: unknown, connections: Connection[]): SummarySettings {
+  const stored = isRecord(value) ? value : {};
+  const connectionId =
+    typeof stored.connectionId === 'string' &&
+    connections.some((connection) => connection.id === stored.connectionId)
+      ? stored.connectionId
+      : null;
+  const targetWords =
+    typeof stored.targetWords === 'number' && Number.isFinite(stored.targetWords)
+      ? Math.min(1000, Math.max(25, Math.round(stored.targetWords / 25) * 25))
+      : DEFAULT_SUMMARY.targetWords;
+  const depth =
+    typeof stored.depth === 'number' && Number.isFinite(stored.depth)
+      ? Math.max(0, Math.floor(stored.depth))
+      : DEFAULT_SUMMARY.depth;
+
+  return {
+    connectionId,
+    prompt: typeof stored.prompt === 'string' ? stored.prompt : DEFAULT_SUMMARY.prompt,
+    targetWords,
+    template: typeof stored.template === 'string' ? stored.template : DEFAULT_SUMMARY.template,
+    position: SUMMARY_POSITIONS.includes(stored.position as SummarySettings['position'])
+      ? (stored.position as SummarySettings['position'])
+      : DEFAULT_SUMMARY.position,
+    depth,
+    role: normalizeRole(stored.role, DEFAULT_SUMMARY.role),
+  };
+}
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 function normalizeDialogueColorMap(value: unknown): Record<string, DialogueColorOverride> {
@@ -299,6 +338,7 @@ export function getSettings(): AppSettings {
     worldInfo: normalizeWorldInfo(stored.worldInfo),
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
+    summary: normalizeSummary(stored.summary, connections),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
   };
 
@@ -334,6 +374,9 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     guidance: patch.guidance
       ? normalizeGuidance({ ...current.guidance, ...patch.guidance })
       : current.guidance,
+    summary: patch.summary
+      ? normalizeSummary({ ...current.summary, ...patch.summary }, current.connections)
+      : normalizeSummary(current.summary, current.connections),
     dialogueColors: patch.dialogueColors
       ? normalizeDialogueColors({
           ...current.dialogueColors,
@@ -494,6 +537,7 @@ export function deleteConnectionEntry(id: string): AppSettings | null {
     ...current,
     connections: dropped.connections,
     connectionId: dropped.connectionId,
+    summary: normalizeSummary(current.summary, dropped.connections),
   });
 }
 

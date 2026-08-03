@@ -11,7 +11,7 @@ import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { ConnectionSettings } from '@shared/providers/types.ts';
+import type { Connection, ConnectionSettings } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
   Chat,
@@ -23,7 +23,7 @@ import type {
   Persona,
 } from '@shared/types/chat.ts';
 import type { GenerationType, Preset } from '@shared/types/preset.ts';
-import type { GuidanceSettings } from '@shared/types/settings.ts';
+import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
@@ -38,6 +38,13 @@ import {
 } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import {
+  packClassicSummaryChunk,
+  resolveSummaryPrompt,
+  summaryBacklog,
+  summaryBaseControl,
+  summaryMessages,
+} from '../summary/summary.ts';
 import { KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
 import { ChatSaveQueue } from './chatPersistence.ts';
 import {
@@ -80,6 +87,10 @@ export interface UseChatOptions {
   worldInfoSettings?: WorldInfoSettings;
   /** Template, depth and role for guided generations and persistent guides. */
   guidanceSettings?: GuidanceSettings;
+  /** Resolved summary connection and its model-specific counter. */
+  summaryConnection?: Connection | null;
+  summarySettings?: SummarySettings;
+  summaryCountTokens?: TokenCounter;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
@@ -91,7 +102,10 @@ export interface UseChat {
   messages: ChatMessage[];
   stream: StreamStore;
   inspection: PromptInspection | null;
+  /** A transcript reply is being generated. Structural chat actions remain blocked. */
   busy: boolean;
+  /** Any provider generation is active, including a blocking summary request. */
+  generationBlocked: boolean;
   saving: boolean;
   /** A persistence failure blocks chat-changing navigation until it is retried. */
   saveError: string | null;
@@ -113,6 +127,12 @@ export interface UseChat {
   /** A new alternate on the last reply, steered the same way. Never a cached swipe. */
   guidedSwipe(guidance: string): Promise<void>;
   abort(): void;
+
+  summaryStatus: SummaryRunStatus;
+  summaryPending: number;
+  summarize(settingsOverride?: SummarySettings): Promise<void>;
+  cancelSummary(): void;
+  editSummary(text: string): void;
 
   editMessage(id: string, text: string): void;
   /** Rewrite or clear the thinking block of the selected swipe, leaving the reply alone. */
@@ -145,6 +165,13 @@ export interface UseChat {
   worldInfo: ActivationResult | null;
 }
 
+export interface SummaryRunStatus {
+  running: boolean;
+  processed: number;
+  total: number;
+  error: string | null;
+}
+
 export function useChat(options: UseChatOptions): UseChat {
   const {
     characterId,
@@ -159,6 +186,9 @@ export function useChat(options: UseChatOptions): UseChat {
     resolveWorldInfoSources,
     worldInfoSettings,
     guidanceSettings,
+    summaryConnection,
+    summarySettings,
+    summaryCountTokens,
     globalVariables,
     onGlobalVariablesChange,
   } = options;
@@ -170,9 +200,17 @@ export function useChat(options: UseChatOptions): UseChat {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [initAttempt, setInitAttempt] = useState(0);
   const [worldInfo, setWorldInfo] = useState<ActivationResult | null>(null);
+  const [summaryStatus, setSummaryStatus] = useState<SummaryRunStatus>({
+    running: false,
+    processed: 0,
+    total: 0,
+    error: null,
+  });
 
   const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
   const abortRef = useRef<AbortController | null>(null);
+  const summaryAbortRef = useRef<AbortController | null>(null);
+  const summaryChatIdRef = useRef<string | null>(null);
 
   // The generation body reads state after dispatching into it, so the closure's copy is
   // always stale. A ref is the simplest correct answer.
@@ -271,6 +309,30 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const updateMetadata = useCallback((patch: Partial<ChatMetadata>) => {
     dispatch({ type: 'chat/metadata', patch });
+  }, []);
+
+  const summaryPending = useMemo(
+    () => summaryBacklog(summaryMessages(messages), state.metadata.summary).length,
+    [messages, state.metadata.summary],
+  );
+
+  const editSummary = useCallback((text: string) => {
+    const current = stateRef.current;
+    if (!current.chatId) return;
+    const existing = current.metadata.summary;
+    const trimmed = text.trim();
+    const checkpointMessageId = trimmed
+      ? (existing?.checkpointMessageId ?? summaryMessages(toChatMessages(current)).at(-1)?.id)
+      : undefined;
+    dispatch({
+      type: 'chat/metadata',
+      patch: {
+        summary: {
+          text,
+          ...(checkpointMessageId ? { checkpointMessageId } : {}),
+        },
+      },
+    });
   }, []);
 
   // --- Chat list -------------------------------------------------------------
@@ -437,7 +499,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const generate = useCallback(
     async (mode: GenMode, base?: ChatState, guidance?: string) => {
       const current = base ?? stateRef.current;
-      if (current.status !== 'idle') return;
+      if (current.status !== 'idle' || summaryAbortRef.current) return;
       if (!character || !preset || !connection) return;
 
       const startAction: ChatAction = {
@@ -499,6 +561,8 @@ export function useChat(options: UseChatOptions): UseChat {
           scenarioOverride:
             typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
           authorNote: started.metadata.authorNote,
+          summary: started.metadata.summary,
+          summarySettings,
           guides: started.metadata.guides,
           // One-shot: it exists only as an argument on this call, so unlike an ephemeral
           // injection parked in metadata there is nothing that could leak into the next
@@ -616,6 +680,7 @@ export function useChat(options: UseChatOptions): UseChat {
       resolveWorldInfoSources,
       worldInfoSettings,
       guidanceSettings,
+      summarySettings,
       globalVariables,
       onGlobalVariablesChange,
     ],
@@ -624,7 +689,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || stateRef.current.status !== 'idle') return;
+      if (!trimmed || stateRef.current.status !== 'idle' || summaryAbortRef.current) return;
 
       const userAction: ChatAction = {
         // The name becomes message.name, which names_behavior can put into the prompt
@@ -703,6 +768,260 @@ export function useChat(options: UseChatOptions): UseChat {
     abortRef.current?.abort();
   }, []);
 
+  const cancelSummary = useCallback(() => {
+    summaryAbortRef.current?.abort();
+  }, []);
+
+  const summarize = useCallback(
+    async (settingsOverride?: SummarySettings) => {
+      if (summaryAbortRef.current) return;
+      const current = stateRef.current;
+      if (
+        !current.chatId ||
+        current.status !== 'idle' ||
+        !character ||
+        !preset ||
+        !summaryConnection ||
+        !summarySettings ||
+        !summaryCountTokens
+      ) {
+        return;
+      }
+      if (!summaryConnection.baseUrl || !summaryConnection.model) {
+        setSummaryStatus({
+          running: false,
+          processed: 0,
+          total: 0,
+          error: 'The selected summary connection needs an endpoint and model.',
+        });
+        return;
+      }
+
+      const rawMessages = toChatMessages(current);
+      if (rawMessages[0] && !rawMessages[0].is_user) {
+        rawMessages[0] = {
+          ...rawMessages[0],
+          mes: resolveGreetingMacros(rawMessages[0].mes, {
+            character,
+            preset,
+            persona,
+            messages: rawMessages,
+            metadata: current.metadata,
+            globalVariables,
+            seed: current.chatId,
+          }),
+        };
+      }
+
+      const backlog = summaryBacklog(summaryMessages(rawMessages), current.metadata.summary);
+      if (!backlog.length) {
+        setSummaryStatus({
+          running: false,
+          processed: 0,
+          total: 0,
+          error: 'No new chat messages need summarizing.',
+        });
+        return;
+      }
+
+      const effectiveSummarySettings = settingsOverride ?? summarySettings;
+      const systemPrompt = resolveSummaryPrompt(
+        effectiveSummarySettings.prompt,
+        effectiveSummarySettings.targetWords,
+      );
+      if (!systemPrompt.trim()) {
+        setSummaryStatus({
+          running: false,
+          processed: 0,
+          total: backlog.length,
+          error: 'The summary prompt is empty.',
+        });
+        return;
+      }
+
+      const controller = new AbortController();
+      summaryAbortRef.current = controller;
+      summaryChatIdRef.current = current.chatId;
+      let processed = 0;
+      let remaining = backlog;
+      let rollingSummary = current.metadata.summary?.text ?? '';
+      let runLocalVariables = { ...(current.metadata.variables ?? {}) };
+      let runGlobalVariables = { ...globalVariables };
+      const maxTokens = Math.ceil(effectiveSummarySettings.targetWords * 2);
+      const capturedSources =
+        resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [];
+
+      const assembleClassic = (candidate: ChatMessage[], baseSummary: string) => {
+        const lore = worldInfoForChat({
+          sources: capturedSources,
+          messages: candidate,
+          settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
+          preset,
+          chatId: current.chatId!,
+          countTokens: summaryCountTokens,
+        });
+        const baseControl = summaryBaseControl(baseSummary);
+        return assemblePrompt({
+          preset,
+          character,
+          persona,
+          messages: candidate,
+          worldInfoBefore: lore?.before,
+          worldInfoAfter: lore?.after,
+          worldInfoDepth: lore?.depth,
+          scenarioOverride:
+            typeof current.metadata.scenario === 'string' ? current.metadata.scenario : undefined,
+          authorNote: current.metadata.authorNote,
+          guides: current.metadata.guides,
+          guidanceSettings,
+          localVariables: runLocalVariables,
+          globalVariables: runGlobalVariables,
+          countTokens: summaryCountTokens,
+          finalControls: [
+            ...(baseControl
+              ? [{ identifier: 'summaryBase', role: 'system' as const, content: baseControl }]
+              : []),
+            { identifier: 'summaryRequest', role: 'system', content: systemPrompt },
+          ],
+          reservedCompletionTokens: maxTokens,
+          requireChatHistory: true,
+          seed: `${current.chatId}:summary:${candidate.at(-1)?.id ?? 'fixed'}`,
+        });
+      };
+
+      setSummaryStatus({ running: true, processed: 0, total: backlog.length, error: null });
+
+      try {
+        while (remaining.length > 0) {
+          const fixed = assembleClassic([], '');
+          if (!fixed.ok) {
+            throw new Error(
+              `The fixed Classic prompt and summary instruction need ${fixed.error.requiredPromptTokens} tokens, but only ${fixed.error.maxContext - fixed.error.reservedCompletionTokens} are available. Increase the preset context limit or shorten enabled prompt content.`,
+            );
+          }
+          if (rollingSummary.trim()) {
+            const withBase = assembleClassic([], rollingSummary);
+            if (!withBase.ok) {
+              throw new Error(
+                `The existing rolling summary does not fit alongside the Classic prompt. Increase the preset context limit, reduce the target length, or shorten the current summary.`,
+              );
+            }
+          }
+
+          const chunk = packClassicSummaryChunk(remaining, (candidate) =>
+            assembleClassic(candidate, rollingSummary),
+          );
+          if (!chunk) {
+            throw new Error(
+              'The next individual chat turn cannot fit alongside the Classic prompt and rolling summary. Increase the preset context limit, reduce the target length, shorten the current summary, or shorten that turn.',
+            );
+          }
+
+          const assembled = chunk.assembled;
+          if (assembled.variableUpdates.localChanged) {
+            runLocalVariables = assembled.variableUpdates.local;
+            const action: ChatAction = {
+              type: 'chat/metadata',
+              patch: { variables: runLocalVariables },
+            };
+            const nextState = chatReducer(stateRef.current, action);
+            stateRef.current = nextState;
+            dispatch(action);
+          }
+          if (assembled.variableUpdates.globalChanged) {
+            runGlobalVariables = assembled.variableUpdates.global;
+            await onGlobalVariablesChange(runGlobalVariables);
+          }
+          if (controller.signal.aborted || stateRef.current.chatId !== current.chatId) return;
+
+          const body = buildRequestBody({
+            messages: assembled.messages,
+            preset,
+            connection: summaryConnection,
+            stream: false,
+            maxTokens,
+          });
+          const result = await streamGenerate(
+            body,
+            controller.signal,
+            { onTick: () => {} },
+            '',
+            summaryConnection.id,
+          );
+          const nextSummary = result.content.trim();
+          if (!nextSummary) throw new Error('The summary connection returned an empty response.');
+          if (controller.signal.aborted || stateRef.current.chatId !== current.chatId) return;
+
+          const checkpointMessageId = chunk.messages.at(-1)!.id;
+          rollingSummary = nextSummary;
+          processed += chunk.messages.length;
+          remaining = remaining.slice(chunk.messages.length);
+          const action: ChatAction = {
+            type: 'chat/metadata',
+            patch: { summary: { text: nextSummary, checkpointMessageId } },
+          };
+          // A completed chunk is a durable checkpoint before another paid request begins.
+          // Fold from the freshest state so chat activity that happened during the request
+          // is included in the same snapshot rather than overwritten by the captured input.
+          const nextState = chatReducer(stateRef.current, action);
+          stateRef.current = nextState;
+          dispatch(action);
+          const snapshot = captureSnapshot(nextState);
+          if (snapshot) {
+            persistence.schedule(snapshot);
+            await persistence.flush(snapshot.chatId);
+          }
+          setSummaryStatus({
+            running: remaining.length > 0,
+            processed,
+            total: backlog.length,
+            error: null,
+          });
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setSummaryStatus({
+            running: false,
+            processed,
+            total: backlog.length,
+            error: (error as Error).message,
+          });
+        }
+      } finally {
+        if (summaryAbortRef.current === controller) summaryAbortRef.current = null;
+        if (summaryChatIdRef.current === current.chatId) summaryChatIdRef.current = null;
+        if (controller.signal.aborted) {
+          setSummaryStatus({ running: false, processed, total: backlog.length, error: null });
+        }
+        void refreshChats();
+      }
+    },
+    [
+      character,
+      preset,
+      persona,
+      summaryConnection,
+      summarySettings,
+      summaryCountTokens,
+      globalVariables,
+      worldInfoSources,
+      resolveWorldInfoSources,
+      worldInfoSettings,
+      guidanceSettings,
+      onGlobalVariablesChange,
+      captureSnapshot,
+      persistence,
+      refreshChats,
+    ],
+  );
+
+  useEffect(() => {
+    if (summaryChatIdRef.current && summaryChatIdRef.current !== state.chatId) {
+      summaryAbortRef.current?.abort();
+    }
+    setSummaryStatus({ running: false, processed: 0, total: 0, error: null });
+  }, [state.chatId]);
+
   // --- Transcript edits ------------------------------------------------------
 
   const editMessage = useCallback((id: string, text: string) => {
@@ -726,6 +1045,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const openChat = useCallback(
     async (chatId: string) => {
       userChatAction.current += 1;
+      cancelSummary();
       try {
         await flushSaves();
       } catch {
@@ -734,12 +1054,13 @@ export function useChat(options: UseChatOptions): UseChat {
       const chat = await chatApi.get(chatId);
       loadChat(chat);
     },
-    [flushSaves, loadChat],
+    [cancelSummary, flushSaves, loadChat],
   );
 
   const newChat = useCallback(async () => {
     if (!characterId || !character) return;
     userChatAction.current += 1;
+    cancelSummary();
     try {
       await flushSaves();
     } catch {
@@ -753,7 +1074,7 @@ export function useChat(options: UseChatOptions): UseChat {
     loadChat(chat);
     dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });
     await refreshChats();
-  }, [characterId, character, flushSaves, loadChat, refreshChats]);
+  }, [cancelSummary, characterId, character, flushSaves, loadChat, refreshChats]);
 
   const renameChat = useCallback((title: string) => {
     dispatch({ type: 'chat/renamed', title });
@@ -767,6 +1088,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const deleteChat = useCallback(
     async (chatId: string) => {
       userChatAction.current += 1;
+      cancelSummary();
       try {
         await flushSaves();
       } catch {
@@ -776,13 +1098,14 @@ export function useChat(options: UseChatOptions): UseChat {
       if (stateRef.current.chatId === chatId) dispatch({ type: 'chat/closed' });
       await refreshChats();
     },
-    [flushSaves, refreshChats],
+    [cancelSummary, flushSaves, refreshChats],
   );
 
   const branchFrom = useCallback(
     async (messageId: string) => {
       if (!stateRef.current.chatId) return;
       userChatAction.current += 1;
+      cancelSummary();
       try {
         await flushSaves();
       } catch {
@@ -792,7 +1115,7 @@ export function useChat(options: UseChatOptions): UseChat {
       loadChat(branch);
       await refreshChats();
     },
-    [flushSaves, loadChat, refreshChats],
+    [cancelSummary, flushSaves, loadChat, refreshChats],
   );
 
   const renderGreeting = useCallback(
@@ -817,6 +1140,7 @@ export function useChat(options: UseChatOptions): UseChat {
     stream,
     inspection: state.inspections[0] ?? null,
     busy: state.status !== 'idle',
+    generationBlocked: state.status !== 'idle' || summaryStatus.running,
     saving,
     saveError,
     loadError,
@@ -827,6 +1151,11 @@ export function useChat(options: UseChatOptions): UseChat {
     guidedRespond,
     guidedSwipe,
     abort,
+    summaryStatus,
+    summaryPending,
+    summarize,
+    cancelSummary,
+    editSummary,
     editMessage,
     editReasoning,
     deleteMessage,

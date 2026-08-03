@@ -54,6 +54,8 @@ export interface AppSettings {
   glass: boolean;
   /** Guided Generations: how steering text and standing guides reach the prompt. */
   guidance: GuidanceSettings;
+  /** Manual rolling chat summaries: generation source and prompt injection preferences. */
+  summary: SummarySettings;
   /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
   dialogueColors: DialogueColorSettings;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
@@ -109,6 +111,33 @@ export const DEFAULT_GUIDANCE: Readonly<GuidanceSettings> = {
   guideRole: 'system',
 };
 
+export type SummaryPosition = 'none' | 'beforeMain' | 'afterMain' | 'atDepth';
+
+export interface SummarySettings {
+  /** Null follows the active chat connection; otherwise names a saved connection. */
+  connectionId: string | null;
+  prompt: string;
+  targetWords: number;
+  /** Wraps the current summary. `{{summary}}` is filled without re-scanning its text. */
+  template: string;
+  position: SummaryPosition;
+  depth: number;
+  role: 'system' | 'user' | 'assistant';
+}
+
+export const DEFAULT_SUMMARY_PROMPT =
+  'Ignore previous instructions. Summarize the most important facts and events in the story so far. If a summary already exists in your memory, use that as a base and expand with new facts. Limit the summary to {{words}} words or less. Your response should include nothing but the summary.';
+
+export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
+  connectionId: null,
+  prompt: DEFAULT_SUMMARY_PROMPT,
+  targetWords: 200,
+  template: '[Summary: {{summary}}]',
+  position: 'afterMain',
+  depth: 2,
+  role: 'system',
+};
+
 /** What the client is told about a stored API key. Never the key itself. */
 export interface KeyInfo {
   present: boolean;
@@ -150,6 +179,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundDim: 0.55,
   glass: true,
   guidance: { ...DEFAULT_GUIDANCE },
+  summary: { ...DEFAULT_SUMMARY },
   dialogueColors: {
     enabled: DEFAULT_DIALOGUE_COLORS.enabled,
     characters: {},

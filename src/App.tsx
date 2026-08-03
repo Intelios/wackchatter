@@ -12,7 +12,9 @@ import {
   activeConnection,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
+  DEFAULT_SUMMARY,
   type GuidanceSettings,
+  type SummarySettings,
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
@@ -30,6 +32,7 @@ import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
 import { StartScreen } from './features/start/StartScreen.tsx';
+import { SummaryPanel } from './features/summary/SummaryPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
 import {
@@ -260,12 +263,21 @@ export function App() {
   }, [selected]);
 
   const connection = settings ? activeConnection(settings) : null;
+  const summarySettings: SummarySettings = settings?.summary ?? DEFAULT_SUMMARY;
+  const summaryConnection = summarySettings.connectionId
+    ? (settings?.connections.find((entry) => entry.id === summarySettings.connectionId) ??
+      connection)
+    : connection;
   // Detail resolves asynchronously. Never let the previous card accompany a newly
   // selected avatar into useChat's auto-open effect.
   const character = detail?.avatar === selected ? detail.card.data : null;
 
   // Exact for GPT and o-series, an estimate elsewhere — the same position ST is in.
   const countTokens = useTokenizer(connection?.model ?? '', settings?.tokenizerEncoding);
+  const summaryCountTokens = useTokenizer(
+    summaryConnection?.model ?? '',
+    settings?.tokenizerEncoding,
+  );
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
@@ -440,6 +452,9 @@ export function App() {
     resolveWorldInfoSources: lore.sourcesForPersona,
     worldInfoSettings,
     guidanceSettings,
+    summaryConnection,
+    summarySettings,
+    summaryCountTokens,
     globalVariables: settings?.variables ?? {},
     onGlobalVariablesChange: commitGlobalVariables,
   });
@@ -464,6 +479,7 @@ export function App() {
           chatId: chat.state.chatId,
           chatMetadata: chat.state.metadata,
           guidanceSettings,
+          summarySettings,
           globalVariables: settings?.variables ?? {},
         }
       : null,
@@ -476,6 +492,7 @@ export function App() {
     ) => {
       const editing = options?.editing ?? false;
       if (avatar !== selected || editing) {
+        chat.cancelSummary();
         try {
           await chat.flushSaves();
         } catch {
@@ -517,6 +534,7 @@ export function App() {
    */
   const handleCloseChat = useCallback(async () => {
     try {
+      chat.cancelSummary();
       await chat.flushSaves();
       await flushRightPanel();
     } catch {
@@ -799,6 +817,19 @@ export function App() {
                 registerPersistence={(controls) => {
                   lorePersistence.current = controls;
                 }}
+              />
+            ) : null}
+
+            {rightPanel === 'summary' ? (
+              <SummaryPanel
+                chat={chat}
+                settings={summarySettings}
+                connections={settings?.connections ?? []}
+                activeConnection={connection}
+                summaryConnection={summaryConnection}
+                onSettingsChange={(patch) =>
+                  void patchSettings({ summary: { ...summarySettings, ...patch } })
+                }
               />
             ) : null}
 

@@ -28,6 +28,7 @@ import {
   type MacroWarning,
   type PersistentGuide,
   type Persona,
+  type StorySummary,
 } from '../types/chat.ts';
 import type { GenerationType, Preset, Prompt } from '../types/preset.ts';
 import {
@@ -36,7 +37,12 @@ import {
   DEFAULT_INJECTION_ORDER,
   INJECTION_POSITION,
 } from '../types/preset.ts';
-import { DEFAULT_GUIDANCE, type GuidanceSettings } from '../types/settings.ts';
+import {
+  DEFAULT_GUIDANCE,
+  DEFAULT_SUMMARY,
+  type GuidanceSettings,
+  type SummarySettings,
+} from '../types/settings.ts';
 import {
   createMacroRuntime,
   type MacroEnvironment,
@@ -62,6 +68,10 @@ export interface AssembleOptions {
   /** Present, including an empty string, means this chat overrides the card scenario. */
   scenarioOverride?: string;
   authorNote?: Partial<AuthorNoteSettings>;
+  /** Rolling story memory for this chat. */
+  summary?: StorySummary;
+  /** App-wide summary template and insertion preferences. */
+  summarySettings?: Partial<SummarySettings>;
   /** Standing per-chat instructions, injected on every generation. */
   guides?: PersistentGuide[];
   /**
@@ -75,8 +85,23 @@ export interface AssembleOptions {
   localVariables?: MacroVariableMap;
   globalVariables?: MacroVariableMap;
   countTokens: TokenCounter;
+  /**
+   * Mandatory provider-facing controls placed after every preset and history message.
+   * Their content is already materialised and is deliberately not macro-substituted.
+   */
+  finalControls?: FinalControlMessage[];
+  /** Override the completion budget without mutating the selected preset. */
+  reservedCompletionTokens?: number;
+  /** Quiet/background generations require transcript history even if its marker is off. */
+  requireChatHistory?: boolean;
   /** Stabilises {{pick}} across regenerations. */
   seed?: string;
+}
+
+export interface FinalControlMessage {
+  identifier: string;
+  role: 'system' | 'user' | 'assistant';
+  content: string;
 }
 
 export interface DepthInjection {
@@ -322,18 +347,24 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     worldInfoDepth = [],
     scenarioOverride,
     authorNote: authorNoteInput,
+    summary,
+    summarySettings,
     guides = [],
     guidance = '',
     guidanceSettings,
     localVariables = {},
     globalVariables = {},
     countTokens,
+    finalControls: finalControlsInput = [],
     seed = '',
   } = options;
 
   const userName = options.userName ?? persona?.name ?? DEFAULT_USER_NAME;
   const maxContext = preset.openai_max_context ?? 4095;
-  const maxResponse = preset.openai_max_tokens ?? 300;
+  const maxResponse = Math.max(
+    0,
+    Math.floor(options.reservedCompletionTokens ?? preset.openai_max_tokens ?? 300),
+  );
   const runtime = createMacroRuntime(localVariables, globalVariables);
   const effectiveScenario = scenarioOverride !== undefined ? scenarioOverride : character.scenario;
 
@@ -391,6 +422,8 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       ]
     : [];
   const authorNoteText = noteParts.join('\n');
+  const summaryConfig: SummarySettings = { ...DEFAULT_SUMMARY, ...summarySettings };
+  const summaryText = summary?.text.trim() ?? '';
 
   /** Content for the marker prompts, resolved from live state. */
   const markerContent: Record<string, string> = {
@@ -418,6 +451,12 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   // final assembled payload.
   const replyPriming = countTokens.countChat([]);
   const messageCost = (message: ApiMessage) => countTokens.countChat([message]) - replyPriming;
+  const finalControls = finalControlsInput.filter((control) => control.content.trim());
+  for (const control of finalControls) {
+    const tokens = messageCost({ role: control.role, content: control.content });
+    tokenCounts[control.identifier] = (tokenCounts[control.identifier] ?? 0) + tokens;
+    mandatoryIdentifiers.push(control.identifier);
+  }
 
   function shouldTrigger(prompt: Prompt): boolean {
     if (!Array.isArray(prompt.injection_trigger) || !prompt.injection_trigger.length) {
@@ -428,6 +467,30 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   let authorNoteAdded = false;
   const authorNoteIsRelative = Boolean(authorNoteText) && authorNote.position !== 'atDepth';
+  let summaryAdded = false;
+  let resolvedSummary: string | undefined;
+  const summaryIsRelative =
+    Boolean(summaryText) &&
+    (summaryConfig.position === 'beforeMain' || summaryConfig.position === 'afterMain');
+
+  function getSummaryContent(): string {
+    if (resolvedSummary === undefined) {
+      resolvedSummary = substitute(summaryConfig.template, 'summary', { summary: summaryText });
+    }
+    return resolvedSummary;
+  }
+
+  function addRelativeSummary(index = slots.length): void {
+    if (summaryAdded || !summaryIsRelative) return;
+    summaryAdded = true;
+    const content = getSummaryContent();
+    if (!content.trim()) return;
+    const message: ApiMessage = { role: summaryConfig.role, content };
+    const tokens = messageCost(message);
+    tokenCounts.summary = tokens;
+    mandatoryIdentifiers.push('summary');
+    slots.splice(index, 0, { identifier: 'summary', messages: [message], tokens });
+  }
 
   function addRelativeAuthorNote(index = slots.length): void {
     if (authorNoteAdded || !authorNoteIsRelative) return;
@@ -484,13 +547,21 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       entry.identifier === 'scenario' && entry.enabled && Boolean(prompt) && shouldTrigger(prompt!)
     );
   });
+  const hasMainAnchor = order.some((entry) => {
+    const prompt = promptsById.get(entry.identifier);
+    return (
+      entry.identifier === 'main' && entry.enabled && Boolean(prompt) && shouldTrigger(prompt!)
+    );
+  });
   /** Index in `slots` where chat history goes; -1 until we see the marker. */
   let historySlotIndex = -1;
   let examplesSlotIndex = -1;
 
   for (const entry of order) {
     const prompt = promptsById.get(entry.identifier);
-    if (!prompt || !entry.enabled || !shouldTrigger(prompt)) continue;
+    const entryEnabled =
+      entry.enabled || (options.requireChatHistory && entry.identifier === 'chatHistory');
+    if (!prompt || !entryEnabled || !shouldTrigger(prompt)) continue;
 
     if (
       authorNoteIsRelative &&
@@ -500,6 +571,10 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         (!hasScenarioAnchor && entry.identifier === 'chatHistory'))
     ) {
       addRelativeAuthorNote();
+    }
+
+    if (summaryIsRelative && !hasMainAnchor && entry.identifier === 'chatHistory') {
+      addRelativeSummary();
     }
 
     // These two are filled after the fixed prompts, once we know the remaining budget.
@@ -521,7 +596,19 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         // history, even when the scenario marker itself was ordered after it.
         addRelativeAuthorNote(historySlotIndex >= 0 ? historySlotIndex : slots.length);
       }
+      if (entry.identifier === 'main' && summaryIsRelative) {
+        addRelativeSummary(historySlotIndex >= 0 ? historySlotIndex : slots.length);
+      }
       continue;
+    }
+
+    if (
+      entry.identifier === 'main' &&
+      summaryIsRelative &&
+      summaryConfig.position === 'beforeMain' &&
+      prompt.injection_position !== INJECTION_POSITION.ABSOLUTE
+    ) {
+      addRelativeSummary();
     }
 
     // Absolute prompts leave the ordered flow and are spliced into the history later.
@@ -536,6 +623,24 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       const tokens = messageCost({ role: injection.role, content: injection.content });
       tokenCounts[entry.identifier] = tokens;
       mandatoryIdentifiers.push(entry.identifier);
+      if (entry.identifier === 'main' && summaryIsRelative && !summaryAdded) {
+        summaryAdded = true;
+        const summaryContent = getSummaryContent();
+        if (summaryContent.trim()) {
+          const summaryInjection: DepthInjection = {
+            depth: injection.depth,
+            order: injection.order + (summaryConfig.position === 'beforeMain' ? -1 : 1),
+            role: summaryConfig.role,
+            content: summaryContent,
+          };
+          absolutePrompts.push(summaryInjection);
+          tokenCounts.summary = messageCost({
+            role: summaryInjection.role,
+            content: summaryInjection.content,
+          });
+          mandatoryIdentifiers.push('summary');
+        }
+      }
       if (entry.identifier === 'scenario' && authorNoteIsRelative && !authorNoteAdded) {
         authorNoteAdded = true;
         const noteContent = substitute(authorNoteText, 'authorNote');
@@ -564,12 +669,22 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     mandatoryIdentifiers.push(entry.identifier);
     slots.push({ identifier: entry.identifier, messages: [message], tokens });
 
+    if (entry.identifier === 'main' && summaryConfig.position === 'afterMain') {
+      addRelativeSummary();
+    }
+
     if (entry.identifier === 'scenario' && authorNote.position === 'afterScenario') {
       addRelativeAuthorNote();
     }
   }
 
+  if (options.requireChatHistory && historySlotIndex === -1) {
+    historySlotIndex = slots.length;
+    slots.push({ identifier: 'chatHistory', messages: [], tokens: 0 });
+  }
+
   addRelativeAuthorNote();
+  addRelativeSummary(historySlotIndex >= 0 ? historySlotIndex : slots.length);
 
   // --- Depth injections --------------------------------------------------
   // Everything spliced into the history rather than ordered around it: world info at
@@ -609,6 +724,21 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         role: authorNote.role,
         content: resolvedAuthorNoteDepth,
       });
+    }
+  }
+
+  let summaryDepthTokens = 0;
+  if (summaryText && summaryConfig.position === 'atDepth') {
+    const content = getSummaryContent();
+    if (content.trim()) {
+      const injection: DepthInjection = {
+        depth: Math.max(0, Math.floor(summaryConfig.depth)),
+        order: DEFAULT_INJECTION_ORDER,
+        role: summaryConfig.role,
+        content,
+      };
+      depthInjections.push(injection);
+      summaryDepthTokens = messageCost({ role: injection.role, content: injection.content });
     }
   }
 
@@ -670,6 +800,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         content: resolvedAuthorNoteDepth,
       });
     }
+    if (summaryDepthTokens > 0) tokenCounts.summary = summaryDepthTokens;
     // Their own keys rather than folded into worldInfoDepth, which is already the sum over
     // every grouped injection. Extending that over-count would make both numbers useless.
     if (guideTokens > 0) tokenCounts.guides = guideTokens;
@@ -681,6 +812,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     }
     mandatoryIdentifiers.push('worldInfoDepth');
     if (resolvedAuthorNoteDepth) mandatoryIdentifiers.push('authorNote');
+    if (summaryDepthTokens > 0) mandatoryIdentifiers.push('summary');
     if (guideTokens > 0) mandatoryIdentifiers.push('guides');
     if (resolvedGuidance) mandatoryIdentifiers.push('guidance');
   }
@@ -735,7 +867,13 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       final = applyContinue(final, preset, continueNudge, hasContinuableAssistant);
     }
     if (preset.squash_system_messages) final = squashSystemMessages(final);
-    return final;
+    return [
+      ...final,
+      ...finalControls.map((control) => ({
+        role: control.role,
+        content: control.content,
+      })),
+    ];
   }
 
   const fixed = materialize([], []);

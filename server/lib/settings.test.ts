@@ -9,6 +9,7 @@ import {
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
+  DEFAULT_SUMMARY,
 } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
@@ -155,6 +156,31 @@ describe('mergeSettings', () => {
   test('omitting guidance leaves it untouched', () => {
     const current = mergeSettings(base(), { guidance: { guideDepth: 3 } as never });
     expect(mergeSettings(current, { streamingFps: 15 }).guidance.guideDepth).toBe(3);
+  });
+
+  test('summary preferences merge field-wise and normalize their constrained values', () => {
+    const withConnection = {
+      ...base(),
+      connections: [connection('a', 'A'), connection('b', 'B')],
+    };
+    const selected = mergeSettings(withConnection, {
+      summary: { connectionId: 'b', targetWords: 438, depth: -4, role: 'narrator' } as never,
+    });
+
+    expect(selected.summary.connectionId).toBe('b');
+    expect(selected.summary.targetWords).toBe(450);
+    expect(selected.summary.depth).toBe(0);
+    expect(selected.summary.role).toBe(DEFAULT_SUMMARY.role);
+    expect(selected.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
+  });
+
+  test('a missing summary connection falls back to following the active chat connection', () => {
+    const current = {
+      ...base(),
+      connections: [connection('a', 'A')],
+      summary: { ...DEFAULT_SUMMARY, connectionId: 'deleted' },
+    };
+    expect(mergeSettings(current, { streamingFps: 60 }).summary.connectionId).toBeNull();
   });
 
   test('dialogue colours default on and a partial patch keeps both override maps', () => {

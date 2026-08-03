@@ -32,7 +32,10 @@ interface MessageBubbleProps {
   stream: StreamStore;
   /** The final message in the transcript, which is the only one that can be acted on. */
   isLast: boolean;
+  /** A real reply is active; structural actions cannot safely run. */
   busy: boolean;
+  /** A quiet summary blocks new provider generations but not transcript interaction. */
+  summaryRunning: boolean;
   /** Render-only text, used for raw greeting macros. Editing still receives stored text. */
   displayText?: string;
   /*
@@ -71,6 +74,7 @@ export const MessageBubble = memo(function MessageBubble({
   stream,
   isLast,
   busy,
+  summaryRunning,
   displayText,
   onSwipe,
   onRegenerate,
@@ -229,6 +233,7 @@ export const MessageBubble = memo(function MessageBubble({
               <MessageMenu
                 state={{
                   busy,
+                  summaryRunning,
                   isLast,
                   isUser: message.is_user,
                   isHidden: message.is_system,
@@ -313,7 +318,7 @@ export const MessageBubble = memo(function MessageBubble({
                 type="button"
                 className="wc-button wc-button--ghost message__action message__action--retry"
                 onClick={onRetry}
-                disabled={busy}
+                disabled={busy || summaryRunning}
                 title="Generate a reply to this message"
                 aria-label="Retry"
               >
@@ -347,7 +352,7 @@ export const MessageBubble = memo(function MessageBubble({
                   type="button"
                   className="wc-button wc-button--ghost message__action"
                   onClick={() => onSwipe(1)}
-                  disabled={busy}
+                  disabled={busy || (summaryRunning && message.swipe_id === swipes - 1)}
                   aria-label="Next alternative, or generate one"
                   title={
                     message.swipe_id === swipes - 1

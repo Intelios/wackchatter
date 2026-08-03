@@ -8,13 +8,14 @@ interface SliderProps {
   max: number;
   step: number;
   onChange: (value: number) => void;
+  disabled?: boolean;
 }
 
 /**
  * A slider paired with a number input. The number input is the escape hatch for values
  * the slider's range can't reach precisely — context sizes especially.
  */
-export function Slider({ label, value, min, max, step, onChange }: SliderProps) {
+export function Slider({ label, value, min, max, step, onChange, disabled }: SliderProps) {
   const id = useId();
 
   function commit(raw: number) {
@@ -35,6 +36,7 @@ export function Slider({ label, value, min, max, step, onChange }: SliderProps) 
           min={min}
           max={max}
           step={step}
+          disabled={disabled}
           onChange={(e) => commit(Number(e.target.value))}
           aria-label={`${label} value`}
         />
@@ -47,6 +49,7 @@ export function Slider({ label, value, min, max, step, onChange }: SliderProps) 
         min={min}
         max={max}
         step={step}
+        disabled={disabled}
         onChange={(e) => commit(Number(e.target.value))}
       />
     </div>

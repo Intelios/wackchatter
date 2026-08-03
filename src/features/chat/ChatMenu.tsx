@@ -28,6 +28,8 @@ import type { UseChat } from './useChat.ts';
 export interface ChatMenuState {
   /** A generation is in flight. */
   busy: boolean;
+  /** A blocking summary request prevents only provider-generating actions. */
+  summaryRunning?: boolean;
   messageCount: number;
   lastMessageId: string | null;
   /** The transcript ends on the user's turn, so there is nothing to continue. */
@@ -45,11 +47,14 @@ export interface ChatMenuActions {
 }
 
 const BUSY = 'Wait for the current reply to finish.';
+const SUMMARY_BUSY = 'Cancel or finish the current summary first.';
 const EMPTY = 'This chat has no messages yet.';
 
 export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): MenuEntry[] {
-  const { busy, messageCount, lastMessageId, lastIsUser } = state;
+  const { busy, summaryRunning = false, messageCount, lastMessageId, lastIsUser } = state;
   const empty = messageCount === 0;
+  const generationBlocked = busy || summaryRunning;
+  const generationBlockedReason = summaryRunning ? SUMMARY_BUSY : BUSY;
 
   return [
     {
@@ -73,15 +78,19 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
     {
       label: 'Regenerate',
       icon: <RefreshIcon />,
-      disabled: busy || empty,
-      disabledReason: busy ? BUSY : EMPTY,
+      disabled: generationBlocked || empty,
+      disabledReason: generationBlocked ? generationBlockedReason : EMPTY,
       onSelect: actions.regenerate,
     },
     {
       label: 'Continue',
       icon: <ContinueIcon />,
-      disabled: busy || empty || lastIsUser,
-      disabledReason: busy ? BUSY : empty ? EMPTY : 'The last message is yours.',
+      disabled: generationBlocked || empty || lastIsUser,
+      disabledReason: generationBlocked
+        ? generationBlockedReason
+        : empty
+          ? EMPTY
+          : 'The last message is yours.',
       onSelect: actions.continueLast,
     },
     {
@@ -130,6 +139,7 @@ export function ChatMenu({ chat, onCloseChat, onOpenPanel }: ChatMenuProps) {
   const entries = buildChatMenu(
     {
       busy: chat.busy,
+      summaryRunning: chat.summaryStatus.running,
       messageCount: messages.length,
       lastMessageId: last?.id ?? null,
       lastIsUser: Boolean(last?.is_user),

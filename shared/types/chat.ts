@@ -61,7 +61,15 @@ export interface ChatMetadata {
   authorNote?: Partial<AuthorNoteSettings>;
   /** Standing instructions injected into every prompt for this chat. */
   guides?: PersistentGuide[];
+  /** Editable rolling story memory and the last transcript message it covers. */
+  summary?: StorySummary;
   [key: string]: unknown;
+}
+
+export interface StorySummary {
+  text: string;
+  /** Missing means the current text has no generated/transcript checkpoint yet. */
+  checkpointMessageId?: string;
 }
 
 /**

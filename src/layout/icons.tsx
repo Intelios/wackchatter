@@ -230,6 +230,17 @@ export function BookIcon({ className }: IconProps) {
   );
 }
 
+export function SummaryIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M5 3h14v18H5z" />
+      <path d="M8 8h8" />
+      <path d="M8 12h8" />
+      <path d="M8 16h5" />
+    </svg>
+  );
+}
+
 export function UserIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

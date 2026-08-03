@@ -40,6 +40,20 @@ describe('streamGenerate', () => {
     expect(state.error).toBeUndefined();
   });
 
+  test('an explicit summary connection id is sent without changing the completion body', async () => {
+    let payload: unknown;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      payload = JSON.parse(String(init?.body));
+      return jsonResponse({ choices: [{ message: { content: 'summary' } }] });
+    }) as unknown as typeof fetch;
+
+    await streamGenerate({ model: 'summary-model' }, signal, noop, '', 'summary-connection');
+    expect(payload).toEqual({
+      body: { model: 'summary-model' },
+      connectionId: 'summary-connection',
+    });
+  });
+
   test('a completion-shaped error in a 200 non-stream body throws', async () => {
     globalThis.fetch = (async () =>
       jsonResponse({ error: { message: 'provider exploded' } })) as unknown as typeof fetch;

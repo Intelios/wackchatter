@@ -59,6 +59,17 @@ describe('buildMessageMenu', () => {
     expect(byLabel(entries, 'Hide')?.disabled).toBeFalsy();
   });
 
+  test('a blocking summary leaves structural transcript actions available', () => {
+    const entries = buildMessageMenu({ ...lastReply, summaryRunning: true }, actions);
+    expect(byLabel(entries, 'Regenerate')?.disabledReason).toBe(
+      'Cancel or finish the current summary first.',
+    );
+    expect(byLabel(entries, 'Continue')?.disabled).toBe(true);
+    expect(byLabel(entries, 'Branch')?.disabled).toBeFalsy();
+    expect(byLabel(entries, 'Hide')?.disabled).toBeFalsy();
+    expect(byLabel(entries, 'Delete')?.disabled).toBeFalsy();
+  });
+
   test('a message that is not last cannot be regenerated or continued', () => {
     const entries = buildMessageMenu({ ...lastReply, isLast: false }, actions);
     expect(byLabel(entries, 'Regenerate')?.disabled).toBe(true);

@@ -3,7 +3,7 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
-import type { GuidanceSettings } from '@shared/types/settings.ts';
+import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useEffect, useState } from 'react';
@@ -27,6 +27,7 @@ export interface PromptPreviewInput {
    * the button, and re-assembling per keystroke would buy nothing.
    */
   guidanceSettings?: GuidanceSettings;
+  summarySettings?: SummarySettings;
   globalVariables?: MacroVariableMap;
 }
 
@@ -61,6 +62,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const chatId = input?.chatId ?? null;
   const chatMetadata = input?.chatMetadata;
   const guidanceSettings = input?.guidanceSettings;
+  const summarySettings = input?.summarySettings;
   const globalVariables = input?.globalVariables;
 
   useEffect(() => {
@@ -94,6 +96,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           scenarioOverride:
             typeof chatMetadata?.scenario === 'string' ? chatMetadata.scenario : undefined,
           authorNote: chatMetadata?.authorNote,
+          summary: chatMetadata?.summary,
+          summarySettings,
           guides: chatMetadata?.guides,
           guidanceSettings,
           localVariables: chatMetadata?.variables ?? {},
@@ -120,6 +124,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     chatId,
     chatMetadata,
     guidanceSettings,
+    summarySettings,
     globalVariables,
   ]);
 

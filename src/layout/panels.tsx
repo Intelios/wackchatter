@@ -18,12 +18,13 @@ import {
   PlugIcon,
   SearchIcon,
   SlidersIcon,
+  SummaryIcon,
   UserIcon,
   UsersIcon,
 } from './icons.tsx';
 
 export type LeftPanelId = 'connection' | 'prompts' | 'generation' | 'inspect';
-export type RightPanelId = 'characters' | 'lorebooks' | 'persona' | 'appearance';
+export type RightPanelId = 'characters' | 'lorebooks' | 'summary' | 'persona' | 'appearance';
 
 export interface PanelSpec<T extends string> {
   id: T;
@@ -43,6 +44,7 @@ export const LEFT_PANELS: readonly PanelSpec<LeftPanelId>[] = [
 export const RIGHT_PANELS: readonly PanelSpec<RightPanelId>[] = [
   { id: 'characters', label: 'Characters', icon: <UsersIcon /> },
   { id: 'lorebooks', label: 'Lorebooks', icon: <BookIcon /> },
+  { id: 'summary', label: 'Summary', icon: <SummaryIcon /> },
   { id: 'persona', label: 'Persona', icon: <UserIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <ImageIcon /> },
 ];

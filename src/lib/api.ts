@@ -477,11 +477,12 @@ export async function streamGenerate(
   signal: AbortSignal,
   handlers: StreamHandlers,
   seed = '',
+  connectionId?: string,
 ): Promise<StreamState> {
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, ...(connectionId ? { connectionId } : {}) }),
     signal,
   });
 

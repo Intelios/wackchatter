@@ -17,6 +17,7 @@ interface TextFieldProps {
    * too heavy to run per keystroke — a rename that moves a file, say.
    */
   onCommit?: () => void;
+  disabled?: boolean;
 }
 
 export function TextField({
@@ -29,6 +30,7 @@ export function TextField({
   rows = 4,
   meta,
   onCommit,
+  disabled,
 }: TextFieldProps) {
   const id = useId();
 
@@ -48,6 +50,7 @@ export function TextField({
           value={value}
           rows={rows}
           placeholder={placeholder}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onCommit}
         />
@@ -58,6 +61,7 @@ export function TextField({
           type="text"
           value={value}
           placeholder={placeholder}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onCommit}
           onKeyDown={(e) => {
@@ -171,6 +175,7 @@ interface NumberFieldProps {
   hint?: string;
   /** Shown when the box is empty. */
   placeholder?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -191,6 +196,7 @@ export function NumberField({
   step,
   hint,
   placeholder,
+  disabled,
 }: NumberFieldProps) {
   const id = useId();
   const [draft, setDraft] = useState(() => String(value));
@@ -215,6 +221,7 @@ export function NumberField({
         max={max}
         step={step}
         placeholder={placeholder}
+        disabled={disabled}
         onChange={(event) => {
           setDraft(event.target.value);
           const parsed = Number(event.target.value);
@@ -242,6 +249,7 @@ interface SelectFieldProps<T> {
   options: ReadonlyArray<SelectOption<T>>;
   onChange: (value: T) => void;
   hint?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -252,7 +260,14 @@ interface SelectFieldProps<T> {
  * DOM as the string "0". Mapping back through `options` by index keeps the real value —
  * including `false`, `0` and `null` — instead of guessing at a parse.
  */
-export function SelectField<T>({ label, value, options, onChange, hint }: SelectFieldProps<T>) {
+export function SelectField<T>({
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+  disabled,
+}: SelectFieldProps<T>) {
   const id = useId();
   const selected = options.findIndex((option) => option.value === value);
 
@@ -265,6 +280,7 @@ export function SelectField<T>({ label, value, options, onChange, hint }: Select
         id={id}
         className="wc-select"
         value={selected === -1 ? '' : String(selected)}
+        disabled={disabled}
         onChange={(event) => {
           const option = options[Number(event.target.value)];
           if (option) onChange(option.value);

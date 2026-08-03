@@ -100,6 +100,19 @@ describe('buildChatMenu', () => {
     );
   });
 
+  test('a blocking summary disables only actions that contact the provider', () => {
+    const entries = build({ summaryRunning: true });
+    for (const label of ['Regenerate', 'Continue']) {
+      expect(item(entries, label).disabled).toBe(true);
+      expect(item(entries, label).disabledReason).toBe(
+        'Cancel or finish the current summary first.',
+      );
+    }
+    for (const label of ['New chat', 'Save checkpoint', 'Export chat', 'Close chat', ...JUMPS]) {
+      expect(item(entries, label).disabled).toBeFalsy();
+    }
+  });
+
   test('the checkpoint is taken at the last message', () => {
     const { calls, actions } = spies();
     item(build({ lastMessageId: 'm9' }, actions), 'Save checkpoint').onSelect();
@@ -143,6 +156,7 @@ describe('buildChatMenu', () => {
   test('every disabled entry explains itself', () => {
     for (const state of [
       { busy: true },
+      { summaryRunning: true },
       { messageCount: 0, lastMessageId: null },
       { lastIsUser: true },
     ]) {

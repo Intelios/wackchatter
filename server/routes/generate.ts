@@ -22,9 +22,12 @@ export async function handleGenerateRoute(
 ): Promise<Response | null> {
   if (segments.length !== 0 || request.method !== 'POST') return null;
 
-  const payload = await readJson<{ body?: ChatCompletionBody }>(request);
+  const payload = await readJson<{ body?: ChatCompletionBody; connectionId?: unknown }>(request);
   if (!payload?.body || typeof payload.body !== 'object') {
     return errorResponse('Expected a JSON object with a "body" property.');
+  }
+  if (payload.connectionId !== undefined && typeof payload.connectionId !== 'string') {
+    return errorResponse('"connectionId" must be a saved connection id.');
   }
 
   console.debug('Chat Completion request:', payload.body);
@@ -37,7 +40,7 @@ export async function handleGenerateRoute(
 
   let upstream: Response;
   try {
-    upstream = await callUpstream(payload.body, request.signal);
+    upstream = await callUpstream(payload.body, request.signal, payload.connectionId);
   } catch (error) {
     finished();
     // A client that hung up mid-connect is not an error worth reporting back.
@@ -49,7 +52,7 @@ export async function handleGenerateRoute(
       message.includes('ECONNREFUSED') || message.includes('Unable to connect')
         ? `Could not reach the endpoint: ${message}`
         : message,
-      502,
+      message.startsWith('Unknown connection') ? 400 : 502,
     );
   }
 

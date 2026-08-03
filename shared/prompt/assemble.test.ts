@@ -114,6 +114,274 @@ describe('prompt order', () => {
   });
 });
 
+describe('rolling summary injection', () => {
+  const summary = { text: 'The gate is open.', checkpointMessageId: 'm0' };
+  const history = makeMessages(1);
+
+  test('places the summary immediately before or after the effective main prompt', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+
+    const before = assemble({
+      preset,
+      messages: history,
+      summary,
+      summarySettings: { position: 'beforeMain', template: 'MEMORY {{summary}}' },
+    });
+    const after = assemble({
+      preset,
+      messages: history,
+      summary,
+      summarySettings: { position: 'afterMain', template: 'MEMORY {{summary}}' },
+    });
+
+    expect(before.messages.map((message) => message.content)).toEqual([
+      'MEMORY The gate is open.',
+      expect.stringContaining('next reply'),
+      'message number 0',
+    ]);
+    expect(after.messages.map((message) => message.content)).toEqual([
+      expect.stringContaining('next reply'),
+      'MEMORY The gate is open.',
+      'message number 0',
+    ]);
+    expect(after.tokenCounts.summary).toBe(5);
+  });
+
+  test('falls back immediately before history when no main prompt is enabled', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      new_chat_prompt: '',
+    };
+    expect(
+      assemble({ preset, messages: history, summary }).messages.map((message) => message.content),
+    ).toEqual(['[Summary: The gate is open.]', 'message number 0']);
+  });
+
+  test('falls back immediately before history when the main prompt is blank', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'main', { content: '' });
+    preset = {
+      ...setPromptOrder(preset, [
+        { identifier: 'chatHistory', enabled: true },
+        { identifier: 'main', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+
+    expect(
+      assemble({
+        preset,
+        messages: history,
+        summary,
+        summarySettings: { position: 'beforeMain' },
+      }).messages.map((message) => message.content),
+    ).toEqual(['[Summary: The gate is open.]', 'message number 0']);
+  });
+
+  test('tracks an absolute main prompt with adjacent injection order', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'main', {
+      content: 'ABS MAIN',
+      injection_position: INJECTION_POSITION.ABSOLUTE,
+      injection_depth: 0,
+      injection_order: 10,
+    });
+    preset = {
+      ...setPromptOrder(preset, [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+
+    const result = assemble({
+      preset,
+      messages: history,
+      summary,
+      summarySettings: { position: 'beforeMain' },
+    });
+    expect(result.messages.map((message) => message.content)).toEqual([
+      'message number 0',
+      '[Summary: The gate is open.]',
+      'ABS MAIN',
+    ]);
+  });
+
+  test('at-depth summary follows lore and precedes standing guides at a collision', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [{ identifier: 'chatHistory', enabled: true }]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: history,
+      summary,
+      summarySettings: { position: 'atDepth', depth: 0, role: 'system' },
+      worldInfoDepth: [{ depth: 0, order: 100, role: 'system', content: 'LORE' }],
+      guides: [{ id: 'g', name: 'Guide', text: 'GUIDE', enabled: true }],
+      guidanceSettings: { guideDepth: 0, guideRole: 'system' },
+    });
+    const injection = result.messages.at(-1)!.content;
+
+    expect(injection.indexOf('LORE')).toBeLessThan(injection.indexOf('[Summary:'));
+    expect(injection.indexOf('[Summary:')).toBeLessThan(injection.indexOf('GUIDE'));
+    expect(result.tokenCounts.summary).toBeDefined();
+    expect(result.tokenCounts.worldInfoDepth).toBeGreaterThan(result.tokenCounts.summary!);
+  });
+
+  test('none preserves the stored value but injects and charges nothing', () => {
+    const preset = setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]);
+    const result = assemble({ preset, summary, summarySettings: { position: 'none' } });
+    expect(result.messages).toHaveLength(1);
+    expect(result.tokenCounts.summary).toBeUndefined();
+  });
+
+  test('fills the template once so macros inside edited summary text stay literal', () => {
+    const preset = setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]);
+    const result = assemble({
+      preset,
+      summary: { text: '{{setvar::danger::yes}} {{char}}' },
+      summarySettings: { position: 'beforeMain', template: '{{summary}} / {{char}}' },
+    });
+
+    expect(result.messages[0]!.content).toBe('{{setvar::danger::yes}} {{char}} / Seraphina');
+    expect(result.variableUpdates.local).toEqual({});
+  });
+});
+
+describe('Classic quiet controls', () => {
+  test('preserves native turns and places literal controls after every preset prompt', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'jailbreak', { content: 'POST HISTORY' });
+    preset = {
+      ...setPromptOrder(preset, [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+        { identifier: 'jailbreak', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: [
+        { ...makeMessages(1)[0]!, id: 'u1', name: 'User', is_user: true, mes: 'Question' },
+        { ...makeMessages(1)[0]!, id: 'a1', name: 'Sera', is_user: false, mes: 'Answer' },
+      ],
+      finalControls: [
+        {
+          identifier: 'summaryBase',
+          role: 'system',
+          content: 'Existing {{setvar::danger::yes}}',
+        },
+        { identifier: 'summaryRequest', role: 'system', content: 'SUMMARIZE NOW' },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.messages.slice(-5)).toEqual([
+      { role: 'user', content: 'Question' },
+      { role: 'assistant', content: 'Answer' },
+      { role: 'system', content: 'POST HISTORY' },
+      { role: 'system', content: 'Existing {{setvar::danger::yes}}' },
+      { role: 'system', content: 'SUMMARIZE NOW' },
+    ]);
+    expect(result.tokenCounts.summaryBase).toBeDefined();
+    expect(result.tokenCounts.summaryRequest).toBeDefined();
+    expect(result.variableUpdates.local.danger).toBeUndefined();
+  });
+
+  test('forces native history into a quiet prompt even when its marker is disabled', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: false },
+      ]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: [
+        { ...makeMessages(1)[0]!, id: 'u1', name: 'User', is_user: true, mes: 'Keep my role' },
+      ],
+      requireChatHistory: true,
+      finalControls: [{ identifier: 'quiet', role: 'system', content: 'CONTROL' }],
+    });
+
+    expect(result.messages.slice(-2)).toEqual([
+      { role: 'user', content: 'Keep my role' },
+      { role: 'system', content: 'CONTROL' },
+    ]);
+  });
+
+  test('composes full Classic context before the final summary request', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'jailbreak', { content: 'POST' });
+    preset = {
+      ...setPromptOrder(preset, [
+        { identifier: 'worldInfoBefore', enabled: true },
+        { identifier: 'main', enabled: true },
+        { identifier: 'charDescription', enabled: true },
+        { identifier: 'charPersonality', enabled: true },
+        { identifier: 'scenario', enabled: true },
+        { identifier: 'personaDescription', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+        { identifier: 'jailbreak', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+    const messages = [
+      { ...makeMessages(1)[0]!, id: 'u1', name: 'Ari', is_user: true, mes: 'Open the gate' },
+      { ...makeMessages(1)[0]!, id: 'a1', name: 'Sera', is_user: false, mes: 'It opens' },
+    ];
+    const result = assemble({
+      preset,
+      persona: { id: 'p1', name: 'Ari', description: 'A scholar.', avatar: null },
+      messages,
+      worldInfoBefore: 'LORE BEFORE',
+      worldInfoDepth: [{ depth: 0, order: 0, role: 'system', content: 'LORE DEPTH' }],
+      authorNote: { text: 'AUTHOR NOTE', interval: 1, position: 'atDepth', depth: 0 },
+      guides: [{ id: 'g1', name: 'Guide', text: 'STANDING GUIDE', enabled: true }],
+      finalControls: [{ identifier: 'summaryRequest', role: 'system', content: 'SUMMARIZE' }],
+    });
+    const content = result.messages.map((message) => message.content).join('\n');
+
+    for (const expected of [
+      'LORE BEFORE',
+      'forest guardian',
+      'Kind and watchful',
+      'Eldoria',
+      'A scholar.',
+      'Open the gate',
+      'It opens',
+      'LORE DEPTH',
+      'AUTHOR NOTE',
+      'STANDING GUIDE',
+      'POST',
+    ]) {
+      expect(content).toContain(expected);
+    }
+    expect(result.messages.at(-1)).toEqual({ role: 'system', content: 'SUMMARIZE' });
+  });
+
+  test('uses the response override for both macros and overflow accounting', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'main', {
+      content: 'reserve={{maxResponse}}',
+    });
+    preset = {
+      ...setPromptOrder(preset, [{ identifier: 'main', enabled: true }]),
+      openai_max_context: 19,
+      openai_max_tokens: 2,
+    };
+    const result = assemble({ preset, reservedCompletionTokens: 19 });
+
+    expect(result.messages[0]?.content).toBe('reserve=19');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.reservedCompletionTokens).toBe(19);
+  });
+});
+
 describe('macros', () => {
   test('substitutes {{char}} and {{user}} in prompt content', () => {
     const preset = setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]);

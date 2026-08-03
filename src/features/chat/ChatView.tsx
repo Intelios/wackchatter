@@ -54,7 +54,7 @@ export function ChatView({
   const [window, setWindow] = useState({ chatId: null as string | null, start: 0 });
   const restorePrependScroll = useRef<{ height: number; top: number } | null>(null);
 
-  const { state, stream, busy } = chat;
+  const { state, stream, busy, generationBlocked } = chat;
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
@@ -204,6 +204,7 @@ export function ChatView({
                     stream={stream}
                     isLast={message.id === lastId}
                     busy={busy}
+                    summaryRunning={chat.summaryStatus.running}
                     displayText={messageIndex === 0 ? greeting : undefined}
                     onSwipe={swipe}
                     onRegenerate={regenerate}
@@ -277,8 +278,8 @@ export function ChatView({
         onGuide={(text) => void chat.guidedRespond(text)}
         onGuidedSwipe={(text) => void chat.guidedSwipe(text)}
         guidedSwipeDisabledReason={guidedSwipeDisabledReason}
-        onStop={chat.abort}
-        busy={busy}
+        onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
+        busy={generationBlocked}
         disabled={!ready || loadBlocksChat}
         // Deliberately not gated on `ready`: closing or starting a chat has to work
         // before a connection is configured.
