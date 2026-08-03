@@ -114,6 +114,157 @@ export function dialogueSegments(markdown: string): DialogueSegment[] {
   return segments;
 }
 
+export type EmphasisKind = 'em' | 'strong';
+
+export interface EmphasisRange {
+  /** Inclusive index of the opening delimiter run — hidden, never rendered. */
+  delimStart: number;
+  /** Inclusive index of the first content character, after the opening delimiter. */
+  start: number;
+  /** Exclusive index of the last content character, before the closing delimiter. */
+  end: number;
+  /** Exclusive index of the closing delimiter run — hidden, never rendered. */
+  delimEnd: number;
+  kind: EmphasisKind;
+}
+
+export interface StreamSegment {
+  text: string;
+  /** A delimiter run: part of the text but never rendered, like a consumed markdown delimiter. */
+  hidden: boolean;
+  dialogue: boolean;
+  /**
+   * Kinds of emphasis whose content ranges fully contain this segment, closed-first.
+   * Delimiters themselves fall outside every content range, so they render literally
+   * rather than being styled — combined with `hidden` that is what removes them.
+   */
+  emphasis: EmphasisKind[];
+}
+
+/**
+ * Find `*em*` and `**strong**` pairs without parsing markdown. A run of asterisks opens
+ * when the text after the run is not whitespace (so `* bullets` stay literal) and closes
+ * when the text before it is not. Runs of two open strong, single runs open em, and a run
+ * can close then reopen (e.g. `*a**b*`); deeper nesting is approximated — the settled
+ * markdown render is authoritative. An opener that never closes reaches the end of the
+ * text: mid-stream that is "emphasis in progress", hidden until its pair arrives.
+ */
+export function emphasisRanges(text: string, eligible?: readonly boolean[]): EmphasisRange[] {
+  const ranges: EmphasisRange[] = [];
+  const stack: { kind: EmphasisKind; delimStart: number; contentStart: number }[] = [];
+
+  const escaped = (index: number): boolean => {
+    let backslashes = 0;
+    for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) backslashes += 1;
+    return backslashes % 2 === 1;
+  };
+
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== '*' || eligible?.[index] === false || escaped(index)) {
+      index += 1;
+      continue;
+    }
+    let runEnd = index + 1;
+    while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+    const runLength = runEnd - index;
+
+    let consumed = 0;
+    while (consumed < runLength && stack.length > 0) {
+      const top = stack[stack.length - 1]!;
+      const need = top.kind === 'strong' ? 2 : 1;
+      if (runLength - consumed < need) break;
+      if (index === 0 || /\s/.test(text[index - 1]!)) break;
+      stack.pop();
+      ranges.push({
+        delimStart: top.delimStart,
+        start: top.contentStart,
+        end: index,
+        delimEnd: runEnd,
+        kind: top.kind,
+      });
+      consumed += need;
+    }
+
+    const opens = runEnd >= text.length || !/\s/.test(text[runEnd]!);
+    if (opens && runLength - consumed >= 2) {
+      stack.push({ kind: 'strong', delimStart: index, contentStart: runEnd });
+      consumed += 2;
+    }
+    if (opens && runLength - consumed >= 1) {
+      stack.push({ kind: 'em', delimStart: index, contentStart: runEnd });
+      consumed += 1;
+    }
+
+    index = runEnd;
+  }
+
+  for (const open of stack) {
+    if (open.contentStart < text.length) {
+      ranges.push({
+        delimStart: open.delimStart,
+        start: open.contentStart,
+        end: text.length,
+        delimEnd: open.contentStart,
+        kind: open.kind,
+      });
+    }
+  }
+
+  return ranges;
+}
+
+/**
+ * Split streamed text into segments tagged with dialogue and emphasis, both approximated
+ * from the same eligibility mask in one pass over the text. Delimiter runs become their
+ * own `hidden` segments — the renderer drops them, exactly as markdown consumes them.
+ */
+export function streamSegments(markdown: string): StreamSegment[] {
+  if (!markdown) return [];
+  const eligible = markdownEligibility(markdown);
+  const emphasis = emphasisRanges(markdown, eligible);
+  const dialogue = dialogueRanges(markdown, eligible);
+  if (emphasis.length === 0 && dialogue.length === 0) {
+    return [{ text: markdown, hidden: false, dialogue: false, emphasis: [] }];
+  }
+
+  const cuts = new Set<number>([0, markdown.length]);
+  for (const range of emphasis) {
+    cuts.add(range.delimStart);
+    cuts.add(range.start);
+    cuts.add(range.end);
+    cuts.add(range.delimEnd);
+  }
+  for (const range of dialogue) {
+    cuts.add(range.start);
+    cuts.add(range.end);
+  }
+  const points = [...cuts].sort((a, b) => a - b);
+
+  const segments: StreamSegment[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const start = points[i]!;
+    const end = points[i + 1]!;
+    if (start >= end) continue;
+    const kinds = new Set(
+      emphasis
+        .filter((range) => range.start <= start && end <= range.end)
+        .map((range) => range.kind),
+    );
+    segments.push({
+      text: markdown.slice(start, end),
+      hidden: emphasis.some(
+        (range) =>
+          (range.delimStart <= start && end <= range.start) ||
+          (range.end <= start && end <= range.delimEnd),
+      ),
+      dialogue: dialogue.some((range) => range.start <= start && end <= range.end),
+      emphasis: [...kinds],
+    });
+  }
+  return segments;
+}
+
 interface HastText {
   type: 'text';
   value: string;

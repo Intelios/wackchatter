@@ -173,6 +173,16 @@ deliberately not among them.
 - **Streaming text never enters React state.** It lives in `streamStore` and reaches one
   leaf via `useSyncExternalStore`, so a sixty-second reply produces three or four actions
   instead of eighteen hundred — and a tick has no path to the database at all.
+- **Streaming renders `*em*` / `**strong**` live, from a linear segmenter, not a parser.**
+  `streamSegments` pairs asterisk runs in the same single pass that colours dialogue:
+  a run opens unless followed by whitespace (so `* bullets` stay literal), closes unless
+  preceded by it, `**` pairs before `*`, and an opener that never closes italicises to
+  the end of the stream — "emphasis in progress", with the delimiter hidden instead of
+  flickering until its pair arrives. Delimiter runs become `hidden` segments the
+  renderer drops, exactly as markdown consumes them, even when they sit inside another
+  pair's content (`*a **b** c*`). Escaped `\*` and code spans stay literal. The settled
+  react-markdown render remains authoritative; a nested case the segmenter gets wrong is
+  invisible, not wrong, because the bubble swaps to it the moment the commit lands.
 - The accumulator returns the **full** text every frame, never a delta. Consumers assign
   rather than append, which is what makes dropping throttled frames safe.
 - `dispatch` does not update a ref synchronously. Code that needs the post-dispatch state
