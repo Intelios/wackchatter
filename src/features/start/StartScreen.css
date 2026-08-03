@@ -23,6 +23,10 @@
   margin: 0;
 }
 
+.start-screen__title-accent {
+  color: var(--wc-accent);
+}
+
 .start-screen__version {
   font-size: var(--wc-text-sm);
   color: var(--wc-text-muted);

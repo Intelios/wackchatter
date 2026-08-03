@@ -89,7 +89,9 @@ export function StartScreen({ characters, onOpenChat }: StartScreenProps) {
   return (
     <div className="start-screen">
       <div className="start-screen__header">
-        <h1 className="start-screen__title">WackChatter</h1>
+        <h1 className="start-screen__title">
+          Wack<span className="start-screen__title-accent">Chatter</span>
+        </h1>
         {version ? <span className="start-screen__version">{versionString(version)}</span> : null}
       </div>
 
