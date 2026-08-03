@@ -59,8 +59,14 @@ the server dumb and fast, lets the Prompt Manager show live per-prompt token cou
 makes an exact "what was sent" inspector trivial — the browser posts the object it built,
 so the inspector shows the wire payload rather than a reconstruction of it.
 
-**Connection settings are ours, not the preset's.** Endpoint, model and provider live in
-`data/settings.json`; keys live in `data/secrets.json` and never reach the browser. A
+**Connection settings are ours, not the preset's.** Connections live in
+`data/settings.json` as a list (`connections`) plus an active selection (`connectionId`,
+null means "the first one"); keys live in `data/secrets.json` keyed by the connection's
+opaque id and never reach the browser. A deleted connection prunes its key on the next
+settings save. Each connection is `{id, name}` over the wire settings — the persona rule:
+id is opaque, name is editable, nothing references a connection by name. `showReasoning`
+and `reportUsage` are per-connection but edited from the Generation panel, write-through;
+they describe how the active endpoint is asked, not the preset. A
 preset's own connection keys (`custom_url`, `openrouter_model`, `chat_completion_source`)
 round-trip untouched but are never read, so importing someone else's preset cannot
 silently repoint your endpoint and exporting yours cannot leak it.
@@ -519,23 +525,3 @@ regex keys are the escape hatches.
   every disabled state carries a reason — same convention as `ChatMenu.test.ts`.
 
 When touching a format, add the test before the code.
-
-## Status
-
-Done: layout shell, PNG codec, card format + editor, preset format + Prompt Manager
-(drag-reorder, markers, depth injection), assembly engine, macros, providers (custom
-OpenAI-compatible + OpenRouter), SSE streaming, chat storage (SQLite), multiple chats per
-character with branching, swipes/regenerate/continue/edit/delete/hide, prompt inspector,
-real tokenizer, World Info (conversion, activation engine, standalone + embedded book
-editing, inspector report), personas with avatars, Author's Note, the chat options menu,
-guided generations (guided response, guided swipe, per-chat persistent guides),
-deleted-chat backups (a restorable trash bin in data/backups, filled on chat delete and
-on character cascade), chat export/import (our own JSON wire format).
-
-Not planned: impersonate, group chats, instruct mode, extensions, image generation,
-TTS, local models.
-
-World Info features deliberately **not** implemented, all of which can only ever make an
-entry fire *less*, so ignoring them is noisier than ST but never silently wrong:
-sticky/cooldown/delay, outlets, character filters, triggers, min-activations, group
-scoring, decorators, and the six non-chat scan sources.
