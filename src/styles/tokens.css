@@ -88,6 +88,8 @@
   --wc-text-sm: 13px;
   --wc-text-base: 14px;
   --wc-text-lg: 16px;
+  /* Display size — the fallback initial on a persona card. */
+  --wc-text-xl: 24px;
 
   /* Control and icon sizes. Named by role, not by pixel value, so a denser or
      roomier pass is one edit here. */

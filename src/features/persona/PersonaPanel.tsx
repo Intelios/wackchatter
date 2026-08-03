@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
-import { TrashIcon } from '../../layout/icons.tsx';
+import { EditIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
@@ -239,166 +239,203 @@ export function PersonaPanel({
         </p>
       ) : null}
 
-      <ul className="persona-list">
-        {personas.map((persona) => (
-          <li
-            key={persona.id}
-            className="persona-list__item"
-            data-active={active?.id === persona.id}
-          >
-            <button
-              type="button"
-              className="persona-list__pick"
-              onClick={() => onSelectForChat(persona.id)}
-              disabled={!hasChat}
-              title={hasChat ? 'Use in this chat' : 'Open a chat first'}
-            >
-              <span className="persona-list__avatar">
-                {persona.avatar ? (
-                  <img src={personaApi.avatarUrl(persona.id, persona.avatar)} alt="" />
-                ) : (
-                  <span aria-hidden="true">{persona.name.slice(0, 1).toUpperCase()}</span>
-                )}
-              </span>
-              <span className="persona-list__name">{persona.name}</span>
-              {defaultId === persona.id ? (
-                <span className="persona-list__badge">default</span>
-              ) : null}
-            </button>
-
-            <button
-              type="button"
-              className="wc-button wc-button--ghost persona-list__edit"
-              onClick={() => void selectEditor(editing === persona.id ? null : persona.id)}
-            >
-              {editing === persona.id ? 'Close' : 'Edit'}
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      <div className="persona-panel__actions">
-        <button type="button" className="wc-button" onClick={() => void handleCreate()}>
-          New persona
-        </button>
-        {active ? (
-          <button
-            type="button"
-            className="wc-button wc-button--ghost"
-            onClick={() => onSelectForChat(null)}
-            disabled={!hasChat}
-          >
-            Use none in this chat
-          </button>
-        ) : null}
-      </div>
-
       {draft ? (
         <div className="persona-editor">
-          <TextField
-            label="Name"
-            value={draft.name}
-            onChange={(name) => patch({ name })}
-            hint="What {{user}} expands to, and the label on your messages."
-          />
-
-          <TextField
-            label="Description"
-            value={draft.description}
-            onChange={(description) => patch({ description })}
-            multiline
-            rows={6}
-            placeholder="Who you are in the story."
-            hint="Available as {{persona}} wherever it is positioned."
-          />
-
-          <label className="persona-editor__avatar wc-button">
-            {draft.avatar ? 'Replace avatar' : 'Upload avatar'}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleAvatar(draft.id, file);
-                event.target.value = '';
-              }}
-            />
-          </label>
-
-          <DialogueColorField
-            value={draftDialogueColor}
-            autoColor={autoDialogueColor}
-            globallyEnabled={dialogueColors.enabled}
-            onChange={(value) => onDialogueColorChange(draft.id, value)}
-          />
-
-          <Section title="Placement">
-            <SelectField<'inPrompt' | 'topAuthorNote' | 'bottomAuthorNote' | 'atDepth' | 'none'>
-              label="Where the description goes"
-              value={draft.position ?? 'inPrompt'}
-              options={POSITION_OPTIONS}
-              onChange={(position) => patch({ position })}
-              hint="{{persona}} keeps working whichever you pick."
-            />
-
-            {draft.position === 'atDepth' ? (
-              <div className="field-row">
-                <NumberField
-                  label="Depth"
-                  value={draft.depth ?? 2}
-                  min={0}
-                  onChange={(depth) => patch({ depth })}
-                  hint="Messages back from the end."
-                />
-                <SelectField<'system' | 'user' | 'assistant'>
-                  label="Role"
-                  value={draft.role ?? 'system'}
-                  options={ROLE_OPTIONS}
-                  onChange={(role) => patch({ role })}
-                />
-              </div>
-            ) : null}
-          </Section>
-
-          <Section title="Lorebook">
-            <SelectField<string>
-              label="Persona lorebook"
-              value={draft.lorebookId ?? ''}
-              options={[
-                { label: 'None', value: '' },
-                ...books.map((book) => ({ label: book.name, value: book.id })),
-              ]}
-              onChange={(lorebookId) => patch({ lorebookId: lorebookId || null })}
-              hint="Loaded ahead of character and global lore whenever this persona is active."
-            />
-            {draft.lorebookId && !books.some((book) => book.id === draft.lorebookId) ? (
-              <p className="wc-hint persona-panel__warning">
-                Missing lorebook “{draft.lorebookId}”. Generation will continue without it.
-              </p>
-            ) : null}
-          </Section>
-
-          <CheckField
-            label="Default for new chats"
-            checked={defaultId === draft.id}
-            onChange={(on) => onSelectDefault(on ? draft.id : null)}
-            hint="Existing chats keep the persona they were started with."
-          />
-
-          <div className="persona-editor__footer">
+          <div className="persona-editor__top">
             <button
               type="button"
-              className="wc-button wc-button--ghost wc-button--danger"
-              onClick={() => (confirmDelete ? void handleDelete(draft.id) : setConfirmDelete(true))}
-              onBlur={() => setConfirmDelete(false)}
+              className="wc-button wc-button--ghost"
+              onClick={() => void selectEditor(null)}
             >
-              <TrashIcon />
-              {confirmDelete ? 'Click again to delete' : 'Delete persona'}
+              ← All personas
             </button>
           </div>
+
+          <div className="persona-editor__fields">
+            <TextField
+              label="Name"
+              value={draft.name}
+              onChange={(name) => patch({ name })}
+              hint="What {{user}} expands to, and the label on your messages."
+            />
+
+            <TextField
+              label="Description"
+              value={draft.description}
+              onChange={(description) => patch({ description })}
+              multiline
+              rows={6}
+              placeholder="Who you are in the story."
+              hint="Available as {{persona}} wherever it is positioned."
+            />
+
+            <label className="persona-editor__avatar wc-button">
+              {draft.avatar ? 'Replace avatar' : 'Upload avatar'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleAvatar(draft.id, file);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+
+            <DialogueColorField
+              value={draftDialogueColor}
+              autoColor={autoDialogueColor}
+              globallyEnabled={dialogueColors.enabled}
+              onChange={(value) => onDialogueColorChange(draft.id, value)}
+            />
+
+            <Section title="Placement">
+              <SelectField<'inPrompt' | 'topAuthorNote' | 'bottomAuthorNote' | 'atDepth' | 'none'>
+                label="Where the description goes"
+                value={draft.position ?? 'inPrompt'}
+                options={POSITION_OPTIONS}
+                onChange={(position) => patch({ position })}
+                hint="{{persona}} keeps working whichever you pick."
+              />
+
+              {draft.position === 'atDepth' ? (
+                <div className="field-row">
+                  <NumberField
+                    label="Depth"
+                    value={draft.depth ?? 2}
+                    min={0}
+                    onChange={(depth) => patch({ depth })}
+                    hint="Messages back from the end."
+                  />
+                  <SelectField<'system' | 'user' | 'assistant'>
+                    label="Role"
+                    value={draft.role ?? 'system'}
+                    options={ROLE_OPTIONS}
+                    onChange={(role) => patch({ role })}
+                  />
+                </div>
+              ) : null}
+            </Section>
+
+            <Section title="Lorebook">
+              <SelectField<string>
+                label="Persona lorebook"
+                value={draft.lorebookId ?? ''}
+                options={[
+                  { label: 'None', value: '' },
+                  ...books.map((book) => ({ label: book.name, value: book.id })),
+                ]}
+                onChange={(lorebookId) => patch({ lorebookId: lorebookId || null })}
+                hint="Loaded ahead of character and global lore whenever this persona is active."
+              />
+              {draft.lorebookId && !books.some((book) => book.id === draft.lorebookId) ? (
+                <p className="wc-hint persona-panel__warning">
+                  Missing lorebook “{draft.lorebookId}”. Generation will continue without it.
+                </p>
+              ) : null}
+            </Section>
+
+            <CheckField
+              label="Default for new chats"
+              checked={defaultId === draft.id}
+              onChange={(on) => onSelectDefault(on ? draft.id : null)}
+              hint="Existing chats keep the persona they were started with."
+            />
+
+            <div className="persona-editor__footer">
+              <button
+                type="button"
+                className="wc-button wc-button--ghost wc-button--danger"
+                onClick={() =>
+                  confirmDelete ? void handleDelete(draft.id) : setConfirmDelete(true)
+                }
+                onBlur={() => setConfirmDelete(false)}
+              >
+                <TrashIcon />
+                {confirmDelete ? 'Click again to delete' : 'Delete persona'}
+              </button>
+            </div>
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <>
+          {personas.length === 0 ? (
+            <div className="wc-empty">
+              <span>No personas yet.</span>
+              <span>Create one to say who you are in the chat.</span>
+            </div>
+          ) : (
+            <ul className="persona-grid">
+              {personas.map((persona) => (
+                <li
+                  key={persona.id}
+                  className="persona-card"
+                  data-active={active?.id === persona.id || undefined}
+                >
+                  {/* A container rather than one big button: the card needs two distinct
+                      actions, and a button inside a button is invalid. */}
+                  <button
+                    type="button"
+                    className="persona-card__pick"
+                    onClick={() => onSelectForChat(persona.id)}
+                    disabled={!hasChat}
+                    title={hasChat ? 'Use in this chat' : 'Open a chat first'}
+                  >
+                    <span className="persona-card__image">
+                      {persona.avatar ? (
+                        <img
+                          src={personaApi.avatarUrl(
+                            persona.id,
+                            avatarVersions[persona.id] ?? persona.avatar,
+                          )}
+                          alt=""
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="persona-card__initial" aria-hidden="true">
+                          {persona.name.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      {defaultId === persona.id ? (
+                        <span className="persona-card__badge">default</span>
+                      ) : null}
+                    </span>
+                    <span className="persona-card__name">{persona.name}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="persona-card__edit"
+                    onClick={() => void selectEditor(persona.id)}
+                    title={`Edit ${persona.name}`}
+                    aria-label={`Edit ${persona.name}`}
+                  >
+                    <EditIcon />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="persona-panel__footer">
+            <button type="button" className="wc-button" onClick={() => void handleCreate()}>
+              <PlusIcon />
+              New persona
+            </button>
+            {active ? (
+              <button
+                type="button"
+                className="wc-button wc-button--ghost"
+                onClick={() => onSelectForChat(null)}
+                disabled={!hasChat}
+              >
+                Use none in this chat
+              </button>
+            ) : null}
+          </div>
+        </>
+      )}
     </div>
   );
 }

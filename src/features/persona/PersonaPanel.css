@@ -1,10 +1,11 @@
 .persona-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--wc-space-3);
+  height: 100%;
 }
 
 .persona-panel__error {
+  margin: var(--wc-space-3) var(--wc-space-3) 0;
   padding: var(--wc-space-2) var(--wc-space-3);
   border: 1px solid var(--wc-danger);
   border-radius: var(--wc-radius-sm);
@@ -12,107 +13,169 @@
   color: var(--wc-danger);
   font-size: var(--wc-text-sm);
   overflow-wrap: anywhere;
+  flex-shrink: 0;
 }
 
-.persona-list {
+/* --- Card grid ---------------------------------------------------------- */
+
+.persona-grid {
   list-style: none;
   margin: 0;
-  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wc-space-3);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--wc-space-3);
+  align-content: start;
+}
+
+.persona-card {
+  position: relative;
+  min-width: 0;
+}
+
+.persona-card__pick {
   display: flex;
   flex-direction: column;
-  gap: var(--wc-space-1);
-}
-
-.persona-list__item {
-  display: flex;
-  align-items: center;
-  gap: var(--wc-space-1);
-  border-radius: var(--wc-radius-sm);
-  border: 1px solid transparent;
-}
-
-.persona-list__item:hover {
-  background: var(--wc-surface-hover);
-}
-
-.persona-list__item[data-active="true"] {
-  background: var(--wc-accent-subtle);
-  border-color: var(--wc-accent);
-}
-
-.persona-list__pick {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
   gap: var(--wc-space-2);
-  padding: var(--wc-space-2);
-  text-align: left;
+  width: 100%;
+  min-width: 0;
+  text-align: center;
 }
 
-.persona-list__pick:disabled {
+.persona-card__pick:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.persona-list__avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--wc-control-sm);
-  height: var(--wc-control-sm);
-  flex-shrink: 0;
-  border-radius: var(--wc-radius-sm);
+.persona-card__image {
+  position: relative;
+  display: block;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--wc-radius);
   overflow: hidden;
   background: var(--wc-surface-raised);
   border: 1px solid var(--wc-border);
-  color: var(--wc-text-muted);
-  font-size: var(--wc-text-sm);
-  font-weight: 600;
+  transition: border-color var(--wc-duration-fast) ease;
 }
 
-.persona-list__avatar img {
+.persona-card__image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
-.persona-list__name {
-  flex: 1;
-  min-width: 0;
+.persona-card:hover .persona-card__image {
+  border-color: var(--wc-border-strong);
+}
+
+.persona-card[data-active] .persona-card__image {
+  border-color: var(--wc-accent);
+  box-shadow: 0 0 0 1px var(--wc-accent);
+}
+
+.persona-card__initial {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--wc-text-xl);
+  font-weight: 600;
+  color: var(--wc-text-muted);
+}
+
+.persona-card__badge {
+  position: absolute;
+  left: var(--wc-space-1);
+  bottom: var(--wc-space-1);
+  padding: 0 var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-scrim);
+  color: var(--wc-text);
+  font-size: var(--wc-text-xs);
+  line-height: 1.6;
+}
+
+.persona-card__name {
+  display: block;
   font-size: var(--wc-text-sm);
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.persona-list__badge {
-  font-size: 10px;
-  line-height: 1.5;
-  padding: 0 4px;
-  border-radius: var(--wc-radius-sm);
-  background: var(--wc-surface-hover);
-  color: var(--wc-text-faint);
-  flex-shrink: 0;
-}
-
-.persona-list__edit {
-  flex-shrink: 0;
-  font-size: var(--wc-text-xs);
-}
-
-.persona-panel__actions {
+/* Revealed on hover so the grid stays quiet at rest. */
+.persona-card__edit {
+  position: absolute;
+  top: var(--wc-space-2);
+  right: var(--wc-space-2);
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--wc-space-2);
+  align-items: center;
+  justify-content: center;
+  padding: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-scrim);
+  color: var(--wc-text);
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
 }
+
+.persona-card:hover .persona-card__edit,
+.persona-card__edit:focus-visible {
+  opacity: 1;
+}
+
+.persona-card__edit svg {
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+  display: block;
+}
+
+.persona-panel__footer {
+  display: flex;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-top: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+
+.persona-panel__footer .wc-button {
+  flex: 1;
+}
+
+/* --- Editor takeover ---------------------------------------------------- */
 
 .persona-editor {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.persona-editor__top {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+  position: sticky;
+  top: 0;
+  background: var(--wc-surface);
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.persona-editor__fields {
+  display: flex;
+  flex-direction: column;
   gap: var(--wc-space-3);
-  padding-top: var(--wc-space-3);
-  border-top: 1px solid var(--wc-border);
+  padding: var(--wc-space-3);
 }
 
 /* The file input inside is hidden; the label is the button. */
