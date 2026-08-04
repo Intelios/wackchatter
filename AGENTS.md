@@ -404,6 +404,11 @@ regex keys are the escape hatches.
 
 ## UI conventions
 
+- **Character Creator Studio is a separate area, not a modal or panel.** It deliberately
+  replaces the chat shell for full-card authoring, so it is the explicit exception to the
+  usual "chat stays live" rule. Entering flushes the active chat and right panel first; exit
+  flushes the Studio card queue first. A failed flush aborts the transition rather than hiding
+  unsaved work. The normal right-panel character editor remains the quick-edit surface.
 - **A full-width header row over three columns.** The chat column is `1fr` so panels
   compress it rather than cover it. Widths are CSS variables on `.shell`, animated with
   one transition; the header row is a **fixed** track so `grid-template-columns` stays the

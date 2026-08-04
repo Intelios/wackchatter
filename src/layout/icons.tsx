@@ -347,3 +347,15 @@ export function GuidedSwipeIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** Character Creator Studio — a card with a drafting pencil. */
+export function StudioIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="4" y="3" width="13" height="18" rx="2" />
+      <path d="M8 8h5" />
+      <path d="M8 12h3" />
+      <path d="m15 16 5.5-5.5 1.5 1.5-5.5 5.5-2.5.8Z" />
+    </svg>
+  );
+}

@@ -1,43 +1,24 @@
-import type { CardDataV2, CharacterDetail } from '@shared/types/card.ts';
+import type { CharacterDetail } from '@shared/types/card.ts';
 import type { DialogueColorOverride } from '@shared/types/settings.ts';
 import type { WorldInfoEntry } from '@shared/types/worldinfo.ts';
 import { bookEntries as bookEntriesOf, toWorldInfoBook } from '@shared/worldinfo/convert.ts';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { ListField, TagField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
-import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
+import type { PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
+import { useCardDraft } from '../studio/useCardDraft.ts';
 import { EmbeddedBook } from './EmbeddedBook.tsx';
 import './CharacterEditor.css';
-
-const AUTOSAVE_DELAY_MS = 700;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 async function isPngFile(file: File): Promise<boolean> {
   const head = new Uint8Array(await file.slice(0, PNG_SIGNATURE.length).arrayBuffer());
   return head.length === PNG_SIGNATURE.length && PNG_SIGNATURE.every((byte, i) => head[i] === byte);
-}
-
-/** Only the fields we manage; the server merges them onto the stored card. */
-function toPatch(data: CardDataV2): Partial<CardDataV2> {
-  return {
-    description: data.description,
-    personality: data.personality,
-    scenario: data.scenario,
-    first_mes: data.first_mes,
-    mes_example: data.mes_example,
-    creator_notes: data.creator_notes,
-    system_prompt: data.system_prompt,
-    post_history_instructions: data.post_history_instructions,
-    alternate_greetings: data.alternate_greetings,
-    tags: data.tags,
-    creator: data.creator,
-    character_version: data.character_version,
-  };
 }
 
 interface CharacterEditorProps {
@@ -55,8 +36,6 @@ interface CharacterEditorProps {
   onAvatarChanged: () => void;
 }
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-
 export function CharacterEditor({
   detail,
   onSaved,
@@ -70,105 +49,30 @@ export function CharacterEditor({
   onDialogueColorChange,
   onAvatarChanged,
 }: CharacterEditorProps) {
-  const [data, setData] = useState<CardDataV2>(detail.card.data);
+  const draft = useCardDraft({
+    detail,
+    onSaved,
+    onRenamed,
+    onDeleted,
+    registerPersistence,
+  });
+  const { data, avatar } = draft;
   const [nameDraft, setNameDraft] = useState(detail.card.data.name);
-  const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
-  const dataRef = useRef(data);
-  const bookPersistenceRef = useRef<PersistenceControls | null>(null);
-
-  const avatar = detail.avatar;
   const avatarUrl = characterApi.imageUrl(avatar, avatarVersion);
   const autoDialogueColor = useAvatarColor(dialogueColor === undefined ? avatarUrl : null);
-  const revisionRef = useRef(0);
-
-  // Stable refs so the long-lived queue's callbacks always read fresh values rather than
-  // the props captured when the queue was constructed.
-  const avatarRef = useRef(avatar);
-  avatarRef.current = avatar;
-  const onSavedRef = useRef(onSaved);
-  onSavedRef.current = onSaved;
-
-  // One serialized, revision-aware queue. Writes never overlap, so a slow older response
-  // cannot land after a newer one; the pending snapshot is flushed on unmount so an edit
-  // made moments before leaving is not lost to the debounce.
-  const queueRef = useRef<AutosaveQueue<Partial<CardDataV2>, CharacterDetail> | null>(null);
-  if (!queueRef.current) {
-    queueRef.current = new AutosaveQueue(
-      (id, patch) => characterApi.update(id, patch),
-      AUTOSAVE_DELAY_MS,
-      {
-        onSaved: (id, _patch, saved) => {
-          if (id !== avatarRef.current) return;
-          setSaveState('saved');
-          setSaveError(null);
-          onSavedRef.current(saved);
-        },
-        onFailed: (id, error) => {
-          if (id !== avatarRef.current) return;
-          setSaveState('error');
-          setSaveError(error.message);
-        },
-      },
-    );
-  }
-  const queue = queueRef.current;
-
-  // Reset local state when a different character is opened.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on avatar by design
-  useEffect(() => {
-    setData(detail.card.data);
-    dataRef.current = detail.card.data;
-    setNameDraft(detail.card.data.name);
-    setSaveState('idle');
-    setSaveError(null);
-    setConfirmDelete(false);
-  }, [avatar]);
-
-  // Flush any pending write on unmount, or the last edit before closing the editor is lost.
-  useEffect(() => {
-    return () => {
-      void queue.flushAll().catch(() => {});
-    };
-  }, [queue]);
-
-  const update = useCallback(
-    <K extends keyof CardDataV2>(key: K, value: CardDataV2[K]) => {
-      // Schedule in the input event, not a passive effect. Otherwise an older request can
-      // settle after this local edit but before the effect runs, clear the dirty marker, and
-      // leave the new value with no queued revision at all.
-      const next = { ...dataRef.current, [key]: value };
-      dataRef.current = next;
-      setData(next);
-      setSaveState('saving');
-      setSaveError(null);
-      revisionRef.current += 1;
-      queue.schedule(avatar, revisionRef.current, toPatch(next));
-    },
-    [avatar, queue],
-  );
 
   async function handleImageChange(file: File | undefined) {
     if (!file) return;
     if (!(await isPngFile(file))) {
-      setSaveState('error');
-      setSaveError('Character cards must be PNG images so the card data can be embedded.');
+      draft.reportError('Character cards must be PNG images so the card data can be embedded.');
       return;
     }
-    setSaveState('saving');
     try {
-      const saved = await queue.runSerialized(avatar, () =>
-        characterApi.updateWithImage(avatar, {}, file),
-      );
-      setSaveState('saved');
-      onSaved(saved);
+      await draft.replaceAvatar(file);
       onAvatarChanged();
-    } catch (err) {
-      setSaveState('error');
-      setSaveError((err as Error).message);
-    }
+    } catch {}
   }
 
   /**
@@ -186,21 +90,7 @@ export function CharacterEditor({
       setNameDraft(data.name);
       return;
     }
-    setSaveState('saving');
-    try {
-      // Land any pending field edits on the current file before it moves, or they would
-      // post to a filename that no longer exists.
-      await queue.flush(avatar);
-      await bookPersistenceRef.current?.flush();
-      const saved = await queue.runSerialized(avatar, () => characterApi.rename(avatar, trimmed));
-      queue.discard(avatar);
-      setSaveState('saved');
-      setSaveError(null);
-      onRenamed(saved);
-    } catch (err) {
-      setSaveState('error');
-      setSaveError((err as Error).message);
-    }
+    await draft.rename(trimmed);
   }
 
   async function handleDelete() {
@@ -208,62 +98,23 @@ export function CharacterEditor({
       setConfirmDelete(true);
       return;
     }
-    try {
-      await bookPersistenceRef.current?.flush();
-      await queue.runSerialized(avatar, () => characterApi.remove(avatar));
-      queue.discard(avatar);
-      onDeleted();
-    } catch (err) {
-      setSaveState('error');
-      setSaveError((err as Error).message);
-    }
+    await draft.remove();
   }
 
   async function handleBack() {
     try {
-      await flushEditor();
+      await draft.flush();
       onBack();
     } catch (err) {
-      setSaveState('error');
-      setSaveError((err as Error).message);
+      draft.reportError((err as Error).message);
     }
   }
 
   async function retrySaves() {
-    setSaveState('saving');
     try {
-      await retryEditor();
-      setSaveState('saved');
-      setSaveError(null);
-    } catch (err) {
-      setSaveState('error');
-      setSaveError((err as Error).message);
-    }
+      await draft.retry();
+    } catch {}
   }
-
-  const flushEditor = useCallback(async () => {
-    await queue.flush(avatar);
-    await bookPersistenceRef.current?.flush();
-  }, [avatar, queue]);
-
-  const retryEditor = useCallback(async () => {
-    await queue.retry(avatar);
-    await bookPersistenceRef.current?.retry();
-  }, [avatar, queue]);
-
-  useEffect(() => {
-    registerPersistence?.({ flush: flushEditor, retry: retryEditor });
-    return () => registerPersistence?.(null);
-  }, [flushEditor, registerPersistence, retryEditor]);
-
-  const serializeCardWrite = useCallback(
-    <T,>(task: () => Promise<T>) => queue.runSerialized(avatar, task),
-    [avatar, queue],
-  );
-
-  const registerBookPersistence = useCallback((controls: PersistenceControls | null) => {
-    bookPersistenceRef.current = controls;
-  }, []);
 
   const lorebookEntries = data.character_book?.entries ?? [];
 
@@ -277,36 +128,18 @@ export function CharacterEditor({
     [data.character_book],
   );
 
-  // The book endpoints return the whole updated card, so the local copy follows the
-  // server's rather than being patched twice from two directions.
-  const handleBookSaved = useCallback(
-    (saved: CharacterDetail) => {
-      const reconciledData = {
-        ...dataRef.current,
-        character_book: saved.card.data.character_book,
-      };
-      dataRef.current = reconciledData;
-      setData(reconciledData);
-      onSaved({
-        ...saved,
-        card: { ...saved.card, ...toPatch(reconciledData), data: reconciledData },
-      });
-    },
-    [onSaved],
-  );
-
   const statusLabel = useMemo(() => {
-    switch (saveState) {
+    switch (draft.saveState) {
       case 'saving':
         return 'Saving…';
       case 'saved':
         return 'Saved';
       case 'error':
-        return saveError ?? 'Save failed';
+        return draft.saveError ?? 'Save failed';
       default:
         return '';
     }
-  }, [saveState, saveError]);
+  }, [draft.saveError, draft.saveState]);
 
   return (
     <div className="editor">
@@ -318,10 +151,10 @@ export function CharacterEditor({
         >
           ← All characters
         </button>
-        <span className="editor__status" data-state={saveState}>
+        <span className="editor__status" data-state={draft.saveState}>
           {statusLabel}
         </span>
-        {saveState === 'error' ? (
+        {draft.saveState === 'error' ? (
           <button
             type="button"
             className="wc-button wc-button--ghost"
@@ -365,12 +198,12 @@ export function CharacterEditor({
             <TextField
               label="Creator"
               value={data.creator}
-              onChange={(v) => update('creator', v)}
+              onChange={(v) => draft.update('creator', v)}
             />
             <TextField
               label="Version"
               value={data.character_version}
-              onChange={(v) => update('character_version', v)}
+              onChange={(v) => draft.update('character_version', v)}
             />
           </div>
         </div>
@@ -389,7 +222,7 @@ export function CharacterEditor({
         <TextField
           label="Description"
           value={data.description}
-          onChange={(v) => update('description', v)}
+          onChange={(v) => draft.update('description', v)}
           multiline
           expandable
           rows={10}
@@ -398,7 +231,7 @@ export function CharacterEditor({
         <TextField
           label="Personality"
           value={data.personality}
-          onChange={(v) => update('personality', v)}
+          onChange={(v) => draft.update('personality', v)}
           multiline
           expandable
           rows={3}
@@ -406,7 +239,7 @@ export function CharacterEditor({
         <TextField
           label="Scenario"
           value={data.scenario}
-          onChange={(v) => update('scenario', v)}
+          onChange={(v) => draft.update('scenario', v)}
           multiline
           expandable
           rows={3}
@@ -417,7 +250,7 @@ export function CharacterEditor({
         <TextField
           label="First message"
           value={data.first_mes}
-          onChange={(v) => update('first_mes', v)}
+          onChange={(v) => draft.update('first_mes', v)}
           multiline
           expandable
           rows={8}
@@ -426,7 +259,7 @@ export function CharacterEditor({
         <ListField
           label="Alternate greetings"
           value={data.alternate_greetings}
-          onChange={(v) => update('alternate_greetings', v)}
+          onChange={(v) => draft.update('alternate_greetings', v)}
           addLabel="Add greeting"
           hint="Available as swipes on the opening message."
         />
@@ -436,7 +269,7 @@ export function CharacterEditor({
         <TextField
           label="Examples"
           value={data.mes_example}
-          onChange={(v) => update('mes_example', v)}
+          onChange={(v) => draft.update('mes_example', v)}
           multiline
           expandable
           rows={10}
@@ -448,7 +281,7 @@ export function CharacterEditor({
         <TextField
           label="System prompt"
           value={data.system_prompt}
-          onChange={(v) => update('system_prompt', v)}
+          onChange={(v) => draft.update('system_prompt', v)}
           multiline
           expandable
           rows={5}
@@ -457,7 +290,7 @@ export function CharacterEditor({
         <TextField
           label="Post-history instructions"
           value={data.post_history_instructions}
-          onChange={(v) => update('post_history_instructions', v)}
+          onChange={(v) => draft.update('post_history_instructions', v)}
           multiline
           expandable
           rows={5}
@@ -478,22 +311,19 @@ export function CharacterEditor({
         <EmbeddedBook
           avatar={avatar}
           entries={bookEntries}
-          onSaved={handleBookSaved}
-          onError={(message) => {
-            setSaveState('error');
-            setSaveError(message);
-          }}
-          serializeCardWrite={serializeCardWrite}
-          registerPersistence={registerBookPersistence}
+          onSaved={draft.handleBookSaved}
+          onError={draft.reportError}
+          serializeCardWrite={draft.serializeCardWrite}
+          registerPersistence={draft.registerBookPersistence}
         />
       </Section>
 
       <Section title="Metadata">
-        <TagField label="Tags" value={data.tags} onChange={(v) => update('tags', v)} />
+        <TagField label="Tags" value={data.tags} onChange={(v) => draft.update('tags', v)} />
         <TextField
           label="Creator notes"
           value={data.creator_notes}
-          onChange={(v) => update('creator_notes', v)}
+          onChange={(v) => draft.update('creator_notes', v)}
           multiline
           expandable
           rows={4}

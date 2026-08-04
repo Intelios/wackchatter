@@ -68,6 +68,8 @@ export interface AppSettings {
    * been renamed away is inert.
    */
   collapsedCharacterFolders: string[];
+  /** Whether the Character Creator Studio's token and lint inspector is hidden. */
+  studioInspectorCollapsed: boolean;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
@@ -196,4 +198,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     personas: {},
   },
   collapsedCharacterFolders: [],
+  studioInspectorCollapsed: false,
 };

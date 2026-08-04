@@ -42,6 +42,7 @@
   /* Lines */
   --wc-border: #2a2a2e;
   --wc-border-strong: #3a3a40;
+  --wc-border-width: 1px;
 
   /* Accent. Acid lime against neutral chrome: it reads as "active" at a glance
      without borrowing a hue any status colour needs. Light enough that text on
@@ -111,6 +112,24 @@
   --wc-measure: 860px;
   /* Ceiling for lists that would otherwise run the length of the panel. */
   --wc-scroll-cap: 420px;
+  --wc-studio-rail-width: 200px;
+  --wc-studio-inspector-width: 300px;
+  --wc-studio-canvas-width: 900px;
+  --wc-studio-filter-width: 200px;
+  --wc-studio-card-width: 260px;
+  --wc-studio-card-avatar: 96px;
+  --wc-studio-card-avatar-tall: 144px;
+  --wc-studio-avatar-min: 180px;
+  --wc-studio-avatar-width: 260px;
+  --wc-studio-error-width: 560px;
+  --wc-studio-active-border: 3px;
+  --wc-studio-badge-size: 16px;
+  --wc-studio-meter-height: 8px;
+  --wc-studio-finding-mark: 16px;
+  --wc-letter-spacing: 0.08em;
+  --wc-code-line-height: 1.6;
+  --wc-glass-blur: 20px;
+  --wc-glass-saturation: 140%;
 
   /* Motion. One layout duration and one curve keeps panel movement coherent;
      --wc-duration-fast is for hover and focus, which must not feel laggy. */
@@ -140,7 +159,7 @@
  * Set only when a background image is actually selected; over a flat colour, glass costs
  * a compositing layer to blur nothing.
  */
-.shell[data-glass="true"] {
+:is(.shell, .studio-shell)[data-glass="true"] {
   --wc-surface: rgb(20 20 22 / 0.72);
   --wc-surface-raised: rgb(30 30 33 / 0.8);
   --wc-bubble: rgb(24 24 27 / 0.66);
@@ -148,7 +167,7 @@
 
 /* Without backdrop-filter, 0.72-alpha panels sit over an unblurred image. Unreadable. */
 @supports not (backdrop-filter: blur(1px)) {
-  .shell[data-glass="true"] {
+  :is(.shell, .studio-shell)[data-glass="true"] {
     --wc-surface: rgb(20 20 22 / 0.95);
     --wc-surface-raised: rgb(30 30 33 / 0.97);
     --wc-bubble: rgb(24 24 27 / 0.94);
@@ -162,7 +181,7 @@
  * is why `prefers-contrast` is a separate condition rather than an `and`.
  */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .shell[data-glass="true"] {
+  :is(.shell, .studio-shell)[data-glass="true"] {
     --wc-surface: #16161a;
     --wc-surface-raised: #1e1e21;
     --wc-bubble: #16161a;

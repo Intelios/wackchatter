@@ -32,6 +32,7 @@ import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
 import { StartScreen } from './features/start/StartScreen.tsx';
+import { StudioShell } from './features/studio/StudioShell.tsx';
 import { SummaryPanel } from './features/summary/SummaryPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
@@ -54,6 +55,7 @@ import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
+  const [view, setView] = useState<'app' | 'studio'>('app');
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
 
@@ -83,6 +85,7 @@ export function App() {
   const characterPersistence = useRef<PersistenceControls | null>(null);
   const lorePersistence = useRef<PersistenceControls | null>(null);
   const personaPersistence = useRef<PersistenceControls | null>(null);
+  const studioPersistence = useRef<PersistenceControls | null>(null);
 
   const flushRightPanel = useCallback(async () => {
     const controls = editing
@@ -704,6 +707,30 @@ export function App() {
     void refresh();
   }, [refresh, selected]);
 
+  /** The Studio suspends the chat shell, so both sets of pending work must land first. */
+  const enterStudio = useCallback(async () => {
+    try {
+      chat.cancelSummary();
+      await chat.flushSaves();
+      await flushRightPanel();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setView('studio');
+  }, [chat, flushRightPanel]);
+
+  const exitStudio = useCallback(async () => {
+    try {
+      await studioPersistence.current?.flush();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setView('app');
+    void refresh();
+  }, [refresh]);
+
   const handlePersonaDeleted = useCallback((id: string) => {
     setSettings((current) => {
       if (!current || !Object.hasOwn(current.dialogueColors.personas, id)) return current;
@@ -727,6 +754,32 @@ export function App() {
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
   }, [active, chat.state.title]);
+
+  const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
+
+  if (view === 'studio') {
+    return (
+      <StudioShell
+        characters={characters}
+        folders={folders}
+        books={books}
+        countTokens={countTokens}
+        contextLimit={preset?.openai_max_context}
+        backgroundUrl={resolveBackgroundUrl(settings?.background)}
+        backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+        backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+        glass={settings?.glass !== false}
+        inspectorCollapsed={studioInspectorCollapsed}
+        onInspectorCollapsedChange={(collapsed) =>
+          void patchSettings({ studioInspectorCollapsed: collapsed })
+        }
+        onExit={exitStudio}
+        registerPersistence={(controls) => {
+          studioPersistence.current = controls;
+        }}
+      />
+    );
+  }
 
   return (
     <AppShell
@@ -905,7 +958,11 @@ export function App() {
           dialogueColors={dialogueColorSettings}
         />
       ) : (
-        <StartScreen characters={characters} onOpenChat={handleOpenRecentChat} />
+        <StartScreen
+          characters={characters}
+          onOpenChat={handleOpenRecentChat}
+          onOpenStudio={() => void enterStudio()}
+        />
       )}
     </AppShell>
   );

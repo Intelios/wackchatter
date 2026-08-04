@@ -1,6 +1,7 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
+import { StudioIcon } from '../../layout/icons.tsx';
 import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
 import './StartScreen.css';
 
@@ -10,6 +11,7 @@ const MAX_RECENT = 15;
 interface StartScreenProps {
   characters: CharacterSummary[];
   onOpenChat: (avatar: string, chatId: string) => void;
+  onOpenStudio: () => void;
 }
 
 interface RecentChat extends ChatSummary {
@@ -41,7 +43,7 @@ function versionString(info: VersionInfo): string {
   return display;
 }
 
-export function StartScreen({ characters, onOpenChat }: StartScreenProps) {
+export function StartScreen({ characters, onOpenChat, onOpenStudio }: StartScreenProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [recent, setRecent] = useState<ChatSummary[] | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -146,6 +148,10 @@ export function StartScreen({ characters, onOpenChat }: StartScreenProps) {
             ) : null}
           </div>
         )}
+        <button type="button" className="start-screen__studio" onClick={onOpenStudio}>
+          <StudioIcon />
+          Character Creator Studio
+        </button>
       </div>
     </div>
   );

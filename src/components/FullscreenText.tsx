@@ -3,9 +3,8 @@
  * fields get an expanded editor. It takes the chat column, not the viewport — the top
  * bar and the side panels stay visible and usable, like SillyTavern's maximized drawer.
  *
- * Portaled into .shell as a grid item in the chat column's cell, which is what lets the
- * grid size it and carry the panel-open animation for free: no measuring, no resize
- * listeners, and the column it replaces is exactly what it covers.
+ * Portaled into the active overlay root. The chat shell supplies a grid cell; the Studio
+ * supplies its full editing surface, so expandable fields work in both destinations.
  *
  * Not modal: the textarea is bound to the same value/onChange as the inline field, so
  * every close path is lossless by construction, and nothing else in the app needs to be
@@ -43,7 +42,7 @@ export function FullscreenText({
 }: FullscreenTextProps) {
   const openerRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [shell] = useState(() => document.querySelector('.shell'));
+  const [overlayRoot] = useState(() => document.querySelector('[data-overlay-root]'));
 
   // Capture the opener on mount (the trigger button still holds focus), focus the editor.
   useEffect(() => {
@@ -62,9 +61,9 @@ export function FullscreenText({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  // The overlay only exists while a shell is up, so a null target is a teardown race —
+  // The overlay only exists while an app destination is up, so a null target is a teardown race —
   // render nothing rather than crash. The trigger stays mounted either way.
-  if (!shell) return null;
+  if (!overlayRoot) return null;
 
   return createPortal(
     <div className="fullscreen-text" role="dialog" aria-modal="false" aria-label={label}>
@@ -102,6 +101,6 @@ export function FullscreenText({
       />
       {hint ? <p className="fullscreen-text__hint">{hint}</p> : null}
     </div>,
-    shell,
+    overlayRoot,
   );
 }

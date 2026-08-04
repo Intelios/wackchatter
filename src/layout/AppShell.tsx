@@ -147,6 +147,7 @@ export function AppShell<L extends string, R extends string>({
   return (
     <div
       className="shell"
+      data-overlay-root
       data-left-open={leftPanel !== null}
       data-right-open={rightPanel !== null}
       // Glass only means anything over an image. With no background it would cost a
