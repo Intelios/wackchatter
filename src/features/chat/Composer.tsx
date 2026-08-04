@@ -1,8 +1,18 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { GuidedSwipeIcon, SendIcon, StopIcon, WandIcon } from '../../layout/icons.tsx';
 import './Composer.css';
 
 const MAX_ROWS = 12;
+
+/**
+ * The one write path into the composer's private draft — quick commands use it to place
+ * their text ready to send. Reading the draft stays impossible, the same bargain the
+ * `onSend` callbacks make.
+ */
+export interface ComposerHandle {
+  /** Append on a new line when there is a draft, replace when there is not. */
+  insert: (text: string) => void;
+}
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -26,6 +36,7 @@ interface ComposerProps {
    * ignorant of the chat hook.
    */
   leading?: ReactNode;
+  ref?: Ref<ComposerHandle>;
 }
 
 export function Composer({
@@ -38,9 +49,26 @@ export function Composer({
   disabled,
   placeholder,
   leading,
+  ref,
 }: ComposerProps) {
   const [text, setText] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      insert(added: string) {
+        setText((current) => {
+          const trimmed = current.trimEnd();
+          return trimmed ? `${trimmed}\n${added}` : added;
+        });
+        // A menu selection restores focus to the menu's trigger AFTER `onSelect` runs, so
+        // the focus waits one tick to win — "ready to send" means the cursor is here.
+        setTimeout(() => textarea.current?.focus({ preventScroll: true }), 0);
+      },
+    }),
+    [],
+  );
 
   /**
    * Grow with the content, up to a cap, then scroll internally.

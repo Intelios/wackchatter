@@ -8,6 +8,15 @@
   min-width: 220px;
 }
 
+/*
+ * A menu grows with its content, up to the room Popover measures on open — the generic
+ * cap would put a full menu (and its user-grown lists) behind a scrollbar long before it
+ * runs out of screen. Past the room the inline cap Popover sets takes over and scrolls.
+ */
+.popover__popup.menu__popup {
+  max-height: none;
+}
+
 .menu__item {
   display: flex;
   align-items: center;
@@ -74,4 +83,50 @@
   margin: var(--wc-space-1) 0;
   border: 0;
   background: var(--wc-border);
+}
+
+/* --- Submenu flyout ------------------------------------------------------- */
+
+/* Groups a submenu's trigger with its flyout, so closing the menu unmounts both. */
+.menu__item-wrap {
+  position: relative;
+}
+
+.menu__chevron {
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+}
+
+.menu__item:hover:not(:disabled) .menu__chevron {
+  color: inherit;
+}
+
+/*
+ * The flyout. `position: fixed` so it escapes the menu popup's scroll container — see the
+ * note on `Submenu` in Menu.tsx for why nothing here can be absolutely positioned. The
+ * transparent inline padding bridges the gap between the item and the box, so the pointer
+ * crosses without dropping the hover.
+ */
+.menu__submenu {
+  position: fixed;
+  z-index: 2;
+  padding-inline: 4px;
+}
+
+.menu__submenu-box {
+  min-width: 220px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+}
+
+/* Opening to the left grows the box back toward the item, not off the screen. */
+.menu__submenu[data-side="left"] {
+  transform: translateX(-100%);
 }

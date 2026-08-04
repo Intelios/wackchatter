@@ -348,6 +348,15 @@ export function GuidedSwipeIcon({ className }: IconProps) {
   );
 }
 
+/** Quick commands — a bolt. */
+export function BoltIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+    </svg>
+  );
+}
+
 /** Character Creator Studio — a card with a drafting pencil. */
 export function StudioIcon({ className }: IconProps) {
   return (

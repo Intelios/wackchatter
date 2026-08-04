@@ -19,6 +19,7 @@ import type {
   DialogueColorOverride,
   DialogueColorSettings,
   GuidanceSettings,
+  QuickCommand,
   SummarySettings,
 } from '../../shared/types/settings.ts';
 import {
@@ -306,6 +307,29 @@ function normalizeDialogueColors(value: unknown): DialogueColorSettings {
   };
 }
 
+/**
+ * Coerce a stored quick-command list. Entries without a usable id are dropped — the id is
+ * what edits and deletes address, and a duplicate id would let one command shadow another.
+ */
+function normalizeQuickCommands(value: unknown): QuickCommand[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const commands: QuickCommand[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    commands.push({
+      id,
+      name: typeof entry.name === 'string' ? entry.name : '',
+      text: typeof entry.text === 'string' ? entry.text : '',
+    });
+  }
+  return commands;
+}
+
 let cache: AppSettings | null = null;
 
 export function getSettings(): AppSettings {
@@ -340,6 +364,7 @@ export function getSettings(): AppSettings {
     guidance: normalizeGuidance(stored.guidance),
     summary: normalizeSummary(stored.summary, connections),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
+    quickCommands: normalizeQuickCommands(stored.quickCommands),
   };
 
   return cache;
@@ -391,6 +416,11 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
               : patch.dialogueColors.personas,
         })
       : current.dialogueColors,
+    // A wholesale array like `collapsedCharacterFolders`, but normalised: a stale tab or a
+    // malformed body like `{"quickCommands": null}` must not wipe the user's commands.
+    quickCommands: Array.isArray(patch.quickCommands)
+      ? normalizeQuickCommands(patch.quickCommands)
+      : current.quickCommands,
   };
 }
 

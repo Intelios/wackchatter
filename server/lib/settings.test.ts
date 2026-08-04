@@ -215,6 +215,42 @@ describe('mergeSettings', () => {
     expect(next.dialogueColors.characters).toEqual({ good: '#abcdef', off: null });
     expect(next.dialogueColors.personas).toEqual({ old: '#abcdef' });
   });
+
+  test('quick commands replace wholesale, an empty list clearing them all', () => {
+    const current = mergeSettings(base(), {
+      quickCommands: [{ id: 'a', name: 'Ending', text: 'Write an ending.' }],
+    });
+    expect(current.quickCommands).toEqual([{ id: 'a', name: 'Ending', text: 'Write an ending.' }]);
+    expect(mergeSettings(current, { quickCommands: [] }).quickCommands).toEqual([]);
+  });
+
+  test('a malformed quick-commands patch cannot wipe the list', () => {
+    // The stale-tab case: a body like `{"quickCommands": null}` rides the plain spread
+    // unless pinned, and the user's commands would be gone with no way back.
+    const current = mergeSettings(base(), {
+      quickCommands: [{ id: 'a', name: 'Ending', text: 'Write an ending.' }],
+    });
+    for (const patch of [{ quickCommands: null }, { quickCommands: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).quickCommands).toEqual(current.quickCommands);
+    }
+  });
+
+  test('malformed quick-command entries are coerced or dropped, duplicate ids first wins', () => {
+    const next = mergeSettings(base(), {
+      quickCommands: [
+        { id: 'a', name: 'Kept', text: 'first' },
+        { id: 'a', name: 'Shadowed', text: 'second' },
+        { id: '  ', name: 'No id', text: 'dropped' },
+        { name: 'Also no id', text: 'dropped' },
+        { id: 'b', name: 42, text: null },
+        'junk',
+      ] as never,
+    });
+    expect(next.quickCommands).toEqual([
+      { id: 'a', name: 'Kept', text: 'first' },
+      { id: 'b', name: '', text: '' },
+    ]);
+  });
 });
 
 describe('dialogue colour identity changes', () => {

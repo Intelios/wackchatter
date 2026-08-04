@@ -1,0 +1,116 @@
+/*
+ * The quick-commands editor popup. Anchoring belongs to Popover.css; this is the contents.
+ * Same shape as GuidesPopover.css — one list editor, one layout.
+ */
+
+/*
+ * The editor opens from inside the burger menu but anchors to the burger button. Its
+ * Popover root is stretched over the ChatMenu wrapper — exactly that button's box — and
+ * the popup's ordinary CSS anchoring (bottom: 100%, left: 0) does the rest. The root
+ * keeps pointer-events off so the button underneath stays clickable; the popup itself
+ * turns them back on.
+ */
+.chat-menu {
+  position: relative;
+}
+
+.chat-menu > .popover--editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.chat-menu > .popover--editor .popover__popup {
+  pointer-events: auto;
+}
+
+.quick-commands__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.quick-commands {
+  /* Wide enough for a sentence of command text to read as a sentence, narrow enough that
+     the popup does not cover the transcript it sits beside. */
+  width: clamp(320px, 28vw, 440px);
+  padding: var(--wc-space-3);
+}
+
+.quick-commands__title {
+  margin: 0;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.quick-commands__hint,
+.quick-commands__empty {
+  margin: var(--wc-space-1) 0 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  line-height: 1.5;
+}
+
+.quick-commands__empty {
+  margin: 0;
+  padding: var(--wc-space-3);
+  border: 1px dashed var(--wc-border);
+  border-radius: var(--wc-radius);
+  text-align: center;
+}
+
+.quick-commands__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.quick-command {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.quick-command__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.quick-command__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.quick-command__delete {
+  flex-shrink: 0;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.quick-command__delete:hover,
+.quick-command__delete[data-confirming] {
+  color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
+}
+
+.quick-command__text {
+  width: 100%;
+  resize: vertical;
+  font-size: var(--wc-text-sm);
+  line-height: 1.5;
+}
+
+.quick-commands__add {
+  align-self: flex-start;
+}

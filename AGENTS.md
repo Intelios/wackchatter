@@ -459,10 +459,42 @@ regex keys are the escape hatches.
   working on ordinary containment. It is controlled (`open` + `onOpenChange`) because both
   consumers need to close it from inside their own content. Escape closes **and restores
   focus to the trigger**; an outside click closes without restoring, since the click has
-  already put focus where the user wanted it.
+  already put focus where the user wanted it. The same effect measures the room **inside
+  the nearest clipping ancestor** — the chat column, not the viewport; viewport numbers
+  overestimate by the top bar — and caps the popup's height to it, so a popup **grows with
+  its content** up to the available space and only scrolls past that. The stylesheet cap
+  (`min(60vh, --wc-scroll-cap)`) still governs where set; the menu overrides it to `none`,
+  because a full menu plus a user-grown list must not scroll while screen remains.
+- `Menu` entries may carry a **submenu whose flyout opens to the side** — on hover, click,
+  or ArrowRight. The flyout is `position: fixed`, not a nested Popover: the menu popup is a
+  scroll container, and anything absolutely positioned inside it would be clipped. Fixed
+  escapes that because no ancestor of the popup carries a transform or filter (glass puts
+  its backdrop-filter on the bar and panels, never here) — and it stays a DOM child of the
+  menu, so the parent's outside-click dismissal contains it and closing the menu unmounts
+  it. Hover-open does not take focus; keyboard- and click-open do. Escape/ArrowLeft inside
+  the flyout closes only the flyout and refocuses its trigger — the stopPropagation is
+  load-bearing, since Popover's own Escape dismisses everything.
 - **Disabled beats refused.** SillyTavern toasts "stop the generation first"; we have no
   toast system, so a blocked entry is `disabled` with a `disabledReason` that becomes its
   `title`. Same information, no new machinery.
+- **Quick commands are app-wide settings, and nothing ships in the box.** `quickCommands`
+  in `settings.json` is a flat array carried by `mergeSettings`'s spread, but normalised —
+  a stale tab or `{"quickCommands": null}` must not wipe user-written commands. The persona
+  rule again: `id` opaque, `name` editable. The whole feature lives in the burger menu: a
+  **Quick commands submenu** whose flyout lists the usable ones (blank text inserts
+  nothing, so blank commands stay out) ahead of an "Edit quick commands…" entry that is
+  the discovery path when the list is empty. Commands are **not gated on `busy`**: picking
+  one only fills the composer, and queueing your next move mid-generation is the point.
+  The editor opens from inside the flyout but **anchors to the burger button** — its
+  Popover root is stretched over the ChatMenu wrapper, exactly that button's box, so the
+  popup's ordinary CSS anchoring grows it from the right place with no trigger of its own.
+  The composer never grew a button for this feature.
+- **The composer's draft has exactly one write path: `ComposerHandle.insert`.** The draft
+  stays private `useState` — the `onSend` bargain — so quick commands reach it through a
+  React 19 ref-as-prop imperative handle, never lifted state. `insert` appends on a newline
+  when there is a draft, replaces when there is not, and focuses the textarea **one tick
+  later**: `Menu` restores focus to its trigger *after* `onSelect` runs, so an immediate
+  focus would lose the race and the cursor would land on the burger button, not the box.
 - **Presets save explicitly, characters autosave.** The difference is what a mistake
   costs: a card field is one value you can retype, a preset is a tuned artefact where
   "that felt worse" needs a way back. Editing a preset raises a Save/Revert bar and
@@ -538,12 +570,14 @@ regex keys are the escape hatches.
   typed by the user stays literal while one in the template expands.
 - `src/features/chat/guides.test.ts` covers the list edits, including that `nextGuideName`
   fills the lowest free slot rather than counting entries.
+- `src/features/chat/quickCommands.test.ts` does the same for quick commands, including
+  that blank-text commands are unusable and an unnamed one borrows its label from the text.
 - `src/features/chat/ChatMenu.test.ts` pins the chat menu's gating: Continue unavailable
   on a user-final transcript, checkpoint and regenerate unavailable on an empty one, every
-  action but the panel jumps disabled mid-generation, and every disabled entry carrying a
-  reason. There is no DOM test harness in this project, so menu logic lives in a pure
-  `buildChatMenu` and the React wrapper stays thin — the same split as
-  `composeLorebookSources` in `useLorebooks`.
+  action but the panel jumps and the quick commands disabled mid-generation, and every
+  disabled entry carrying a reason. There is no DOM test harness in this project, so menu
+  logic lives in a pure `buildChatMenu` and the React wrapper stays thin — the same split
+  as `composeLorebookSources` in `useLorebooks`.
 - `server/lib/location.test.ts` gates the data-directory rules. Two are load-bearing rather
   than thorough: an unreachable pointer must fall back **and leave the pointer file's bytes
   untouched** (rewriting it is how an unplugged drive silently becomes a lost setting), and a

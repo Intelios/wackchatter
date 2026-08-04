@@ -136,17 +136,41 @@ export function Popover({
     if (!trigger || !popup) return;
 
     const rect = trigger.getBoundingClientRect();
+
+    // Room measured inside the nearest ancestor that would clip us — the chat column for
+    // every popup in this app. Viewport-based numbers overestimate by the height of the
+    // top bar, and a popup taller than its clipping box is not scrolled, just cut off.
+    let topBound = 0;
+    let bottomBound = window.innerHeight;
+    for (let node = popup.parentElement; node; node = node.parentElement) {
+      if (getComputedStyle(node).overflowY === 'visible') continue;
+      const box = node.getBoundingClientRect();
+      topBound = box.top;
+      bottomBound = box.bottom;
+      break;
+    }
+
+    const roomAbove = rect.top - topBound;
+    const roomBelow = bottomBound - rect.bottom;
     const needed = popup.offsetHeight + 4;
-    const roomAbove = rect.top;
-    const roomBelow = window.innerHeight - rect.bottom;
 
     // Only flip if the other side is genuinely better — flipping into an equally bad spot
     // just moves the problem.
-    setFlipped(
+    const flip =
       side === 'top'
         ? roomAbove < needed && roomBelow > roomAbove
-        : roomBelow < needed && roomAbove > roomBelow,
-    );
+        : roomBelow < needed && roomAbove > roomBelow;
+    setFlipped(flip);
+
+    // Grow with the content, but never past the room on the side we open on — past that
+    // the clipping ancestor cuts the popup off, so it scrolls instead. A stylesheet cap
+    // (min(60vh, --wc-scroll-cap) by default) still governs where one is set; the menu
+    // overrides it to `none` and is bounded by the room alone.
+    const room =
+      (side === 'top' ? (flip ? roomBelow : roomAbove) : flip ? roomAbove : roomBelow) - 8;
+    const cssCap = Number.parseFloat(getComputedStyle(popup).maxHeight);
+    const limit = Number.isFinite(cssCap) ? Math.min(cssCap, room) : room;
+    popup.style.maxHeight = `${Math.max(limit, 100)}px`;
   }, [open, side, triggerRef, popupRef]);
 
   // Dismiss on a click anywhere outside. `pointerdown` rather than `click` so the popup is

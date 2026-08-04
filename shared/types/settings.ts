@@ -68,10 +68,27 @@ export interface AppSettings {
    * been renamed away is inert.
    */
   collapsedCharacterFolders: string[];
+  /**
+   * User-defined quick commands: named snippets inserted into the composer from the chat
+   * menu. App-wide, and never bundled — an empty list is the default, users add their own.
+   * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
+   */
+  quickCommands: QuickCommand[];
   /** Whether the Character Creator Studio's token and lint inspector is hidden. */
   studioInspectorCollapsed: boolean;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
+}
+
+/**
+ * A user-defined quick command. The persona rule: `id` is opaque, `name` is editable —
+ * nothing references a command by name, so renaming it cannot break anything.
+ */
+export interface QuickCommand {
+  id: string;
+  name: string;
+  /** The text inserted into the composer. Blank means the command does nothing. */
+  text: string;
 }
 
 export type DialogueColorOverride = string | null;
@@ -198,5 +215,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     personas: {},
   },
   collapsedCharacterFolders: [],
+  quickCommands: [],
   studioInspectorCollapsed: false,
 };

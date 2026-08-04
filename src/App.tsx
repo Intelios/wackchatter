@@ -6,6 +6,7 @@ import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type {
   DialogueColorOverride,
   DialogueColorSettings,
+  QuickCommand,
   SettingsResponse,
 } from '@shared/types/settings.ts';
 import {
@@ -294,6 +295,8 @@ export function App() {
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
   const dialogueColorSettings: DialogueColorSettings =
     settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS;
+  // Normalised server-side; the fallback only covers the pre-load render.
+  const quickCommands: QuickCommand[] = settings?.quickCommands ?? [];
 
   // Which character folders are shut. Round-trips through settings on every toggle, the same
   // way the default persona does — the write is a small local file and the list is short.
@@ -956,6 +959,8 @@ export function App() {
             void patchSettings({ guidance: { ...guidanceSettings, ...patch } })
           }
           dialogueColors={dialogueColorSettings}
+          quickCommands={quickCommands}
+          onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
         />
       ) : (
         <StartScreen

@@ -4,6 +4,7 @@ import type {
   DialogueColorOverride,
   DialogueColorSettings,
   GuidanceSettings,
+  QuickCommand,
 } from '@shared/types/settings.ts';
 import {
   type ComponentProps,
@@ -20,7 +21,7 @@ import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
 import { ChatMenu } from './ChatMenu.tsx';
-import { Composer } from './Composer.tsx';
+import { Composer, type ComposerHandle } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import {
@@ -49,6 +50,9 @@ interface ChatViewProps {
   guidance: GuidanceSettings;
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
   dialogueColors: DialogueColorSettings;
+  /** App-wide user-defined quick commands, inserted into the composer from the chat menu. */
+  quickCommands: QuickCommand[];
+  onQuickCommandsChange: (commands: QuickCommand[]) => void;
 }
 
 export function ChatView({
@@ -63,12 +67,17 @@ export function ChatView({
   guidance,
   onGuidanceChange,
   dialogueColors,
+  quickCommands,
+  onQuickCommandsChange,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom } = useStickToBottom(scrollRef, contentRef);
   const [window, setWindow] = useState({ chatId: null as string | null, start: 0 });
   const restorePrependScroll = useRef<{ height: number; top: number } | null>(null);
+
+  // The write path from the chat menu's quick commands into the composer's private draft.
+  const composerRef = useRef<ComposerHandle>(null);
 
   const { state, stream, busy, generationBlocked } = chat;
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
@@ -303,6 +312,7 @@ export function ChatView({
       ) : null}
 
       <Composer
+        ref={composerRef}
         onSend={(text) => void chat.send(text)}
         onGuide={(text) => void chat.guidedRespond(text)}
         onGuidedSwipe={(text) => void chat.guidedSwipe(text)}
@@ -314,7 +324,14 @@ export function ChatView({
         // before a connection is configured.
         leading={
           <>
-            <ChatMenu chat={chat} onCloseChat={onCloseChat} onOpenPanel={onOpenPanel} />
+            <ChatMenu
+              chat={chat}
+              onCloseChat={onCloseChat}
+              onOpenPanel={onOpenPanel}
+              quickCommands={quickCommands}
+              onInsertCommand={(text) => composerRef.current?.insert(text)}
+              onQuickCommandsChange={onQuickCommandsChange}
+            />
             <GuidesPopover
               guides={guides}
               onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
