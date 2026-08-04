@@ -5,7 +5,7 @@
 
 .field__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--wc-space-2);
 }
@@ -16,6 +16,28 @@
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   margin-bottom: var(--wc-space-2);
+}
+
+.field__expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wc-control-sm);
+  height: var(--wc-control-sm);
+  margin-bottom: var(--wc-space-2); /* matches .field__meta so it sits on the label line */
+  flex-shrink: 0;
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-faint);
+  transition: color var(--wc-duration-fast) ease;
+}
+
+.field__expand:hover {
+  color: var(--wc-text);
+}
+
+.field__expand svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
 }
 
 /* A checkbox sits on its label's line, so the block-level .wc-label margin is wrong. */
@@ -58,4 +80,18 @@
 
 .list-field__row .wc-button {
   align-self: flex-end;
+}
+
+.list-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+  margin-bottom: var(--wc-space-2);
+}
+
+/* The per-row expand button already gets its margin from the label-line rule; inside a
+   row with no block label it should sit flush. */
+.list-field__head .field__expand {
+  margin-bottom: 0;
 }

@@ -268,6 +268,7 @@ export function PersonaPanel({
               value={draft.description}
               onChange={(description) => patch({ description })}
               multiline
+              expandable
               rows={6}
               placeholder="Who you are in the story."
               hint="Available as {{persona}} wherever it is positioned."

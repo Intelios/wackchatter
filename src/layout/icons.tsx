@@ -234,6 +234,30 @@ export function CloseIcon({ className }: IconProps) {
   );
 }
 
+/** Expand a field to full screen — outward corner arrows. */
+export function ExpandIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M9 4H4v5" />
+      <path d="M15 4h5v5" />
+      <path d="M4 15v5h5" />
+      <path d="M20 15v5h-5" />
+    </svg>
+  );
+}
+
+/** Leave full-screen editing — inward corner arrows. */
+export function ShrinkIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 9h5V4" />
+      <path d="M20 9h-5V4" />
+      <path d="M9 20v-5H4" />
+      <path d="M15 20v-5h5" />
+    </svg>
+  );
+}
+
 export function SearchIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

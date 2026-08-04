@@ -391,6 +391,7 @@ export function CharacterEditor({
           value={data.description}
           onChange={(v) => update('description', v)}
           multiline
+          expandable
           rows={10}
           hint="The character's core definition. Always sent, via the charDescription prompt."
         />
@@ -399,6 +400,7 @@ export function CharacterEditor({
           value={data.personality}
           onChange={(v) => update('personality', v)}
           multiline
+          expandable
           rows={3}
         />
         <TextField
@@ -406,6 +408,7 @@ export function CharacterEditor({
           value={data.scenario}
           onChange={(v) => update('scenario', v)}
           multiline
+          expandable
           rows={3}
         />
       </Section>
@@ -416,6 +419,7 @@ export function CharacterEditor({
           value={data.first_mes}
           onChange={(v) => update('first_mes', v)}
           multiline
+          expandable
           rows={8}
           hint="Opens every new chat. Supports {{char}} and {{user}}."
         />
@@ -434,6 +438,7 @@ export function CharacterEditor({
           value={data.mes_example}
           onChange={(v) => update('mes_example', v)}
           multiline
+          expandable
           rows={10}
           hint="Separate blocks with <START>. Use {{user}}: and {{char}}: prefixes."
         />
@@ -445,6 +450,7 @@ export function CharacterEditor({
           value={data.system_prompt}
           onChange={(v) => update('system_prompt', v)}
           multiline
+          expandable
           rows={5}
           hint="Replaces the preset's Main Prompt unless that prompt forbids overrides."
         />
@@ -453,6 +459,7 @@ export function CharacterEditor({
           value={data.post_history_instructions}
           onChange={(v) => update('post_history_instructions', v)}
           multiline
+          expandable
           rows={5}
           hint="Replaces the preset's Post-History Instructions (jailbreak) prompt."
         />
@@ -488,6 +495,7 @@ export function CharacterEditor({
           value={data.creator_notes}
           onChange={(v) => update('creator_notes', v)}
           multiline
+          expandable
           rows={4}
           hint="Not sent to the model — notes for whoever uses the card."
         />

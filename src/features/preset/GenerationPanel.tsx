@@ -193,6 +193,7 @@ export function GenerationPanel({
           value={preset.new_chat_prompt ?? '[Start a new Chat]'}
           onChange={(value) => setField('new_chat_prompt', value)}
           multiline
+          expandable
         />
         <TextField
           label="Example dialogue marker"
@@ -216,6 +217,7 @@ export function GenerationPanel({
           }
           onChange={(value) => setField('continue_nudge_prompt', value)}
           multiline
+          expandable
         />
         <CheckField
           label="Use assistant prefill"

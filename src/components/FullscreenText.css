@@ -1,0 +1,57 @@
+/*
+ * The one sanctioned overlay: long prompt text needs more than a panel width.
+ *
+ * The overlay is a grid item portaled into .shell, pinned to the chat column's cell —
+ * row 2, column 2 — so the grid sizes it and carries the panel-open transition for free.
+ * The top bar and the side panels stay visible and usable while it is up, and opening a
+ * panel compresses it exactly as it compresses the chat it replaced.
+ *
+ * Solid even in glass mode via --wc-surface-popup — a translucency here would let the
+ * background image bleed through the editor. No entrance animation, matching the app.
+ */
+.fullscreen-text {
+  grid-column: 2;
+  grid-row: 2;
+  z-index: 2; /* above the chat-column content (z-index 1) but below nothing it covers */
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-5);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fullscreen-text__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+}
+
+.fullscreen-text__title {
+  font-size: var(--wc-text-lg);
+  color: var(--wc-text);
+  overflow-wrap: anywhere;
+}
+
+.fullscreen-text__actions {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-shrink: 0;
+}
+
+.fullscreen-text__editor {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  font-size: var(--wc-text-base);
+  line-height: 1.6;
+}
+
+.fullscreen-text__hint {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}

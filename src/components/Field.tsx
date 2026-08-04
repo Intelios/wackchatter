@@ -1,5 +1,7 @@
 import { joinKeys, splitKeys } from '@shared/worldinfo/keys.ts';
 import { useEffect, useId, useState } from 'react';
+import { ExpandIcon } from '../layout/icons.tsx';
+import { FullscreenText } from './FullscreenText.tsx';
 import './Field.css';
 
 interface TextFieldProps {
@@ -10,6 +12,8 @@ interface TextFieldProps {
   hint?: string;
   multiline?: boolean;
   rows?: number;
+  /** Shows a full-screen editing button on a multiline field. */
+  expandable?: boolean;
   /** Shown to the right of the label, e.g. a token count. */
   meta?: string;
   /**
@@ -31,8 +35,10 @@ export function TextField({
   meta,
   onCommit,
   disabled,
+  expandable,
 }: TextFieldProps) {
   const id = useId();
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="field">
@@ -41,6 +47,17 @@ export function TextField({
           {label}
         </label>
         {meta ? <span className="field__meta">{meta}</span> : null}
+        {expandable && multiline ? (
+          <button
+            type="button"
+            className="field__expand"
+            title={`Edit ${label} full screen`}
+            aria-label={`Edit ${label} full screen`}
+            onClick={() => setExpanded(true)}
+          >
+            <ExpandIcon />
+          </button>
+        ) : null}
       </div>
 
       {multiline ? (
@@ -74,6 +91,21 @@ export function TextField({
       )}
 
       {hint ? <p className="wc-hint">{hint}</p> : null}
+
+      {expanded ? (
+        <FullscreenText
+          label={label}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          disabled={disabled}
+          hint={hint}
+          onClose={(opener) => {
+            setExpanded(false);
+            if (opener?.isConnected) opener.focus({ preventScroll: true });
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -368,6 +400,8 @@ interface ListFieldProps {
 
 /** An editable list of long strings — used for alternate greetings. */
 export function ListField({ label, value, onChange, addLabel, hint, placeholder }: ListFieldProps) {
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+
   function update(index: number, next: string) {
     const copy = [...value];
     copy[index] = next;
@@ -386,6 +420,18 @@ export function ListField({ label, value, onChange, addLabel, hint, placeholder 
         // add/remove, and the value itself is not unique (two greetings can match).
         // biome-ignore lint/suspicious/noArrayIndexKey: positional list
         <div className="list-field__row" key={index}>
+          <div className="list-field__head">
+            <span className="wc-label">{`${label} ${index + 1}`}</span>
+            <button
+              type="button"
+              className="field__expand"
+              title={`Edit ${label} ${index + 1} full screen`}
+              aria-label={`Edit ${label} ${index + 1} full screen`}
+              onClick={() => setExpandedRow(index)}
+            >
+              <ExpandIcon />
+            </button>
+          </div>
           <textarea
             className="wc-textarea"
             value={item}
@@ -394,6 +440,15 @@ export function ListField({ label, value, onChange, addLabel, hint, placeholder 
             onChange={(e) => update(index, e.target.value)}
             aria-label={`${label} ${index + 1}`}
           />
+          {expandedRow === index ? (
+            <FullscreenText
+              label={`${label} ${index + 1}`}
+              value={item}
+              onChange={(next) => update(index, next)}
+              placeholder={placeholder}
+              onClose={() => setExpandedRow(null)}
+            />
+          ) : null}
           <button
             type="button"
             className="wc-button wc-button--ghost wc-button--danger"

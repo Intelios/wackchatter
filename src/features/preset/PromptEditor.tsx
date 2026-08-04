@@ -178,6 +178,7 @@ export function PromptEditor({
             value={prompt.content ?? ''}
             onChange={(v) => set('content', v)}
             multiline
+            expandable
             rows={12}
             hint="Supports {{char}}, {{user}}, {{persona}} and the rest of the macro set."
           />

@@ -63,6 +63,7 @@ export function SummaryPanel({
           value={summaryText}
           onChange={chat.editSummary}
           multiline
+          expandable
           rows={10}
           placeholder="The generated summary will appear here. You can also write one yourself."
           hint="Edits become the base for the next update. Clearing this starts again from the full transcript."
@@ -137,6 +138,7 @@ export function SummaryPanel({
           onChange={setPromptDraft}
           onCommit={() => onSettingsChange({ prompt: promptDraft })}
           multiline
+          expandable
           rows={8}
           hint="Every {{words}} occurrence is replaced with the target length."
           disabled={summaryStatus.running}
@@ -172,6 +174,7 @@ export function SummaryPanel({
           onChange={setTemplateDraft}
           onCommit={() => onSettingsChange({ template: templateDraft })}
           multiline
+          expandable
           rows={3}
           hint="{{summary}} resolves to the current summary without re-running macros inside it."
           disabled={summaryStatus.running}

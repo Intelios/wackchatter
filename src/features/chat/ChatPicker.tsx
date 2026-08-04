@@ -246,6 +246,7 @@ export function ChatPicker({
                 value={metadata.scenario ?? ''}
                 onChange={(scenario) => onMetadataChange({ scenario })}
                 multiline
+                expandable
                 rows={4}
                 placeholder="Leave empty to clear the character scenario."
               />
@@ -258,6 +259,7 @@ export function ChatPicker({
               value={authorNote.text}
               onChange={(text) => updateAuthorNote({ text })}
               multiline
+              expandable
               rows={4}
               placeholder="A recurring instruction for this chat."
             />

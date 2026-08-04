@@ -178,6 +178,7 @@ function EntryForm({ entry, globals, onChange, onDelete }: EntryFormProps) {
         value={entry.content}
         onChange={(content) => onChange({ content })}
         multiline
+        expandable
         rows={6}
         placeholder="What the model is told when this entry fires."
         hint="Macros like {{char}} are expanded when the prompt is built."
