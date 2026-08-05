@@ -27,6 +27,29 @@
   color: var(--wc-accent);
 }
 
+.inspector__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.inspector__list-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wc-space-1);
+}
+
+/* Smaller than a standard button — these are list utilities, not primary actions. */
+.inspector__mini {
+  padding: var(--wc-space-1) var(--wc-space-2);
+  font-size: var(--wc-text-xs);
+}
+
+/*
+ * No max-height / overflow here on purpose: the panel body already scrolls, and capping
+ * the list created a nested scroll region with dead space below it. Letting the cards
+ * flow uses the full panel width and height.
+ */
 .inspector__messages {
   display: flex;
   flex-direction: column;
@@ -34,25 +57,71 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: var(--wc-scroll-cap);
-  overflow-y: auto;
 }
 
 .inspector__message {
   border: 1px solid var(--wc-border);
+  border-left-width: 3px;
   border-radius: var(--wc-radius-sm);
   overflow: hidden;
-  /* overflow:hidden zeroes this item's automatic minimum height, so without this the
-     capped scroll container flex-shrinks every card to fit instead of scrolling. */
+}
+
+/* A role accent on the left edge lets you scan the sequence at a glance. */
+.inspector__message[data-role="system"] {
+  border-left-color: var(--wc-text-faint);
+}
+
+.inspector__message[data-role="user"] {
+  border-left-color: var(--wc-accent);
+}
+
+.inspector__message[data-role="assistant"] {
+  border-left-color: var(--wc-dialogue-default);
+}
+
+/* The whole header is one button, edge to edge. */
+.inspector__head {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  text-align: left;
+  background: var(--wc-surface-raised);
+  transition: background var(--wc-duration-fast) ease;
+}
+
+.inspector__head:hover {
+  background: var(--wc-surface-hover);
+}
+
+.inspector__message[data-open="true"] .inspector__head {
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.inspector__chevron {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
   flex-shrink: 0;
+  color: var(--wc-text-faint);
+  transition: transform var(--wc-duration) var(--wc-ease);
+}
+
+.inspector__message[data-open="true"] .inspector__chevron {
+  transform: rotate(90deg);
+}
+
+.inspector__index {
+  flex-shrink: 0;
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  min-width: 2ch;
+  text-align: right;
 }
 
 .inspector__role {
-  display: flex;
-  gap: var(--wc-space-2);
-  padding: var(--wc-space-1) var(--wc-space-2);
-  background: var(--wc-surface-raised);
-  border-bottom: 1px solid var(--wc-border);
+  flex-shrink: 0;
   font-size: var(--wc-text-xs);
   font-weight: 600;
   text-transform: uppercase;
@@ -64,9 +133,31 @@
   color: var(--wc-accent);
 }
 
+.inspector__message[data-role="assistant"] .inspector__role {
+  color: var(--wc-dialogue-default);
+}
+
 .inspector__name {
-  font-weight: 400;
-  text-transform: none;
+  flex-shrink: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+/* One-line glimpse of a folded message, so the list is readable without expanding. */
+.inspector__preview {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inspector__chars {
+  flex-shrink: 0;
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
   color: var(--wc-text-faint);
 }
 
@@ -82,8 +173,8 @@
 }
 
 .inspector__json {
-  max-height: var(--wc-scroll-cap);
-  overflow: auto;
+  /* Uncapped like the message list — the panel body is the only scroll container. */
+  overflow-x: auto;
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius-sm);
   background: var(--wc-bg);
