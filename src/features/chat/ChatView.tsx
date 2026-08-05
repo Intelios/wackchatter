@@ -24,14 +24,13 @@ import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
-import {
-  initialTranscriptStart,
-  prependTranscriptPage,
-  TRANSCRIPT_PAGE_SIZE,
-} from './transcriptWindow.ts';
+import { initialTranscriptStart, prependTranscriptPage } from './transcriptWindow.ts';
 import type { UseChat } from './useChat.ts';
 import { useStickToBottom } from './useStickToBottom.ts';
 import './ChatView.css';
+
+/** How far from the top the reader has to be before the next older page appears. */
+const LOAD_AHEAD_PX = 800;
 
 interface ChatViewProps {
   chat: UseChat;
@@ -133,20 +132,38 @@ export function ChatView({
     restorePrependScroll.current = null;
   });
 
-  function loadOlderMessages() {
+  const loadOlderMessages = useCallback(() => {
+    if (visibleStart === 0) return;
     const scroll = scrollRef.current;
     if (scroll) {
       restorePrependScroll.current = { height: scroll.scrollHeight, top: scroll.scrollTop };
     }
-    setWindow((current) => ({
-      chatId: state.chatId,
-      start: prependTranscriptPage(
-        current.chatId === state.chatId
-          ? current.start
-          : initialTranscriptStart(state.messages.length),
-      ),
-    }));
-  }
+    setWindow({ chatId: state.chatId, start: prependTranscriptPage(visibleStart) });
+  }, [visibleStart, state.chatId]);
+
+  // Scrolling up loads the next page on the way — the reader is never made to ask.
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const onScroll = () => {
+      if (scroll.scrollTop < LOAD_AHEAD_PX) loadOlderMessages();
+    };
+    scroll.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroll.removeEventListener('scroll', onScroll);
+  }, [loadOlderMessages]);
+
+  // The listener runs on scroll events; a page too short to scroll never fires one. After
+  // a chat opens or a page lands, keep loading while the reader is still inside the
+  // load-ahead band. Declared after the restore effect so a load queued here is restored
+  // on the next commit, not this one.
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || visibleStart === 0) return;
+    // The chat-change effect has not synced the window yet; its scrollToBottom still runs.
+    if (window.chatId !== state.chatId) return;
+    if (scroll.scrollTop >= LOAD_AHEAD_PX) return;
+    loadOlderMessages();
+  }, [visibleStart, window.chatId, state.chatId, loadOlderMessages]);
 
   /*
    * Hoisted so `memo` on MessageBubble is worth anything.
@@ -200,63 +217,52 @@ export function ChatView({
               <span>No messages yet. Say something to {characterName}.</span>
             </div>
           ) : (
-            <>
-              {visibleStart > 0 ? (
-                <button
-                  type="button"
-                  className="wc-button wc-button--ghost chat-view__load-older"
-                  onClick={loadOlderMessages}
-                >
-                  Load {Math.min(visibleStart, TRANSCRIPT_PAGE_SIZE)} older messages
-                </button>
-              ) : null}
-              {visibleMessages.map((message, index) => {
-                const messageIndex = visibleStart + index;
-                const shared = {
-                  message,
-                  streaming: state.streamingId === message.id,
-                  mode: state.mode,
-                  stream,
-                  isLast: message.id === lastId,
-                  busy,
-                  summaryRunning: chat.summaryStatus.running,
-                  displayText: messageIndex === 0 ? greeting : undefined,
-                  onSwipe: swipe,
-                  onRegenerate: regenerate,
-                  onContinue: continueLast,
-                  onRetry: regenerate,
-                  onEdit: editMessage,
-                  onEditReasoning: editReasoning,
-                  onDelete: deleteMessage,
-                  onToggleHidden: toggleHidden,
-                  onBranch: branchFrom,
-                };
-                if (message.is_user) {
-                  const speaker = speakerOf(message);
-                  return (
-                    <UserMessageBubble
-                      key={message.id}
-                      {...shared}
-                      persona={speaker}
-                      avatarVersion={speaker ? personaAvatarVersions?.[speaker.id] : undefined}
-                      // Lookups, not the settings object: an unrelated settings change
-                      // must not re-render every user row.
-                      dialogueEnabled={dialogueColors.enabled}
-                      override={speaker ? dialogueColors.personas[speaker.id] : undefined}
-                    />
-                  );
-                }
+            visibleMessages.map((message, index) => {
+              const messageIndex = visibleStart + index;
+              const shared = {
+                message,
+                streaming: state.streamingId === message.id,
+                mode: state.mode,
+                stream,
+                isLast: message.id === lastId,
+                busy,
+                summaryRunning: chat.summaryStatus.running,
+                displayText: messageIndex === 0 ? greeting : undefined,
+                onSwipe: swipe,
+                onRegenerate: regenerate,
+                onContinue: continueLast,
+                onRetry: regenerate,
+                onEdit: editMessage,
+                onEditReasoning: editReasoning,
+                onDelete: deleteMessage,
+                onToggleHidden: toggleHidden,
+                onBranch: branchFrom,
+              };
+              if (message.is_user) {
+                const speaker = speakerOf(message);
                 return (
-                  <MessageBubble
+                  <UserMessageBubble
                     key={message.id}
                     {...shared}
-                    avatarUrl={characterAvatarUrl}
-                    dialogueActive={characterDialogue.active}
-                    dialogueColor={characterDialogue.color}
+                    persona={speaker}
+                    avatarVersion={speaker ? personaAvatarVersions?.[speaker.id] : undefined}
+                    // Lookups, not the settings object: an unrelated settings change
+                    // must not re-render every user row.
+                    dialogueEnabled={dialogueColors.enabled}
+                    override={speaker ? dialogueColors.personas[speaker.id] : undefined}
                   />
                 );
-              })}
-            </>
+              }
+              return (
+                <MessageBubble
+                  key={message.id}
+                  {...shared}
+                  avatarUrl={characterAvatarUrl}
+                  dialogueActive={characterDialogue.active}
+                  dialogueColor={characterDialogue.color}
+                />
+              );
+            })
           )}
         </div>
       </div>
