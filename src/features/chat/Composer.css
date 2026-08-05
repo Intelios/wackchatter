@@ -1,14 +1,14 @@
 /* The message input and its send button, sharing the transcript's measure. */
 
 .composer {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--wc-space-2);
   max-width: var(--wc-measure);
   width: 100%;
   margin: 0 auto;
   padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
   /*
    * One row of the textarea: its line box, its vertical padding, its two borders.
    *
@@ -19,6 +19,97 @@
    * stops the two drifting apart again the next time the type scale moves.
    */
   --wc-composer-row: calc(var(--wc-text-base) * 1.5 + var(--wc-space-3) * 2 + 2px);
+}
+
+.composer__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wc-space-2);
+}
+
+/*
+ * The textarea and its slash-command autocomplete share one box, so the dropdown can
+ * anchor to the input's exact edges with no measuring: the field is the flex item that
+ * used to be the textarea, and the input fills it.
+ */
+.composer__field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+/* The autocomplete box, floating above the composer and over the transcript. */
+.composer__slash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: var(--wc-space-2);
+  display: flex;
+  flex-direction: column;
+  padding: var(--wc-space-1);
+  max-height: min(60vh, var(--wc-scroll-cap));
+  overflow-y: auto;
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+  /* No z-index needed: the composer is a later sibling than the transcript, so this
+     already paints above it. */
+}
+
+.composer__slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: none;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.composer__slash-item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.composer__slash-item--active {
+  background: var(--wc-accent-subtle);
+}
+
+.composer__slash-name {
+  flex-shrink: 0;
+  font-family: var(--wc-font-mono);
+  color: var(--wc-accent);
+}
+
+.composer__slash-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.composer__slash-usage {
+  flex-shrink: 0;
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+/* A failed slash command, kept above the row so the draft it explains stays readable. */
+.composer__error {
+  color: var(--wc-danger);
+  font-size: var(--wc-text-sm);
+  padding: 0 var(--wc-space-1);
+  overflow-wrap: anywhere;
 }
 
 .composer__input {

@@ -170,6 +170,30 @@ describe('creating and reading', () => {
     expect(loaded.mes).toBe('B');
     expect(loaded.swipes).toEqual(['B']);
   });
+
+  test('is_system survives both the create and the replace round trips', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      messages: [message({ mes: 'gone', is_system: true }), message({ mes: 'kept' })],
+    });
+
+    const first = store.getChat(created.id)!.messages;
+    expect(first[0]!.is_system).toBe(true);
+    expect(first[1]!.is_system).toBe(false);
+
+    const updated = saved(
+      store.replaceChat(created.id, {
+        revision: 1,
+        messages: [
+          message({ mes: 'still gone', is_system: true }),
+          message({ mes: 'still kept' }),
+          message({ mes: 'newly hidden', is_system: true }),
+        ],
+      }),
+    );
+
+    expect(updated.messages.map((m) => m.is_system)).toEqual([true, false, true]);
+  });
 });
 
 describe('listing', () => {

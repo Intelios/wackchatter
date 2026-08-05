@@ -489,6 +489,39 @@ regex keys are the escape hatches.
   Popover root is stretched over the ChatMenu wrapper, exactly that button's box, so the
   popup's ordinary CSS anchoring grows it from the right place with no trigger of its own.
   The composer never grew a button for this feature.
+- **Slash commands are typed, not menu-driven.** `/hide`, `/unhide`, `/jump` and
+  `/reload`, parsed in `slashCommands.ts` before `chat.send` ever sees the text. Two rules
+  that must not break: only text that *starts* with `/` is a command, and a command-shaped
+  line that fails to parse is an **error, never a silent send** — a typo'd `/giggle` must
+  not become character dialogue. Indexes and ranges are **zero-based and inclusive**,
+  matching ST's `stringToRange(value, 0, chat.length - 1)` loop; `/hide 0-149` hides
+  exactly the first 150 messages, a bare `/hide` targets the last one, and ranges clamp to
+  the transcript. A failed command keeps the composer's draft and shows its error inline —
+  text the user typed is never cleared for nothing. Commands are blocked while a reply or
+  summary runs via the composer's `busy`, so there is no second entry point to forget.
+  The composer's **autocomplete** is the discovery path: typing `/` summons a listbox of
+  the commands (name, usage, description) that filters as you type, arrow keys move the
+  highlight, and Enter/Tab completes the half-typed name — Enter runs the command only
+  once the name is exact or arguments follow. The matcher is `slashCompletion`, pure
+  alongside the parser. The box is a combobox over the textarea: options keep focus in
+  the text by preventing the `mousedown` default, and the highlighted option is kept in
+  view when the box overflows.
+- **`/hide` is an atomic set, not a toggle.** The reducer's `message/setHidden` takes the
+  target ids and a single boolean in **one revision** — a `/hide 0-150` is one save, not
+  151 — skipping messages already in the requested state, so re-hiding a hidden range does
+  not dirty the chat for nothing. The per-message Hide/Show menu entry is untouched; the
+  command is a bulk convenience, not a replacement.
+- **`/jump` is a bounded window, not a mount-everything scroll.** The transcript window is
+  a contiguous `[start, end)` that grows on scroll in both directions, and a jump mounts
+  one page around its target (`windowForJump`) instead of every newer message. A window
+  not anchored to the tail forces bottom-follow off — an auto-scroll at a page boundary
+  would cascade page loads against the reader — while a window **at** the tail follows
+  streamed growth so a new reply is never invisible below the rendered rows. The target is
+  centred via `data-message-id`, never snapped to the top.
+- **`/reload` flushes, fetches, and discards nothing.** `reloadChat` saves pending edits
+  first, then re-fetches, and applies the result only if the transcript is unchanged since
+  the fetch started — local activity mid-reload wins over the stale copy rather than being
+  overwritten by it. The view resets its window to the tail through `reloadCount`.
 - **The composer's draft has exactly one write path: `ComposerHandle.insert`.** The draft
   stays private `useState` — the `onSend` bargain — so quick commands reach it through a
   React 19 ref-as-prop imperative handle, never lifted state. `insert` appends on a newline
@@ -601,5 +634,14 @@ regex keys are the escape hatches.
   `secrets.json` is still 0600, and a failed copy leaves the source untouched.
 - `src/features/appearance/dataLocation.test.ts` covers `describeVerdict`, including that
   every disabled state carries a reason — same convention as `ChatMenu.test.ts`.
+- `src/features/chat/slashCommands.test.ts` pins the recognition rules: only text that
+  starts with `/` is a command, zero-based inclusive ranges (`/hide 0-149`), a bare
+  `/hide` meaning the last message, reversed or non-numeric ranges refused with the usage
+  string, unknown commands reporting themselves rather than sending, and `slashCompletion`
+  (the autocomplete matcher) covering the completing prefix, the exact-name/args reference
+  phase, and case-insensitive matching.
+- `src/features/chat/transcriptWindow.test.ts` pins the window math — the tail page,
+  prepend/append moving exactly one page each, and `windowForJump` centring while clamping
+  out-of-range targets and anchoring to the tail for targets in the last page.
 
 When touching a format, add the test before the code.

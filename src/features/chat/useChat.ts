@@ -139,11 +139,17 @@ export interface UseChat {
   editReasoning(id: string, reasoning: string): void;
   deleteMessage(id: string): void;
   toggleHidden(id: string): void;
+  /** Set a whole range to hidden/unhidden in one revision. Idempotent. */
+  setHidden(ids: string[], hidden: boolean): void;
 
   chats: ChatSummary[];
   /** Re-fetch the chat list — structural changes such as restore or import call this. */
   refreshChats(): Promise<void>;
   openChat(chatId: string): Promise<void>;
+  /** Re-fetch the open chat from the server, after flushing local edits. */
+  reloadChat(): Promise<void>;
+  /** Bumped after each successful reload, so the view can reset its transcript window. */
+  reloadCount: number;
   /** Set before selecting a character to open a specific chat instead of the most recent. */
   pendingChatRef: RefObject<string | null>;
   newChat(): Promise<void>;
@@ -202,6 +208,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [initAttempt, setInitAttempt] = useState(0);
   const [worldInfo, setWorldInfo] = useState<ActivationResult | null>(null);
+  const [reloadCount, setReloadCount] = useState(0);
   const [summaryStatus, setSummaryStatus] = useState<SummaryRunStatus>({
     running: false,
     processed: 0,
@@ -1055,6 +1062,10 @@ export function useChat(options: UseChatOptions): UseChat {
     dispatch({ type: 'message/toggleHidden', id });
   }, []);
 
+  const setHidden = useCallback((ids: string[], hidden: boolean) => {
+    dispatch({ type: 'message/setHidden', ids, hidden });
+  }, []);
+
   // --- Chat management -------------------------------------------------------
 
   const openChat = useCallback(
@@ -1071,6 +1082,31 @@ export function useChat(options: UseChatOptions): UseChat {
     },
     [cancelSummary, flushSaves, loadChat],
   );
+
+  // Guards against overlapping `/reload`s — each fetch is pointless once a newer one has
+  // replaced the transcript it would have applied over.
+  const reloadRef = useRef(false);
+
+  const reloadChat = useCallback(async () => {
+    const current = stateRef.current;
+    if (!current.chatId || current.status !== 'idle' || reloadRef.current) return;
+    reloadRef.current = true;
+    try {
+      // Flush first so the fetch reflects our edits and none are lost.
+      await flushSaves();
+      const revisionBefore = stateRef.current.revision;
+      const chat = await chatApi.get(current.chatId);
+      // Only apply if the transcript is still the one we started from. Anything the user
+      // did while the request was in flight is newer than the fetched copy, so applying
+      // it would silently discard that work — keep the local state instead.
+      if (stateRef.current.chatId !== current.chatId) return;
+      if (stateRef.current.revision !== revisionBefore) return;
+      loadChat(chat);
+      setReloadCount((count) => count + 1);
+    } finally {
+      reloadRef.current = false;
+    }
+  }, [flushSaves, loadChat]);
 
   const newChat = useCallback(async () => {
     if (!characterId || !character) return;
@@ -1175,9 +1211,12 @@ export function useChat(options: UseChatOptions): UseChat {
     editReasoning,
     deleteMessage,
     toggleHidden,
+    setHidden,
     chats,
     refreshChats,
     openChat,
+    reloadChat,
+    reloadCount,
     pendingChatRef,
     newChat,
     renameChat,

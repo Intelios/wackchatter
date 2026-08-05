@@ -118,6 +118,7 @@ export type ChatAction =
   | { type: 'message/reasoningEdited'; id: string; reasoning: string }
   | { type: 'message/deleted'; id: string }
   | { type: 'message/toggleHidden'; id: string }
+  | { type: 'message/setHidden'; ids: string[]; hidden: boolean }
   | { type: 'swipe/select'; id: string; index: number }
   | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
   | { type: 'gen/inspected'; inspection: PromptInspection }
@@ -319,6 +320,21 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         })),
         revision: state.revision + 1,
       };
+
+    case 'message/setHidden': {
+      // One revision for the whole range, so a `/hide 0-150` is a single save. Skip
+      // messages already in the requested state — idempotent, so re-hiding an already
+      // hidden range does not dirty the chat for nothing.
+      const target = new Set(action.ids);
+      let changed = false;
+      const messages = state.messages.map((message) => {
+        if (!target.has(message.id) || message.is_system === action.hidden) return message;
+        changed = true;
+        return { ...message, is_system: action.hidden };
+      });
+      if (!changed) return state;
+      return { ...state, messages, revision: state.revision + 1 };
+    }
 
     case 'swipe/select':
       // Never while generating. A generation writes into whichever swipe is selected

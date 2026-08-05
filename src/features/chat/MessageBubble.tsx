@@ -173,6 +173,7 @@ export const MessageBubble = memo(function MessageBubble({
   return (
     <article
       className="message"
+      data-message-id={message.id}
       data-role={message.is_user ? 'user' : 'assistant'}
       data-hidden={message.is_system || undefined}
       data-dialogue-colored={dialogueActive || undefined}

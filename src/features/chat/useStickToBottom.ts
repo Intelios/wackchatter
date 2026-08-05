@@ -38,6 +38,17 @@ export function useStickToBottom<T extends HTMLElement>(
     });
   }, [scrollRef]);
 
+  /**
+   * Drop the follow, so streaming growth no longer pulls the container to its bottom.
+   *
+   * A jump to an old message reads from the middle of the transcript: following must be
+   * off, or the next reply to stream yanks the reader back to the newest page. The user
+   * re-engages the follow the ordinary way, by scrolling to the bottom.
+   */
+  const stopFollowing = useCallback(() => {
+    following.current = false;
+  }, []);
+
   // Track whether the user is still at the bottom.
   useEffect(() => {
     const element = scrollRef.current;
@@ -66,5 +77,5 @@ export function useStickToBottom<T extends HTMLElement>(
     return () => observer.disconnect();
   }, [contentRef, scrollToBottom]);
 
-  return { scrollToBottom, isFollowing: following };
+  return { scrollToBottom, stopFollowing, isFollowing: following };
 }

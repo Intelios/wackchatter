@@ -651,6 +651,64 @@ describe('editing the transcript', () => {
     expect(shown.messages[0]!.is_system).toBe(false);
   });
 
+  test('a range hides exactly its messages in one revision', () => {
+    const three = run(
+      initialChatState,
+      {
+        type: 'chat/loaded',
+        chat: chat([
+          { id: 'm0', name: 'S', is_user: false, is_system: false, mes: 'a', send_date: '1' },
+          {
+            id: 'u1',
+            name: 'J',
+            is_user: true,
+            is_system: false,
+            persona_id: null,
+            mes: 'b',
+            send_date: '2',
+          },
+          { id: 'm2', name: 'S', is_user: false, is_system: false, mes: 'c', send_date: '3' },
+        ]),
+      },
+      { type: 'message/setHidden', ids: ['m0', 'u1'], hidden: true },
+    );
+
+    expect(three.revision).toBe(1);
+    expect(three.messages.map((m) => m.is_system)).toEqual([true, true, false]);
+  });
+
+  test('re-hiding an already hidden range is a no-op that leaves the revision alone', () => {
+    const hidden = run(
+      loaded(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true },
+      { type: 'message/setHidden', ids: ['m0'], hidden: true },
+    );
+    expect(hidden.messages[0]!.is_system).toBe(true);
+    expect(hidden.revision).toBe(1);
+  });
+
+  test('unhiding flips a range back without touching the rest', () => {
+    const three = run(
+      initialChatState,
+      {
+        type: 'chat/loaded',
+        chat: chat([
+          { id: 'm0', name: 'S', is_user: false, is_system: true, mes: 'a', send_date: '1' },
+          { id: 'u1', name: 'J', is_user: true, is_system: true, mes: 'b', send_date: '2' },
+          { id: 'm2', name: 'S', is_user: false, is_system: false, mes: 'c', send_date: '3' },
+        ]),
+      },
+      { type: 'message/setHidden', ids: ['m0', 'm2'], hidden: false },
+    );
+
+    expect(three.messages.map((m) => m.is_system)).toEqual([false, true, false]);
+  });
+
+  test('an empty range changes nothing', () => {
+    const before = loaded();
+    expect(chatReducer(before, { type: 'message/setHidden', ids: [], hidden: true })).toBe(before);
+  });
+
   test('deleting removes the message', () => {
     const state = run(loaded(), { type: 'message/deleted', id: 'm0' });
     expect(state.messages).toEqual([]);
