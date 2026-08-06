@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PanelSpec } from './panels.tsx';
 import './AppShell.css';
 
@@ -27,48 +27,72 @@ interface IndicatorRect {
  * moved with transform/width transitions — so hopping from Generation to Inspect slides
  * the highlight across the gap instead of two independent buttons toggling fills. The
  * pill keeps its last position when the panel closes and just fades.
+ *
+ * Only that active button is labelled; the rest are icons carrying a `title`. Which is
+ * why measuring the pill is not simply reading the button — see measure() below.
  */
 function PanelCluster<T extends string>({ buttons, active, onSelect, side }: PanelClusterProps<T>) {
-  const clusterRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const readyRef = useRef(false);
   const [rect, setRect] = useState<IndicatorRect | null>(null);
   const [ready, setReady] = useState(false);
 
   /*
+   * Where the pill will end up once the label finishes opening — not where it is now.
+   *
+   * offsetWidth alone cannot answer that. The active button is the only labelled one and
+   * its label animates open over --wc-duration, so a read taken on the frame the press
+   * lands sees the label still shut and sizes the pill to a bare icon. Watching the
+   * transition frame by frame is the obvious fix and a worse one: it makes the pill
+   * depend on ResizeObserver callbacks actually being delivered, and a document that is
+   * not rendering gets none — switch tabs on the same frame as the click and the pill is
+   * stranded at icon width with the transition already over and nothing left to correct
+   * it. So take the two terms that are true at every point in the animation instead.
+   *
+   * x needs no arithmetic. Only the incoming label animates (see AppShell.css), so every
+   * button before this one is already at rest and offsetLeft is final on the first frame.
+   *
+   * width is the button without its label, plus the width that label is opening to.
+   * scrollWidth, not offsetWidth, for the second term: the span is clipped by the
+   * collapsing grid, and only scrollWidth still reports the width its content wants.
+   */
+  const measure = useCallback(() => {
+    const button = active ? buttonRefs.current.get(active) : undefined;
+    if (!button) return;
+    const label = button.querySelector<HTMLElement>('.panel-toggle__label');
+    const text = button.querySelector<HTMLElement>('.panel-toggle__label > span');
+    setRect({
+      x: button.offsetLeft,
+      width: button.offsetWidth - (label?.offsetWidth ?? 0) + (text?.scrollWidth ?? 0),
+    });
+  }, [active]);
+
+  /*
    * Layout effect, not effect: the pill must be at its final position for the very first
    * paint, or a no-transition frame shows it at width 0 before the position lands.
    */
   useLayoutEffect(() => {
-    const button = active ? buttonRefs.current.get(active) : undefined;
-    if (!button) return;
-    setRect({ x: button.offsetLeft, width: button.offsetWidth });
-    if (!readyRef.current) {
+    measure();
+    if (!readyRef.current && active) {
       readyRef.current = true;
       requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
     }
-  }, [active]);
+  }, [measure, active]);
 
   /*
-   * Button widths are not fixed: the <=1100px query drops the labels, and loading fonts
-   * shift text widths. Either changes the cluster's size, so observing the cluster
-   * catches both. The offset reads are stable inside the callback — layout is current
-   * when ResizeObserver callbacks run.
+   * Everything measure() reads can still change without a press: the narrow-window query
+   * collapses the last label, and a font swap resizes the text inside it. Observing the
+   * buttons rather than the cluster catches the second one even when the widths happen to
+   * cancel out and leave the cluster the same size.
    */
   useEffect(() => {
-    const cluster = clusterRef.current;
-    if (!cluster) return;
-    const observer = new ResizeObserver(() => {
-      const button = active ? buttonRefs.current.get(active) : undefined;
-      if (!button) return;
-      setRect({ x: button.offsetLeft, width: button.offsetWidth });
-    });
-    observer.observe(cluster);
+    const observer = new ResizeObserver(measure);
+    for (const button of buttonRefs.current.values()) observer.observe(button);
     return () => observer.disconnect();
-  }, [active]);
+  }, [measure]);
 
   return (
-    <div ref={clusterRef} className={`shell__cluster shell__cluster--${side}`}>
+    <div className={`shell__cluster shell__cluster--${side}`}>
       {rect ? (
         <span
           aria-hidden="true"
@@ -94,7 +118,10 @@ function PanelCluster<T extends string>({ buttons, active, onSelect, side }: Pan
           onClick={() => onSelect(button.id)}
         >
           {button.icon}
-          <span className="panel-toggle__label">{button.label}</span>
+          {/* The inner span is the clipped grid item — see .panel-toggle__label. */}
+          <span className="panel-toggle__label">
+            <span>{button.label}</span>
+          </span>
         </button>
       ))}
     </div>
