@@ -15,6 +15,7 @@
 import type { ChatCompletionBody } from '../../shared/providers/types.ts';
 import { callUpstream, describeFailure, trackGeneration } from '../lib/generate.ts';
 import { errorResponse, readJson } from '../lib/http.ts';
+import { colorizeJson, prettyJson } from '../lib/log.ts';
 
 export async function handleGenerateRoute(
   request: Request,
@@ -30,7 +31,10 @@ export async function handleGenerateRoute(
     return errorResponse('"connectionId" must be a saved connection id.');
   }
 
-  console.debug('Chat Completion request:', payload.body);
+  // Stringified, not the object: Bun's console truncates long arrays and deep objects
+  // ("... N more items") and offers no inspect defaults to lift the limits, unlike the
+  // Node console SillyTavern tunes with util.inspect.defaultOptions.
+  console.debug('Chat Completion request:', colorizeJson(JSON.stringify(payload.body, null, 2)));
 
   // Held until the reply is done, so the data folder cannot move out from under the save
   // that follows it. Releasing on abort as well as on completion, because a client that
@@ -83,10 +87,6 @@ export async function handleGenerateRoute(
 
   const text = await upstream.text();
   finished();
-  try {
-    console.debug('Chat Completion response:', JSON.parse(text));
-  } catch {
-    console.debug('Chat Completion response:', text);
-  }
+  console.debug('Chat Completion response:', colorizeJson(prettyJson(text)));
   return new Response(text, { status: 200, headers });
 }
