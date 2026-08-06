@@ -231,6 +231,38 @@ export function ChatView({
     });
   }, [window.start, window.end]);
 
+  // --- Sending ---------------------------------------------------------------
+
+  /**
+   * Put the reader at the end of the transcript, because that is what sending asks for.
+   *
+   * Reading back a few messages drops the bottom-follow — right while reading, wrong the
+   * moment you send, since the message you just wrote and the reply after it would arrive
+   * below the fold. The window is re-anchored too, not just the scroll: a window that is
+   * not at the tail never renders the new rows at all, so a send from the middle of a long
+   * chat would otherwise have nowhere to land. An already-tail-anchored window is left
+   * alone, pages loaded above it included — it is only the end that has to be visible.
+   */
+  const snapToEnd = useCallback(() => {
+    suppressLoadAheadRef.current = false;
+    setWindow((current) =>
+      current.chatId === state.chatId && current.end >= state.messages.length
+        ? current
+        : { chatId: state.chatId, ...initialTranscriptWindow(state.messages.length) },
+    );
+    // Marked like the jump's centering scroll, and for the opposite reason: this
+    // container's listener still reads the pre-snap `atEndRef`, so it would answer our own
+    // scroll by dropping the follow the snap just re-engaged. Released after the scroll
+    // event this queues has been dispatched.
+    programmaticScrollRef.current = true;
+    // Lands on the current layout; anything the window snap or the new message adds is
+    // growth the re-engaged follow picks up through the ResizeObserver.
+    scrollToBottom();
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }, [state.chatId, state.messages.length, scrollToBottom]);
+
   const loadOlderMessages = useCallback(() => {
     if (visibleStart === 0) return;
     const scroll = scrollRef.current;
@@ -385,13 +417,15 @@ export function ChatView({
     async (text: string): Promise<string | null> => {
       const parsed = parseSlashCommand(text);
       if (!parsed) {
+        snapToEnd();
         void chat.send(text);
         return null;
       }
       if (!parsed.ok) return parsed.error;
+      // Commands are deliberately not snapped: `/jump` exists to move away from the end.
       return runCommand(parsed.command);
     },
-    [chat, runCommand],
+    [chat, runCommand, snapToEnd],
   );
 
   // --- Transcript edits (hoisted for memo) ----------------------------------
@@ -555,8 +589,16 @@ export function ChatView({
       <Composer
         ref={composerRef}
         onSend={handleSend}
-        onGuide={(text) => void chat.guidedRespond(text)}
-        onGuidedSwipe={(text) => void chat.guidedSwipe(text)}
+        // The other two composer submits. Both put new text at the end of the transcript,
+        // so both earn the same snap as an ordinary send.
+        onGuide={(text) => {
+          snapToEnd();
+          void chat.guidedRespond(text);
+        }}
+        onGuidedSwipe={(text) => {
+          snapToEnd();
+          void chat.guidedSwipe(text);
+        }}
         guidedSwipeDisabledReason={guidedSwipeDisabledReason}
         onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
         busy={generationBlocked}
