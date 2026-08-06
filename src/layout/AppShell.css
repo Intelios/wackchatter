@@ -109,24 +109,21 @@
  * as the columns animate, so its children are positioned by the bar's internal layout
  * rather than the shell's, and the button clusters stay put when a panel opens.
  *
- * `auto minmax(0, 1fr) auto` — the clusters size to their content and the title takes
- * everything left over. The obvious `1fr auto 1fr` is wrong here, and subtly: equal side
- * tracks centre the title on the *window*, but the clusters hold four buttons and five,
- * so the title lands well right of the midpoint between them. Measured at 1440px it sat
- * 147px from the left cluster and 24px from the right — close enough to the right group
- * to read as part of it. Worse, the equal tracks capped the title at the narrower side's
- * width, so it ellipsised with 147px of bar going spare.
+ * Flex `space-between`, which is only correct because the bar holds two things. It held
+ * three while a title sat in the middle, and then this had to be a three-track grid:
+ * space-between distributes the *leftover* room, so with clusters of four buttons and
+ * five it pushed the title well right of the midpoint between them. Nothing is centred
+ * here any more, so the simple tool is the right one again.
  *
- * Centring inside the leftover track fixes both: the reference is the gap between the
- * clusters, which is the one the eye actually uses, and the title may use all of it.
+ * The `gap` never applies at these widths — it is the floor that keeps the two clusters
+ * off each other if the window is ever narrow enough for space-between to run out.
  */
 .shell__bar {
   grid-column: 1 / -1;
   grid-row: 1;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  /* Wide enough that the three groups read as three groups and not one long line. */
+  justify-content: space-between;
   gap: var(--wc-space-5);
   padding: 0 var(--wc-space-4);
   border-bottom: 1px solid var(--wc-border);
@@ -145,27 +142,6 @@
    * wrong in a way only a build with differing metrics would catch.
    */
   position: relative;
-}
-
-.shell__cluster--left {
-  justify-self: start;
-}
-
-.shell__cluster--right {
-  justify-self: end;
-}
-
-/* Stretched across the middle track, centred inside it — see the note on .shell__bar. */
-.shell__title {
-  text-align: center;
-  min-width: 0;
-  font-size: var(--wc-text-sm);
-  font-weight: 500;
-  color: var(--wc-text-muted);
-  text-shadow: var(--wc-shadow-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* --- Panels ------------------------------------------------------------- */

@@ -753,10 +753,32 @@ export function App() {
   const showEditor = editing && detail?.avatar === selected ? detail : null;
   const ready = Boolean(connection?.baseUrl && connection.model && preset);
 
-  const title = useMemo(() => {
+  /*
+   * The tab, not the top bar.
+   *
+   * This used to label the middle of the top bar, where it was three kinds of redundant:
+   * the character's name is on every bubble and in the composer's placeholder, the chat's
+   * title is the literal default 'New chat' until someone renames it, and on the home
+   * screen it read "WackChatter" directly above the wordmark. A permanent caption for
+   * things you are already looking at, in an app whose chrome is otherwise built to get
+   * out of the way of the background image.
+   *
+   * The tab is where the same string earns its keep: it tells windows, history and the
+   * task switcher which chat this is, and it is nowhere near your eye while you read.
+   *
+   * The app's name is left to index.html's <title> as the no-chat fallback rather than
+   * suffixed onto every chat, since a tab is too narrow to show both and the chat is the
+   * half worth keeping.
+   */
+  const documentTitle = useMemo(() => {
+    if (view === 'studio') return 'Character Creator Studio';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
-  }, [active, chat.state.title]);
+  }, [view, active, chat.state.title]);
+
+  useEffect(() => {
+    document.title = documentTitle;
+  }, [documentTitle]);
 
   const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
 
@@ -792,7 +814,6 @@ export function App() {
       rightButtons={RIGHT_PANELS}
       onSelectLeft={selectLeftPanel}
       onSelectRight={(id) => void selectRightPanel(id)}
-      title={title}
       backgroundUrl={resolveBackgroundUrl(settings?.background)}
       backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
       backgroundDim={Number(settings?.backgroundDim ?? 0.55)}

@@ -92,7 +92,7 @@ function PanelCluster<T extends string>({ buttons, active, onSelect, side }: Pan
   }, [measure]);
 
   return (
-    <div className={`shell__cluster shell__cluster--${side}`}>
+    <div className="shell__cluster">
       {rect ? (
         <span
           aria-hidden="true"
@@ -137,7 +137,6 @@ interface AppShellProps<L extends string, R extends string> {
   onSelectRight: (id: R) => void;
   left: ReactNode;
   right: ReactNode;
-  title: ReactNode;
   children: ReactNode;
   /** Already resolved. Null renders the flat background and disables glass entirely. */
   backgroundUrl?: string | null;
@@ -154,6 +153,13 @@ interface AppShellProps<L extends string, R extends string> {
  * (`grid-column: 1 / -1`), which is what keeps the button clusters pinned to the screen
  * edges: the bar's own width never changes as the columns animate, so its children never
  * move. Buttons you can find without looking are the whole point of putting them there.
+ *
+ * The bar carries the two clusters and nothing else. What sat between them was a caption
+ * naming the character and chat, and it was redundant against the transcript, the
+ * composer and the home screen's own wordmark — see the note on documentTitle in App.tsx,
+ * which is where that string went. Leaving the middle to the background image is the
+ * point rather than a gap: the bar is glass over the user's picture, so empty here is
+ * their image running unbroken across the top, not a hole in a toolbar.
  */
 export function AppShell<L extends string, R extends string>({
   leftPanel,
@@ -164,7 +170,6 @@ export function AppShell<L extends string, R extends string>({
   onSelectRight,
   left,
   right,
-  title,
   children,
   backgroundUrl = null,
   backgroundBlur = 8,
@@ -209,7 +214,6 @@ export function AppShell<L extends string, R extends string>({
           onSelect={onSelectLeft}
           side="left"
         />
-        <div className="shell__title">{title}</div>
         <PanelCluster
           buttons={rightButtons}
           active={rightPanel}
