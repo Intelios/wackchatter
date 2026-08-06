@@ -384,6 +384,11 @@ function FolderRow({
       <Menu
         label={`Actions for ${row.name}`}
         icon={<MoreIcon />}
+        // End-aligned, because the trigger sits hard against the panel's right edge: a
+        // start-aligned popup grows outward from there, past the edge, and the list has to
+        // be scrolled sideways to reach the entries. Growing back over the list instead
+        // puts the menu where the pointer already is.
+        placement="bottom-end"
         className="wc-button wc-button--ghost character-folder__menu"
         entries={entries}
         onOpenChange={(open) => {

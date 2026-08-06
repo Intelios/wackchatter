@@ -22,6 +22,11 @@
 /*
  * Folder nesting. Every row sets `--depth` inline and the indent is derived from it, so the
  * tree can be any depth without a class per level.
+ *
+ * No `width: 100%` on the rows: an explicit full width beats the flex column's stretch, so
+ * the indent was added *on top* of the container's width rather than taken out of it and
+ * every nested row hung one level past the right edge — a sideways scrollbar on the whole
+ * list. Stretch already fills the line, and it subtracts the margin on the way.
  */
 .character-card,
 .character-folder {
@@ -32,7 +37,6 @@
   display: flex;
   align-items: center;
   gap: var(--wc-space-1);
-  width: 100%;
   padding-right: var(--wc-space-1);
   border-radius: var(--wc-radius);
   transition: background var(--wc-duration-fast) ease;
@@ -137,7 +141,6 @@
   display: flex;
   align-items: center;
   gap: var(--wc-space-1);
-  width: 100%;
   padding-right: var(--wc-space-1);
   border-radius: var(--wc-radius);
   transition:

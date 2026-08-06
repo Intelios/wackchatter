@@ -66,9 +66,35 @@
   height: var(--wc-icon);
 }
 
-.menu__label {
+/*
+ * The label's column, and the only thing in an entry that gives up room: the icon, the hint
+ * and the chevron are all fixed. `flex: 1` rather than `auto` so a short entry still pushes
+ * its hint out to the right edge.
+ */
+.menu__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   flex: 1;
   min-width: 0;
+}
+
+.menu__label {
+  min-width: 0;
+}
+
+/*
+ * A clause under the label rather than beside it. In the hint's lane it shares one line
+ * with the label and does not shrink, so the label is squeezed to its longest word and
+ * stacks one word per line — the popup cannot grow to fix that, because it is shrink-to-fit
+ * against a containing block the width of the trigger and is already at its min-width.
+ *
+ * The menu's own font, not the hint's mono: this is prose, not a shortcut or a snippet.
+ */
+.menu__description {
+  font-size: var(--wc-text-xs);
+  line-height: 1.35;
+  color: var(--wc-text-faint);
 }
 
 .menu__hint {

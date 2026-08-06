@@ -77,7 +77,7 @@ export function buildMessageMenu(
     {
       label: isHidden ? 'Show to the model' : 'Hide from the prompt',
       icon: isHidden ? <EyeOffIcon /> : <EyeIcon />,
-      hint: isHidden ? undefined : 'stays in the transcript',
+      description: isHidden ? undefined : 'Stays in the transcript',
       onSelect: actions.toggleHidden,
     },
     {

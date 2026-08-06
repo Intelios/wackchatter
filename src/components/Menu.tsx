@@ -37,8 +37,13 @@ export interface MenuAction {
    */
   key?: string;
   icon?: ReactNode;
-  /** Right-aligned secondary text, e.g. a count or a shortcut. */
+  /**
+   * Right-aligned secondary text. Short things only — a count, a shortcut, a snippet: it
+   * shares one line with the label and does not shrink. A clause belongs in `description`.
+   */
   hint?: string;
+  /** A clarifying line under the label, for a consequence the label cannot carry alone. */
+  description?: string;
   disabled?: boolean;
   /** Why it is disabled. Becomes the `title`, so a greyed item still explains itself. */
   disabledReason?: string;
@@ -63,6 +68,7 @@ export interface MenuSubmenu {
   key?: string;
   icon?: ReactNode;
   hint?: string;
+  description?: string;
   disabled?: boolean;
   disabledReason?: string;
   entries: MenuEntry[];
@@ -104,6 +110,27 @@ interface MenuProps {
 /** Identity of an entry that may not have a `key`: the label, which is then unique enough. */
 function keyOf(entry: MenuAction | MenuSubmenu): string {
   return entry.key ?? entry.label;
+}
+
+/**
+ * The inside of an entry's button, shared by the three places that render one — an action,
+ * a submenu's trigger, and an action inside a flyout. One copy so a new slot cannot arrive
+ * in two of the three and be quietly missing from the third.
+ *
+ * The label and its description are one column, so a description pushes the second line
+ * under the label rather than into the hint's lane.
+ */
+function EntryContent({ entry }: { entry: MenuAction | MenuSubmenu }) {
+  return (
+    <>
+      <span className="menu__icon">{entry.icon}</span>
+      <span className="menu__text">
+        <span className="menu__label">{entry.label}</span>
+        {entry.description ? <span className="menu__description">{entry.description}</span> : null}
+      </span>
+      {entry.hint ? <span className="menu__hint">{entry.hint}</span> : null}
+    </>
+  );
 }
 
 export function Menu({
@@ -266,9 +293,7 @@ export function Menu({
         tabIndex={-1}
         onClick={() => select(entry)}
       >
-        <span className="menu__icon">{entry.icon}</span>
-        <span className="menu__label">{entry.label}</span>
-        {entry.hint ? <span className="menu__hint">{entry.hint}</span> : null}
+        <EntryContent entry={entry} />
       </button>
     );
   }
@@ -322,9 +347,7 @@ export function Menu({
                   else openSubmenu(entry, event.currentTarget.parentElement, true);
                 }}
               >
-                <span className="menu__icon">{entry.icon}</span>
-                <span className="menu__label">{entry.label}</span>
-                {entry.hint ? <span className="menu__hint">{entry.hint}</span> : null}
+                <EntryContent entry={entry} />
                 <ChevronIcon className="menu__chevron" />
               </button>
 
@@ -513,9 +536,7 @@ function Submenu({
         tabIndex={-1}
         onClick={() => onSelect(child)}
       >
-        <span className="menu__icon">{child.icon}</span>
-        <span className="menu__label">{child.label}</span>
-        {child.hint ? <span className="menu__hint">{child.hint}</span> : null}
+        <EntryContent entry={child} />
       </button>
     );
   }
