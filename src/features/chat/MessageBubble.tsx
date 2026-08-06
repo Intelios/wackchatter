@@ -8,6 +8,7 @@ import {
   PlugIcon,
   RefreshIcon,
 } from '../../layout/icons.tsx';
+import { CreatorNotesPopover } from './CreatorNotesPopover.tsx';
 import { formatTimestamp } from './formatDate.ts';
 import { Markdown } from './Markdown.tsx';
 import { MessageMenu } from './MessageMenu.tsx';
@@ -38,6 +39,13 @@ interface MessageBubbleProps {
   summaryRunning: boolean;
   /** Render-only text, used for raw greeting macros. Editing still receives stored text. */
   displayText?: string;
+  /*
+   * The card's creator notes, and how many of this message's swipes the card wrote. Set on
+   * the greeting row alone — passed as primitives rather than a ready-made node so the
+   * memo below survives: a node would change identity every render.
+   */
+  creatorNotes?: string;
+  greetingCount?: number;
   /*
    * The id-taking handlers take it as an argument rather than being closed over the
    * message in ChatView. A per-row closure would change identity on every render and
@@ -76,6 +84,8 @@ export const MessageBubble = memo(function MessageBubble({
   busy,
   summaryRunning,
   displayText,
+  creatorNotes,
+  greetingCount,
   onSwipe,
   onRegenerate,
   onContinue,
@@ -330,6 +340,17 @@ export const MessageBubble = memo(function MessageBubble({
 
             {canReply ? (
               <div className="message__swipes">
+                {/*
+                 * Beside the counter it explains, and only on a greeting whose card left
+                 * notes — see CreatorNotesPopover for why here and not in a panel.
+                 */}
+                {creatorNotes?.trim() ? (
+                  <CreatorNotesPopover
+                    notes={creatorNotes}
+                    greetingCount={greetingCount ?? swipes}
+                    swipeIndex={message.swipe_id}
+                  />
+                ) : null}
                 {/*
                  * Kept mounted and merely invisible at index 0. Unmounting it would shift
                  * the counter sideways the moment you swipe back to the first alternative,

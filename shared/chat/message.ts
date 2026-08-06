@@ -301,20 +301,31 @@ export function assistantPlaceholder(id: string, name: string): MessageState {
 }
 
 /**
- * The opening message of a new chat: `first_mes` as swipe 0 with each alternate greeting
- * as a subsequent swipe, exactly as SillyTavern's getFirstMessage does (script.js:7651).
- * Macros are left unresolved — the assembler substitutes them at materialisation time.
+ * Every greeting the card offers, in the order they become swipes.
+ *
+ * Exported so a reader can be counted against this list without building a message —
+ * `creatorNotes` lines a card's scenario notes up with it. Macros stay unresolved.
  */
-export function greetingMessage(id: string, card: CardDataV2): MessageState {
+export function greetingTexts(card: CardDataV2): string[] {
   const alternates = Array.isArray(card.alternate_greetings)
     ? card.alternate_greetings.filter(
         (greeting): greeting is string => typeof greeting === 'string',
       )
     : [];
 
-  const swipes = [card.first_mes ?? '', ...alternates];
+  const greetings = [card.first_mes ?? '', ...alternates];
   // An empty first_mes with alternates present means the card only has alternates.
-  if (!swipes[0] && swipes.length > 1) swipes.shift();
+  if (!greetings[0] && greetings.length > 1) greetings.shift();
+  return greetings;
+}
+
+/**
+ * The opening message of a new chat: `first_mes` as swipe 0 with each alternate greeting
+ * as a subsequent swipe, exactly as SillyTavern's getFirstMessage does (script.js:7651).
+ * Macros are left unresolved — the assembler substitutes them at materialisation time.
+ */
+export function greetingMessage(id: string, card: CardDataV2): MessageState {
+  const swipes = greetingTexts(card);
 
   const now = timestamp();
   return {

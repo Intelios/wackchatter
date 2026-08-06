@@ -1,3 +1,4 @@
+import { greetingTexts } from '@shared/chat/message.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
@@ -972,6 +973,11 @@ export function App() {
           avatar={active.avatar}
           characterAvatarVersion={characterAvatarVersions[active.avatar]}
           personaAvatarVersions={personaAvatarVersions}
+          creatorNotes={character?.creator_notes ?? ''}
+          // From the card rather than the message's swipe count: re-rolling the opening
+          // message appends swipes the creator never wrote, and counting those would slide
+          // a scenario list out of step with the greetings it describes.
+          greetingCount={character ? greetingTexts(character).length : 0}
           ready={ready}
           onCloseChat={() => void handleCloseChat()}
           onOpenPanel={(id) => void showRightPanel(id)}

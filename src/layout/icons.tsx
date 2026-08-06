@@ -276,6 +276,18 @@ export function BookIcon({ className }: IconProps) {
   );
 }
 
+/* A circled i rather than another sheet of paper: SummaryIcon already owns that shape, and
+   at 16px in a message footer the two would be indistinguishable. */
+export function NotesIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5" />
+      <path d="M12 7.75h.01" />
+    </svg>
+  );
+}
+
 export function SummaryIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

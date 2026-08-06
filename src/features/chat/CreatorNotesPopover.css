@@ -1,0 +1,113 @@
+/*
+ * The creator-notes popup. Anchoring belongs to Popover.css; this is the contents.
+ */
+
+.creator-notes {
+  /* Matched to .guides: wide enough for a scenario line to read as a sentence, narrow
+     enough that the popup does not bury the greeting it is describing. */
+  width: clamp(320px, 28vw, 440px);
+  padding: var(--wc-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.creator-notes__title {
+  margin: 0;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.creator-notes__hint {
+  margin: var(--wc-space-1) 0 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  line-height: 1.5;
+}
+
+.creator-notes__body {
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+  /* Card notes carry unbroken URLs and the odd wall of underscores. */
+  overflow-wrap: anywhere;
+}
+
+.creator-notes__body > :first-child {
+  margin-top: 0;
+}
+
+.creator-notes__body > :last-child {
+  margin-bottom: 0;
+}
+
+.creator-notes__body p {
+  margin: 0 0 var(--wc-space-2);
+}
+
+.creator-notes__body a {
+  color: var(--wc-accent);
+}
+
+/* Numbered to be read against the swipe counter, so the numbers are the point and cannot
+   be left to the marker glyph's default alignment. */
+.creator-notes__scenarios {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: scenario;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.creator-notes__scenario {
+  counter-increment: scenario;
+  display: grid;
+  grid-template-columns: 1.75em 1fr;
+  /* Baseline, not the grid default: the number is a size down from the text beside it, and
+     stretching both to the row makes it float above the line it belongs to. */
+  align-items: baseline;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  /* A transparent left edge held open by every row, so marking the current one changes a
+     colour and never a width — the list must not jump as you swipe through it. */
+  border-left: 2px solid transparent;
+}
+
+.creator-notes__scenario::before {
+  content: counter(scenario);
+  /* Mono at the swipe counter's size, because the two are meant to be read against each
+     other: "4/10" in the footer, "4" in the list. */
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  text-align: right;
+}
+
+.creator-notes__scenario[data-current] {
+  border-left-color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-text);
+}
+
+.creator-notes__scenario[data-current]::before {
+  color: var(--wc-accent);
+}
+
+.creator-notes__scenario p {
+  margin: 0;
+}
+
+/* Matched to .message__menu's trigger: the same footer row, the same weight of control. */
+.message__notes .popover__trigger {
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+}
+
+.message__notes .popover__trigger:hover,
+.message__notes .popover__trigger[aria-expanded="true"] {
+  color: var(--wc-text);
+}

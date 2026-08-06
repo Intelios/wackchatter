@@ -45,6 +45,10 @@ interface ChatViewProps {
   characterAvatarVersion?: number;
   /** Cache-busting versions per persona id — a row's speaker is not always the chat's. */
   personaAvatarVersions?: Readonly<Record<string, number>>;
+  /** The card's `creator_notes`, offered on the greeting. Empty shows nothing. */
+  creatorNotes: string;
+  /** How many greetings the card offers, so a scenario list can be lined up with them. */
+  greetingCount: number;
   /** False until an endpoint and model are configured. */
   ready: boolean;
   /** Leave the chat and go back to the no-character state. */
@@ -72,6 +76,8 @@ export function ChatView({
   avatar,
   characterAvatarVersion,
   personaAvatarVersions,
+  creatorNotes,
+  greetingCount,
   ready,
   onCloseChat,
   onOpenPanel,
@@ -453,6 +459,10 @@ export function ChatView({
                 busy,
                 summaryRunning: chat.summaryStatus.running,
                 displayText: messageIndex === 0 ? greeting : undefined,
+                // Row 0 only: the notes explain which greeting you are looking at, and
+                // nothing below the opening message is a greeting.
+                creatorNotes: messageIndex === 0 ? creatorNotes : undefined,
+                greetingCount: messageIndex === 0 ? greetingCount : undefined,
                 onSwipe: swipe,
                 onRegenerate: regenerate,
                 onContinue: continueLast,
