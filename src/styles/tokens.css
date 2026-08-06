@@ -55,6 +55,18 @@
   /* Render-only fallback when an avatar has no usable chromatic colour. */
   --wc-dialogue-default: #e18a24;
 
+  /*
+   * Inline code in a message. The one deliberate exception to the achromatic rule above:
+   * cards routinely wrap speech in backticks, so a code span carries dialogue as often as
+   * it carries code, and a neutral grey slab reads as a rendering fault rather than a
+   * voice. Ported from SillyTavern's Moonlit Echoes theme, whose `#sheld code` is a dark
+   * chip with the text in the theme's primary colour — that blue is its default. The
+   * background stays translucent black so the chip darkens whatever bubble it lands in,
+   * opaque or glass, instead of matching one and vanishing into the other.
+   */
+  --wc-code-bg: rgb(0 0 0 / 0.45);
+  --wc-code-color: #51a0de;
+
   /* Status */
   --wc-danger: #e5484d;
   --wc-danger-subtle: rgba(229, 72, 77, 0.12);

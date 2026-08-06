@@ -205,10 +205,23 @@
   font-size: var(--wc-text-sm);
 }
 
+/*
+ * Inline code, matching SillyTavern's Moonlit Echoes theme (`#sheld code`): a borderless
+ * dark chip with the text in the theme colour, not the flat grey slab a code span would
+ * otherwise get. Sizing is relative and the margin outset so a backticked word sits in a
+ * paragraph as a word rather than a box — cards use this for speech, not just for code.
+ */
 .message__text :not(pre) > code {
-  padding: 1px var(--wc-space-1);
+  margin: 0 3px;
+  padding: 0.2em 0.4em;
   border-radius: var(--wc-radius-sm);
-  background: var(--wc-surface-raised);
+  background: var(--wc-code-bg);
+  color: var(--wc-code-color);
+  font-size: 85%;
+  letter-spacing: 0.8px;
+  line-height: normal;
+  /* As in ST: runs of spaces inside a span are content, but a long one still has to wrap. */
+  white-space: pre-wrap;
 }
 
 .message__text blockquote {
