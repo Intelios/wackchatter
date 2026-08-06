@@ -20,8 +20,6 @@ import {
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppearancePanel } from './features/appearance/AppearancePanel.tsx';
-import { resolveBackgroundUrl } from './features/appearance/backgrounds.ts';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatPicker } from './features/chat/ChatPicker.tsx';
@@ -32,6 +30,8 @@ import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
+import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
+import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
 import { StudioShell } from './features/studio/StudioShell.tsx';
 import { SummaryPanel } from './features/summary/SummaryPanel.tsx';
@@ -398,27 +398,27 @@ export function App() {
   );
 
   /**
-   * Appearance edits apply immediately and persist on a debounce.
+   * User Settings edits apply immediately and persist on a debounce.
    *
    * Dragging a blur slider at 60fps through `patchSettings` would issue ~60 atomic writes
    * a second, and worse, the value driving the CSS would be whatever the last round-trip
    * returned — so the image would visibly lag the thumb. The optimistic local update is
    * what makes the slider feel attached to the picture.
    */
-  const appearanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userSettingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Merged, not replaced: nudging blur and then dim inside the debounce window must save
   // both. A plain "last patch wins" debounce would drop the blur.
-  const appearancePending = useRef<Record<string, unknown>>({});
+  const userSettingsPending = useRef<Record<string, unknown>>({});
 
-  const patchAppearance = useCallback(
+  const patchUserSettings = useCallback(
     (patch: Record<string, unknown>) => {
       setSettings((current) => (current ? { ...current, ...patch } : current));
-      appearancePending.current = { ...appearancePending.current, ...patch };
+      userSettingsPending.current = { ...userSettingsPending.current, ...patch };
 
-      if (appearanceTimer.current) clearTimeout(appearanceTimer.current);
-      appearanceTimer.current = setTimeout(() => {
-        const pending = appearancePending.current;
-        appearancePending.current = {};
+      if (userSettingsTimer.current) clearTimeout(userSettingsTimer.current);
+      userSettingsTimer.current = setTimeout(() => {
+        const pending = userSettingsPending.current;
+        userSettingsPending.current = {};
         void patchSettings(pending);
       }, 200);
     },
@@ -427,9 +427,9 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      if (appearanceTimer.current) clearTimeout(appearanceTimer.current);
-      const pending = appearancePending.current;
-      appearancePending.current = {};
+      if (userSettingsTimer.current) clearTimeout(userSettingsTimer.current);
+      const pending = userSettingsPending.current;
+      userSettingsPending.current = {};
       if (Object.keys(pending).length > 0) void patchSettings(pending);
     };
   }, [patchSettings]);
@@ -933,10 +933,10 @@ export function App() {
               />
             ) : null}
 
-            {rightPanel === 'appearance' ? (
-              <AppearancePanel
+            {rightPanel === 'settings' ? (
+              <UserSettingsPanel
                 settings={settings}
-                onPatch={patchAppearance}
+                onPatch={patchUserSettings}
                 unsavedPreset={presetDraft.dirty}
               />
             ) : null}

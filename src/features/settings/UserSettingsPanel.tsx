@@ -7,17 +7,17 @@ import { TrashIcon, UploadIcon } from '../../layout/icons.tsx';
 import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
 import { DataLocationSection } from './DataLocationSection.tsx';
-import './AppearancePanel.css';
+import './UserSettingsPanel.css';
 
-interface AppearancePanelProps {
+interface UserSettingsPanelProps {
   settings: SettingsResponse | null;
   onPatch: (patch: Record<string, unknown>) => void;
   /** Moving the data folder reloads the app, which would take an unsaved draft with it. */
   unsavedPreset?: boolean;
 }
 
-/** How the app looks, plus the app-level settings that have nowhere better to live. */
-export function AppearancePanel({ settings, onPatch, unsavedPreset }: AppearancePanelProps) {
+/** App-level settings: how the app looks, where data lives, and the knobs with no better home. */
+export function UserSettingsPanel({ settings, onPatch, unsavedPreset }: UserSettingsPanelProps) {
   const [uploads, setUploads] = useState<BackgroundSummary[]>([]);
   const [status, setStatus] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -77,12 +77,12 @@ export function AppearancePanel({ settings, onPatch, unsavedPreset }: Appearance
   }
 
   return (
-    <div className="appearance">
-      <Section title="Background" defaultOpen>
-        <div className="appearance__grid">
+    <div className="user-settings">
+      <Section title="Background">
+        <div className="user-settings__grid">
           <button
             type="button"
-            className="appearance__swatch appearance__swatch--none"
+            className="user-settings__swatch user-settings__swatch--none"
             data-selected={selected === null || undefined}
             onClick={() => onPatch({ background: null })}
             title="No background"
@@ -94,7 +94,7 @@ export function AppearancePanel({ settings, onPatch, unsavedPreset }: Appearance
             <button
               key={background.id}
               type="button"
-              className="appearance__swatch"
+              className="user-settings__swatch"
               data-selected={selected === `builtin:${background.id}` || undefined}
               style={{ backgroundImage: `url("${background.url}")` }}
               onClick={() => onPatch({ background: `builtin:${background.id}` })}
@@ -105,10 +105,10 @@ export function AppearancePanel({ settings, onPatch, unsavedPreset }: Appearance
           ))}
 
           {uploads.map((upload) => (
-            <div key={upload.name} className="appearance__upload">
+            <div key={upload.name} className="user-settings__upload">
               <button
                 type="button"
-                className="appearance__swatch"
+                className="user-settings__swatch"
                 data-selected={selected === `user:${upload.name}` || undefined}
                 style={{
                   backgroundImage: `url("${backgroundApi.url(upload.name, upload.modified)}")`,
@@ -121,7 +121,7 @@ export function AppearancePanel({ settings, onPatch, unsavedPreset }: Appearance
               {/* Two-click confirm in place: destructive, but never a blocking dialog. */}
               <button
                 type="button"
-                className="wc-button wc-button--ghost wc-button--danger appearance__delete"
+                className="wc-button wc-button--ghost wc-button--danger user-settings__delete"
                 onClick={() =>
                   confirmDelete === upload.name
                     ? void handleDelete(upload.name)
@@ -142,7 +142,7 @@ export function AppearancePanel({ settings, onPatch, unsavedPreset }: Appearance
           ))}
         </div>
 
-        <div className="appearance__actions">
+        <div className="user-settings__actions">
           <button
             type="button"
             className="wc-button wc-button--ghost"

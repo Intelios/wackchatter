@@ -6,7 +6,7 @@
  * deletable with no way to get it back. Vite content-hashes these, so they cache forever.
  *
  * Authored here rather than copied from SillyTavern — its images are AGPL assets, and
- * gradients we drew ourselves carry no licence question at all. The Appearance panel
+ * gradients we drew ourselves carry no licence question at all. The User Settings panel
  * offers a one-click import for anyone who wants ST's, straight from their own install.
  */
 

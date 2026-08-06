@@ -83,7 +83,7 @@ else's preset cannot silently repoint your endpoint and exporting yours cannot l
 ## The data directory moves
 
 `<repo>/data` is the default, not a fixed location. The user can relocate the whole library
-from Appearance → Data location, and the server repoints itself without restarting. Three
+from User Settings → Data location, and the server repoints itself without restarting. Three
 invariants make that safe, and each one is a real bug that was possible before it existed.
 
 **1. `PATHS` is a live view, never a snapshot.** `setDataDir` rewrites one object in place,
@@ -424,7 +424,7 @@ regex keys are the escape hatches.
   must not hardcode any of it — restyling should mean editing that one file.
 - **Both sides are multi-destination**, routed by a panel id rather than an open/closed
   boolean plus a tab: left is Connection / Prompts / Generation / Inspect, right is
-  Characters / Lorebooks / Persona / Appearance. Pressing the button of the panel already
+  Characters / Lorebooks / Persona / User Settings. Pressing the button of the panel already
   showing closes that side. A boolean and a tab can disagree; an id cannot.
 - The bar buttons are **toggle buttons, not tabs** — `aria-pressed` + `aria-expanded` +
   `aria-controls`. `role="tab"` would promise arrow-key navigation between siblings, and
@@ -567,7 +567,7 @@ regex keys are the escape hatches.
 - **Built-in backgrounds ship as bundled client assets**, not seeded into `data/` — `data/`
   is gitignored, and a seeded file would be deletable with no way back. They are authored
   SVG gradients rather than copies of SillyTavern's images, which are AGPL assets. The
-  Appearance panel offers a one-click import for anyone who wants ST's, copying from their
+  User Settings panel offers a one-click import for anyone who wants ST's, copying from their
   own local install into their own gitignored `data/` — nothing is redistributed.
 
 ## Testing
@@ -632,7 +632,7 @@ regex keys are the escape hatches.
   the cross-disk copy) against a real seeded database, and checks what would actually hurt:
   the chat row still reads back, `quick_check` passes, no `-wal` reaches the destination,
   `secrets.json` is still 0600, and a failed copy leaves the source untouched.
-- `src/features/appearance/dataLocation.test.ts` covers `describeVerdict`, including that
+- `src/features/settings/dataLocation.test.ts` covers `describeVerdict`, including that
   every disabled state carries a reason — same convention as `ChatMenu.test.ts`.
 - `src/features/chat/slashCommands.test.ts` pins the recognition rules: only text that
   starts with `/` is a command, zero-based inclusive ranges (`/hide 0-149`), a bare

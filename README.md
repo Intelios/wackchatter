@@ -15,7 +15,7 @@ Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
 - **Author's Note** and **guided generations** (ST's Guided Generations extension reimplemented: one-shot steering, persistent per-chat guides)
 - **Prompt Manager** — drag-reorder, marker prompts, depth injection, real tokenizer
 - **Providers** — any OpenAI-compatible endpoint plus OpenRouter; keys stored server-side (mode 0600), never sent to the browser
-- **Appearance** — backgrounds, glass effects, dialogue colors, all themable from one token file
+- **User Settings** — backgrounds, glass effects, dialogue colors, all themable from one token file
 - **Movable library** — keep your data anywhere (external drive, synced folder), changed from the UI with no restart
 
 ## Getting started
@@ -58,7 +58,7 @@ data/.wackchatter  Marks the folder as a library, so the app can tell it from an
 
 ### Moving it somewhere else
 
-`<repo>/data` is the default, not a requirement. **Appearance → Data location** moves the whole
+`<repo>/data` is the default, not a requirement. **User Settings → Data location** moves the whole
 library anywhere — an external drive, a synced folder, wherever you actually keep things — and
 the app repoints itself without a restart. Point it at a folder that already holds a library and
 it adopts that one instead, moving nothing, which is also how you switch back.
@@ -103,7 +103,7 @@ The suite pins format compatibility: byte-for-byte card round-trips against Sill
 server/    Thin Bun server: files, DB, streaming proxy. Never builds a prompt.
 shared/    Pure TypeScript, no I/O: prompt assembly, providers, World Info engine, chat types.
 src/       React app: three-column layout, panels for Connection/Prompts/Inspect and
-           Characters/Lorebooks/Persona/Appearance.
+           Characters/Lorebooks/Persona/User Settings.
 ```
 
 ## Design notes

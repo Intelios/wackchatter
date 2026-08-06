@@ -1,15 +1,15 @@
-.appearance {
+.user-settings {
   display: flex;
   flex-direction: column;
 }
 
-.appearance__grid {
+.user-settings__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: var(--wc-space-2);
 }
 
-.appearance__swatch {
+.user-settings__swatch {
   position: relative;
   display: flex;
   align-items: flex-end;
@@ -24,23 +24,23 @@
   transition: border-color var(--wc-duration-fast) ease;
 }
 
-.appearance__swatch:hover {
+.user-settings__swatch:hover {
   border-color: var(--wc-border-strong);
 }
 
-.appearance__swatch[data-selected] {
+.user-settings__swatch[data-selected] {
   border-color: var(--wc-accent);
   box-shadow: inset 0 0 0 1px var(--wc-accent);
 }
 
-.appearance__swatch--none {
+.user-settings__swatch--none {
   background: var(--wc-bg);
   align-items: center;
   justify-content: center;
 }
 
 /* A scrim behind the label, so a filename stays readable on a pale background. */
-.appearance__swatch span {
+.user-settings__swatch span {
   position: relative;
   z-index: 1;
   max-width: 100%;
@@ -52,11 +52,11 @@
   text-overflow: ellipsis;
 }
 
-.appearance__upload {
+.user-settings__upload {
   position: relative;
 }
 
-.appearance__delete {
+.user-settings__delete {
   position: absolute;
   top: var(--wc-space-1);
   right: var(--wc-space-1);
@@ -66,17 +66,17 @@
   transition: opacity var(--wc-duration-fast) ease;
 }
 
-.appearance__upload:hover .appearance__delete,
-.appearance__upload:focus-within .appearance__delete,
-.appearance__delete[data-confirming] {
+.user-settings__upload:hover .user-settings__delete,
+.user-settings__upload:focus-within .user-settings__delete,
+.user-settings__delete[data-confirming] {
   opacity: 1;
 }
 
-.appearance__delete[data-confirming] {
+.user-settings__delete[data-confirming] {
   color: var(--wc-danger);
 }
 
-.appearance__actions {
+.user-settings__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--wc-space-2);

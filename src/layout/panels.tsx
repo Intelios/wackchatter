@@ -13,7 +13,7 @@
 import type { ReactNode } from 'react';
 import {
   BookIcon,
-  ImageIcon,
+  GearIcon,
   MessagesIcon,
   PlugIcon,
   SearchIcon,
@@ -24,7 +24,7 @@ import {
 } from './icons.tsx';
 
 export type LeftPanelId = 'connection' | 'prompts' | 'generation' | 'inspect';
-export type RightPanelId = 'characters' | 'lorebooks' | 'summary' | 'persona' | 'appearance';
+export type RightPanelId = 'characters' | 'lorebooks' | 'summary' | 'persona' | 'settings';
 
 export interface PanelSpec<T extends string> {
   id: T;
@@ -40,11 +40,11 @@ export const LEFT_PANELS: readonly PanelSpec<LeftPanelId>[] = [
   { id: 'inspect', label: 'Inspect', icon: <SearchIcon /> },
 ];
 
-/** Right is who is in the scene, and how it all looks. */
+/** Right is who is in the scene, and how the app itself behaves. */
 export const RIGHT_PANELS: readonly PanelSpec<RightPanelId>[] = [
   { id: 'characters', label: 'Characters', icon: <UsersIcon /> },
   { id: 'lorebooks', label: 'Lorebooks', icon: <BookIcon /> },
   { id: 'summary', label: 'Summary', icon: <SummaryIcon /> },
   { id: 'persona', label: 'Persona', icon: <UserIcon /> },
-  { id: 'appearance', label: 'Appearance', icon: <ImageIcon /> },
+  { id: 'settings', label: 'User Settings', icon: <GearIcon /> },
 ];
