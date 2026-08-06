@@ -174,6 +174,142 @@ describe('repairing incomplete presets', () => {
   });
 });
 
+/**
+ * The Prompt Manager's export button, as opposed to the preset dropdown's. Same word
+ * ("export") in the ST UI, different file, and users import both here.
+ */
+describe('Prompt Manager export format', () => {
+  const promptManagerExport = {
+    version: 1,
+    type: 'full',
+    data: {
+      prompts: [
+        { identifier: 'custom-a', name: 'Main Prompt V4', role: 'system', content: 'the good bit' },
+        { identifier: 'custom-b', name: 'Summary', role: 'system', content: 'summarise' },
+      ],
+      // Bare order array, not the preset's [{character_id, order}] list.
+      prompt_order: [
+        { identifier: 'main', enabled: false },
+        { identifier: 'custom-a', enabled: true },
+        { identifier: 'custom-b', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+        { identifier: 'deleted-prompt', enabled: false },
+      ],
+    },
+  };
+
+  test('prompts are read from data.prompts, not silently defaulted', () => {
+    const preset = normalizePreset(promptManagerExport);
+    const main = preset.prompts?.find((p) => p.identifier === 'custom-a');
+
+    expect(main?.name).toBe('Main Prompt V4');
+    expect(main?.content).toBe('the good bit');
+  });
+
+  test('built-ins the export omits are restored alongside the custom prompts', () => {
+    const preset = normalizePreset(promptManagerExport);
+    const identifiers = preset.prompts!.map((p) => p.identifier);
+
+    expect(preset.prompts).toHaveLength(14); // 12 built-ins + 2 custom
+    expect(identifiers).toContain('main');
+    expect(identifiers).toContain('personaDescription');
+    expect(identifiers).toContain('custom-a');
+  });
+
+  test('the bare order array is lifted onto the live character_id', () => {
+    const preset = normalizePreset(promptManagerExport);
+
+    expect(preset.prompt_order).toHaveLength(1);
+    expect(preset.prompt_order![0]!.character_id).toBe(PROMPT_ORDER_LIVE_ID);
+
+    const order = getPromptOrder(preset);
+    // Author's order is preserved, and the dangling entry is dropped as usual.
+    expect(order.slice(0, 4).map((e) => e.identifier)).toEqual([
+      'main',
+      'custom-a',
+      'custom-b',
+      'chatHistory',
+    ]);
+    expect(order.map((e) => e.identifier)).not.toContain('deleted-prompt');
+  });
+
+  test('a disabled built-in stays disabled — these presets replace main with their own', () => {
+    const order = getPromptOrder(normalizePreset(promptManagerExport));
+    expect(order.find((e) => e.identifier === 'main')?.enabled).toBe(false);
+    expect(order.find((e) => e.identifier === 'custom-a')?.enabled).toBe(true);
+  });
+
+  test('the version/type envelope is not written into the preset', () => {
+    const written = JSON.parse(serializePreset(normalizePreset(promptManagerExport)));
+
+    expect(written).not.toHaveProperty('data');
+    expect(written).not.toHaveProperty('type');
+    expect(written).not.toHaveProperty('version');
+  });
+
+  test('a character-scoped export applies as the live order — we keep only one', () => {
+    const preset = normalizePreset({ ...promptManagerExport, type: 'character' });
+    expect(getPromptOrder(preset).map((e) => e.identifier)).toContain('custom-a');
+  });
+
+  test('an export carrying only prompts still loads', () => {
+    const preset = normalizePreset({
+      version: 1,
+      type: 'full',
+      data: { prompts: [{ identifier: 'custom-a', name: 'Solo', content: 'x' }] },
+    });
+
+    expect(preset.prompts?.find((p) => p.identifier === 'custom-a')?.content).toBe('x');
+    // No order came with it, so the prompt is appended rather than lost.
+    expect(getPromptOrder(preset).map((e) => e.identifier)).toContain('custom-a');
+  });
+
+  test('a plain preset with an unrelated data key is not mistaken for an export', () => {
+    const preset = normalizePreset({
+      temperature: 0.85,
+      data: { something: 'else' },
+      prompts: [{ identifier: 'main', name: 'Main', content: 'real main' }],
+    });
+
+    expect(preset.temperature).toBe(0.85);
+    expect(preset.prompts?.find((p) => p.identifier === 'main')?.content).toBe('real main');
+  });
+
+  test('an extension blob holding its own prompts array is not mistaken for an export', () => {
+    const preset = normalizePreset({
+      data: { prompts: [{ identifier: 'x', name: 'X' }], someExtensionKey: true },
+      prompts: [{ identifier: 'main', name: 'Main', content: 'real main' }],
+    });
+
+    expect(preset.prompts?.find((p) => p.identifier === 'main')?.content).toBe('real main');
+    expect(preset.prompts?.find((p) => p.identifier === 'x')).toBeUndefined();
+  });
+
+  /**
+   * Presets written before the export format was recognised kept the whole `data` payload
+   * alongside a set of default prompts, so the real prompts are still recoverable on read.
+   */
+  test('a preset mis-imported before the fix recovers its prompts on read', () => {
+    const misImported = {
+      ...promptManagerExport,
+      temperature: 0.7,
+      openai_max_context: 200000,
+      prompts: [{ identifier: 'main', name: 'Main Prompt', content: 'the stock default' }],
+      prompt_order: [
+        { character_id: PROMPT_ORDER_LIVE_ID, order: [{ identifier: 'main', enabled: true }] },
+      ],
+    };
+
+    const preset = normalizePreset(misImported);
+
+    expect(preset.prompts?.find((p) => p.identifier === 'custom-a')?.content).toBe('the good bit');
+    expect(getPromptOrder(preset).map((e) => e.identifier)).toContain('custom-a');
+    // Settings edited on the broken preset since the bad import must survive the recovery.
+    expect(preset.temperature).toBe(0.7);
+    expect(preset.openai_max_context).toBe(200000);
+  });
+});
+
 describe('editing', () => {
   test('setPromptOrder replaces the live order and leaves the legacy one alone', () => {
     const preset = normalizePreset(loadStDefault());

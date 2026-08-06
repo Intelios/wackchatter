@@ -83,6 +83,68 @@ export function migratePreset(raw: Record<string, unknown>): Record<string, unkn
 }
 
 /**
+ * SillyTavern has two different export buttons and they write different files. The preset
+ * dropdown writes the settings object itself. The Prompt Manager's own export writes
+ * `{version, type, data: {prompts, prompt_order}}` — the prompts alone, no samplers.
+ *
+ * Users reach for either one and call both "my preset", so we read both. Left unhandled the
+ * wrapper matches none of the keys we look for and the file loads as a preset made entirely
+ * of defaults: the name (which comes from the filename) changes, and nothing else does.
+ */
+function isPromptManagerExport(raw: Record<string, unknown>): boolean {
+  const data = raw.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+
+  // ST's two export paths both build `data` as exactly {prompts, prompt_order}. Requiring
+  // that keeps us off an extension's unrelated `data` blob that happens to hold an array.
+  const keys = Object.keys(data as Record<string, unknown>);
+  if (!keys.length || !keys.every((key) => key === 'prompts' || key === 'prompt_order')) {
+    return false;
+  }
+
+  const { prompts, prompt_order } = data as Record<string, unknown>;
+  return Array.isArray(prompts) || Array.isArray(prompt_order);
+}
+
+/** True for a preset's `[{character_id, order}]`, false for an export's bare order array. */
+function isOrderList(order: unknown[]): boolean {
+  const first = order[0];
+  return !!first && typeof first === 'object' && 'order' in first;
+}
+
+/**
+ * Lift a Prompt Manager export into preset shape, dropping the `version`/`type` envelope —
+ * that is export metadata, not preset fields, and ST does not expect it back in a preset.
+ *
+ * The export stores `prompt_order` as the bare order array rather than the preset's
+ * per-character list, so it has to be placed onto the live character_id. Built-ins the
+ * export omits are restored downstream by `withMissingPrompts`, which is what ST's own
+ * import does by merging into the prompts already loaded.
+ *
+ * Everything outside the envelope is kept and only `prompts`/`prompt_order` are overridden,
+ * which matters for files this bug already wrote: those were saved with a full set of preset
+ * fields *and* the untouched `data` payload, so reading them now recovers the real prompts
+ * without discarding settings that have been edited since.
+ */
+function unwrapPromptManagerExport(raw: Record<string, unknown>): Record<string, unknown> {
+  const { version: _version, type: _type, data: envelope, ...rest } = raw;
+  const data = envelope as Record<string, unknown>;
+  const order = data.prompt_order;
+
+  const promptOrder = Array.isArray(order)
+    ? isOrderList(order)
+      ? order
+      : [{ character_id: PROMPT_ORDER_LIVE_ID, order }]
+    : undefined;
+
+  return {
+    ...rest,
+    ...(Array.isArray(data.prompts) ? { prompts: data.prompts } : {}),
+    ...(promptOrder ? { prompt_order: promptOrder } : {}),
+  };
+}
+
+/**
  * Ensure every built-in prompt exists. SillyTavern re-injects missing built-ins on load,
  * so a preset without them would change the moment it was opened there.
  */
@@ -127,7 +189,10 @@ export function normalizePreset(raw: unknown): Preset {
     throw new Error('Preset must be a JSON object.');
   }
 
-  const migrated = migratePreset(raw as Record<string, unknown>);
+  const source = raw as Record<string, unknown>;
+  const migrated = migratePreset(
+    isPromptManagerExport(source) ? unwrapPromptManagerExport(source) : source,
+  );
 
   const prompts = withMissingPrompts(
     Array.isArray(migrated.prompts)
