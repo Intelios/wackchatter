@@ -24,9 +24,9 @@ export interface AppSettings {
   /** UI refresh rate during streaming. */
   streamingFps: number;
   /**
-   * The persona new chats start with. NOT necessarily the one a given chat uses —
-   * `ChatMetadata.persona` wins there, because a transcript records who you were when
-   * you wrote it.
+   * The app-wide current persona. Picking one sets this; new chats start with it, and
+   * loading a chat adopts its recorded persona (`ChatMetadata.persona`) as the current
+   * one — the chat wins, because a transcript records who you were when you wrote it.
    */
   personaId: string | null;
   /** SillyTavern-compatible variables shared by every chat. */

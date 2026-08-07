@@ -88,18 +88,6 @@
   color: var(--wc-text-muted);
 }
 
-.persona-card__badge {
-  position: absolute;
-  left: var(--wc-space-1);
-  bottom: var(--wc-space-1);
-  padding: 0 var(--wc-space-1);
-  border-radius: var(--wc-radius-sm);
-  background: var(--wc-scrim);
-  color: var(--wc-text);
-  font-size: var(--wc-text-xs);
-  line-height: 1.6;
-}
-
 .persona-card__name {
   display: block;
   font-size: var(--wc-text-sm);

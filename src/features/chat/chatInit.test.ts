@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
+import { adoptedPersona, KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
 
 describe('KeyedSerialQueue', () => {
   test('returning A after starting B still waits for the original A task', async () => {
@@ -100,3 +100,42 @@ function chat(id: string) {
     messages: [],
   };
 }
+
+describe('adoptedPersona', () => {
+  const personas = [
+    { id: 'ari', name: 'Ari', description: '', avatar: null },
+    { id: 'jack', name: 'Jack', description: '', avatar: null },
+  ];
+
+  test('a recorded persona becomes the current one', () => {
+    expect(
+      adoptedPersona({ ...chat('c'), metadata: { persona: 'ari' } }, 'jack', personas),
+    ).toEqual({ effective: 'ari', changed: true });
+  });
+
+  test('a recorded persona already current changes nothing', () => {
+    expect(adoptedPersona({ ...chat('c'), metadata: { persona: 'ari' } }, 'ari', personas)).toEqual(
+      { effective: 'ari', changed: false },
+    );
+  });
+
+  test('an explicit none is adopted, clearing the current persona', () => {
+    expect(adoptedPersona({ ...chat('c'), metadata: { persona: null } }, 'ari', personas)).toEqual({
+      effective: null,
+      changed: true,
+    });
+  });
+
+  test('an orphaned recorded id resolves as none', () => {
+    expect(
+      adoptedPersona({ ...chat('c'), metadata: { persona: 'gone' } }, 'ari', personas),
+    ).toEqual({ effective: null, changed: true });
+  });
+
+  test('a legacy chat without a persona key keeps the current persona', () => {
+    expect(adoptedPersona(chat('c'), 'ari', personas)).toEqual({
+      effective: 'ari',
+      changed: false,
+    });
+  });
+});

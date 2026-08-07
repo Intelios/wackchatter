@@ -475,7 +475,8 @@ export function App() {
     character,
     preset,
     personas,
-    defaultPersonaId: settings?.personaId ?? null,
+    personaId: settings?.personaId ?? null,
+    onPersonaSwitch: (id) => void patchSettings({ personaId: id }),
     connection,
     countTokens,
     streamingFps: settings?.streamingFps ?? 30,
@@ -758,6 +759,16 @@ export function App() {
     });
   }, []);
 
+  // One current persona: picking it sets the app-wide selection and, with a chat open,
+  // switches this chat to it too. The two never drift.
+  const handleSelectPersona = useCallback(
+    (id: string | null) => {
+      void patchSettings({ personaId: id });
+      if (chat.state.chatId) chat.setPersona(id);
+    },
+    [chat, patchSettings],
+  );
+
   const active = characters.find((c) => c.avatar === selected) ?? null;
   const showEditor = editing && detail?.avatar === selected ? detail : null;
   const ready = Boolean(connection?.baseUrl && connection.model && preset);
@@ -946,11 +957,8 @@ export function App() {
               <PersonaPanel
                 personas={personas}
                 books={books}
-                active={chat.persona}
-                defaultId={settings?.personaId ?? null}
-                hasChat={Boolean(chat.state.chatId)}
-                onSelectForChat={chat.setPersona}
-                onSelectDefault={(id) => void patchSettings({ personaId: id })}
+                activeId={settings?.personaId ?? null}
+                onSelect={handleSelectPersona}
                 onChanged={refreshPersonas}
                 registerPersistence={(controls) => {
                   personaPersistence.current = controls;

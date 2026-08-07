@@ -1,14 +1,10 @@
 /**
  * The "You" tab: who you are in the chat.
  *
- * Picking a card means two different things depending on whether a chat is open, and
- * that is deliberate. With a chat open it sets the persona THIS chat uses
- * (`ChatMetadata.persona`) — the chat wins, so the app default never retroactively
- * relabels a transcript. With no chat open there is no transcript to attach to, so the
- * same click picks the persona NEW chats start with (`AppSettings.personaId`): choose
- * who you are first, then open a character, and the new chat already knows. The
- * "default for new chats" checkbox in the editor is the same setting, reachable from
- * inside a chat too.
+ * There is one current persona, and picking a card sets it — with a chat open the same
+ * click also switches THIS chat to it (`ChatMetadata.persona`), so the two never drift.
+ * Loading an older chat adopts its recorded persona as the current one, which is why the
+ * chat's own state still exists: a transcript records who you were when you wrote it.
  */
 
 import type { Persona } from '@shared/types/chat.ts';
@@ -16,7 +12,7 @@ import type { DialogueColorOverride, DialogueColorSettings } from '@shared/types
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import { useEffect, useRef, useState } from 'react';
 import { DialogueColorField } from '../../components/DialogueColorField.tsx';
-import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
+import { NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { EditIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
@@ -43,14 +39,10 @@ const ROLE_OPTIONS = [
 interface PersonaPanelProps {
   personas: Persona[];
   books: LorebookSummary[];
-  /** The persona the open chat is using. */
-  active: Persona | null;
-  /** The default for new chats. */
-  defaultId: string | null;
-  /** True when a chat is open; a pick then acts on the chat, otherwise on new chats. */
-  hasChat: boolean;
-  onSelectForChat: (id: string | null) => void;
-  onSelectDefault: (id: string | null) => void;
+  /** The app-wide current persona. */
+  activeId: string | null;
+  /** Set the current persona — and the open chat's, when there is one. */
+  onSelect: (id: string | null) => void;
   onChanged: () => void;
   registerPersistence?: (controls: PersistenceControls | null) => void;
   dialogueColors: DialogueColorSettings;
@@ -63,11 +55,8 @@ interface PersonaPanelProps {
 export function PersonaPanel({
   personas,
   books,
-  active,
-  defaultId,
-  hasChat,
-  onSelectForChat,
-  onSelectDefault,
+  activeId,
+  onSelect,
   onChanged,
   registerPersistence,
   dialogueColors,
@@ -207,7 +196,7 @@ export function PersonaPanel({
       setEditing(null);
       // Chats keep the explicit orphaned id and resolve it as no persona. That preserves
       // their snapshot if this persona is restored later.
-      if (defaultId === id) onSelectDefault(null);
+      if (activeId === id) onSelect(null);
       onDeleted(id);
       onChanged();
     } catch (err) {
@@ -341,13 +330,6 @@ export function PersonaPanel({
               ) : null}
             </Section>
 
-            <CheckField
-              label="Default for new chats"
-              checked={defaultId === draft.id}
-              onChange={(on) => onSelectDefault(on ? draft.id : null)}
-              hint="Existing chats keep the persona they were started with."
-            />
-
             <div className="persona-editor__footer">
               <button
                 type="button"
@@ -376,19 +358,15 @@ export function PersonaPanel({
                 <li
                   key={persona.id}
                   className="persona-card"
-                  data-active={
-                    (hasChat ? active?.id === persona.id : defaultId === persona.id) || undefined
-                  }
+                  data-active={activeId === persona.id || undefined}
                 >
                   {/* A container rather than one big button: the card needs two distinct
                       actions, and a button inside a button is invalid. */}
                   <button
                     type="button"
                     className="persona-card__pick"
-                    onClick={() =>
-                      hasChat ? onSelectForChat(persona.id) : onSelectDefault(persona.id)
-                    }
-                    title={hasChat ? 'Use in this chat' : 'Use for new chats'}
+                    onClick={() => onSelect(persona.id)}
+                    title="Use this persona"
                   >
                     <span className="persona-card__image">
                       {persona.avatar ? (
@@ -405,9 +383,6 @@ export function PersonaPanel({
                           {persona.name.slice(0, 1).toUpperCase()}
                         </span>
                       )}
-                      {defaultId === persona.id ? (
-                        <span className="persona-card__badge">default</span>
-                      ) : null}
                     </span>
                     <span className="persona-card__name">{persona.name}</span>
                   </button>
@@ -431,23 +406,13 @@ export function PersonaPanel({
               <PlusIcon />
               New persona
             </button>
-            {hasChat ? (
-              active ? (
-                <button
-                  type="button"
-                  className="wc-button wc-button--ghost"
-                  onClick={() => onSelectForChat(null)}
-                >
-                  Use none in this chat
-                </button>
-              ) : null
-            ) : defaultId ? (
+            {activeId ? (
               <button
                 type="button"
                 className="wc-button wc-button--ghost"
-                onClick={() => onSelectDefault(null)}
+                onClick={() => onSelect(null)}
               >
-                Use none for new chats
+                Use none
               </button>
             ) : null}
           </div>

@@ -100,7 +100,7 @@ export const initialChatState: ChatState = {
 };
 
 export type ChatAction =
-  | { type: 'chat/loaded'; chat: Chat; defaultPersonaId?: string | null }
+  | { type: 'chat/loaded'; chat: Chat; personaId?: string | null }
   | { type: 'chat/closed' }
   | { type: 'chat/saved'; chatId: string; revision: number }
   | { type: 'chat/renamed'; title: string }
@@ -209,11 +209,11 @@ function settle(state: ChatState, text: string, extra?: MessageExtra): ChatState
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     // A missing persona key only exists on chats created before snapshots. Snapshot the
-    // current default immediately and mark that one migration revision dirty.
+    // current persona immediately and mark that one migration revision dirty.
     case 'chat/loaded': {
       const missingPersona = !Object.hasOwn(action.chat.metadata, 'persona');
       const metadata = missingPersona
-        ? { ...action.chat.metadata, persona: action.defaultPersonaId ?? null }
+        ? { ...action.chat.metadata, persona: action.personaId ?? null }
         : action.chat.metadata;
 
       // User messages from before speakers were recorded have no persona_id. They were

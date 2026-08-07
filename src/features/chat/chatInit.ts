@@ -71,4 +71,34 @@ export async function resolveInitialChat(
   };
 }
 
-import type { Chat, ChatMetadata, ChatSummary } from '@shared/types/chat.ts';
+export interface AdoptedPersona {
+  /** The persona the chat effectively uses, resolved against the live list. */
+  effective: string | null;
+  /** Whether the app-wide current persona must follow the chat's. */
+  changed: boolean;
+}
+
+/**
+ * Resolve the persona a loaded chat adopts, and whether the app-wide current persona
+ * must follow it.
+ *
+ * A chat records who you were in it (`ChatMetadata.persona`), and loading it makes that
+ * state yours: a recorded id becomes the current persona, an explicit none or an orphaned
+ * id (persona deleted since) makes the current persona none. A legacy chat with no key is
+ * stamped with the current persona instead — nothing to adopt, nothing to change.
+ */
+export function adoptedPersona(
+  chat: Chat,
+  currentId: string | null,
+  personas: readonly Persona[],
+): AdoptedPersona {
+  if (!Object.hasOwn(chat.metadata, 'persona')) {
+    return { effective: currentId, changed: false };
+  }
+  const recorded = chat.metadata.persona;
+  const effective =
+    typeof recorded === 'string' && personas.some((item) => item.id === recorded) ? recorded : null;
+  return { effective, changed: effective !== currentId };
+}
+
+import type { Chat, ChatMetadata, ChatSummary, Persona } from '@shared/types/chat.ts';

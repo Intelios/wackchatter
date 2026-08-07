@@ -70,7 +70,7 @@ describe('chat snapshots', () => {
     const state = run(initialChatState, {
       type: 'chat/loaded',
       chat: legacy,
-      defaultPersonaId: 'ari',
+      personaId: 'ari',
     });
 
     expect(state.metadata.persona).toBe('ari');
@@ -82,7 +82,7 @@ describe('chat snapshots', () => {
     const state = run(initialChatState, {
       type: 'chat/loaded',
       chat: { ...chat(), revision: 7, metadata: { persona: null } },
-      defaultPersonaId: 'ari',
+      personaId: 'ari',
     });
 
     expect(state.metadata.persona).toBeNull();
@@ -165,7 +165,7 @@ describe('chat snapshots', () => {
         revision: 7,
         metadata: {},
       },
-      defaultPersonaId: 'ari',
+      personaId: 'ari',
     });
 
     expect(state.metadata.persona).toBe('ari');

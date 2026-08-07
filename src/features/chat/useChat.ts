@@ -47,7 +47,7 @@ import {
   summaryBaseControl,
   summaryMessages,
 } from '../summary/summary.ts';
-import { KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
+import { adoptedPersona, KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
 import { ChatSaveQueue } from './chatPersistence.ts';
 import {
   type ChatAction,
@@ -77,8 +77,13 @@ export interface UseChatOptions {
   preset: Preset | null;
   /** Every persona. Which one applies is resolved in here — see `persona` below. */
   personas: Persona[];
-  /** The persona new chats start with. `AppSettings.personaId`. */
-  defaultPersonaId: string | null;
+  /** The app-wide current persona. New chats start with it; loading a chat adopts its own. */
+  personaId: string | null;
+  /**
+   * A loaded chat's recorded persona becomes the current one. Called when that happens,
+   * so the settings snapshot can follow the chat instead of the other way around.
+   */
+  onPersonaSwitch?: (personaId: string | null) => void;
   connection: ConnectionSettings | null;
   countTokens: TokenCounter;
   streamingFps: number;
@@ -195,7 +200,8 @@ export function useChat(options: UseChatOptions): UseChat {
     character,
     preset,
     personas,
-    defaultPersonaId,
+    personaId,
+    onPersonaSwitch,
     connection,
     countTokens,
     streamingFps,
@@ -236,8 +242,8 @@ export function useChat(options: UseChatOptions): UseChat {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const defaultPersonaRef = useRef(defaultPersonaId);
-  defaultPersonaRef.current = defaultPersonaId;
+  const personaIdRef = useRef(personaId);
+  personaIdRef.current = personaId;
 
   // The card autosaves without the identity changing, so the chat-init effect must not key
   // on it — it would re-run on every keystroke. `cardLoaded` is the only stable signal; the
@@ -296,19 +302,27 @@ export function useChat(options: UseChatOptions): UseChat {
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the transcript only
   const messages = useMemo(() => toChatMessages(state), [state.messages]);
 
-  const loadChat = useCallback((chat: Chat) => {
-    dispatch({ type: 'chat/loaded', chat, defaultPersonaId: defaultPersonaRef.current });
-  }, []);
+  const loadChat = useCallback(
+    (chat: Chat) => {
+      // Loading a chat adopts its recorded persona as the app-wide current one — the
+      // chat wins, and the settings snapshot follows it. A legacy chat without a key is
+      // stamped with the current persona instead, which changes nothing to adopt.
+      const adopted = adoptedPersona(chat, personaIdRef.current, personas);
+      if (adopted.changed) onPersonaSwitch?.(adopted.effective);
+      dispatch({ type: 'chat/loaded', chat, personaId: adopted.effective });
+    },
+    [onPersonaSwitch, personas],
+  );
 
   // --- Persona ---------------------------------------------------------------
 
   /**
-   * The chat wins over the app default.
+   * The chat wins over the app-wide current persona.
    *
-   * `AppSettings.personaId` is the persona NEW chats start with; `ChatMetadata.persona` is
-   * the one this chat is using. A chat is a transcript in which "you" said things, so
-   * letting the app default retroactively apply would relabel every past message the
-   * moment the default changed.
+   * `AppSettings.personaId` is the persona you are using right now; `ChatMetadata.persona`
+   * is the one this chat is using. A chat is a transcript in which "you" said things, so
+   * loading it adopts its recorded persona — the settings follow the chat, never the other
+   * way around.
    *
    * Resolved here rather than in App: computing it up there from `chat.state.metadata` and
    * feeding it back in as a prop would be a cycle.
@@ -318,7 +332,7 @@ export function useChat(options: UseChatOptions): UseChat {
     if (stored === null) return null;
     if (typeof stored === 'string') return personas.find((item) => item.id === stored) ?? null;
     // A loaded chat is migrated before it reaches this point. No-chat state has no
-    // persona, rather than borrowing the global new-chat default.
+    // persona, rather than borrowing the app-wide current one.
     return null;
   }, [state.metadata.persona, personas]);
 
@@ -421,7 +435,7 @@ export function useChat(options: UseChatOptions): UseChat {
         const resolved = await resolveInitialChat(
           chatApi,
           characterId,
-          { persona: defaultPersonaRef.current },
+          { persona: personaIdRef.current },
           () => !cancelled && userChatAction.current === passAction,
         );
         if (cancelled) return;
@@ -1135,7 +1149,7 @@ export function useChat(options: UseChatOptions): UseChat {
     const chat = await chatApi.create({
       characterId,
       title: 'New chat',
-      metadata: { persona: defaultPersonaRef.current },
+      metadata: { persona: personaIdRef.current },
     });
     loadChat(chat);
     dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });

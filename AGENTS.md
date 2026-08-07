@@ -379,14 +379,15 @@ deliberately not among them.
   `extensions.world`, so renaming is a file move. A persona's filename is an **opaque id**
   and `name` is an editable field, because `ChatMetadata.persona` stores that id and a
   typo fix must not orphan every chat referencing it. Opposite rules, on purpose.
-- **The chat wins.** `AppSettings.personaId` is the default for *new* chats;
-  `ChatMetadata.persona` is what *this* chat uses. A transcript records who you were when
-  you wrote it, so changing the default must not relabel past messages.
-- **Picking before a chat is picking for the next one.** With no chat open there is no
-  `ChatMetadata.persona` to write, so the persona grid's click sets `AppSettings.personaId`
-  instead — choose who you are, then open a character, and the new chat starts with it.
-  With a chat open the same click writes the chat's persona. One control, two targets,
-  routed by `hasChat`; the pick button is never disabled for want of an open chat.
+- **There is one current persona, and the chat wins.** `AppSettings.personaId` is the
+  persona you are using right now; `ChatMetadata.persona` is the one this chat uses. A
+  pick anywhere sets both — the app-wide selection and, with a chat open, this chat's
+  metadata — so they never drift. Loading a chat adopts its recorded persona as the
+  current one (`adoptedPersona` in `chatInit.ts`): a recorded id becomes current, an
+  explicit none or an orphaned id (persona deleted since) makes current none, and a
+  legacy chat with no key is stamped with the current persona instead. The settings
+  follow the chat, never the other way around — a transcript records who you were when
+  you wrote it, so changing the current persona must not relabel past messages.
 
 ### Deliberate divergence from SillyTavern
 
