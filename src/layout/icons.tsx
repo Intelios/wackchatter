@@ -328,6 +328,16 @@ export function ImageIcon({ className }: IconProps) {
   );
 }
 
+/** Copy — two overlapping squares. */
+export function CopyIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+    </svg>
+  );
+}
+
 export function MoreIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

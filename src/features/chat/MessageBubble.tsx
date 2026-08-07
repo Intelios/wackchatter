@@ -257,6 +257,9 @@ export const MessageBubble = memo(function MessageBubble({
                   confirmingDelete: confirmDelete,
                 }}
                 actions={{
+                  // What you see is what you get — the scripts' and greeting macros'
+                  // render, not the stored text.
+                  copy: () => void navigator.clipboard.writeText(renderedText),
                   regenerate: onRegenerate,
                   continueLast: onContinue,
                   toggleHidden: () => onToggleHidden(message.id),

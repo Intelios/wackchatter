@@ -17,6 +17,7 @@ const lastReply: MessageMenuState = {
 
 const noop = () => {};
 const actions: MessageMenuActions = {
+  copy: noop,
   regenerate: noop,
   continueLast: noop,
   toggleHidden: noop,
@@ -89,6 +90,22 @@ describe('buildMessageMenu', () => {
     expect(byLabel(buildMessageMenu(lastReply, actions), 'Hide')).toBeTruthy();
     const hidden = buildMessageMenu({ ...lastReply, isHidden: true }, actions);
     expect(byLabel(hidden, 'Show')).toBeTruthy();
+  });
+
+  test('copy is a read: available on every message, whatever else is happening', () => {
+    const cases = [
+      lastReply,
+      { ...lastReply, busy: true },
+      { ...lastReply, summaryRunning: true },
+      { ...lastReply, isLast: false },
+      { ...lastReply, isUser: true },
+      { ...lastReply, isHidden: true, confirmingDelete: true },
+    ];
+    for (const state of cases) {
+      const copy = byLabel(buildMessageMenu(state, actions), 'Copy');
+      expect(copy).toBeTruthy();
+      expect(copy?.disabled).toBeFalsy();
+    }
   });
 
   test('delete is danger, and arms on the first click rather than firing', () => {

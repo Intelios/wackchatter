@@ -12,6 +12,7 @@ import { Menu } from '../../components/Menu.tsx';
 import {
   BranchIcon,
   ContinueIcon,
+  CopyIcon,
   EyeIcon,
   EyeOffIcon,
   MoreIcon,
@@ -34,6 +35,8 @@ export interface MessageMenuState {
 }
 
 export interface MessageMenuActions {
+  /** What you see, not what is stored — a row the scripts or greeting macros rewrote. */
+  copy: () => void;
   regenerate: () => void;
   continueLast: () => void;
   toggleHidden: () => void;
@@ -57,6 +60,12 @@ export function buildMessageMenu(
   const generationBlockedReason = summaryRunning ? SUMMARY_BUSY : BUSY;
 
   return [
+    {
+      // Universal: a read, so it stays available while anything else runs.
+      label: 'Copy',
+      icon: <CopyIcon />,
+      onSelect: actions.copy,
+    },
     {
       label: 'Regenerate',
       icon: <RefreshIcon />,
