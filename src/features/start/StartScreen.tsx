@@ -1,7 +1,7 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { StudioIcon } from '../../layout/icons.tsx';
+import { MessagesIcon, StudioIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
 import './StartScreen.css';
 
@@ -11,6 +11,7 @@ const MAX_RECENT = 15;
 interface StartScreenProps {
   characters: CharacterSummary[];
   onOpenChat: (avatar: string, chatId: string) => void;
+  onDeleteChat: (chatId: string) => Promise<void>;
   onOpenStudio: () => void;
 }
 
@@ -43,10 +44,16 @@ function versionString(info: VersionInfo): string {
   return display;
 }
 
-export function StartScreen({ characters, onOpenChat, onOpenStudio }: StartScreenProps) {
+export function StartScreen({
+  characters,
+  onOpenChat,
+  onDeleteChat,
+  onOpenStudio,
+}: StartScreenProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [recent, setRecent] = useState<ChatSummary[] | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +95,18 @@ export function StartScreen({ characters, onOpenChat, onOpenStudio }: StartScree
   const visible = expanded ? enriched : enriched.slice(0, COLLAPSED_COUNT);
   const hasMore = enriched.length > COLLAPSED_COUNT;
 
+  async function handleDelete(chatId: string) {
+    setConfirming(null);
+    await onDeleteChat(chatId);
+    // Refetch rather than splice: a failed delete must leave the row in place, and the
+    // error itself is surfaced by the app's error banner.
+    try {
+      setRecent(await chatApi.recent(MAX_RECENT));
+    } catch {
+      // Keep the last good list.
+    }
+  }
+
   return (
     <div className="start-screen">
       <div className="start-screen__header">
@@ -107,34 +126,62 @@ export function StartScreen({ characters, onOpenChat, onOpenStudio }: StartScree
         ) : (
           <div className="start-screen__list">
             {visible.map((chat) => (
-              <button
-                key={chat.id}
-                type="button"
-                className="start-screen__chat"
-                onClick={() => onOpenChat(chat.characterAvatar, chat.id)}
-              >
-                <img
-                  className="start-screen__chat-avatar"
-                  src={characterApi.imageUrl(chat.characterAvatar)}
-                  alt=""
-                />
-                <div className="start-screen__chat-info">
-                  <div className="start-screen__chat-name">
-                    <strong>{chat.characterName}</strong>
-                    <span className="start-screen__chat-sep">–</span>
-                    <span>{chat.title}</span>
+              <div key={chat.id} className="start-screen__chat">
+                <button
+                  type="button"
+                  className="start-screen__chat-open"
+                  onClick={() => onOpenChat(chat.characterAvatar, chat.id)}
+                >
+                  <img
+                    className="start-screen__chat-avatar"
+                    src={characterApi.imageUrl(chat.characterAvatar)}
+                    alt=""
+                  />
+                  <div className="start-screen__chat-info">
+                    <div className="start-screen__chat-name">
+                      <strong>{chat.characterName}</strong>
+                      <span className="start-screen__chat-sep">–</span>
+                      <span>{chat.title}</span>
+                    </div>
+                    <div className="start-screen__chat-preview">
+                      {chat.lastMessage ? (
+                        <span className="start-screen__chat-message">{chat.lastMessage}</span>
+                      ) : null}
+                      <span className="start-screen__chat-meta">
+                        <span>{relativeTime(chat.modified)}</span>
+                        {chat.messageCount > 0 ? (
+                          <span
+                            className="start-screen__chat-count"
+                            title={`${chat.messageCount} messages`}
+                          >
+                            <MessagesIcon />
+                            <span className="start-screen__chat-count-num">
+                              {chat.messageCount}
+                            </span>
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
                   </div>
-                  <div className="start-screen__chat-preview">
-                    {chat.lastMessage ? (
-                      <span className="start-screen__chat-message">{chat.lastMessage}</span>
-                    ) : null}
-                    <span className="start-screen__chat-meta">
-                      {chat.messageCount > 0 ? `${chat.messageCount} msg · ` : ''}
-                      {relativeTime(chat.modified)}
-                    </span>
-                  </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost wc-button--danger start-screen__chat-delete"
+                  data-confirming={confirming === chat.id}
+                  onClick={() =>
+                    confirming === chat.id ? void handleDelete(chat.id) : setConfirming(chat.id)
+                  }
+                  onBlur={() => setConfirming(null)}
+                  title={confirming === chat.id ? 'Click again to delete' : 'Delete this chat'}
+                  aria-label={
+                    confirming === chat.id
+                      ? 'Click again to delete'
+                      : `Delete chat with ${chat.characterName}`
+                  }
+                >
+                  <TrashIcon />
+                </button>
+              </div>
             ))}
 
             {hasMore ? (

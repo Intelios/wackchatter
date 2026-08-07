@@ -1002,6 +1002,7 @@ export function App() {
         <StartScreen
           characters={characters}
           onOpenChat={handleOpenRecentChat}
+          onDeleteChat={handleDeleteChat}
           onOpenStudio={() => void enterStudio()}
         />
       )}

@@ -62,19 +62,45 @@
 .start-screen__chat {
   display: flex;
   align-items: center;
-  gap: var(--wc-space-3);
+  gap: var(--wc-space-1);
   width: 100%;
-  padding: var(--wc-space-3);
+  padding-right: var(--wc-space-2);
   border-radius: var(--wc-radius);
   border: 1px solid var(--wc-border);
   background: var(--wc-surface);
-  text-align: left;
-  cursor: pointer;
   transition: background var(--wc-duration-fast) ease;
 }
 
 .start-screen__chat:hover {
   background: var(--wc-surface-hover);
+}
+
+.start-screen__chat-open {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--wc-space-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Revealed on hover or keyboard focus; an armed confirm stays put even if the pointer
+   leaves, since Safari does not focus buttons on click. */
+.start-screen__chat-delete {
+  flex-shrink: 0;
+  opacity: 0;
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease;
+}
+
+.start-screen__chat:hover .start-screen__chat-delete,
+.start-screen__chat:focus-within .start-screen__chat-delete,
+.start-screen__chat-delete[data-confirming="true"] {
+  opacity: 1;
 }
 
 .start-screen__chat-avatar {
@@ -130,13 +156,37 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--wc-text-muted);
+  /* Fills the line so the meta column sits at the same x on every row. */
+  flex: 1;
   min-width: 0;
 }
 
 .start-screen__chat-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
   flex-shrink: 0;
   color: var(--wc-text-faint);
   font-size: var(--wc-text-xs);
+}
+
+.start-screen__chat-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+}
+
+.start-screen__chat-count svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+/* The count is the rightmost thing on the row; a fixed-width, right-aligned number is
+   what anchors the speech-bubble icon at one x regardless of digit count. */
+.start-screen__chat-count-num {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .start-screen__toggle {
