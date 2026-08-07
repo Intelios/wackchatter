@@ -7,6 +7,22 @@ import './DialogueColorField.css';
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const FALLBACK_COLOR = '#e18a24';
 
+/**
+ * One-click dialogue colours for the custom mode. Every value passes the same 4.5:1
+ * contrast check the field warns about, so no preset ships a colour the editor would
+ * flag on its own input.
+ */
+const DIALOGUE_COLOR_PRESETS = [
+  { label: 'Orange', value: '#e18a24' },
+  { label: 'Red', value: '#ff6b6b' },
+  { label: 'Pink', value: '#ff8fa3' },
+  { label: 'Purple', value: '#a78bfa' },
+  { label: 'Blue', value: '#51a0de' },
+  { label: 'Teal', value: '#2dd4bf' },
+  { label: 'Green', value: '#46a758' },
+  { label: 'Yellow', value: '#f7c948' },
+] as const;
+
 interface DialogueColorFieldProps {
   value: DialogueColorOverride | undefined;
   autoColor: string | null;
@@ -112,6 +128,27 @@ export function DialogueColorField({
               }}
             />
           </div>
+          <fieldset className="dialogue-color-field__presets">
+            <legend className="wc-label">Preset colours</legend>
+            {DIALOGUE_COLOR_PRESETS.map((preset) => {
+              const selected = preset.value === draft;
+              return (
+                <button
+                  key={preset.value}
+                  type="button"
+                  className="dialogue-color-field__preset"
+                  style={{ backgroundColor: preset.value }}
+                  title={`${preset.label} — ${preset.value}`}
+                  aria-label={`Use ${preset.label} dialogue colour`}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setDraft(preset.value);
+                    onChange(preset.value);
+                  }}
+                />
+              );
+            })}
+          </fieldset>
           {!customValid ? (
             <p className="wc-hint">Enter a six-digit hex colour such as #e18a24.</p>
           ) : null}

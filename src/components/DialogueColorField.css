@@ -28,3 +28,27 @@
 .dialogue-color-field__warning {
   color: var(--wc-warning);
 }
+
+.dialogue-color-field__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+.dialogue-color-field__preset {
+  width: var(--wc-control);
+  height: var(--wc-control);
+  padding: 0;
+  border: 1px solid var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+  cursor: pointer;
+}
+
+.dialogue-color-field__preset:hover {
+  border-color: var(--wc-accent);
+}
+
+.dialogue-color-field__preset[aria-pressed="true"] {
+  border-color: var(--wc-accent);
+  box-shadow: 0 0 0 2px var(--wc-accent-subtle);
+}
