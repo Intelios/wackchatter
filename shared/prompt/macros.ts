@@ -47,6 +47,17 @@ export interface MacroSubstitutionOptions {
   runtime?: MacroRuntime;
   /** Prompt identifier, message id, or synthesized section for diagnostics. */
   source?: string;
+  /**
+   * Applied to each RESOLVED macro value before it is spliced in — ST's
+   * `substituteParamsExtended(text, {}, postProcessFn)`. Regex scripts use it to escape
+   * `{{char}}` before it lands inside a find pattern, where a name containing `.` or `(`
+   * would otherwise become live syntax.
+   *
+   * Deliberately NOT applied to the unresolved fallback: a macro the engine could not
+   * resolve stays visible as literal `{{...}}` text, and escaping it would turn text the
+   * user can read into text they cannot.
+   */
+  postProcess?: (value: string) => string;
 }
 
 export function createMacroRuntime(
@@ -62,6 +73,13 @@ export function createMacroRuntime(
     warningKeys: new Set(),
   };
 }
+
+/**
+ * A macro the engine could not resolve. It stays visible as literal `{{...}}` text and is
+ * reported to the preview rather than blocking generation — and it never reaches
+ * `postProcess`, which is the point of having a sentinel rather than returning the text.
+ */
+const UNRESOLVED = Symbol('unresolved-macro');
 
 function warn(runtime: MacroRuntime, macro: string, source = 'unknown'): void {
   const key = `${source}\0${macro.toLowerCase()}`;
@@ -296,10 +314,16 @@ export function substituteMacros(
 
   let pickCounter = 0;
 
-  // One pass. Nested macros are not supported, matching the legacy engine.
-  const result = source.replace(/\{\{([^{}]*)\}\}/g, (match, body: string) => {
+  /**
+   * One macro, or UNRESOLVED when the engine could not make sense of it.
+   *
+   * The sentinel exists so `postProcess` can be applied to resolved values only. Comparing
+   * the returned string against `match` would nearly work and would be wrong the one time
+   * a variable legitimately holds its own macro text.
+   */
+  const resolve = (match: string, body: string): string | typeof UNRESOLVED => {
     const raw = String(body).trim();
-    if (!raw) return match;
+    if (!raw) return UNRESOLVED;
 
     // Comments are stripped entirely.
     if (raw.startsWith('//')) return '';
@@ -334,7 +358,7 @@ export function substituteMacros(
         const [variable, value] = variablePair(args);
         if (!variable) {
           warn(runtime, match, diagnosticSource);
-          return match;
+          return UNRESOLVED;
         }
         setVariable(runtime, name === 'setglobalvar', variable, storedValue(value));
         return '';
@@ -345,7 +369,7 @@ export function substituteMacros(
         const [variable, value] = variablePair(args);
         if (!variable) {
           warn(runtime, match, diagnosticSource);
-          return match;
+          return UNRESOLVED;
         }
         addVariable(runtime, name === 'addglobalvar', variable, value);
         return '';
@@ -355,7 +379,7 @@ export function substituteMacros(
       case 'incglobalvar': {
         if (!args.trim()) {
           warn(runtime, match, diagnosticSource);
-          return match;
+          return UNRESOLVED;
         }
         return String(changeVariable(runtime, name === 'incglobalvar', args.trim(), 1));
       }
@@ -364,7 +388,7 @@ export function substituteMacros(
       case 'decglobalvar': {
         if (!args.trim()) {
           warn(runtime, match, diagnosticSource);
-          return match;
+          return UNRESOLVED;
         }
         return String(changeVariable(runtime, name === 'decglobalvar', args.trim(), -1));
       }
@@ -402,9 +426,16 @@ export function substituteMacros(
         const resolver = values[name];
         if (resolver) return resolver();
         warn(runtime, match, diagnosticSource);
-        return match;
+        return UNRESOLVED;
       }
     }
+  };
+
+  // One pass. Nested macros are not supported, matching the legacy engine.
+  const result = source.replace(/\{\{([^{}]*)\}\}/g, (match, body: string) => {
+    const value = resolve(match, body);
+    if (value === UNRESOLVED) return match;
+    return options.postProcess ? options.postProcess(value) : value;
   });
 
   // Keep diagnostics non-destructive: anything still macro-shaped remains visible in

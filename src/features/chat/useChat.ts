@@ -8,10 +8,11 @@
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
 import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
-import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
+import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection, ConnectionSettings } from '@shared/providers/types.ts';
+import type { RegexMacros } from '@shared/regex/engine.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
   Chat,
@@ -23,6 +24,7 @@ import type {
   Persona,
 } from '@shared/types/chat.ts';
 import type { GenerationType, Preset } from '@shared/types/preset.ts';
+import type { RegexScript } from '@shared/types/regex.ts';
 import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
@@ -94,6 +96,11 @@ export interface UseChatOptions {
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
+  /**
+   * User regex scripts. Passed to every assembly this hook performs, including the
+   * summary one — a summary built from text that was never sent is worse than none.
+   */
+  regexScripts?: readonly RegexScript[];
 }
 
 export interface UseChat {
@@ -169,6 +176,8 @@ export interface UseChat {
   updateMetadata(patch: Partial<ChatMetadata>): void;
   /** Resolve a stored greeting for display without committing variable macro effects. */
   renderGreeting(text: string): string;
+  /** Macro hooks for the transcript regex pass. Null until a character and preset load. */
+  regexMacros: RegexMacros | null;
   /** What World Info did on the last generation, for the inspector. */
   worldInfo: ActivationResult | null;
 }
@@ -198,6 +207,7 @@ export function useChat(options: UseChatOptions): UseChat {
     summarySettings,
     summaryCountTokens,
     globalVariables,
+    regexScripts,
     onGlobalVariablesChange,
   } = options;
 
@@ -593,6 +603,7 @@ export function useChat(options: UseChatOptions): UseChat {
           globalVariables,
           countTokens,
           seed: started.chatId ?? '',
+          regexScripts,
         });
 
         if (!assembled.ok) {
@@ -702,6 +713,7 @@ export function useChat(options: UseChatOptions): UseChat {
       guidanceSettings,
       summarySettings,
       globalVariables,
+      regexScripts,
       onGlobalVariablesChange,
     ],
   );
@@ -908,6 +920,8 @@ export function useChat(options: UseChatOptions): UseChat {
           reservedCompletionTokens: maxTokens,
           requireChatHistory: true,
           seed: `${current.chatId}:summary:${candidate.at(-1)?.id ?? 'fixed'}`,
+          // The summary has to describe the transcript the model was actually shown.
+          regexScripts,
         });
       };
 
@@ -1026,6 +1040,7 @@ export function useChat(options: UseChatOptions): UseChat {
       summarySettings,
       summaryCountTokens,
       globalVariables,
+      regexScripts,
       worldInfoSources,
       resolveWorldInfoSources,
       worldInfoSettings,
@@ -1185,6 +1200,28 @@ export function useChat(options: UseChatOptions): UseChat {
     [character, preset, persona, state, globalVariables],
   );
 
+  /**
+   * The macro hooks the transcript's regex pass uses. Built here rather than in the view
+   * because this is where the character, preset and chat variables already are — and
+   * memoised on the same inputs as `renderGreeting`, since a new identity per render would
+   * re-run the whole visible window's regex pass for nothing.
+   */
+  const regexMacros = useMemo<RegexMacros | null>(
+    () =>
+      character && preset
+        ? createDisplayRegexMacros({
+            character,
+            preset,
+            persona,
+            messages: toChatMessages(state),
+            metadata: state.metadata,
+            globalVariables,
+            seed: state.chatId ?? '',
+          })
+        : null,
+    [character, preset, persona, state, globalVariables],
+  );
+
   return {
     state,
     messages,
@@ -1230,6 +1267,7 @@ export function useChat(options: UseChatOptions): UseChat {
     resolvePersona,
     updateMetadata,
     renderGreeting,
+    regexMacros,
     worldInfo,
   };
 }

@@ -19,10 +19,17 @@ import { EditIcon } from '../../layout/icons.tsx';
  */
 export function Reasoning({
   text,
+  displayText,
   defaultOpen = false,
   onEdit,
 }: {
   text: string;
+  /**
+   * What to show, when regex scripts have rewritten it. The editor still seeds from `text`
+   * — you edit what is stored, not what you were shown — which is the same split
+   * `MessageBubble` makes for the message body itself.
+   */
+  displayText?: string;
   defaultOpen?: boolean;
   /** Absent on the streaming path, where the thinking is still arriving. */
   onEdit?: (text: string) => void;
@@ -88,7 +95,7 @@ export function Reasoning({
         </div>
       ) : (
         <>
-          <div className="reasoning__body">{text}</div>
+          <div className="reasoning__body">{displayText ?? text}</div>
           {onEdit ? (
             <div className="reasoning__tools">
               <button

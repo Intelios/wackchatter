@@ -3,6 +3,7 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
+import type { RegexScript } from '@shared/types/regex.ts';
 import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
@@ -29,6 +30,12 @@ export interface PromptPreviewInput {
   guidanceSettings?: GuidanceSettings;
   summarySettings?: SummarySettings;
   globalVariables?: MacroVariableMap;
+  /**
+   * User regex scripts. Required, not optional-in-spirit: the counts this hook produces
+   * are what the Prompt Manager shows, so a preview assembled without them would report a
+   * cost the send does not pay.
+   */
+  regexScripts?: readonly RegexScript[];
 }
 
 export type PromptPreview = AssembleResult & {
@@ -64,6 +71,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const guidanceSettings = input?.guidanceSettings;
   const summarySettings = input?.summarySettings;
   const globalVariables = input?.globalVariables;
+  const regexScripts = input?.regexScripts;
 
   useEffect(() => {
     if (!preset || !character || !messages || !countTokens) {
@@ -103,6 +111,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           localVariables: chatMetadata?.variables ?? {},
           globalVariables: globalVariables ?? {},
           countTokens,
+          regexScripts,
         });
 
         setResult({ ...assembled, worldInfo: lore });
@@ -126,6 +135,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     guidanceSettings,
     summarySettings,
     globalVariables,
+    regexScripts,
   ]);
 
   return result;

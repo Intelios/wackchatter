@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ApiMessage, ChatMessage, PersistentGuide } from '../types/chat.ts';
 import { CHARACTER_NAMES_BEHAVIOR, INJECTION_POSITION } from '../types/preset.ts';
+import type { RegexScript } from '../types/regex.ts';
+import { REGEX_PLACEMENT, REGEX_SUBSTITUTE } from '../types/regex.ts';
 import { assemblePrompt, DEFAULT_USER_NAME, parseExampleDialogue } from './assemble.ts';
 import { createDefaultPreset } from './defaults.ts';
 import { setPromptOrder, updatePrompt } from './preset-io.ts';
@@ -1675,5 +1677,157 @@ describe('Author’s Note', () => {
       'NOTE',
       'A glade in Eldoria.',
     ]);
+  });
+});
+
+describe('regex scripts', () => {
+  function regexScript(overrides: Partial<RegexScript> = {}): RegexScript {
+    return {
+      id: 'test',
+      scriptName: 'test',
+      findRegex: '',
+      replaceString: '',
+      trimStrings: [],
+      placement: [REGEX_PLACEMENT.USER_INPUT, REGEX_PLACEMENT.AI_OUTPUT],
+      disabled: false,
+      markdownOnly: false,
+      promptOnly: true,
+      runOnEdit: true,
+      substituteRegex: REGEX_SUBSTITUTE.NONE,
+      minDepth: null,
+      maxDepth: null,
+      ...overrides,
+    };
+  }
+
+  const history = (result: ReturnType<typeof assemble>) =>
+    result.messages.filter((message) => message.role !== 'system').map((m) => m.content);
+
+  test('a prompt-only script rewrites history on the way to the model', () => {
+    const result = assemble({
+      messages: makeMessages(2),
+      regexScripts: [regexScript({ findRegex: '/message/g', replaceString: 'note' })],
+    });
+    expect(history(result)).toEqual(['note number 0', 'note number 1']);
+  });
+
+  test('a display-only script leaves the prompt untouched', () => {
+    const result = assemble({
+      messages: makeMessages(2),
+      regexScripts: [
+        regexScript({
+          findRegex: '/message/g',
+          replaceString: 'note',
+          markdownOnly: true,
+          promptOnly: false,
+        }),
+      ],
+    });
+    expect(history(result)).toEqual(['message number 0', 'message number 1']);
+  });
+
+  test('the token counts move with the text, not just the strings', () => {
+    // The three-caller-drift guard: if the preview assembled without scripts, the Prompt
+    // Manager's numbers would disagree with what was actually sent.
+    const messages = makeMessages(2);
+    const plain = assemble({ messages });
+    const shortened = assemble({
+      messages,
+      regexScripts: [regexScript({ findRegex: '/ number \\d+/g', replaceString: '' })],
+    });
+    expect(shortened.tokenCounts.chatHistory).toBeLessThan(plain.tokenCounts.chatHistory ?? 0);
+  });
+
+  test('a script that empties a message drops it from packing', () => {
+    const result = assemble({
+      messages: makeMessages(3),
+      regexScripts: [
+        regexScript({
+          findRegex: '/^message number 1$/',
+          replaceString: '',
+          placement: [REGEX_PLACEMENT.AI_OUTPUT],
+        }),
+      ],
+    });
+    expect(history(result)).toEqual(['message number 0', 'message number 2']);
+  });
+
+  test('placement separates who is being rewritten', () => {
+    const result = assemble({
+      messages: makeMessages(2),
+      regexScripts: [
+        regexScript({
+          findRegex: '/message/',
+          replaceString: 'note',
+          placement: [REGEX_PLACEMENT.USER_INPUT],
+        }),
+      ],
+    });
+    expect(history(result)).toEqual(['note number 0', 'message number 1']);
+  });
+
+  test('depth counts from the end, ignoring the blank generation placeholder', () => {
+    const messages = [...makeMessages(3), { ...makeMessages(1)[0]!, id: 'pending', mes: '' }];
+    const result = assemble({
+      messages,
+      regexScripts: [regexScript({ findRegex: '/message/', replaceString: 'newest', maxDepth: 0 })],
+    });
+    // Depth 0 is `m2`, not the empty placeholder that generation just appended.
+    expect(history(result)).toEqual(['message number 0', 'message number 1', 'newest number 2']);
+  });
+
+  test('a continue shifts every depth by one, so only minDepth -1 reaches the tail', () => {
+    // The message being extended sits past the end at -1. `minDepth: 0` therefore excludes
+    // it, and `-1` is the only way to write a script that reaches the text being continued.
+    const messages = makeMessages(2);
+    const rewrite = { findRegex: '/message/', replaceString: 'hit' };
+
+    const fromZero = [regexScript({ ...rewrite, minDepth: 0 })];
+    expect(history(assemble({ messages, regexScripts: fromZero }))).toEqual([
+      'hit number 0',
+      'hit number 1',
+    ]);
+    expect(
+      history(assemble({ messages, regexScripts: fromZero, generationType: 'continue' })),
+    ).toEqual(['hit number 0', 'message number 1']);
+
+    const fromMinusOne = [regexScript({ ...rewrite, minDepth: -1 })];
+    expect(
+      history(assemble({ messages, regexScripts: fromMinusOne, generationType: 'continue' })),
+    ).toEqual(['hit number 0', 'hit number 1']);
+  });
+
+  test('regex runs on macro-substituted text, unlike SillyTavern', () => {
+    // ST regexes the raw message because ST never expands macros in chat history at all.
+    // We do, so a pattern has to match what the model will read — not what was typed.
+    const result = assemble({
+      messages: [{ ...makeMessages(1)[0]!, mes: 'hello {{char}}' }],
+      regexScripts: [regexScript({ findRegex: '/Seraphina/', replaceString: 'friend' })],
+    });
+    expect(history(result)).toEqual(['hello friend']);
+  });
+
+  test('macros in a replacement expand against the assembly environment', () => {
+    const result = assemble({
+      messages: [{ ...makeMessages(1)[0]!, mes: 'hello' }],
+      regexScripts: [regexScript({ findRegex: '/^/', replaceString: '[{{char}}] ' })],
+    });
+    expect(history(result)).toEqual(['[Seraphina] hello']);
+  });
+
+  test('a hidden message is neither sent nor counted for depth', () => {
+    const messages = makeMessages(3);
+    messages[1]!.is_system = true;
+    const result = assemble({
+      messages,
+      regexScripts: [regexScript({ findRegex: '/message/', replaceString: 'newest', maxDepth: 0 })],
+    });
+    expect(history(result)).toEqual(['message number 0', 'newest number 2']);
+  });
+
+  test('an empty script list is the identity', () => {
+    expect(history(assemble({ messages: makeMessages(2), regexScripts: [] }))).toEqual(
+      history(assemble({ messages: makeMessages(2) })),
+    );
   });
 });

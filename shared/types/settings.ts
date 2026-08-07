@@ -9,6 +9,7 @@
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { MacroVariableMap } from './chat.ts';
+import type { RegexScript } from './regex.ts';
 import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
@@ -74,6 +75,14 @@ export interface AppSettings {
    * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
    */
   quickCommands: QuickCommand[];
+  /**
+   * User regex scripts, in SillyTavern's format so files move between the two apps.
+   *
+   * App-wide and never bundled — an empty list is the default. A flat array, so
+   * `mergeSettings`'s spread carries it; it is normalised on both read and write anyway,
+   * because a malformed body must not wipe scripts somebody hand-wrote.
+   */
+  regexScripts: RegexScript[];
   /** Whether the Character Creator Studio's token and lint inspector is hidden. */
   studioInspectorCollapsed: boolean;
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
@@ -216,5 +225,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   collapsedCharacterFolders: [],
   quickCommands: [],
+  regexScripts: [],
   studioInspectorCollapsed: false,
 };

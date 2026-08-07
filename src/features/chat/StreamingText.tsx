@@ -11,6 +11,11 @@ import type { StreamStore } from './state/streamStore.ts';
  * reply. `streamSegments` approximates the two transforms users notice mid-stream —
  * dialogue colouring and asterisk emphasis — in a single linear pass. The bubble swaps
  * to rendered markdown the moment the generation commits, which stays authoritative.
+ *
+ * Regex scripts do not run here either, for the same reason and one more: most useful ones
+ * are anchored, or match a closing delimiter that does not exist until the reply ends. A
+ * script that strips a `<think>` block would show the raw block for the whole stream and
+ * then snap — flicker that reads as a bug. Scripts ride the swap to markdown instead.
  */
 export function StreamingText({ store }: { store: StreamStore }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);

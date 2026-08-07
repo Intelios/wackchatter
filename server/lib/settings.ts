@@ -14,6 +14,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
+import { normalizeRegexScript } from '../../shared/regex/io.ts';
+import type { RegexScript } from '../../shared/types/regex.ts';
 import type {
   AppSettings,
   DialogueColorOverride,
@@ -330,6 +332,29 @@ function normalizeQuickCommands(value: unknown): QuickCommand[] {
   return commands;
 }
 
+/**
+ * Coerce a stored regex-script list, on the same terms as quick commands: an entry with no
+ * usable id is dropped, because the id is what edits, deletes and reorders address.
+ *
+ * Everything else is coerced rather than rejected. `normalizeRegexScript` is shared with the
+ * client's importer on purpose — a trust boundary and an import path that disagreed about
+ * what a valid script is would be a bug nobody could see from either side.
+ */
+function normalizeRegexScripts(value: unknown): RegexScript[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const scripts: RegexScript[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    scripts.push(normalizeRegexScript(entry, id));
+  }
+  return scripts;
+}
+
 let cache: AppSettings | null = null;
 
 export function getSettings(): AppSettings {
@@ -365,6 +390,7 @@ export function getSettings(): AppSettings {
     summary: normalizeSummary(stored.summary, connections),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     quickCommands: normalizeQuickCommands(stored.quickCommands),
+    regexScripts: normalizeRegexScripts(stored.regexScripts),
   };
 
   return cache;
@@ -421,6 +447,11 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     quickCommands: Array.isArray(patch.quickCommands)
       ? normalizeQuickCommands(patch.quickCommands)
       : current.quickCommands,
+    // Same treatment, same reason: `{"regexScripts": null}` from a stale tab must not
+    // wipe scripts the user wrote by hand.
+    regexScripts: Array.isArray(patch.regexScripts)
+      ? normalizeRegexScripts(patch.regexScripts)
+      : current.regexScripts,
   };
 }
 

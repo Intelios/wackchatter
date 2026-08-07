@@ -5,6 +5,7 @@ import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
 import { TrashIcon, UploadIcon } from '../../layout/icons.tsx';
 import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
+import { RegexScriptSection } from '../regex/RegexScriptList.tsx';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
 import { DataLocationSection } from './DataLocationSection.tsx';
 import './UserSettingsPanel.css';
@@ -212,6 +213,11 @@ export function UserSettingsPanel({ settings, onPatch, unsavedPreset }: UserSett
           hint="Uses each character or persona avatar by default. Individual speakers can use a custom colour or opt out in their editor."
         />
       </Section>
+
+      <RegexScriptSection
+        scripts={settings?.regexScripts ?? []}
+        onChange={(regexScripts) => onPatch({ regexScripts })}
+      />
 
       <Section title="Advanced">
         <NumberField

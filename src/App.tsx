@@ -298,6 +298,12 @@ export function App() {
     settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS;
   // Normalised server-side; the fallback only covers the pre-load render.
   const quickCommands: QuickCommand[] = settings?.quickCommands ?? [];
+  // Only the enabled ones ever leave here. A disabled script is inert either way, but
+  // filtering once means neither the assembler nor the transcript walks past it per message.
+  const regexScripts = useMemo(
+    () => (settings?.regexScripts ?? []).filter((script) => !script.disabled),
+    [settings?.regexScripts],
+  );
 
   // Which character folders are shut. Round-trips through settings on every toggle, the same
   // way the default persona does — the write is a small local file and the list is short.
@@ -481,6 +487,7 @@ export function App() {
     summarySettings,
     summaryCountTokens,
     globalVariables: settings?.variables ?? {},
+    regexScripts,
     onGlobalVariablesChange: commitGlobalVariables,
   });
 
@@ -506,6 +513,7 @@ export function App() {
           guidanceSettings,
           summarySettings,
           globalVariables: settings?.variables ?? {},
+          regexScripts,
         }
       : null,
   );
@@ -988,6 +996,7 @@ export function App() {
           dialogueColors={dialogueColorSettings}
           quickCommands={quickCommands}
           onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+          regexScripts={regexScripts}
         />
       ) : (
         <StartScreen

@@ -270,6 +270,79 @@ export function NumberField({
   );
 }
 
+interface OptionalNumberFieldProps extends Omit<NumberFieldProps, 'value' | 'onChange'> {
+  value: number | null;
+  onChange: (value: number | null) => void;
+}
+
+/**
+ * A number input where empty is a real value, not a mistake.
+ *
+ * A sibling to `NumberField` rather than a widening of it: that one promises
+ * `onChange: (n: number) => void` to every existing caller, and half of them would silently
+ * start receiving null. Here null means "unlimited" — a regex script's depth bounds — so
+ * blanking the box has to commit rather than snap back to the last value the way
+ * `NumberField` deliberately does.
+ */
+export function OptionalNumberField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  hint,
+  placeholder,
+  disabled,
+}: OptionalNumberFieldProps) {
+  const id = useId();
+  const [draft, setDraft] = useState(() => (value === null ? '' : String(value)));
+
+  useEffect(() => {
+    setDraft((current) => {
+      if (value === null) return current.trim() === '' ? current : '';
+      return Number(current) === value && current.trim() !== '' ? current : String(value);
+    });
+  }, [value]);
+
+  return (
+    <div className="field">
+      <label className="wc-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="wc-input"
+        type="number"
+        value={draft}
+        min={min}
+        max={max}
+        step={step}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (next.trim() === '') {
+            onChange(null);
+            return;
+          }
+          const parsed = Number(next);
+          if (Number.isFinite(parsed)) onChange(parsed);
+        }}
+        onBlur={() => {
+          // Anything that is neither blank nor a number — a lone `-`, say — resolves to the
+          // stored value, so the box never disagrees with what is saved.
+          if (draft.trim() !== '' && !Number.isFinite(Number(draft))) {
+            setDraft(value === null ? '' : String(value));
+          }
+        }}
+      />
+      {hint ? <p className="wc-hint">{hint}</p> : null}
+    </div>
+  );
+}
+
 interface SelectOption<T> {
   label: string;
   value: T;

@@ -251,6 +251,53 @@ describe('mergeSettings', () => {
       { id: 'b', name: '', text: '' },
     ]);
   });
+
+  test('regex scripts replace wholesale, an empty list clearing them all', () => {
+    const current = mergeSettings(base(), {
+      regexScripts: [{ id: 'a', scriptName: 'hide tag' }] as never,
+    });
+    expect(current.regexScripts).toHaveLength(1);
+    expect(current.regexScripts[0]?.scriptName).toBe('hide tag');
+    expect(mergeSettings(current, { regexScripts: [] }).regexScripts).toEqual([]);
+  });
+
+  test('a malformed regex-scripts patch cannot wipe the list', () => {
+    const current = mergeSettings(base(), {
+      regexScripts: [{ id: 'a', scriptName: 'hide tag' }] as never,
+    });
+    for (const patch of [{ regexScripts: null }, { regexScripts: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).regexScripts).toEqual(current.regexScripts);
+    }
+  });
+
+  test('malformed regex-script entries are coerced or dropped, duplicate ids first wins', () => {
+    const next = mergeSettings(base(), {
+      regexScripts: [
+        { id: 'a', scriptName: 'Kept' },
+        { id: 'a', scriptName: 'Shadowed' },
+        { id: '  ', scriptName: 'No id' },
+        { scriptName: 'Also no id' },
+        'junk',
+      ] as never,
+    });
+    expect(next.regexScripts.map((script) => script.scriptName)).toEqual(['Kept']);
+  });
+
+  test('an uncompilable find pattern is stored verbatim', () => {
+    // The user is mid-typing on every keystroke. A script that vanished as you typed `/[`
+    // would be unusable, and ST's contract is that a bad pattern does nothing instead.
+    const next = mergeSettings(base(), {
+      regexScripts: [{ id: 'a', scriptName: 'wip', findRegex: '/[unclosed/' }] as never,
+    });
+    expect(next.regexScripts[0]?.findRegex).toBe('/[unclosed/');
+  });
+
+  test('a placement value we do not implement survives the round trip', () => {
+    const next = mergeSettings(base(), {
+      regexScripts: [{ id: 'a', scriptName: 'legacy', placement: [1, 4] }] as never,
+    });
+    expect(next.regexScripts[0]?.placement).toEqual([1, 4]);
+  });
 });
 
 describe('dialogue colour identity changes', () => {

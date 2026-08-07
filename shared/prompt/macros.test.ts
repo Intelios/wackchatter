@@ -261,3 +261,34 @@ describe('edge cases', () => {
     expect(substituteMacros('{{char}}', { char: '{{user}}', user: 'Jack' })).toBe('{{user}}');
   });
 });
+
+describe('postProcess', () => {
+  const upper = (value: string) => value.toUpperCase();
+
+  test('applies to resolved values', () => {
+    expect(substituteMacros('hi {{char}}', env, '', { postProcess: upper })).toBe('hi SERAPHINA');
+  });
+
+  test('leaves the surrounding text alone', () => {
+    expect(substituteMacros('hi {{char}} there', env, '', { postProcess: upper })).toBe(
+      'hi SERAPHINA there',
+    );
+  });
+
+  test('does not touch a macro the engine could not resolve', () => {
+    // Escaping text the user can still read would turn it into text they cannot. The
+    // unresolved macro stays visible and is reported, exactly as it is without the hook.
+    const runtime = createMacroRuntime();
+    expect(substituteMacros('{{nosuchmacro}}', env, '', { runtime, postProcess: upper })).toBe(
+      '{{nosuchmacro}}',
+    );
+    expect(runtime.warnings).toHaveLength(1);
+  });
+
+  test('applies to variable reads, which regex find patterns depend on', () => {
+    const runtime = createMacroRuntime({ tag: 'a.b' });
+    expect(substituteMacros('{{getvar::tag}}', env, '', { runtime, postProcess: upper })).toBe(
+      'A.B',
+    );
+  });
+});

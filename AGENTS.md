@@ -44,8 +44,9 @@ shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant, as a type.
   prompt/        Assembly engine, macros, preset I/O, defaults, token cache.
   providers/     Request building + SSE parsing. Both unit-tested.
+  regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine. No I/O.
-  types/         Card, preset, worldinfo, chat, settings.
+  types/         Card, preset, worldinfo, chat, settings, regex.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/.
@@ -184,6 +185,51 @@ corrupts users' libraries silently.
   the very end (past prompts ordered after chatHistory, or the model answers those
   instead); otherwise `continue_nudge_prompt` is appended. `continue_postfix` is the join
   between old text and new, and the client's stream seed must use the same one.
+
+**Regex scripts** (`shared/regex/`)
+
+SillyTavern's format, so script files move between the two apps untouched. Ported
+deliberately; the quirks below are load-bearing and each has a named test.
+
+- **Two booleans decide when a script runs**, and reading them as "only" flags is exactly
+  backwards — they mean "runs during". `markdownOnly` -> the transcript, `promptOnly` -> the
+  outgoing prompt, both -> both, **neither -> ST's destructive path that rewrites the chat
+  file**. We have no storage-path call site, so that last combination is inert *by
+  construction* rather than by a special case, and `runOnEdit` (which only ever gated it) is
+  preserved and never read. Imported scripts still round-trip byte-identically — silently
+  reinterpreting somebody's file is worse than not running it. The editor shows one
+  "Affects" select and stores the pair underneath.
+- **A bare find pattern gets no flags at all.** `foo` replaces the first match; you need
+  `/foo/g`. Every shared script assumes it. Invalid flags do not error either — the whole
+  original string, slashes included, becomes the pattern.
+- **Only `$N` and `$<name>` are capture references.** `$&`, `` $` ``, `$'` and `$$` pass
+  through literally, because the replacement is a function. `{{match}}` becomes `$0` first.
+- **`trimStrings` apply to substituted capture values only**, never to the literal text
+  around them in the replacement.
+- **Depth bounds are inclusive at both ends**, 0 is the newest message, and `null` means
+  unlimited — as does a bound below its own floor (`minDepth < -1`, `maxDepth < 0`), which
+  ST treats as unset rather than as impossible. Blank and `is_system` messages hold no depth
+  slot: a generation appends an empty placeholder before assembling, and letting it hold
+  depth 0 would put every script one turn off from where ST puts it.
+- Two divergences, both deliberate and both tested: `g`/`y` flags are **kept** (unlike
+  `parseRegexLiteral`, which strips them — replacing every match is the point here), and a
+  literal newline in a pattern is **preserved** rather than silently truncating it.
+- **Regex runs after macro substitution**, unlike ST — which can regex the raw message only
+  because it never macro-expands chat history at all. Running after `substitute` keeps the
+  expand-exactly-once invariant and means a pattern matches what the model will really read.
+  Emptiness is checked **after** regex, so a prompt-only script with an empty replacement
+  drops the message from packing instead of sending a blank.
+- **Macro expansion is injected, not imported**, which is what keeps `shared/regex/` a leaf.
+  The prompt path passes assembly's runtime, so `{{setvar}}` in a replacement really writes
+  a chat variable; the display path passes a disposable one, so rendering cannot mutate
+  state. Same rule `resolveGreetingMacros` already follows.
+- **All three `assemblePrompt` callers must pass the same list** (`useChat` generate,
+  `useChat` summarise, `usePromptPreview`). Miss one and the Prompt Manager's token counts
+  and the inspector silently disagree with what shipped.
+- Not wired: the `SLASH_COMMAND` and `WORLD_INFO` placements, character-embedded
+  `regex_scripts`, and mid-stream application. Scripts that emit HTML render as escaped text
+  — `Markdown.tsx` has no `rehype-raw`, and enabling it would make every model reply an
+  injection channel.
 
 **Guided generations** (`shared/prompt/assemble.ts`, `src/features/chat/GuidesPopover.tsx`)
 
@@ -489,6 +535,22 @@ regex keys are the escape hatches.
   Popover root is stretched over the ChatMenu wrapper, exactly that button's box, so the
   popup's ordinary CSS anchoring grows it from the right place with no trigger of its own.
   The composer never grew a button for this feature.
+- **The regex editor renames SillyTavern's worst pair of booleans.** `markdownOnly` and
+  `promptOnly` are stored verbatim because they are the file format, but nobody can read
+  them correctly — so the form shows one **"Affects"** `SelectField` (Display only / Prompt
+  only / Both / Rewrite stored text) and maps to the pair. String option values, since
+  `SelectField` maps back by index. The fourth option exists so an imported destructive
+  script does not silently become something else; picking it says the script will not run,
+  which is factually what happens here.
+  The **live tester** is not a nicety: a bad regex fails completely silently — in ST too —
+  and the "No change" line is what catches the bare-pattern-has-no-`g` trap the first time
+  rather than three messages later. A pattern that will not compile also marks its collapsed
+  row, because a closed script cannot explain itself.
+  Per-script actions (duplicate, export, delete) live in the **expanded form**, not the row.
+  Seven controls on one line truncated the script name to nothing at the panel's 380px
+  floor, and the name is the only thing that tells two scripts apart. The row keeps what you
+  scan for: name, enabled, what it affects, and its place in the chain — order is meaningful
+  because scripts chain, each one's output feeding the next.
 - **Slash commands are typed, not menu-driven.** `/hide`, `/unhide`, `/jump` and
   `/reload`, parsed in `slashCommands.ts` before `chat.send` ever sees the text. Two rules
   that must not break: only text that *starts* with `/` is a command, and a command-shaped

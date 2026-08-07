@@ -37,8 +37,13 @@ interface MessageBubbleProps {
   busy: boolean;
   /** A quiet summary blocks new provider generations but not transcript interaction. */
   summaryRunning: boolean;
-  /** Render-only text, used for raw greeting macros. Editing still receives stored text. */
+  /**
+   * Render-only text, for greeting macros and regex scripts. Editing still receives the
+   * stored text — you edit what is saved, not what you were shown.
+   */
   displayText?: string;
+  /** The same split for the thinking block, which scripts can target separately. */
+  displayReasoning?: string;
   /*
    * The card's creator notes, and how many of this message's swipes the card wrote. Set on
    * the greeting row alone — passed as primitives rather than a ready-made node so the
@@ -84,6 +89,7 @@ export const MessageBubble = memo(function MessageBubble({
   busy,
   summaryRunning,
   displayText,
+  displayReasoning,
   creatorNotes,
   greetingCount,
   onSwipe,
@@ -312,6 +318,7 @@ export const MessageBubble = memo(function MessageBubble({
                 {info?.extra?.reasoning ? (
                   <Reasoning
                     text={String(info.extra.reasoning)}
+                    displayText={displayReasoning}
                     onEdit={(reasoning) => onEditReasoning(message.id, reasoning)}
                   />
                 ) : null}

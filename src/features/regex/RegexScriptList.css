@@ -1,0 +1,198 @@
+/*
+ * The regex script editor, inside a User Settings section.
+ *
+ * A collapsed row has to survive a long script name in a panel that is only ~380px at its
+ * narrowest, so the name is the one flexible track and everything else is sized by its
+ * content. Per-script actions live in the expanded form for the same reason — seven
+ * controls on one line left no room for the only thing that tells two scripts apart.
+ */
+
+.regex-scripts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.regex-scripts__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.regex-scripts__empty {
+  margin: 0;
+  padding: var(--wc-space-3);
+  border: 1px dashed var(--wc-border);
+  border-radius: var(--wc-radius);
+  text-align: center;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  line-height: 1.5;
+}
+
+.regex-scripts__error {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-danger);
+}
+
+.regex-scripts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+.regex-script {
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.regex-script__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-2);
+}
+
+.regex-script__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text);
+  text-align: left;
+}
+
+.regex-script__name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icons carry no intrinsic size — `.wc-button svg` sizes the ghost buttons on this row,
+   but the name is a bare button, so its chevron has to be sized here or it expands to fill
+   the flex line and pushes the script name off the row entirely. */
+.regex-script__chevron {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  transition: transform var(--wc-duration) var(--wc-ease);
+}
+
+.regex-script__name[aria-expanded="true"] .regex-script__chevron {
+  transform: rotate(90deg);
+}
+
+/* A pattern that will not compile does nothing at all and says nothing about it — which is
+   why the row carries a mark even when the script is closed. */
+.regex-script__warning {
+  flex: none;
+  color: var(--wc-danger);
+  font-size: var(--wc-text-xs);
+  line-height: 1;
+}
+
+.regex-script__target {
+  flex: none;
+  padding: 2px var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-tint);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+  white-space: nowrap;
+}
+
+/* Switched off, not broken — dimmed rather than struck through or hidden. */
+.regex-script[data-disabled] .regex-script__name,
+.regex-script[data-disabled] .regex-script__target {
+  color: var(--wc-text-faint);
+}
+
+.regex-script__move {
+  flex: none;
+  padding: 0 var(--wc-space-2);
+  line-height: 1;
+}
+
+.regex-script__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding: 0 var(--wc-space-2) var(--wc-space-3);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+  padding-top: var(--wc-space-3);
+}
+
+/* The find pattern is read character by character; proportional type makes that harder. */
+.regex-script__pattern .wc-input {
+  font-family: var(--wc-font-mono);
+}
+
+.regex-script__placements {
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.regex-script__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--wc-space-2);
+}
+
+.regex-script__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  justify-content: flex-end;
+}
+
+.regex-tester {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-tint);
+}
+
+.regex-tester__result {
+  display: block;
+  font-size: var(--wc-text-xs);
+}
+
+.regex-tester__result .wc-hint {
+  margin: 0;
+}
+
+.regex-tester__bad {
+  color: var(--wc-danger);
+}
+
+.regex-tester__output {
+  margin: 0;
+  padding: var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-code-bg);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

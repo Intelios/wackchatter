@@ -18,6 +18,13 @@
  *    `jailbreak` prompts unless the prompt sets `forbid_overrides`.
  */
 
+import { regexDepths } from '../regex/depth.ts';
+import {
+  applyRegexScripts,
+  createRegexCompileCache,
+  type RegexMacros,
+  sanitizeRegexMacro,
+} from '../regex/engine.ts';
 import type { CardDataV2 } from '../types/card.ts';
 import {
   type ApiMessage,
@@ -37,6 +44,8 @@ import {
   DEFAULT_INJECTION_ORDER,
   INJECTION_POSITION,
 } from '../types/preset.ts';
+import type { RegexScript } from '../types/regex.ts';
+import { REGEX_PLACEMENT } from '../types/regex.ts';
 import {
   DEFAULT_GUIDANCE,
   DEFAULT_SUMMARY,
@@ -96,6 +105,15 @@ export interface AssembleOptions {
   requireChatHistory?: boolean;
   /** Stabilises {{pick}} across regenerations. */
   seed?: string;
+  /**
+   * User regex scripts. Only the ones that declare `promptOnly` run here; a display-only
+   * script is inert, which is the whole point of the pair.
+   *
+   * Every caller of this function has to pass the same list — the Prompt Manager's token
+   * counts and the inspector are both built from the result, and one caller missing it
+   * would make them quietly disagree with what was actually sent.
+   */
+  regexScripts?: readonly RegexScript[];
 }
 
 export interface FinalControlMessage {
@@ -357,6 +375,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     countTokens,
     finalControls: finalControlsInput = [],
     seed = '',
+    regexScripts = [],
   } = options;
 
   const userName = options.userName ?? persona?.name ?? DEFAULT_USER_NAME;
@@ -392,6 +411,18 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       runtime,
       source,
     });
+
+  /**
+   * Macro expansion for regex scripts, riding assembly's own runtime — so a `{{setvar}}` in
+   * a replacement really does write a chat variable, exactly as in SillyTavern. The display
+   * path deliberately passes a disposable runtime instead, because rendering must not
+   * mutate state.
+   */
+  const regexMacros: RegexMacros = {
+    expand: (text, source) => substitute(text, source),
+    expandEscaped: (text, source) =>
+      substituteMacros(text, env, seed, { runtime, source, postProcess: sanitizeRegexMacro }),
+  };
 
   const variableUpdates = () => ({
     local: { ...runtime.local },
@@ -930,10 +961,47 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   const packedHistory: ApiMessage[] = [];
   let droppedMessages = 0;
 
+  // Skipped entirely when there is nothing to run, so a user with no scripts pays nothing.
+  // Depth counts over the whole visible transcript, not the part that fits in the budget:
+  // a script pinned to "the last three messages" must mean the same thing whether or not
+  // the context is full.
+  const regexDepthMap = regexScripts.length
+    ? regexDepths(visible, { continued: generationType === 'continue' })
+    : null;
+  const regexCache = createRegexCompileCache();
+
   if (historySlotIndex !== -1) {
     for (let i = visible.length - 1; i >= 0; i--) {
       const message = visible[i]!;
-      const content = substitute(message.mes, `message:${message.id}`);
+      const substituted = substitute(message.mes, `message:${message.id}`);
+      /*
+       * Regex runs AFTER macro substitution — a deliberate divergence from SillyTavern,
+       * which regexes the raw message text.
+       *
+       * ST can do that because it never macro-substitutes chat history at all, so "raw" and
+       * "what the model receives" are the same string there and two different strings here.
+       * Running after `substitute` buys three things: the invariant that macros expand
+       * exactly once per message survives (the engine expands the replacement itself, so an
+       * outer pass over the result would re-roll `{{random}}` and double-fire `{{setvar}}`);
+       * the greeting row, which the display path macro-resolves before rendering, is handed
+       * the identical subject string on both paths; and a pattern matches what the model
+       * will actually read, which is the only mental model a user can hold.
+       */
+      const content = regexDepthMap
+        ? applyRegexScripts(
+            substituted,
+            regexScripts,
+            {
+              placement: message.is_user ? REGEX_PLACEMENT.USER_INPUT : REGEX_PLACEMENT.AI_OUTPUT,
+              prompt: true,
+              depth: regexDepthMap.get(message.id),
+            },
+            { macros: regexMacros, cache: regexCache },
+          )
+        : substituted;
+      // Checked after regex, not before: a prompt-only script with an empty replacement is
+      // the canonical "hide this whole turn from the model", and it has to drop the message
+      // from packing rather than send a blank one.
       if (!content.trim()) continue;
 
       const apiMessage: ApiMessage = {

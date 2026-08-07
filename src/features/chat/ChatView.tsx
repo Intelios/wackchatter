@@ -1,5 +1,9 @@
-import type { MessageState } from '@shared/chat/message.ts';
+import { currentText, type MessageState } from '@shared/chat/message.ts';
+import { regexDepths } from '@shared/regex/depth.ts';
+import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
 import type { Persona } from '@shared/types/chat.ts';
+import type { RegexScript } from '@shared/types/regex.ts';
+import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
 import type {
   DialogueColorOverride,
   DialogueColorSettings,
@@ -62,6 +66,11 @@ interface ChatViewProps {
   /** App-wide user-defined quick commands, inserted into the composer from the chat menu. */
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  /**
+   * Enabled regex scripts. A lookup, not the settings object, for the same reason the
+   * dialogue colours are: an unrelated settings change must not re-render the transcript.
+   */
+  regexScripts: readonly RegexScript[];
 }
 
 interface TranscriptWindowState {
@@ -86,6 +95,7 @@ export function ChatView({
   dialogueColors,
   quickCommands,
   onQuickCommandsChange,
+  regexScripts,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -464,14 +474,86 @@ export function ChatView({
       ? 'Waiting on a reply — guide it instead.'
       : undefined;
 
-  // The greeting renders its macros fresh, which would hand row 0 a new string on every
-  // render and single-handedly defeat its memo.
-  const first = state.messages[0];
-  const greeting = useMemo(
-    () =>
-      first && !first.is_user ? chat.renderGreeting(first.swipes[first.swipe_id] ?? '') : undefined,
-    [chat, first],
-  );
+  /*
+   * Render-only text for the rows on screen: greeting macros, then regex scripts.
+   *
+   * One memo rather than a pass inside each bubble. The bubbles are memoised, and handing
+   * them the script array — a new identity every time settings reload — plus a depth number
+   * would churn every row on screen; doing it here also means one compiled-regex cache for
+   * the whole window, and it is the only place that can run the greeting's macros BEFORE
+   * the scripts see the text.
+   *
+   * `chat.renderGreeting`, not `chat`: the hook returns a fresh object literal every render,
+   * so depending on it would re-run this unconditionally. The callback is memoised on the
+   * character, preset, persona, chat state and variables, which is exactly what this needs.
+   *
+   * Only the visible window is transformed, but depth comes from the WHOLE transcript — a
+   * script pinned to "the last three messages" has to mean that regardless of how far the
+   * reader has scrolled.
+   */
+  const displayTexts = useMemo(() => {
+    const rendered = new Map<string, { text?: string; reasoning?: string }>();
+    const first = state.messages[0];
+    const greeting =
+      first && !first.is_user ? chat.renderGreeting(first.swipes[first.swipe_id] ?? '') : undefined;
+    if (greeting !== undefined) rendered.set(first!.id, { text: greeting });
+
+    if (regexScripts.length === 0 || !chat.regexMacros) return rendered;
+
+    const depths = regexDepths(
+      state.messages.map((message) => ({
+        id: message.id,
+        is_system: message.is_system,
+        mes: currentText(message),
+      })),
+    );
+    const cache = createRegexCompileCache();
+    const options = { macros: chat.regexMacros, cache };
+
+    for (let index = visibleStart; index < visibleEnd; index++) {
+      const message = state.messages[index];
+      if (!message) continue;
+      const context = {
+        placement: message.is_user ? REGEX_PLACEMENT.USER_INPUT : REGEX_PLACEMENT.AI_OUTPUT,
+        display: true,
+        depth: depths.get(message.id),
+      };
+
+      const source = rendered.get(message.id)?.text ?? currentText(message);
+      const text = applyRegexScripts(source, regexScripts, context, options);
+
+      const rawReasoning = message.swipe_info[message.swipe_id]?.extra?.reasoning;
+      const reasoning =
+        typeof rawReasoning === 'string' && rawReasoning
+          ? applyRegexScripts(
+              rawReasoning,
+              regexScripts,
+              { ...context, placement: REGEX_PLACEMENT.REASONING },
+              options,
+            )
+          : undefined;
+
+      // Only rows the scripts actually changed get an entry, so every untouched bubble
+      // keeps receiving `undefined` and its memo behaves exactly as it did before.
+      const changed = text !== currentText(message);
+      const reasoningChanged = reasoning !== undefined && reasoning !== rawReasoning;
+      if (changed || reasoningChanged || rendered.has(message.id)) {
+        rendered.set(message.id, {
+          text: changed || rendered.has(message.id) ? text : undefined,
+          reasoning: reasoningChanged ? reasoning : undefined,
+        });
+      }
+    }
+
+    return rendered;
+  }, [
+    chat.renderGreeting,
+    chat.regexMacros,
+    state.messages,
+    regexScripts,
+    visibleStart,
+    visibleEnd,
+  ]);
 
   return (
     <div className="chat-view">
@@ -492,7 +574,8 @@ export function ChatView({
                 isLast: message.id === lastId,
                 busy,
                 summaryRunning: chat.summaryStatus.running,
-                displayText: messageIndex === 0 ? greeting : undefined,
+                displayText: displayTexts.get(message.id)?.text,
+                displayReasoning: displayTexts.get(message.id)?.reasoning,
                 // Row 0 only: the notes explain which greeting you are looking at, and
                 // nothing below the opening message is a greeting.
                 creatorNotes: messageIndex === 0 ? creatorNotes : undefined,
