@@ -349,11 +349,13 @@
  * the gap sits outside the element being measured and only CSS knows its width. Inline
  * content collapses to nothing *and* counts in the one measurement — see the note there.
  *
- * The transition lives in the pressed rule, so it applies on the way in and not on the
- * way out: the outgoing label closes instantly, which settles every other button before
- * the pill is measured. Animating both directions leaves the buttons that follow the
- * outgoing label still sliding when the press lands, and nothing can read a final
- * position out of that.
+ * The transition sits on the label itself so the close animates too. It used to live in
+ * the pressed rule, which shut the outgoing label in a single frame — that settled the
+ * other buttons before the pill was measured, but it also teleported every icon after
+ * the outgoing one by a whole label width, so a left-to-right hop read as a jump and
+ * then a slide. measure() reads the final position out of the moving layout instead: a
+ * closing label's current width is exactly the distance the buttons after it still
+ * travel — see PanelCluster.
  *
  * Collapsed, not `display: none`: the text stays in the accessibility tree, so the button
  * keeps its accessible name from its content rather than falling back to `title`.
@@ -361,6 +363,7 @@
 .panel-toggle__label {
   display: grid;
   grid-template-columns: 0fr;
+  transition: grid-template-columns var(--wc-duration) var(--wc-ease);
 }
 
 .panel-toggle__label > span {
@@ -377,7 +380,6 @@
 
 .panel-toggle[aria-pressed="true"] .panel-toggle__label {
   grid-template-columns: 1fr;
-  transition: grid-template-columns var(--wc-duration) var(--wc-ease);
 }
 
 /*

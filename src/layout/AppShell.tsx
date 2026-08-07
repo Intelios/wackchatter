@@ -38,34 +38,59 @@ function PanelCluster<T extends string>({ buttons, active, onSelect, side }: Pan
   const [ready, setReady] = useState(false);
 
   /*
-   * Where the pill will end up once the label finishes opening — not where it is now.
+   * Where the pill will end up once the labels finish moving — not where they are now.
    *
-   * offsetWidth alone cannot answer that. The active button is the only labelled one and
-   * its label animates open over --wc-duration, so a read taken on the frame the press
-   * lands sees the label still shut and sizes the pill to a bare icon. Watching the
-   * transition frame by frame is the obvious fix and a worse one: it makes the pill
-   * depend on ResizeObserver callbacks actually being delivered, and a document that is
-   * not rendering gets none — switch tabs on the same frame as the click and the pill is
-   * stranded at icon width with the transition already over and nothing left to correct
-   * it. So take the two terms that are true at every point in the animation instead.
+   * A press sets two things in motion: the incoming label opens and the outgoing one
+   * closes, both over --wc-duration (see AppShell.css). Reads taken on the frame the
+   * press lands therefore see the old label still open and the new one still shut.
+   * Watching the transition frame by frame is the obvious fix and a worse one: it makes
+   * the pill depend on ResizeObserver callbacks actually being delivered, and a document
+   * that is not rendering gets none — switch tabs on the same frame as the click and the
+   * pill is stranded mid-cluster with the transition already over and nothing left to
+   * correct it. So take the terms that are true at every point in the animation instead.
    *
-   * x needs no arithmetic. Only the incoming label animates (see AppShell.css), so every
-   * button before this one is already at rest and offsetLeft is final on the first frame.
+   * x is the button's left edge minus the current width of every label before it. A
+   * closing label still holds that much width and pushes everything after it right of
+   * where it will land — by exactly that amount; a label at rest holds none. So the
+   * subtraction yields the final x on the press frame and on every frame of the close.
    *
    * width is the button without its label, plus the width that label is opening to.
-   * scrollWidth, not offsetWidth, for the second term: the span is clipped by the
+   * scrollWidth, not a rendered width, for the second term: the span is clipped by the
    * collapsing grid, and only scrollWidth still reports the width its content wants.
+   *
+   * getBoundingClientRect rather than offsetLeft/offsetWidth for all of it: those round
+   * to whole pixels, and the rounded terms in x drift independently frame to frame
+   * mid-close, so an offsetLeft pill target wobbles a pixel either way while the labels
+   * move — the exact micro-jank this arithmetic exists to avoid.
    */
   const measure = useCallback(() => {
     const button = active ? buttonRefs.current.get(active) : undefined;
     if (!button) return;
     const label = button.querySelector<HTMLElement>('.panel-toggle__label');
     const text = button.querySelector<HTMLElement>('.panel-toggle__label > span');
-    setRect({
-      x: button.offsetLeft,
-      width: button.offsetWidth - (label?.offsetWidth ?? 0) + (text?.scrollWidth ?? 0),
-    });
-  }, [active]);
+    const cluster = button.offsetParent;
+    const box = button.getBoundingClientRect();
+    let x = box.left - (cluster?.getBoundingClientRect().left ?? 0);
+    for (const spec of buttons) {
+      if (spec.id === active) break;
+      const otherLabel = buttonRefs.current
+        .get(spec.id)
+        ?.querySelector<HTMLElement>('.panel-toggle__label');
+      if (otherLabel) x -= otherLabel.getBoundingClientRect().width;
+    }
+    const width =
+      box.width - (label?.getBoundingClientRect().width ?? 0) + (text?.scrollWidth ?? 0);
+    /*
+     * The ResizeObserver fires on every frame of the label animation; handing back the
+     * previous object when nothing moved keeps that from re-rendering the cluster for a
+     * rect that has not changed.
+     */
+    setRect((prev) =>
+      prev && Math.abs(prev.x - x) < 0.5 && Math.abs(prev.width - width) < 0.5
+        ? prev
+        : { x, width },
+    );
+  }, [active, buttons]);
 
   /*
    * Layout effect, not effect: the pill must be at its final position for the very first
