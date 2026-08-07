@@ -161,8 +161,9 @@
 /* --- Text --------------------------------------------------------------- */
 
 .message__text {
-  font-size: var(--wc-text-lg);
-  line-height: 1.7;
+  font-size: var(--wc-text-base);
+  font-weight: 500;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 

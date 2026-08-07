@@ -18,7 +18,7 @@
    * sitting low in the row. Deriving it from the same tokens the textarea uses is what
    * stops the two drifting apart again the next time the type scale moves.
    */
-  --wc-composer-row: calc(var(--wc-text-base) * 1.5 + var(--wc-space-3) * 2 + 2px);
+  --wc-composer-row: calc(var(--wc-text-base) * 1.5 + var(--wc-space-2) * 2 + 2px);
 }
 
 .composer__row {
@@ -118,7 +118,7 @@
   /* Pins the empty state to exactly one row, so the buttons cannot be measured against a
      textarea the browser sized fractionally differently. */
   min-height: var(--wc-composer-row);
-  padding: var(--wc-space-3);
+  padding: var(--wc-space-2) var(--wc-space-3);
   background: var(--wc-surface);
   border: 1px solid var(--wc-border);
   border-radius: var(--wc-radius);
