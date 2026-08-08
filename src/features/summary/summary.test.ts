@@ -73,12 +73,18 @@ describe('summary transcript', () => {
 });
 
 describe('Classic summary chunk packing', () => {
-  test('keeps the oldest contiguous native turns and reuses the accepted assembly', () => {
+  test('keeps the oldest contiguous native turns and reuses the accepted assembly', async () => {
     const entries = [message('u1', 'one'), message('a1', 'two'), message('u2', 'three')];
     const accepted = assembly(entries.slice(0, 2));
-    const chunk = packClassicSummaryChunk(entries, (candidate) => {
-      if (candidate.length === 2) return accepted;
-      return assembly(candidate, candidate.length > 2 ? 1 : 0);
+    const chunk = await packClassicSummaryChunk({
+      messages: entries,
+      maxPromptTokens: 2,
+      fixedTokens: 0,
+      messageCost: () => 1,
+      assemble: (candidate) => {
+        if (candidate.length === 2) return accepted;
+        return assembly(candidate, candidate.length > 2 ? 1 : 0);
+      },
     });
 
     expect(chunk?.messages.map((entry) => entry.id)).toEqual(['u1', 'a1']);
@@ -86,12 +92,31 @@ describe('Classic summary chunk packing', () => {
     expect(chunk?.assembled.messages.map((entry) => entry.role)).toEqual(['user', 'assistant']);
   });
 
-  test('returns null instead of skipping a first turn the complete prompt drops', () => {
+  test('returns null instead of skipping a first turn the complete prompt drops', async () => {
     const entries = [message('u1', 'too large'), message('a1', 'later')];
-    expect(packClassicSummaryChunk(entries, (candidate) => assembly(candidate, 1))).toBeNull();
+    const chunk = await packClassicSummaryChunk({
+      messages: entries,
+      maxPromptTokens: 1,
+      fixedTokens: 0,
+      messageCost: () => 1,
+      assemble: (candidate) => assembly(candidate, 1),
+    });
+    expect(chunk).toBeNull();
   });
 
-  test('covers hundreds of turns through sequential oldest-first chunks without gaps', () => {
+  test('returns null when even the first turn exceeds the budget', async () => {
+    const entries = [message('u1', 'too large'), message('a1', 'later')];
+    const chunk = await packClassicSummaryChunk({
+      messages: entries,
+      maxPromptTokens: 0,
+      fixedTokens: 0,
+      messageCost: () => 1,
+      assemble: (candidate) => assembly(candidate),
+    });
+    expect(chunk).toBeNull();
+  });
+
+  test('covers hundreds of turns through sequential oldest-first chunks without gaps', async () => {
     let remaining = Array.from({ length: 250 }, (_, index) =>
       message(index % 2 === 0 ? `u${index}` : `a${index}`, `turn ${index}`),
     );
@@ -99,9 +124,13 @@ describe('Classic summary chunk packing', () => {
     const chunkSizes: number[] = [];
 
     while (remaining.length > 0) {
-      const chunk = packClassicSummaryChunk(remaining, (candidate) =>
-        assembly(candidate, candidate.length > 37 ? 1 : 0),
-      );
+      const chunk = await packClassicSummaryChunk({
+        messages: remaining,
+        maxPromptTokens: 37,
+        fixedTokens: 0,
+        messageCost: () => 1,
+        assemble: (candidate) => assembly(candidate, candidate.length > 37 ? 1 : 0),
+      });
       if (!chunk) throw new Error('Expected another Classic chunk');
       chunkSizes.push(chunk.messages.length);
       processed.push(...chunk.messages.map((entry) => entry.id));
@@ -112,5 +141,74 @@ describe('Classic summary chunk packing', () => {
     expect(processed).toEqual(
       Array.from({ length: 250 }, (_, index) => (index % 2 === 0 ? `u${index}` : `a${index}`)),
     );
+  });
+
+  test('estimate-driven packing matches brute-force linear search across budgets', async () => {
+    const entries = Array.from({ length: 60 }, (_, index) =>
+      message(index % 2 === 0 ? `u${index}` : `a${index}`, `turn ${index}`),
+    );
+
+    for (let budget = 1; budget <= 50; budget++) {
+      // Brute force: the old per-prefix assembly search.
+      let bruteAccepted = 0;
+      for (let size = 1; size <= entries.length; size++) {
+        const assembled = assembly(entries.slice(0, size), size > budget ? 1 : 0);
+        if (!assembled.ok || assembled.droppedMessages > 0) break;
+        bruteAccepted = size;
+      }
+
+      const chunk = await packClassicSummaryChunk({
+        messages: entries,
+        maxPromptTokens: budget,
+        fixedTokens: 0,
+        messageCost: () => 1,
+        assemble: (candidate) => assembly(candidate, candidate.length > budget ? 1 : 0),
+      });
+
+      expect(chunk?.messages.length ?? 0).toBe(bruteAccepted);
+    }
+  });
+
+  test('shrinks the estimate when the verified assembly drops messages', async () => {
+    const entries = Array.from({ length: 20 }, (_, index) =>
+      message(index % 2 === 0 ? `u${index}` : `a${index}`, `turn ${index}`),
+    );
+    let calls = 0;
+
+    const chunk = await packClassicSummaryChunk({
+      messages: entries,
+      maxPromptTokens: 20,
+      fixedTokens: 0,
+      messageCost: () => 1,
+      assemble: (candidate) => {
+        calls++;
+        // First verification is optimistic: macros inflate the real cost by two turns.
+        return assembly(candidate, calls === 1 ? 2 : 0);
+      },
+    });
+
+    expect(chunk?.messages.length).toBe(18);
+    expect(calls).toBe(2);
+  });
+
+  test('a 500-message backlog needs only one verification assembly', async () => {
+    const entries = Array.from({ length: 500 }, (_, index) =>
+      message(index % 2 === 0 ? `u${index}` : `a${index}`, `turn ${index}`),
+    );
+    let calls = 0;
+
+    const chunk = await packClassicSummaryChunk({
+      messages: entries,
+      maxPromptTokens: 500,
+      fixedTokens: 0,
+      messageCost: () => 1,
+      assemble: (candidate) => {
+        calls++;
+        return assembly(candidate);
+      },
+    });
+
+    expect(chunk?.messages.length).toBe(500);
+    expect(calls).toBe(1);
   });
 });

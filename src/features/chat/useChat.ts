@@ -7,7 +7,7 @@
  */
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
-import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
+import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/assemble.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
@@ -15,6 +15,7 @@ import type { Connection, ConnectionSettings } from '@shared/providers/types.ts'
 import type { RegexMacros } from '@shared/regex/engine.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
+  ApiMessage,
   Chat,
   ChatMessage,
   ChatMetadata,
@@ -23,7 +24,11 @@ import type {
   MacroVariableMap,
   Persona,
 } from '@shared/types/chat.ts';
-import type { GenerationType, Preset } from '@shared/types/preset.ts';
+import {
+  CHARACTER_NAMES_BEHAVIOR,
+  type GenerationType,
+  type Preset,
+} from '@shared/types/preset.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -46,6 +51,7 @@ import {
   summaryBacklog,
   summaryBaseControl,
   summaryMessages,
+  yieldToMain,
 } from '../summary/summary.ts';
 import { adoptedPersona, KeyedSerialQueue, resolveInitialChat } from './chatInit.ts';
 import { ChatSaveQueue } from './chatPersistence.ts';
@@ -940,8 +946,30 @@ export function useChat(options: UseChatOptions): UseChat {
       };
 
       setSummaryStatus({ running: true, processed: 0, total: backlog.length, error: null });
+      // Let the progress UI paint before the synchronous pack work begins.
+      await yieldToMain();
 
       try {
+        const maxPromptTokens = (preset.openai_max_context ?? 4095) - maxTokens;
+        const namesBehavior = preset.names_behavior ?? CHARACTER_NAMES_BEHAVIOR.DEFAULT;
+        // Mirror assembly's per-message pricing exactly: role from `is_user`, the
+        // names_behavior content prefix or sanitized name, and the marginal chat cost
+        // (whole-chat count minus the reply priming). Raw trimmed text, no macro or
+        // regex expansion — the verify/shrink step absorbs any optimistic estimate.
+        const messageCost = (message: ChatMessage): number => {
+          const apiMessage: ApiMessage = {
+            role: message.is_user ? 'user' : 'assistant',
+            content:
+              namesBehavior === CHARACTER_NAMES_BEHAVIOR.CONTENT
+                ? `${message.name}: ${message.mes}`
+                : message.mes,
+          };
+          if (namesBehavior === CHARACTER_NAMES_BEHAVIOR.COMPLETION) {
+            apiMessage.name = sanitizeName(message.name);
+          }
+          return summaryCountTokens.countChat([apiMessage]) - summaryCountTokens.countChat([]);
+        };
+
         while (remaining.length > 0) {
           const fixed = assembleClassic([], '');
           if (!fixed.ok) {
@@ -949,6 +977,7 @@ export function useChat(options: UseChatOptions): UseChat {
               `The fixed Classic prompt and summary instruction need ${fixed.error.requiredPromptTokens} tokens, but only ${fixed.error.maxContext - fixed.error.reservedCompletionTokens} are available. Increase the preset context limit or shorten enabled prompt content.`,
             );
           }
+          let fixedTokens = fixed.totalTokens;
           if (rollingSummary.trim()) {
             const withBase = assembleClassic([], rollingSummary);
             if (!withBase.ok) {
@@ -956,11 +985,16 @@ export function useChat(options: UseChatOptions): UseChat {
                 `The existing rolling summary does not fit alongside the Classic prompt. Increase the preset context limit, reduce the target length, or shorten the current summary.`,
               );
             }
+            fixedTokens = withBase.totalTokens;
           }
 
-          const chunk = packClassicSummaryChunk(remaining, (candidate) =>
-            assembleClassic(candidate, rollingSummary),
-          );
+          const chunk = await packClassicSummaryChunk({
+            messages: remaining,
+            maxPromptTokens,
+            fixedTokens,
+            messageCost,
+            assemble: (candidate) => assembleClassic(candidate, rollingSummary),
+          });
           if (!chunk) {
             throw new Error(
               'The next individual chat turn cannot fit alongside the Classic prompt and rolling summary. Increase the preset context limit, reduce the target length, shorten the current summary, or shorten that turn.',

@@ -180,7 +180,7 @@ interface Slot {
   tokens: number;
 }
 
-function sanitizeName(name: string): string | undefined {
+export function sanitizeName(name: string): string | undefined {
   // The OpenAI `name` field permits only these characters.
   const cleaned = name.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 64);
   return cleaned || undefined;
