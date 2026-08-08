@@ -5,9 +5,21 @@
 }
 
 .character-list__search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--wc-space-2);
   padding: var(--wc-space-3);
   border-bottom: 1px solid var(--wc-border);
   flex-shrink: 0;
+}
+
+.character-list__search .wc-input {
+  min-width: 0;
+}
+
+/* The select sizes to its options; the search box takes everything left over. */
+.character-list__sort {
+  min-width: 0;
 }
 
 .character-list__items {
@@ -121,8 +133,26 @@
 
 .character-card__badges {
   display: flex;
+  align-items: center;
   gap: var(--wc-space-1);
   flex-shrink: 0;
+}
+
+/* Five earned stars. Shown only for rated characters so unrated rows stay quiet. */
+.character-card__stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.character-card__star {
+  width: 0.85em;
+  height: 0.85em;
+  color: var(--wc-star-empty);
+}
+
+.character-card__star[data-filled] {
+  color: var(--wc-star);
 }
 
 .badge {

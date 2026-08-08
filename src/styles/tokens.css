@@ -74,6 +74,13 @@
   --wc-warning: #f0a020;
   --wc-warning-subtle: rgba(240, 160, 32, 0.12);
 
+  /* A character's earned stars. Deliberately not the accent: the accent is the app's
+     "active" voice, while a rating is a judgement on the content — amber is the one hue
+     people read as "rating" without being told. Kept desaturated so it stays legible
+     under the dim scrim. */
+  --wc-star: #e0b53c;
+  --wc-star-empty: #3a3a40;
+
   /* A wash over imagery, so text laid on top of it stays legible. */
   --wc-scrim: rgba(0, 0, 0, 0.65);
   /* For a label sitting directly on an image, where a scrim would cover too much. */

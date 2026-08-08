@@ -25,6 +25,8 @@ import type {
   SummarySettings,
 } from '../../shared/types/settings.ts';
 import {
+  CHARACTER_RATING_MAX,
+  CHARACTER_RATING_MIN,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
@@ -310,6 +312,29 @@ function normalizeDialogueColors(value: unknown): DialogueColorSettings {
 }
 
 /**
+ * Coerce a stored rating map. A rating is an integer in [1, 5]; everything else is dropped
+ * so a hand-edited settings file (or a stale build's value) cannot surface as a UI bug.
+ * Keyed by the avatar filename, the same identity the dialogue colours use.
+ */
+function normalizeCharacterRatings(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+
+  const entries: Array<[string, number]> = [];
+  for (const [avatar, candidate] of Object.entries(value)) {
+    if (!avatar) continue;
+    if (
+      typeof candidate === 'number' &&
+      Number.isInteger(candidate) &&
+      candidate >= CHARACTER_RATING_MIN &&
+      candidate <= CHARACTER_RATING_MAX
+    ) {
+      entries.push([avatar, candidate]);
+    }
+  }
+  return Object.fromEntries(entries);
+}
+
+/**
  * Coerce a stored quick-command list. Entries without a usable id are dropped — the id is
  * what edits and deletes address, and a duplicate id would let one command shadow another.
  */
@@ -389,6 +414,8 @@ export function getSettings(): AppSettings {
     guidance: normalizeGuidance(stored.guidance),
     summary: normalizeSummary(stored.summary, connections),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
+    characterRatings: normalizeCharacterRatings(stored.characterRatings),
+    characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
     quickCommands: normalizeQuickCommands(stored.quickCommands),
     regexScripts: normalizeRegexScripts(stored.regexScripts),
   };
@@ -452,6 +479,20 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     regexScripts: Array.isArray(patch.regexScripts)
       ? normalizeRegexScripts(patch.regexScripts)
       : current.regexScripts,
+    // A record keyed by avatar filenames, so a stale tab or `{"characterRatings": null}`
+    // must not wipe the ratings — the quick-commands guard, applied to a map.
+    characterRatings:
+      isRecord(patch.characterRatings) || patch.characterRatings === undefined
+        ? normalizeCharacterRatings(
+            patch.characterRatings === undefined
+              ? current.characterRatings
+              : patch.characterRatings,
+          )
+        : current.characterRatings,
+    characterListSort:
+      patch.characterListSort === 'name' || patch.characterListSort === 'rating'
+        ? patch.characterListSort
+        : current.characterListSort,
   };
 }
 
@@ -627,6 +668,25 @@ export function removePersonaDialogueColor(
   const personas = { ...current.dialogueColors.personas };
   delete personas[personaId];
   return { ...current, dialogueColors: { ...current.dialogueColors, personas } };
+}
+
+/**
+ * Re-key or remove the rating attached to a character filename. The avatar filename is the
+ * identity everything else keys on, so a rename moves the rating with it and a delete takes
+ * it out. Returns null when there was nothing to move — no save needed.
+ */
+export function reassignCharacterRating(
+  current: AppSettings,
+  oldAvatar: string,
+  newAvatar: string | null,
+): AppSettings | null {
+  if (!Object.hasOwn(current.characterRatings, oldAvatar)) return null;
+
+  const ratings = { ...current.characterRatings };
+  const value = ratings[oldAvatar]!;
+  delete ratings[oldAvatar];
+  if (newAvatar !== null) ratings[newAvatar] = value;
+  return { ...current, characterRatings: ratings };
 }
 
 /**

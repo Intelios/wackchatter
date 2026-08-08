@@ -296,6 +296,10 @@ export function App() {
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
   const dialogueColorSettings: DialogueColorSettings =
     settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS;
+  // Normalised server-side; the fallbacks only cover the pre-load render.
+  const characterRatings: Record<string, number> = settings?.characterRatings ?? {};
+  const characterListSort: 'name' | 'rating' =
+    settings?.characterListSort === 'rating' ? 'rating' : 'name';
   // Normalised server-side; the fallback only covers the pre-load render.
   const quickCommands: QuickCommand[] = settings?.quickCommands ?? [];
   // Only the enabled ones ever leave here. A disabled script is inert either way, but
@@ -386,6 +390,17 @@ export function App() {
       });
     },
     [dialogueColorSettings, patchSettings, settings],
+  );
+
+  const patchCharacterRating = useCallback(
+    (avatar: string, value: number | undefined) => {
+      if (!settings) return;
+      const ratings = { ...characterRatings };
+      if (value === undefined) delete ratings[avatar];
+      else ratings[avatar] = value;
+      void patchSettings({ characterRatings: ratings });
+    },
+    [characterRatings, patchSettings, settings],
   );
 
   const bumpCharacterAvatar = useCallback((avatar: string) => {
@@ -686,6 +701,16 @@ export function App() {
           characters[saved.avatar] = value;
           return { ...current, dialogueColors: { ...current.dialogueColors, characters } };
         });
+        setSettings((current) => {
+          if (!current || !Object.hasOwn(current.characterRatings, previousAvatar)) {
+            return current;
+          }
+          const ratings = { ...current.characterRatings };
+          const value = ratings[previousAvatar]!;
+          delete ratings[previousAvatar];
+          ratings[saved.avatar] = value;
+          return { ...current, characterRatings: ratings };
+        });
         setCharacterAvatarVersions((current) => {
           if (!Object.hasOwn(current, previousAvatar)) return current;
           const next = { ...current, [saved.avatar]: current[previousAvatar]! };
@@ -706,6 +731,12 @@ export function App() {
         const characters = { ...current.dialogueColors.characters };
         delete characters[deleted];
         return { ...current, dialogueColors: { ...current.dialogueColors, characters } };
+      });
+      setSettings((current) => {
+        if (!current || !Object.hasOwn(current.characterRatings, deleted)) return current;
+        const ratings = { ...current.characterRatings };
+        delete ratings[deleted];
+        return { ...current, characterRatings: ratings };
       });
       setCharacterAvatarVersions((current) => {
         if (!Object.hasOwn(current, deleted)) return current;
@@ -877,6 +908,8 @@ export function App() {
               dialogueColor={dialogueColorSettings.characters[showEditor.avatar]}
               dialogueColorsEnabled={dialogueColorSettings.enabled}
               avatarVersion={characterAvatarVersions[showEditor.avatar]}
+              rating={characterRatings[showEditor.avatar]}
+              onRatingChange={(value) => patchCharacterRating(showEditor.avatar, value)}
               onDialogueColorChange={(value) =>
                 patchCharacterDialogueColor(showEditor.avatar, value)
               }
@@ -910,6 +943,9 @@ export function App() {
                   characters={characters}
                   folders={folders}
                   collapsedFolders={collapsedCharacterFolders}
+                  ratings={characterRatings}
+                  sort={characterListSort}
+                  onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
                   selected={selected}
                   loading={loading}
                   error={error}

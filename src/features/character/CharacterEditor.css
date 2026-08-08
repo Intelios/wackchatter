@@ -89,6 +89,43 @@
   gap: var(--wc-space-3);
 }
 
+/* --- Rating -------------------------------------------------------------- */
+
+.rating-field {
+  display: flex;
+  gap: 2px;
+}
+
+.rating-field__star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-star-empty);
+  transition:
+    color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
+}
+
+.rating-field__star svg {
+  width: var(--wc-icon-lg);
+  height: var(--wc-icon-lg);
+}
+
+.rating-field__star[data-filled] {
+  color: var(--wc-star);
+}
+
+.rating-field__star:hover {
+  color: var(--wc-star);
+  transform: scale(1.12);
+}
+
+.rating-field__star:focus-visible {
+  color: var(--wc-star);
+}
+
 /* --- Lorebook preview --------------------------------------------------- */
 
 .editor__lore-list {

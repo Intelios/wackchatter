@@ -19,6 +19,7 @@ import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
   reassignCharacterDialogueColor,
+  reassignCharacterRating,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
   saveSettings,
@@ -29,23 +30,33 @@ const WHAT = 'reference update';
 /** A character's file moved: keep its chats pointed at the new identity. */
 export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Rollback {
   const current = getSettings();
-  const updated = reassignCharacterDialogueColor(current, oldAvatar, newAvatar);
-  if (updated) saveSettings({ dialogueColors: updated.dialogueColors });
+  const updatedColors = reassignCharacterDialogueColor(current, oldAvatar, newAvatar);
+  if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
+  const updatedRatings = reassignCharacterRating(current, oldAvatar, newAvatar);
+  if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
 
   try {
     chatStore().reassignCharacter(oldAvatar, newAvatar);
   } catch (error) {
-    if (updated) saveSettings({ dialogueColors: current.dialogueColors });
+    if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
+    if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
     throw error;
   }
 
   return () =>
     rollbackAll(
       [
-        ...(updated
+        ...(updatedColors
           ? [
               () => {
                 saveSettings({ dialogueColors: current.dialogueColors });
+              },
+            ]
+          : []),
+        ...(updatedRatings
+          ? [
+              () => {
+                saveSettings({ characterRatings: current.characterRatings });
               },
             ]
           : []),
@@ -64,13 +75,16 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
  */
 export function cascadeCharacterDelete(avatar: string): void {
   const current = getSettings();
-  const updated = reassignCharacterDialogueColor(current, avatar, null);
-  if (updated) saveSettings({ dialogueColors: updated.dialogueColors });
+  const updatedColors = reassignCharacterDialogueColor(current, avatar, null);
+  if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
+  const updatedRatings = reassignCharacterRating(current, avatar, null);
+  if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
 
   try {
     chatStore().deleteChatsForCharacter(avatar);
   } catch (error) {
-    if (updated) saveSettings({ dialogueColors: current.dialogueColors });
+    if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
+    if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
     throw error;
   }
 }

@@ -33,6 +33,10 @@ export interface CharacterTreeInput {
   folders: readonly string[];
   collapsed: readonly string[];
   query: string;
+  /** How the cards are ordered within their folder. 'name' is alphabetical. */
+  sort: 'name' | 'rating';
+  /** The user's ratings, keyed by avatar filename. Drives the rating sort. */
+  ratings: Readonly<Record<string, number>>;
 }
 
 /** Name, tags and creator — the fields a person actually searches a card library by. */
@@ -66,11 +70,30 @@ function byName(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+/** Rating-descending, then name for the tie — unrated cards sink to the bottom. */
+function byRating(
+  a: CharacterSummary,
+  b: CharacterSummary,
+  ratings: Readonly<Record<string, number>>,
+): number {
+  return (ratings[b.avatar] ?? 0) - (ratings[a.avatar] ?? 0) || byName(a.name, b.name);
+}
+
+/** The comparator for the current sort mode, bound to the rating map. */
+function bySort(
+  sort: 'name' | 'rating',
+  ratings: Readonly<Record<string, number>>,
+): (a: CharacterSummary, b: CharacterSummary) => number {
+  return sort === 'rating' ? (a, b) => byRating(a, b, ratings) : (a, b) => byName(a.name, b.name);
+}
+
 export function buildCharacterTree({
   characters,
   folders,
   collapsed,
   query,
+  sort,
+  ratings,
 }: CharacterTreeInput): TreeRow[] {
   /*
    * A search flattens the structure completely: matches from every folder in one list, no
@@ -85,7 +108,7 @@ export function buildCharacterTree({
   if (query.trim()) {
     return characters
       .filter((character) => matchesQuery(character, query))
-      .sort((a, b) => byName(a.name, b.name))
+      .sort(bySort(sort, ratings))
       .map((character) => ({ kind: 'character' as const, character, depth: 0 }));
   }
 
@@ -137,7 +160,7 @@ export function buildCharacterTree({
       if (!isCollapsed) walk(path, depth + 1);
     }
 
-    for (const character of (cardsIn.get(parent) ?? []).sort((a, b) => byName(a.name, b.name))) {
+    for (const character of (cardsIn.get(parent) ?? []).sort(bySort(sort, ratings))) {
       rows.push({ kind: 'character', character, depth });
     }
   };

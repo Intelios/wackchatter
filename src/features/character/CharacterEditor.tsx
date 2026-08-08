@@ -1,12 +1,13 @@
 import type { CharacterDetail } from '@shared/types/card.ts';
 import type { DialogueColorOverride } from '@shared/types/settings.ts';
+import { CHARACTER_RATING_MAX, CHARACTER_RATING_MIN } from '@shared/types/settings.ts';
 import type { WorldInfoEntry } from '@shared/types/worldinfo.ts';
 import { bookEntries as bookEntriesOf, toWorldInfoBook } from '@shared/worldinfo/convert.ts';
 import { useMemo, useRef, useState } from 'react';
 import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { ListField, TagField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
-import { DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
+import { DownloadIcon, StarIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
@@ -31,6 +32,9 @@ interface CharacterEditorProps {
   registerPersistence?: (controls: PersistenceControls | null) => void;
   dialogueColor: DialogueColorOverride | undefined;
   dialogueColorsEnabled: boolean;
+  /** The user's rating for this character, or undefined when unrated. */
+  rating: number | undefined;
+  onRatingChange: (value: number | undefined) => void;
   avatarVersion?: number;
   onDialogueColorChange: (value: DialogueColorOverride | undefined) => void;
   onAvatarChanged: () => void;
@@ -45,6 +49,8 @@ export function CharacterEditor({
   registerPersistence,
   dialogueColor,
   dialogueColorsEnabled,
+  rating,
+  onRatingChange,
   avatarVersion,
   onDialogueColorChange,
   onAvatarChanged,
@@ -206,6 +212,11 @@ export function CharacterEditor({
               onChange={(v) => draft.update('character_version', v)}
             />
           </div>
+          <RatingField
+            value={rating}
+            onChange={onRatingChange}
+            hint="Your own rating — stored in the app's settings, never written into the card."
+          />
         </div>
       </div>
 
@@ -350,6 +361,60 @@ export function CharacterEditor({
           {confirmDelete ? 'Click again to confirm' : 'Delete'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The five-star rating control. Clicking the N-th star rates N; clicking the star already
+ * selected clears the rating, because an unrate path is what makes the list's "unrated
+ * shows nothing" honest — without it there would be no way back.
+ */
+function RatingField({
+  value,
+  onChange,
+  hint,
+}: {
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="field">
+      <div className="field__head">
+        <span className="wc-label">My rating</span>
+        {value !== undefined ? (
+          <span className="field__meta">
+            {value} of {CHARACTER_RATING_MAX}
+          </span>
+        ) : null}
+      </div>
+      <div className="rating-field">
+        {Array.from(
+          { length: CHARACTER_RATING_MAX - CHARACTER_RATING_MIN + 1 },
+          (_, index) => CHARACTER_RATING_MIN + index,
+        ).map((star) => {
+          const selected = value !== undefined && star <= value;
+          return (
+            <button
+              key={star}
+              type="button"
+              aria-pressed={selected}
+              aria-label={`${star} ${star === 1 ? 'star' : 'stars'}`}
+              className="rating-field__star"
+              data-filled={selected || undefined}
+              onClick={() => onChange(value === star ? undefined : star)}
+            >
+              <StarIcon filled={selected} />
+            </button>
+          );
+        })}
+      </div>
+      {hint ? (
+        <p className="wc-hint" id="character-rating-hint">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -33,6 +33,8 @@ function build(input: Partial<Parameters<typeof buildCharacterTree>[0]>) {
     folders: [],
     collapsed: [],
     query: '',
+    sort: 'name',
+    ratings: {},
     ...input,
   });
 }
@@ -124,6 +126,60 @@ describe('buildCharacterTree', () => {
     test('whitespace is not a search', () => {
       const rows = build({ characters: [character('Elf', 'Fantasy')], query: '   ' });
       expect(shape(rows)).toEqual(['0:[Fantasy] 1', '1:Elf']);
+    });
+  });
+
+  describe('rating sort', () => {
+    test('sorts cards by rating descending within their folder, ties by name', () => {
+      const rows = build({
+        characters: [
+          character('Zoe', '', { avatar: 'Zoe.png' }),
+          character('Adam', '', { avatar: 'Adam.png' }),
+          character('Elf', 'Fantasy', { avatar: 'Elf.png' }),
+        ],
+        folders: ['Fantasy'],
+        sort: 'rating',
+        ratings: { 'Adam.png': 5, 'Zoe.png': 3 },
+      });
+
+      // The folder still leads; inside it, Elf is unrated and sinks below the top level.
+      expect(shape(rows)).toEqual(['0:[Fantasy] 1', '1:Elf', '0:Adam', '0:Zoe']);
+    });
+
+    test('unrated cards come last, alphabetical among themselves', () => {
+      const rows = build({
+        characters: [character('Zed'), character('Ann'), character('Bob')],
+        sort: 'rating',
+        ratings: { 'Bob.png': 1 },
+      });
+
+      expect(shape(rows)).toEqual(['0:Bob', '0:Ann', '0:Zed']);
+    });
+
+    test('a rating tie breaks alphabetically', () => {
+      const rows = build({
+        characters: [character('Zed'), character('Ann')],
+        sort: 'rating',
+        ratings: { 'Zed.png': 4, 'Ann.png': 4 },
+      });
+
+      expect(shape(rows)).toEqual(['0:Ann', '0:Zed']);
+    });
+
+    test('applies to flattened search results too', () => {
+      const rows = build({
+        characters: [
+          character('Elf', 'Fantasy/Elves'),
+          character('Dwarf', 'Fantasy'),
+          character('Zoe'),
+        ],
+        folders: ['Fantasy', 'Fantasy/Elves'],
+        query: 'f',
+        sort: 'rating',
+        ratings: { 'Elf.png': 2 },
+      });
+
+      expect(shape(rows)).toEqual(['0:Elf', '0:Dwarf']);
     });
   });
 });

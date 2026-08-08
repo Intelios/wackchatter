@@ -23,6 +23,7 @@ import {
   migrateLegacyConnection,
   nextConnectionName,
   reassignCharacterDialogueColor,
+  reassignCharacterRating,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
   resetSettingsCache,
@@ -224,6 +225,40 @@ describe('mergeSettings', () => {
     expect(mergeSettings(current, { quickCommands: [] }).quickCommands).toEqual([]);
   });
 
+  test('character ratings replace wholesale and discard out-of-range values', () => {
+    const next = mergeSettings(base(), {
+      characterRatings: { 'Alice.png': 5, 'Bob.png': 1, 'Carol.png': 0, 'Dan.png': 6 } as never,
+    });
+    expect(next.characterRatings).toEqual({ 'Alice.png': 5, 'Bob.png': 1 });
+  });
+
+  test('a malformed ratings patch cannot wipe the map', () => {
+    // The stale-tab case, same as quick commands: `{"characterRatings": null}` must not
+    // erase every rating the user has given.
+    const current = mergeSettings(base(), { characterRatings: { 'Alice.png': 4 } });
+    for (const patch of [{ characterRatings: null }, { characterRatings: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).characterRatings).toEqual({
+        'Alice.png': 4,
+      });
+    }
+  });
+
+  test('a fractional or string rating is dropped rather than reaching the UI', () => {
+    const next = mergeSettings(base(), {
+      characterRatings: { 'Float.png': 2.5, 'String.png': '4', Good: 3 } as never,
+    });
+    expect(next.characterRatings).toEqual({ Good: 3 });
+  });
+
+  test('characterListSort accepts only the two known values', () => {
+    expect(mergeSettings(base(), { characterListSort: 'rating' }).characterListSort).toBe('rating');
+    expect(mergeSettings(base(), { characterListSort: 'name' }).characterListSort).toBe('name');
+    const current = mergeSettings(base(), { characterListSort: 'rating' });
+    for (const patch of [{ characterListSort: 'bogus' }, { characterListSort: null }, {}]) {
+      expect(mergeSettings(current, patch as never).characterListSort).toBe('rating');
+    }
+  });
+
   test('a malformed quick-commands patch cannot wipe the list', () => {
     // The stale-tab case: a body like `{"quickCommands": null}` rides the plain spread
     // unless pinned, and the user's commands would be gone with no way back.
@@ -335,6 +370,34 @@ describe('dialogue colour identity changes', () => {
     expect(removePersonaDialogueColor(current, 'doomed')?.dialogueColors.personas).toEqual({
       kept: null,
     });
+  });
+});
+
+describe('character rating identity changes', () => {
+  test('a character rename carries its rating to the new identity', () => {
+    const current = mergeSettings(base(), {
+      characterRatings: { 'Old.png': 4, 'Other.png': 2 },
+    });
+    const next = reassignCharacterRating(current, 'Old.png', 'New.png');
+
+    expect(next?.characterRatings).toEqual({ 'New.png': 4, 'Other.png': 2 });
+    // A rating for a filename nobody had is nothing to persist.
+    expect(reassignCharacterRating(current, 'Missing.png', 'New.png')).toBeNull();
+  });
+
+  test('deleting a character removes only its rating', () => {
+    const current = mergeSettings(base(), {
+      characterRatings: { doomed: 5, kept: 1 },
+    });
+    expect(reassignCharacterRating(current, 'doomed', null)?.characterRatings).toEqual({
+      kept: 1,
+    });
+  });
+
+  test('an unrated character is indistinguishable from no entry', () => {
+    const current = mergeSettings(base(), { characterRatings: { rated: 3 } });
+    expect(reassignCharacterRating(current, 'rated', null)).not.toBeNull();
+    expect(reassignCharacterRating(current, 'absent', null)).toBeNull();
   });
 });
 

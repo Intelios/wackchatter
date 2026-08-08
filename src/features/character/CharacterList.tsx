@@ -20,6 +20,7 @@ import {
   GripIcon,
   MoreIcon,
   PlusIcon,
+  StarIcon,
   UploadIcon,
 } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
@@ -31,6 +32,11 @@ interface CharacterListProps {
   /** Folder paths from the server, including empty ones. */
   folders: string[];
   collapsedFolders: string[];
+  /** The user's ratings, keyed by avatar filename. Absent means unrated. */
+  ratings: Readonly<Record<string, number>>;
+  /** How the cards are ordered within each folder. */
+  sort: 'name' | 'rating';
+  onSortChange: (sort: 'name' | 'rating') => void;
   selected: string | null;
   loading: boolean;
   error: string | null;
@@ -52,6 +58,9 @@ export function CharacterList({
   characters,
   folders,
   collapsedFolders,
+  ratings,
+  sort,
+  onSortChange,
   selected,
   loading,
   error,
@@ -70,8 +79,16 @@ export function CharacterList({
   const searching = query.trim().length > 0;
 
   const rows = useMemo(
-    () => buildCharacterTree({ characters, folders, collapsed: collapsedFolders, query }),
-    [characters, folders, collapsedFolders, query],
+    () =>
+      buildCharacterTree({
+        characters,
+        folders,
+        collapsed: collapsedFolders,
+        query,
+        sort,
+        ratings,
+      }),
+    [characters, folders, collapsedFolders, query, sort, ratings],
   );
 
   // Matching PromptManager: a small distance threshold so a plain click on the grip is still
@@ -170,6 +187,16 @@ export function CharacterList({
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search characters"
         />
+        <select
+          className="wc-select character-list__sort"
+          value={sort}
+          onChange={(e) => onSortChange(e.target.value as 'name' | 'rating')}
+          aria-label="Sort characters"
+          title="Sort characters"
+        >
+          <option value="name">Name</option>
+          <option value="rating">Rating</option>
+        </select>
       </div>
 
       {message ? <div className="character-list__error">{message}</div> : null}
@@ -229,6 +256,7 @@ export function CharacterList({
                   key={row.character.avatar}
                   character={row.character}
                   depth={row.depth}
+                  rating={ratings[row.character.avatar]}
                   showFolder={searching}
                   draggable={!searching}
                   current={row.character.avatar === selected}
@@ -431,6 +459,8 @@ function RenameField({ initial, onCommit }: { initial: string; onCommit: (name: 
 interface CharacterRowProps {
   character: CharacterSummary;
   depth: number;
+  /** The user's rating for this character, or undefined when unrated. */
+  rating: number | undefined;
   /** Under search the tree is flat, so each match says which folder it came from. */
   showFolder: boolean;
   draggable: boolean;
@@ -442,6 +472,7 @@ interface CharacterRowProps {
 function CharacterRow({
   character,
   depth,
+  rating,
   showFolder,
   draggable,
   current,
@@ -513,6 +544,18 @@ function CharacterRow({
           </span>
         </span>
         <span className="character-card__badges">
+          {rating !== undefined ? (
+            <span
+              className="character-card__stars"
+              role="img"
+              aria-label={`Rated ${rating} out of 5`}
+              title={`Rated ${rating} out of 5`}
+            >
+              {[1, 2, 3, 4, 5].map((star) => (
+                <StarIcon key={star} className="character-card__star" filled={star <= rating} />
+              ))}
+            </span>
+          ) : null}
           {character.hasLorebook ? <span className="badge">Lore</span> : null}
           {character.alternateGreetingCount > 0 ? (
             <span className="badge">+{character.alternateGreetingCount}</span>

@@ -4,6 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBlankCard, mergeCardData, readCard, writeCard } from './card.ts';
 import { updateWorldLinks, updateWorldLinksRecoverable } from './characters.ts';
+import { resetChatStore } from './chats.ts';
+import { closeDatabase } from './db.ts';
+import { DEFAULT_DATA_DIR, ensureDataDirs, setDataDir } from './paths.ts';
+import { cascadeCharacterDelete, cascadeCharacterRename } from './references.ts';
+import { getSettings, resetSettingsCache, saveSettings } from './settings.ts';
 
 /**
  * The same 1x1 transparent PNG characters.ts uses as a carrier for imageless cards. Inlined
@@ -110,5 +115,72 @@ describe('updateWorldLinks', () => {
     await rollback();
     expect(worldOf('Changed.png')).toBe('Doomed');
     expect(worldOf('Unlinked.png')).toBeUndefined();
+  });
+});
+
+/*
+ * The cascade functions touch the settings cache, the chat store and the database — all
+ * process-wide state. Repointing PATHS at a temp directory and resetting the caches keeps
+ * these tests from leaking into every other file (and vice versa), like paths.test.ts.
+ */
+describe('character cascades', () => {
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'wc-cascades-'));
+    setDataDir(dir);
+    ensureDataDirs();
+    resetSettingsCache();
+    resetChatStore();
+  });
+
+  afterEach(() => {
+    closeDatabase();
+    setDataDir(DEFAULT_DATA_DIR);
+    resetSettingsCache();
+    resetChatStore();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a rename carries the rating and dialogue colour to the new identity', () => {
+    saveSettings({
+      characterRatings: { 'Old.png': 4 },
+      dialogueColors: { ...getSettings().dialogueColors, characters: { 'Old.png': '#123456' } },
+    });
+
+    cascadeCharacterRename('Old.png', 'New.png');
+
+    expect(getSettings().characterRatings).toEqual({ 'New.png': 4 });
+    expect(getSettings().dialogueColors.characters).toEqual({ 'New.png': '#123456' });
+  });
+
+  test('a delete removes the rating and dialogue colour with the card', () => {
+    saveSettings({
+      characterRatings: { 'Doomed.png': 5, 'Kept.png': 2 },
+      dialogueColors: { ...getSettings().dialogueColors, characters: { 'Doomed.png': null } },
+    });
+
+    cascadeCharacterDelete('Doomed.png');
+
+    expect(getSettings().characterRatings).toEqual({ 'Kept.png': 2 });
+    expect(getSettings().dialogueColors.characters).toEqual({});
+  });
+
+  test('an unrated character leaves settings untouched', () => {
+    saveSettings({ characterRatings: { 'Other.png': 1 } });
+    const before = getSettings();
+
+    cascadeCharacterRename('Unrated.png', 'Renamed.png');
+    cascadeCharacterDelete('Unrated.png');
+
+    expect(getSettings().characterRatings).toEqual(before.characterRatings);
+  });
+
+  test('a rename rollback restores the rating under the old identity', async () => {
+    saveSettings({ characterRatings: { 'Old.png': 4 } });
+
+    const rollback = cascadeCharacterRename('Old.png', 'New.png');
+    expect(getSettings().characterRatings).toEqual({ 'New.png': 4 });
+
+    await rollback();
+    expect(getSettings().characterRatings).toEqual({ 'Old.png': 4 });
   });
 });

@@ -399,3 +399,21 @@ export function StudioIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * A star, for the character rating. `filled` paints the whole star so a rating reads at a
+ * glance; otherwise it is an outline for the unearned slots.
+ */
+export function StarIcon({ className, filled }: IconProps & { filled?: boolean }) {
+  return (
+    <svg
+      {...base}
+      className={className}
+      aria-hidden="true"
+      fill={filled ? 'currentColor' : 'none'}
+      data-filled={filled || undefined}
+    >
+      <path d="M12 3.5 14.8 9l6 .9-4.35 4.2 1 6L12 17.2l-5.45 2.9 1-6L3.2 9.9l6-.9Z" />
+    </svg>
+  );
+}

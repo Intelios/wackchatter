@@ -60,6 +60,15 @@ export interface AppSettings {
   /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
   dialogueColors: DialogueColorSettings;
   /**
+   * How the user rated each character, keyed by the PNG filename — the same identity the
+   * dialogue colours use. Integers 1–5; an absent key means unrated. Local UI state like
+   * `dialogueColors`: never exported with the card, so a rating neither travels with a
+   * shared card nor is overwritten by an imported one.
+   */
+  characterRatings: Record<string, number>;
+  /** How the character list orders its cards. Rating sorts within each folder, not across. */
+  characterListSort: 'name' | 'rating';
+  /**
    * Character folders the user has collapsed in the list.
    *
    * Stores the collapsed set rather than the expanded one so the default is open: a folder
@@ -116,6 +125,12 @@ export const DEFAULT_DIALOGUE_COLORS: Readonly<DialogueColorSettings> = {
   characters: {},
   personas: {},
 };
+
+/** A character's rating is an integer 1–5. Absent means unrated. */
+export type CharacterRating = 1 | 2 | 3 | 4 | 5;
+
+export const CHARACTER_RATING_MIN = 1 as const;
+export const CHARACTER_RATING_MAX = 5 as const;
 
 /**
  * Guided Generations settings.
@@ -223,6 +238,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     characters: {},
     personas: {},
   },
+  characterRatings: {},
+  characterListSort: 'name',
   collapsedCharacterFolders: [],
   quickCommands: [],
   regexScripts: [],
