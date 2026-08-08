@@ -251,6 +251,16 @@ export function useChat(options: UseChatOptions): UseChat {
   const personaIdRef = useRef(personaId);
   personaIdRef.current = personaId;
 
+  // Chat initialization is keyed on the selected character, not on callback or collection
+  // identities from App. App passes the persona adoption handler inline, and persona edits
+  // replace this array; putting either in loadChat's dependency list makes the init effect
+  // reload the open chat from disk on an unrelated render — including gen/started, which
+  // resets the generation to idle and causes every arriving stream frame to be ignored.
+  const personasRef = useRef(personas);
+  personasRef.current = personas;
+  const onPersonaSwitchRef = useRef(onPersonaSwitch);
+  onPersonaSwitchRef.current = onPersonaSwitch;
+
   // The card autosaves without the identity changing, so the chat-init effect must not key
   // on it — it would re-run on every keystroke. `cardLoaded` is the only stable signal; the
   // card itself is read from here at the moment creation actually needs it, so the greeting
@@ -308,17 +318,14 @@ export function useChat(options: UseChatOptions): UseChat {
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the transcript only
   const messages = useMemo(() => toChatMessages(state), [state.messages]);
 
-  const loadChat = useCallback(
-    (chat: Chat) => {
-      // Loading a chat adopts its recorded persona as the app-wide current one — the
-      // chat wins, and the settings snapshot follows it. A legacy chat without a key is
-      // stamped with the current persona instead, which changes nothing to adopt.
-      const adopted = adoptedPersona(chat, personaIdRef.current, personas);
-      if (adopted.changed) onPersonaSwitch?.(adopted.effective);
-      dispatch({ type: 'chat/loaded', chat, personaId: adopted.effective });
-    },
-    [onPersonaSwitch, personas],
-  );
+  const loadChat = useCallback((chat: Chat) => {
+    // Loading a chat adopts its recorded persona as the app-wide current one — the
+    // chat wins, and the settings snapshot follows it. A legacy chat without a key is
+    // stamped with the current persona instead, which changes nothing to adopt.
+    const adopted = adoptedPersona(chat, personaIdRef.current, personasRef.current);
+    if (adopted.changed) onPersonaSwitchRef.current?.(adopted.effective);
+    dispatch({ type: 'chat/loaded', chat, personaId: adopted.effective });
+  }, []);
 
   // --- Persona ---------------------------------------------------------------
 
@@ -571,6 +578,7 @@ export function useChat(options: UseChatOptions): UseChat {
       // Empty until the stream starts, so a failure on the way to the provider settles as
       // "nothing came back" and the reducer removes the placeholder it added.
       let text = '';
+      let reasoning = '';
 
       try {
         const target = started.messages.find((m) => m.id === started.streamingId);
@@ -691,6 +699,7 @@ export function useChat(options: UseChatOptions): UseChat {
             onFirstToken: () => dispatch({ type: 'gen/streaming' }),
             onTick: (streamState) => {
               text = streamState.content;
+              reasoning = streamState.reasoning;
               stream.set(streamState.content, streamState.reasoning);
             },
           },
@@ -712,8 +721,14 @@ export function useChat(options: UseChatOptions): UseChat {
       } catch (error) {
         stream.end();
         // Whatever arrived before the failure is kept, as SillyTavern does.
-        if (controller.signal.aborted) dispatch({ type: 'gen/aborted', text });
-        else dispatch({ type: 'gen/failed', message: (error as Error).message, text });
+        if (controller.signal.aborted) dispatch({ type: 'gen/aborted', text, reasoning });
+        else
+          dispatch({
+            type: 'gen/failed',
+            message: (error as Error).message,
+            text,
+            reasoning,
+          });
       } finally {
         abortRef.current = null;
         void refreshChats();

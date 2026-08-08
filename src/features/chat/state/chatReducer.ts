@@ -124,8 +124,8 @@ export type ChatAction =
   | { type: 'gen/inspected'; inspection: PromptInspection }
   | { type: 'gen/streaming' }
   | { type: 'gen/finished'; text: string; extra?: MessageExtra }
-  | { type: 'gen/aborted'; text: string }
-  | { type: 'gen/failed'; message: string; text?: string }
+  | { type: 'gen/aborted'; text: string; reasoning?: string }
+  | { type: 'gen/failed'; message: string; text?: string; reasoning?: string }
   | { type: 'error/cleared' };
 
 function replaceMessage(
@@ -162,7 +162,9 @@ function settle(state: ChatState, text: string, extra?: MessageExtra): ChatState
   if (index === -1) return { ...state, ...settled };
 
   // Anything the model actually produced is kept, even from an abort or an error.
-  if (text) {
+  // Thinking models can legitimately finish (or hit their length limit) before emitting
+  // ordinary content; their reasoning is still a visible result and must not disappear.
+  if (text || extra?.reasoning) {
     return {
       ...state,
       ...settled,
@@ -421,13 +423,25 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'gen/aborted':
       if (state.status === 'idle') return state;
-      return settle(state, action.text, action.text ? { truncated: true } : undefined);
+      return settle(
+        state,
+        action.text,
+        action.text || action.reasoning
+          ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+          : undefined,
+      );
 
     case 'gen/failed': {
       if (state.status === 'idle') return state;
       const text = action.text ?? '';
       return {
-        ...settle(state, text, text ? { truncated: true } : undefined),
+        ...settle(
+          state,
+          text,
+          text || action.reasoning
+            ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+            : undefined,
+        ),
         error: action.message,
       };
     }

@@ -235,6 +235,22 @@ describe('sending', () => {
     assertConsistent(state);
   });
 
+  test('a reasoning-only finish keeps the assistant message', () => {
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Think.' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      { type: 'gen/finished', text: '', extra: { reasoning: 'A complete train of thought.' } },
+    );
+
+    expect(state.messages.length).toBe(3);
+    expect(currentText(last(state))).toBe('');
+    expect(last(state).swipe_info[0]?.extra?.reasoning).toBe('A complete train of thought.');
+    expect(state.status).toBe('idle');
+    assertConsistent(state);
+  });
+
   test('the placeholder starts empty so it excludes itself from its own prompt', () => {
     // assemble.ts skips blank content, which is what keeps the message being generated
     // out of the history it is generated from.

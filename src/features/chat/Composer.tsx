@@ -84,7 +84,9 @@ export function Composer({
 
   const completion = slashCompletion(text);
   const suggestions = completion?.suggestions ?? [];
-  const slashOpen = Boolean(completion && suggestions.length > 0 && !slashDismissed && !disabled);
+  const slashOpen = Boolean(
+    completion && suggestions.length > 0 && !slashDismissed && !disabled && !busy,
+  );
   const completing = Boolean(completion?.completing && slashOpen);
   const activeIndex = completing ? Math.min(slashIndex, suggestions.length - 1) : -1;
 
@@ -266,7 +268,7 @@ export function Composer({
             className="composer__input"
             value={text}
             rows={1}
-            disabled={disabled}
+            disabled={disabled || busy}
             placeholder={placeholder}
             onChange={(event) => {
               setText(event.target.value);

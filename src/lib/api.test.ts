@@ -84,6 +84,27 @@ describe('streamGenerate', () => {
     expect(state.error).toBeUndefined();
   });
 
+  test('reasoning starts the visible stream before ordinary content arrives', async () => {
+    globalThis.fetch = (async () =>
+      sseResponse([
+        JSON.stringify({ choices: [{ delta: { content: '', reasoning: 'Thinking…' } }] }),
+        JSON.stringify({ choices: [{ delta: { content: 'answer' } }] }),
+      ])) as unknown as typeof fetch;
+
+    const ticks: string[] = [];
+    let firstToken = 0;
+    await streamGenerate({}, signal, {
+      onFirstToken: () => {
+        firstToken += 1;
+      },
+      onTick: (state) => ticks.push(`${state.reasoning}|${state.content}`),
+    });
+
+    expect(firstToken).toBe(1);
+    expect(ticks[0]).toBe('Thinking…|');
+    expect(ticks.at(-1)).toBe('Thinking…|answer');
+  });
+
   test('an error frame inside a 200 stream throws', async () => {
     globalThis.fetch = (async () =>
       sseResponse([
