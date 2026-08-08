@@ -72,8 +72,30 @@ export function Composer({
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
+
+  /**
+   * The input that kicked off a generation, or null when the busy flag did not start
+   * here — a summary from the chat menu, a regenerate from the transcript.
+   *
+   * The textarea is disabled while a generation runs, and a disabled element cannot hold
+   * focus: the browser drops it the moment `disabled` lands, and nothing brings it back.
+   * Snapshot where the user was working at the moment they sent, then on settle give the
+   * input back — unless they moved to something outside the composer while waiting,
+   * which is a choice to respect rather than fight.
+   */
+  const focusBeforeGenerate = useRef<Element | null>(null);
+
+  useEffect(() => {
+    if (busy || !focusBeforeGenerate.current) return;
+    const active = document.activeElement;
+    if (active === document.body || active === null || rootRef.current?.contains(active)) {
+      textarea.current?.focus({ preventScroll: true });
+    }
+    focusBeforeGenerate.current = null;
+  }, [busy]);
 
   // --- Slash command autocomplete -------------------------------------------
 
@@ -186,9 +208,14 @@ export function Composer({
   async function submit() {
     const trimmed = text.trim();
     if (!trimmed || busy || disabled) return;
+    // The textarea is about to be disabled, which drops focus with nowhere to hand it to.
+    focusBeforeGenerate.current = document.activeElement;
     const failure = await onSend(trimmed);
     if (failure) {
       setError(failure);
+      // No generation ran, so nothing disabled the input — the snapshot must not leak
+      // into a later busy cycle it had nothing to do with.
+      focusBeforeGenerate.current = null;
       return;
     }
     setError(null);
@@ -209,11 +236,12 @@ export function Composer({
   function guided(action: (text: string) => void) {
     const trimmed = text.trim();
     if (!trimmed || busy || disabled) return;
+    focusBeforeGenerate.current = document.activeElement;
     action(trimmed);
   }
 
   return (
-    <div className="composer">
+    <div className="composer" ref={rootRef}>
       {error ? (
         <div className="composer__error" role="alert">
           {error}
