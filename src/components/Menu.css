@@ -29,7 +29,8 @@
   color: var(--wc-text);
   transition:
     background var(--wc-duration-fast) ease,
-    color var(--wc-duration-fast) ease;
+    color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
 }
 
 .menu__item:hover:not(:disabled),
@@ -40,6 +41,11 @@
 .menu__item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* The press, matching the app's buttons. */
+.menu__item:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .menu__item[data-danger]:hover:not(:disabled),
@@ -150,6 +156,34 @@
   border-radius: var(--wc-radius);
   background: var(--wc-surface-popup);
   box-shadow: var(--wc-shadow);
+  /* Mounted on open, so the entrance plays once. The flyout is positioned with
+     left/top (never transform), so a transform here cannot fight the placement. */
+  animation: wc-flyout-in var(--wc-duration) var(--wc-ease);
+}
+
+@keyframes wc-flyout-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--wc-space-1) * -1));
+  }
+}
+
+/* Opening to the left grows the box back toward the item, so it enters from that side. */
+.menu__submenu[data-side="left"] .menu__submenu-box {
+  animation-name: wc-flyout-in-left;
+}
+
+@keyframes wc-flyout-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(var(--wc-space-1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu__submenu-box {
+    animation: none;
+  }
 }
 
 /* Opening to the left grows the box back toward the item, not off the screen. */

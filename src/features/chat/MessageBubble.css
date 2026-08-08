@@ -347,6 +347,28 @@
 }
 
 /*
+ * The thinking's entrance. The body is hidden by the details element while closed, so
+ * the animation replays each time the box opens — and only then, never on mount of the
+ * message itself. A short slide keeps the reveal from reading as a flat pop.
+ */
+.reasoning[open] .reasoning__body {
+  animation: wc-reasoning-in var(--wc-duration) var(--wc-ease);
+}
+
+@keyframes wc-reasoning-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--wc-space-1) * -1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning[open] .reasoning__body {
+    animation: none;
+  }
+}
+
+/*
  * Editing lives inside the expanded box, so the pencil only exists when there is
  * something to edit — and stays out of the message's own edit mode.
  *

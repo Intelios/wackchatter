@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Backdrop } from '../components/Backdrop.tsx';
 import type { PanelSpec } from './panels.tsx';
 import './AppShell.css';
 
@@ -221,15 +222,9 @@ export function AppShell<L extends string, R extends string>({
        * A real element rather than a ::before, so React can set backgroundImage directly.
        * That matters for correctness, not tidiness: sanitizeFilename permits parentheses,
        * so "sunset (2).jpg" would break a url() built from a CSS variable. Going through
-       * backgroundApi.url() escapes it.
+       * backgroundApi.url() escapes it. Backdrop also crossfades between pictures.
        */}
-      {backgroundUrl ? (
-        <div
-          className="shell__backdrop"
-          aria-hidden="true"
-          style={{ backgroundImage: `url("${backgroundUrl}")` }}
-        />
-      ) : null}
+      <Backdrop url={backgroundUrl} />
       {backgroundUrl ? <div className="shell__scrim" aria-hidden="true" /> : null}
 
       <div className="shell__bar">

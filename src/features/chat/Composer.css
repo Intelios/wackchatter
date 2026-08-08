@@ -55,8 +55,24 @@
   border-radius: var(--wc-radius);
   background: var(--wc-surface-popup);
   box-shadow: var(--wc-shadow);
+  /* Mounted on open, so the entrance plays once on the first paint. Grows upward from
+     the input, so it enters from below. */
+  animation: wc-slash-in var(--wc-duration) var(--wc-ease);
   /* No z-index needed: the composer is a later sibling than the transcript, so this
      already paints above it. */
+}
+
+@keyframes wc-slash-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wc-space-1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer__slash {
+    animation: none;
+  }
 }
 
 .composer__slash-item {
@@ -179,7 +195,8 @@
   color: var(--wc-text-muted);
   transition:
     border-color var(--wc-duration-fast) ease,
-    color var(--wc-duration-fast) ease;
+    color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
 }
 
 .composer .popover__trigger:hover,

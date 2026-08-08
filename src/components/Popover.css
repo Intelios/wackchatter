@@ -23,8 +23,44 @@
   border-radius: var(--wc-radius);
   background: var(--wc-surface-popup);
   box-shadow: var(--wc-shadow);
+  /*
+   * The entrance. A popup is mounted on open, so the animation plays on the first paint
+   * and never replays — no state bump needed. The popup is positioned with top/bottom
+   * (never transform), so a transform here cannot fight the flip measurement.
+   *
+   * The direction comes from the side the popup opens on: a popup on `data-side="top"`
+   * grows upward, so it enters from below; one on `data-side="bottom"` grows downward
+   * and enters from above. The scale is a hair of zoom so the fade does not read as a
+   * flat dissolve.
+   */
+  animation: wc-pop-in var(--wc-duration) var(--wc-ease);
   /* No z-index needed: the composer is a later sibling than the transcript, so this
      already paints above it. */
+}
+
+@keyframes wc-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wc-space-1)) scale(0.98);
+  }
+}
+
+.popover[data-side="bottom"] .popover__popup {
+  animation-name: wc-pop-in-down;
+}
+
+@keyframes wc-pop-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--wc-space-1) * -1)) scale(0.98);
+  }
+}
+
+/* A 0ms animation would still flash its `from` frame on mount. */
+@media (prefers-reduced-motion: reduce) {
+  .popover__popup {
+    animation: none;
+  }
 }
 
 /*

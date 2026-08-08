@@ -50,6 +50,22 @@
   color: var(--wc-danger);
   font-size: var(--wc-text-sm);
   flex-shrink: 0;
+  /* Mounted when a failure lands, so the entrance plays once. A failure is an event,
+     not a state — it should arrive, not just appear. */
+  animation: wc-error-in var(--wc-duration) var(--wc-ease);
+}
+
+@keyframes wc-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--wc-space-1) * -1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-view__error {
+    animation: none;
+  }
 }
 
 .chat-view__error-text {
