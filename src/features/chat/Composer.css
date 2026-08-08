@@ -39,6 +39,104 @@
   display: flex;
 }
 
+/*
+ * Generating: a lime light running along the composer's border, bouncing edge to edge.
+ *
+ * On the field rather than the textarea, because a textarea has no pseudo-elements to
+ * hang it on. The field is exactly the input's box — the input is its only in-flow child
+ * and fills it — so `inset: 0` lands on the input's border box without measuring.
+ *
+ * The streak is this element's own background rather than a child, which is what keeps it
+ * clipped: a background cannot escape its element's border-radius, so the line follows the
+ * rounded corners instead of overhanging them. That is also why the shape below is pinned
+ * to neutral while busy — the two radii have to agree, and only the input's animate.
+ */
+.composer[data-busy] .composer__field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--wc-radius);
+  pointer-events: none;
+  /* The ring's thickness — this is what the mask below spares. Deliberately thicker than
+     the 1px border it rides on: at exactly 1px the sweep reads as the border quietly
+     changing colour rather than as a light travelling along it. */
+  padding: 2px;
+  /* Transparent at both ends, so the visible line is the narrow bright core and the rest
+     is falloff — a light with a glow, not a bar with edges. */
+  background-image: linear-gradient(90deg, transparent, var(--wc-accent), transparent);
+  background-repeat: no-repeat;
+  background-size: 12% 100%;
+  /*
+   * Border-only, via the standard two-layer mask trick: one mask layer fills the border
+   * box, a second fills the CONTENT box, and excluding the second from the first leaves
+   * exactly the padding ring. Doing it with a mask rather than an actual border is what
+   * lets the gradient sweep along the ring — a border takes a colour, not a moving image —
+   * and the rounded corners come along for free, since the mask is shaped by this
+   * element's own border-radius.
+   *
+   * The -webkit- pair first and the standard pair last, so modern engines take the
+   * unprefixed rules and Safari still gets a ring instead of a filled box.
+   */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  /*
+   * Screen rather than plain alpha. Laid over the dark border at partial opacity, the lime
+   * averages toward its own darkened self — a murky olive that reads as grime on the edge.
+   * Screening adds light instead, so the core stays the actual accent and the falloff
+   * behaves like a light travelling along the border rather than a decal sliding over it.
+   */
+  mix-blend-mode: screen;
+  /* Higher than the filled version ran at: a 2px ring is a fraction of the area a
+     full-height streak covered, and needs the intensity back to read at all. */
+  opacity: 0.95;
+  /*
+   * `alternate` is the bounce: one pass out, one pass back, 1.1s each way. The eased curve
+   * is what sells the turnaround — linear would reverse on a dime and read as a machine
+   * scanning, where easing lets the streak decelerate into the edge and pull away again.
+   * Symmetric on purpose, since `alternate` runs the curve backwards on the return leg.
+   */
+  animation: wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+/*
+ * Corner to corner — measured on the BRIGHT CORE, not on the streak's leading edge.
+ *
+ * A percentage background-position resolves against the LEFTOVER width, so 0%/100% sit the
+ * streak flush against each end with the whole gradient inside the box. That looks right
+ * until you watch it: what the eye tracks is the core, the gradient's midpoint, and that
+ * still sits half a streak-width from the end. The light visibly stopped short.
+ *
+ * So the travel runs past both ends by exactly that half-width. Solving
+ * `P·(100 − w) + w/2 = 0` and `= 100` for a streak `w` percent wide gives ∓(w/2)/(100 − w);
+ * at w = 12 that is 6.82%. Recompute both numbers if the width above changes.
+ *
+ * The overhanging half of the gradient is simply clipped, which is the point: at each
+ * turnaround the core sits exactly on the end cap with its glow spilling inward, so the
+ * light reads as reaching the corner and bouncing off it rather than shying away from it.
+ */
+@keyframes wc-composer-scan {
+  from {
+    background-position: -6.82% 0;
+  }
+  to {
+    background-position: 106.82% 0;
+  }
+}
+
+/* The Stop button already says a generation is running, so losing the streak costs no
+   information — and a lime bar parked mid-box would read as a defect. */
+@media (prefers-reduced-motion: reduce) {
+  .composer[data-busy] .composer__field::after {
+    display: none;
+  }
+}
+
 /* The autocomplete box, floating above the composer and over the transcript. */
 .composer__slash {
   position: absolute;
@@ -128,6 +226,28 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * The morph.
+ *
+ * The corner radius is two registered properties rather than one `border-radius`, because
+ * a single value can only ever tween circle-to-circle: the box would round, but it would
+ * not *deform*. Given the horizontal and vertical radii their own clocks, the corners
+ * spend the flight as ellipses — pulled wide while the vertical radius is still catching
+ * up — which is the whole effect. `@property` is what makes them animatable at all; an
+ * unregistered custom property is a token, and tokens jump.
+ */
+@property --wc-composer-rx {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 8px;
+}
+
+@property --wc-composer-ry {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 8px;
+}
+
 .composer__input {
   flex: 1;
   min-width: 0;
@@ -137,14 +257,137 @@
   padding: var(--wc-space-2) var(--wc-space-3);
   background: var(--wc-surface);
   border: 1px solid var(--wc-border);
-  border-radius: var(--wc-radius);
   color: var(--wc-text);
   font-family: inherit;
   font-size: var(--wc-text-base);
   line-height: 1.5;
   resize: none;
   overflow-y: auto;
-  transition: border-color var(--wc-duration-fast) ease;
+
+  /* Half the row height is exactly a pill on an empty composer, and stays one if the type
+     scale moves. The horizontal radius settles a shade wider than the vertical so even the
+     resting shape is a stretched capsule rather than a plain stadium — the deform reads as
+     where the box lives, not as a trick it does on the way in. */
+  --wc-composer-round-ry: calc(var(--wc-composer-row) / 2);
+  --wc-composer-round-rx: calc(var(--wc-composer-row) / 2 + 3px);
+  --wc-composer-rx: var(--wc-radius);
+  --wc-composer-ry: var(--wc-radius);
+  transform-origin: center;
+  /*
+   * The lag between the two radii IS the deform, so it has to be wide enough to read: the
+   * horizontal snaps in ~260ms and overshoots its target, while the vertical takes well
+   * over twice as long on an expo-out curve. Through the middle of the flight the corners
+   * peak at about a 1.5:1 ellipse — visibly stretched sideways — before easing back to the
+   * 1.15:1 they rest at. Closer durations do interpolate, but they read as a box whose
+   * corners simply got rounder, which is not the effect.
+   *
+   * The vertical's long tail costs nothing perceptually: an expo-out has spent most of its
+   * distance by 200ms and only creeps the last pixel after that.
+   */
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    --wc-composer-rx 260ms cubic-bezier(0.34, 1.7, 0.64, 1),
+    --wc-composer-ry 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/*
+ * `.composer .composer__input` rather than `.composer__input`, for the same reason the
+ * buttons below are ancestor-qualified: base.css hands every `:focus-visible` element a
+ * 4px radius to shape its focus ring, at equal specificity and later in the bundle — and
+ * a text field matches `:focus-visible` on a plain mouse click, not just on a tab. Left
+ * unqualified, the whole morph is overruled at exactly the moment it exists for.
+ */
+.composer .composer__input {
+  border-radius: var(--wc-composer-rx) / var(--wc-composer-ry);
+}
+
+/* Composing. Set from React rather than `:focus`, because sending has to drop the shape
+   while the cursor is still in the box. */
+.composer__input[data-shape="round"] {
+  --wc-composer-rx: var(--wc-composer-round-rx);
+  --wc-composer-ry: var(--wc-composer-round-ry);
+  animation: wc-composer-swell 340ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+/*
+ * A generation started elsewhere — a summary, a re-roll from the transcript — can turn
+ * `busy` on while the cursor is still sitting in a rounded box. Relaxing the shape from
+ * here, rather than trusting the blur that disabling the textarea fires, keeps the streak's
+ * clip and the input's corners in agreement whatever the browser does about that blur. It
+ * rides the normal transition, so it eases down rather than snapping.
+ */
+.composer[data-busy] .composer__input {
+  --wc-composer-rx: var(--wc-radius);
+  --wc-composer-ry: var(--wc-radius);
+}
+
+/*
+ * One-shot on send: the radii wobble past neutral and settle, so the box reads as relaxing
+ * rather than as snapping back. Keyframes beat the transition while they run, and land on
+ * exactly the values the neutral state holds — so there is nothing to snap to when the
+ * animation lifts.
+ *
+ * A sinusoidal in-out rather than `--wc-ease`, and the only place in the app that departs
+ * from the shared curve. A timing function applies to every keyframe SEGMENT, not to the
+ * animation as a whole, so the app's sharply decelerating curve slams each waypoint and
+ * then dwells there: four little arrivals instead of one wobble. In-out eases both sides
+ * of every segment, so the shape flows through its extremes and the keyframe values carry
+ * the motion.
+ */
+.composer__input[data-settling] {
+  animation: wc-composer-settle 460ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+@keyframes wc-composer-swell {
+  0% {
+    transform: scale(1, 1);
+  }
+  40% {
+    /* Vertical does the work. The horizontal is near-nothing on purpose: the same
+       percentage that is 2px on a 40px-tall box is 14px on an 800px-wide one. */
+    transform: scale(0.998, 1.055);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+@keyframes wc-composer-settle {
+  0% {
+    --wc-composer-rx: var(--wc-composer-round-rx);
+    --wc-composer-ry: var(--wc-composer-round-ry);
+    transform: scale(1, 1);
+  }
+  /* Pulled wide and flattened — the box letting go. */
+  30% {
+    --wc-composer-rx: calc(var(--wc-composer-round-rx) * 1.35);
+    --wc-composer-ry: calc(var(--wc-composer-round-ry) * 0.45);
+    transform: scale(1.004, 0.955);
+  }
+  /* Past neutral the other way, tall and narrow, before it settles. */
+  62% {
+    --wc-composer-rx: calc(var(--wc-radius) * 0.5);
+    --wc-composer-ry: calc(var(--wc-radius) * 1.5);
+    transform: scale(0.999, 1.012);
+  }
+  100% {
+    --wc-composer-rx: var(--wc-radius);
+    --wc-composer-ry: var(--wc-radius);
+    transform: scale(1, 1);
+  }
+}
+
+/* Opt out entirely rather than at 0ms: a shape that teleports between a rectangle and a
+   pill is worse than one that never moves. */
+@media (prefers-reduced-motion: reduce) {
+  .composer__input,
+  .composer__input[data-shape="round"],
+  .composer__input[data-settling] {
+    --wc-composer-rx: var(--wc-radius);
+    --wc-composer-ry: var(--wc-radius);
+    transition: border-color var(--wc-duration-fast) ease;
+    animation: none;
+  }
 }
 
 .composer__input:hover:not(:disabled) {

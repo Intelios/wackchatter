@@ -71,6 +71,18 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Whether the input is wearing its composing shape — see the morph in Composer.css.
+   *
+   * State rather than `:focus`, because the two states are not the same one: sending has
+   * to relax the box back to neutral while the cursor is still sitting in it, and only
+   * touching it again should round it back. Anything that means "I am working in here"
+   * rounds it: focus, a click, a keystroke.
+   */
+  const [rounded, setRounded] = useState(false);
+  /** Runs the one-shot settle keyframes, which override the shape transition while they play. */
+  const [settling, setSettling] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
@@ -96,6 +108,19 @@ export function Composer({
     }
     focusBeforeGenerate.current = null;
   }, [busy]);
+
+  /**
+   * Retire the settle animation on a timer rather than on `animationend`.
+   *
+   * The event is the obvious hook and the wrong one: under reduced motion the animation is
+   * `none`, so it never fires and the flag sticks forever. A timer past the animation's
+   * length is right in both worlds.
+   */
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setTimeout(() => setSettling(false), 520);
+    return () => clearTimeout(timer);
+  }, [settling]);
 
   // --- Slash command autocomplete -------------------------------------------
 
@@ -219,6 +244,10 @@ export function Composer({
       return;
     }
     setError(null);
+    // Sent: let the shape relax. A failure returns above without this, since the draft is
+    // still yours to work on and the box should still look like it.
+    setRounded(false);
+    setSettling(true);
     // Only clear what was sent: while a slow command (reload) was still running the user
     // may have started typing the next message, and that draft is theirs to keep.
     setText((current) => (current.trim() === trimmed ? '' : current));
@@ -241,7 +270,7 @@ export function Composer({
   }
 
   return (
-    <div className="composer" ref={rootRef}>
+    <div className="composer" ref={rootRef} data-busy={busy || undefined}>
       {error ? (
         <div className="composer__error" role="alert">
           {error}
@@ -299,13 +328,23 @@ export function Composer({
             spellCheck={true}
             disabled={disabled || busy}
             placeholder={placeholder}
+            data-shape={rounded ? 'round' : 'neutral'}
+            data-settling={settling || undefined}
+            onFocus={() => setRounded(true)}
+            // Focus alone would leave the box flat after a send, since sending never took
+            // the cursor away — clicking back into it has to count as picking it up again.
+            onPointerDown={() => setRounded(true)}
             onChange={(event) => {
               setText(event.target.value);
               setError(null);
               setSlashDismissed(false);
               setSlashIndex(0);
+              setRounded(true);
             }}
-            onBlur={() => setSlashDismissed(true)}
+            onBlur={() => {
+              setSlashDismissed(true);
+              setRounded(false);
+            }}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={slashOpen}
