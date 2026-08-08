@@ -268,6 +268,7 @@ export function Composer({
             className="composer__input"
             value={text}
             rows={1}
+            spellCheck={true}
             disabled={disabled || busy}
             placeholder={placeholder}
             onChange={(event) => {
