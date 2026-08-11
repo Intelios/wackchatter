@@ -1,0 +1,123 @@
+/*
+ * The crash screen. Same card, whether it fills the window or one panel.
+ *
+ * Ordinary chrome, deliberately: surface, border, one red element. A screen that shouts
+ * reads as data loss, and nothing has been lost — the failure is that this render threw,
+ * and the card's job is to say so and hand over something copyable.
+ */
+
+.crash {
+  display: flex;
+  /* Both parents — .chat-column and .panel__inner — are column flex containers; the root
+     is not. Sizing for both means the item stretches wherever it lands. */
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  padding: var(--wc-space-5);
+  overflow-y: auto;
+}
+
+/* Auto margins centre it and, unlike align-items, never clip the top when the card is
+   taller than the window — which the report, opened, can be. */
+.crash__card {
+  width: 100%;
+  max-width: var(--wc-crash-width);
+  margin: auto;
+  padding: var(--wc-space-5);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  background: var(--wc-surface);
+  box-shadow: var(--wc-shadow);
+  /* A failure is an event, not a state — it should arrive rather than just be there. */
+  animation: wc-crash-in var(--wc-duration) var(--wc-ease);
+}
+
+@keyframes wc-crash-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wc-space-2));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crash__card {
+    animation: none;
+  }
+}
+
+.crash__eyebrow {
+  margin-bottom: var(--wc-space-1);
+  color: var(--wc-danger);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.crash__title {
+  font-size: var(--wc-text-xl);
+}
+
+.crash__lede {
+  margin-top: var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+/* The error itself, in the app's existing error dress — see .chat-view__error-text. */
+.crash__error {
+  margin-top: var(--wc-space-4);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+  line-height: var(--wc-code-line-height);
+  overflow-wrap: anywhere;
+}
+
+.crash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  margin-top: var(--wc-space-4);
+}
+
+.crash__details {
+  margin-top: var(--wc-space-4);
+}
+
+.crash__details > summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+}
+
+.crash__report {
+  max-height: var(--wc-crash-report-height);
+  margin: var(--wc-space-2) 0 0;
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-bg);
+  color: var(--wc-text-muted);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  line-height: var(--wc-code-line-height);
+  /* Wrapped, not scrolled sideways: this is text to select and copy by hand when the
+     clipboard is unavailable, and a horizontal scrollbar hides half of it. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  user-select: text;
+}
+
+.crash__hint {
+  margin-top: var(--wc-space-3);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}

@@ -131,6 +131,12 @@
   --wc-measure: 860px;
   /* Ceiling for lists that would otherwise run the length of the panel. */
   --wc-scroll-cap: 420px;
+  /* The crash screen. Narrower than the transcript's measure on purpose: a stack trace is
+     not prose, and long lines of it are harder to scan, not easier. */
+  --wc-crash-width: 620px;
+  /* Its folded-open report. Tall enough to show the error and the first frames, short
+     enough that the buttons above it stay on screen. */
+  --wc-crash-report-height: 240px;
   --wc-studio-rail-width: 200px;
   --wc-studio-inspector-width: 300px;
   --wc-studio-canvas-width: 900px;
