@@ -18,28 +18,50 @@ Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
 - **User Settings** — backgrounds, glass effects, dialogue colors, all themable from one token file
 - **Movable library** — keep your data anywhere (external drive, synced folder), changed from the UI with no restart
 
-## Getting started
+## Install
 
-Requires [Bun](https://bun.sh) 1.x.
+Requires [Bun](https://bun.sh) 1.2 or newer — `curl -fsSL https://bun.sh/install | bash`, or
+`brew install oven-sh/bun/bun`. On Windows: `winget install Oven-sh.Bun`.
+
+```sh
+git clone https://github.com/Intelios/wackchatter.git
+cd wackchatter
+./start.sh
+```
+
+On Windows, run `Start.bat` instead.
+
+The launcher installs dependencies, builds the frontend and opens the app. It does both on
+every launch — together they take about a second — so there is never a build step to remember
+and never a stale bundle to explain.
+
+On first run, add a provider API key in **Connection** (left panel) and pick a model. Character
+cards (`.png`) drop into `data/characters/` or import via the Characters panel.
+
+### Updating
+
+```sh
+./update.sh
+```
+
+`Update.bat` on Windows. It is `git pull` followed by `./start.sh`, and doing those two by hand
+is exactly equivalent. Your library is gitignored, so characters, chats, presets and API keys
+are invisible to git and survive every update.
+
+Environment variables: `WC_PORT` (port, default 8787), `WC_DATA_DIR` (pins the data folder and
+locks the in-app setting), `WC_NO_OPEN=1` (don't launch the browser).
+
+## Development
 
 ```sh
 bun install
-bun run dev:server   # API on :8787
-bun run dev:client   # Vite on :5173 (open this URL)
+bun run dev          # API on :8787 + Vite on :5173 (open this URL)
 ```
 
-Or run the whole thing in one command: `bun run dev`.
-
-Production:
-
-```sh
-bun run build        # typecheck + Vite build to dist/
-bun run start        # serves dist/ + API on one port, opens the browser
-```
-
-Environment variables: `WC_PORT` (API port), `WC_DATA_DIR` (pins the data folder and locks the in-app setting), `WC_NO_OPEN=1` (don't launch browser).
-
-On first run, add a provider API key in **Connection** (left panel) and pick a model. Character cards (`.png`) drop into `data/characters/` or import via the Characters panel.
+`bun run dev:server` and `bun run dev:client` run the two halves separately. `bun run build`
+typechecks and builds; `bun run start` serves the built app the way `start.sh` does. The
+launcher deliberately uses `build:app`, which skips `tsc --noEmit` — a type error should stop
+a commit, not stop a user from opening the app.
 
 ## Data
 
@@ -111,9 +133,3 @@ src/       React app: three-column layout, panels for Connection/Prompts/Inspect
 - **The server never builds a prompt.** Assembly happens in the browser (like SillyTavern), so the server stays dumb and fast and the prompt inspector shows exactly what was sent.
 - **No blocking modals.** The chat stays live while anything else is open.
 - **Deliberate divergences from SillyTavern** (documented in `AGENTS.md`): failed regenerates restore alternates instead of destroying the swipe array, real token usage is available opt-in, migration rules all run, and unsupported World Info positions are folded rather than dropped.
-
-## Status
-
-In early development (v0.8). Not planned: impersonate, group chats, instruct mode, extensions, image generation, TTS, local models.
-
-Format and behavioural rules are pinned in `AGENTS.md` — read it before touching card, preset, or World Info code.

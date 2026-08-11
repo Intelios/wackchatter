@@ -605,6 +605,18 @@ regex keys are the escape hatches.
 - **An editor that takes over its panel, not one appended below it.** `CharacterEditor`
   and `PromptEditor` both replace their panel's contents and offer a back button. Stacking
   an editor under a long list means scrolling to the field and back for every edit.
+- **Error boundaries wrap the root and each region of the shell.** React unmounts the whole
+  tree when a render throws and nothing catches it, so the unguarded failure mode is a black
+  window with no message — undebuggable from a user report, and reproducible on reload when
+  the cause is a file on disk. `ErrorBoundary` (root in `main.tsx`, one each around the left
+  panel, the chat and the right panel in `App`) renders a card whose real payload is the
+  **copyable report**: build, browser, what threw, React's component stack, and the last few
+  errors the global handlers in `lib/errorLog.ts` caught outside React — a fetch that failed
+  twenty seconds earlier usually explains more than the throw does. `resetKeys` makes
+  navigation a recovery path: the region clears itself when you switch panel or character,
+  so one bad card cannot leave a dead panel behind. `lib/crashReport.ts` is pure and tested
+  because it runs in the failure path on values that are not guaranteed to be Errors —
+  `throw 'string'` is legal, and this is the one screen that must never throw itself.
 
 ## Background and glass
 

@@ -66,6 +66,8 @@ interface ChatViewProps {
   /** App-wide user-defined quick commands, inserted into the composer from the chat menu. */
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  /** Reads a chat export into this character as a new chat, from the chat menu. */
+  onImportChat: (file: File) => void;
   /**
    * Enabled regex scripts. A lookup, not the settings object, for the same reason the
    * dialogue colours are: an unrelated settings change must not re-render the transcript.
@@ -95,6 +97,7 @@ export function ChatView({
   dialogueColors,
   quickCommands,
   onQuickCommandsChange,
+  onImportChat,
   regexScripts,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -399,6 +402,11 @@ export function ChatView({
           jumpTo(command.index);
           return null;
         }
+        case 'rename': {
+          if (!state.chatId) return 'No chat is open to rename.';
+          chat.renameChat(command.title);
+          return null;
+        }
         case 'reload': {
           if (!state.chatId) return 'No chat is open to reload.';
           if (generationBlocked) {
@@ -697,6 +705,7 @@ export function ChatView({
               quickCommands={quickCommands}
               onInsertCommand={(text) => composerRef.current?.insert(text)}
               onQuickCommandsChange={onQuickCommandsChange}
+              onImportChat={onImportChat}
             />
             <GuidesPopover
               guides={guides}

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage } from '../types/chat.ts';
 import {
+  appendAlternates,
   appendSwipe,
   assistantPlaceholder,
   currentText,
@@ -297,6 +298,32 @@ describe('swipe mutation', () => {
     expect(grown.swipe_id).toBe(3);
     expect(currentText(grown)).toBe('four');
     assertConsistent(grown);
+  });
+
+  test('appendAlternates grows both arrays but leaves the selection alone', () => {
+    // The multi-choice case: the reader is already looking at swipe 0, so the spare
+    // completions have to arrive behind it rather than yanking the view sideways.
+    const grown = appendAlternates(base, [{ text: 'four' }, { text: 'five' }]);
+    expect(grown.swipes).toEqual(['one', 'two', 'three', 'four', 'five']);
+    expect(grown.swipe_info.length).toBe(5);
+    expect(grown.swipe_id).toBe(base.swipe_id);
+    expect(currentText(grown)).toBe(currentText(base));
+    assertConsistent(grown);
+  });
+
+  test('appendAlternates keeps each alternate lined up with its own info', () => {
+    const grown = appendAlternates(base, [
+      { text: 'four', info: { send_date: '2026-01-01T00:00:00.000Z', extra: { model: 'a' } } },
+      { text: 'five', info: { send_date: '2026-01-02T00:00:00.000Z', extra: { model: 'b' } } },
+    ]);
+
+    expect(grown.swipe_info[3]?.extra?.model).toBe('a');
+    expect(grown.swipe_info[4]?.extra?.model).toBe('b');
+    assertConsistent(grown);
+  });
+
+  test('appendAlternates with nothing to append changes nothing', () => {
+    expect(appendAlternates(base, [])).toBe(base);
   });
 
   test('removeSwipe shifts the selection back when it removes at or before it', () => {

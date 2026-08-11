@@ -161,6 +161,21 @@
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
   background: var(--wc-surface);
+  /*
+   * The lift. A card is a door into the workbench, so it should read as one: a hair of
+   * rise and a shadow on hover, carried by transform so nothing around it reflows. The
+   * border brightens with the surface so the card does not go flat against the shadow.
+   */
+  transition:
+    transform var(--wc-duration) var(--wc-ease),
+    box-shadow var(--wc-duration) var(--wc-ease),
+    border-color var(--wc-duration) var(--wc-ease);
+}
+
+.studio-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--wc-shadow);
+  border-color: var(--wc-border-strong);
 }
 
 .studio-card__open {

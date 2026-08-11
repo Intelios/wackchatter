@@ -504,6 +504,7 @@ export const locationApi = {
 export interface StreamHandlers {
   /** Called with the FULL accumulated state — never a delta. Assign, do not append. */
   onTick: (state: StreamState) => void;
+  /** Called when the first user-visible content or reasoning arrives. */
   onFirstToken?: () => void;
 }
 
@@ -557,6 +558,18 @@ export async function streamGenerate(
   const decoder = new TextDecoder();
   let sawToken = false;
 
+  const publish = (state: StreamState | null) => {
+    if (!state) return;
+    // Thinking models commonly emit reasoning for a long time before ordinary content.
+    // That is visible stream output too: leaving the chat in "connecting" hides the
+    // StreamingText leaf, even though its store is receiving every reasoning delta.
+    if (!sawToken && (state.content !== seed || state.reasoning)) {
+      sawToken = true;
+      handlers.onFirstToken?.();
+    }
+    handlers.onTick(state);
+  };
+
   const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
   const aborted = new Promise<never>((_, reject) => {
     const fire = () => reject(abortError());
@@ -575,20 +588,12 @@ export async function streamGenerate(
 
       // stream: true keeps multi-byte characters split across chunks intact.
       for (const frame of parser.push(decoder.decode(value, { stream: true }))) {
-        const state = accumulator.push(frame);
-        if (!state) continue;
-
-        if (!sawToken && state.content !== seed) {
-          sawToken = true;
-          handlers.onFirstToken?.();
-        }
-        handlers.onTick(state);
+        publish(accumulator.push(frame));
       }
     }
 
     for (const frame of parser.flush()) {
-      const state = accumulator.push(frame);
-      if (state) handlers.onTick(state);
+      publish(accumulator.push(frame));
     }
   } finally {
     reader.cancel().catch(() => {});

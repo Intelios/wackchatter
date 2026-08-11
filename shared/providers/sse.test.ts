@@ -206,6 +206,121 @@ describe('accumulation', () => {
   });
 });
 
+describe('multi-choice completions', () => {
+  /** A delta for one specific completion, as a stream with `n > 1` interleaves them. */
+  function delta(index: number, content: string): SseFrame {
+    return frame(JSON.stringify({ choices: [{ index, delta: { content } }] }));
+  }
+
+  test('a single-choice stream reports no alternates at all', () => {
+    // The regression that matters: `n: 1` is almost every request, and it must produce
+    // exactly the state it always did.
+    const accumulator = createStreamAccumulator();
+    accumulator.push(delta(0, 'Hello.'));
+    expect(accumulator.snapshot().alternates).toBeUndefined();
+  });
+
+  test('interleaved deltas stay with their own completion', () => {
+    // Taking choices[0] of each chunk — what this did before — splices all three into one.
+    const accumulator = createStreamAccumulator();
+    accumulator.push(delta(0, 'The '));
+    accumulator.push(delta(1, 'A '));
+    accumulator.push(delta(2, 'One '));
+    accumulator.push(delta(1, 'cat'));
+    accumulator.push(delta(0, 'dog'));
+    accumulator.push(delta(2, 'bird'));
+
+    const state = accumulator.snapshot();
+    expect(state.content).toBe('The dog');
+    expect(state.alternates?.map((choice) => choice.content)).toEqual(['A cat', 'One bird']);
+  });
+
+  test('several choices inside one chunk are all read', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            { index: 0, delta: { content: 'first' } },
+            { index: 1, delta: { content: 'second' } },
+          ],
+        }),
+      ),
+    );
+
+    const state = accumulator.snapshot();
+    expect(state.content).toBe('first');
+    expect(state.alternates?.[0]?.content).toBe('second');
+  });
+
+  test('deltas with no index at all belong to the first completion', () => {
+    // Some proxies omit `index`. Treating that as choice 0 is what keeps them working.
+    const accumulator = createStreamAccumulator();
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: 'hi ' } }] })));
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: 'there' } }] })));
+
+    const state = accumulator.snapshot();
+    expect(state.content).toBe('hi there');
+    expect(state.alternates).toBeUndefined();
+  });
+
+  test('reasoning and finish_reason are tracked per completion', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(JSON.stringify({ choices: [{ index: 1, delta: { reasoning: 'Hmm' } }] })),
+    );
+    accumulator.push(delta(0, 'done'));
+    accumulator.push(
+      frame(JSON.stringify({ choices: [{ index: 1, finish_reason: 'length', delta: {} }] })),
+    );
+    accumulator.push(
+      frame(JSON.stringify({ choices: [{ index: 0, finish_reason: 'stop', delta: {} }] })),
+    );
+
+    const state = accumulator.snapshot();
+    expect(state.reasoning).toBe('');
+    expect(state.finishReason).toBe('stop');
+    expect(state.alternates?.[0]).toEqual({
+      content: '',
+      reasoning: 'Hmm',
+      finishReason: 'length',
+    });
+  });
+
+  test('a gap in the indices is filled, never renumbered', () => {
+    // An index has to keep meaning the same completion. Closing the gap would make the
+    // stream's choice 2 arrive as alternate 1 and merge with whatever lands there next.
+    const accumulator = createStreamAccumulator();
+    accumulator.push(delta(0, 'primary'));
+    accumulator.push(delta(2, 'third'));
+
+    expect(accumulator.snapshot().alternates).toEqual([
+      { content: '', reasoning: '', finishReason: null },
+      { content: 'third', reasoning: '', finishReason: null },
+    ]);
+  });
+
+  test('a nonsense index does not allocate an array of that size', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(delta(9999, 'x'));
+    accumulator.push(delta(-1, 'y'));
+
+    // Both fall back to the first choice rather than growing the array.
+    expect(accumulator.snapshot().alternates).toBeUndefined();
+    expect(accumulator.snapshot().content).toBe('xy');
+  });
+
+  test('the seed belongs to the reply being continued, not to the alternates', () => {
+    const accumulator = createStreamAccumulator('We went');
+    accumulator.push(delta(0, ' onward.'));
+    accumulator.push(delta(1, ' back.'));
+
+    const state = accumulator.snapshot();
+    expect(state.content).toBe('We went onward.');
+    expect(state.alternates?.[0]?.content).toBe(' back.');
+  });
+});
+
 describe('non-streamed completions', () => {
   test('a normal response is read into the same shape', () => {
     const state = parseCompletion({
@@ -246,5 +361,37 @@ describe('non-streamed completions', () => {
   test('junk does not throw', () => {
     expect(parseCompletion(null).content).toBe('');
     expect(parseCompletion({ choices: [] }).content).toBe('');
+  });
+
+  test('one choice reports no alternates', () => {
+    expect(
+      parseCompletion({ choices: [{ message: { content: 'a' } }] }).alternates,
+    ).toBeUndefined();
+  });
+
+  test('extra choices come back as alternates, in order', () => {
+    const state = parseCompletion({
+      choices: [
+        { message: { content: 'first' }, finish_reason: 'stop' },
+        { message: { content: 'second', reasoning: 'why' }, finish_reason: 'stop' },
+        { message: { content: 'third' }, finish_reason: 'length' },
+      ],
+    });
+
+    expect(state.content).toBe('first');
+    expect(state.alternates).toEqual([
+      { content: 'second', reasoning: 'why', finishReason: 'stop' },
+      { content: 'third', reasoning: '', finishReason: 'length' },
+    ]);
+  });
+
+  test('a seed prefixes only the first choice', () => {
+    const state = parseCompletion(
+      { choices: [{ message: { content: ' onward.' } }, { message: { content: ' back.' } }] },
+      'We went',
+    );
+
+    expect(state.content).toBe('We went onward.');
+    expect(state.alternates?.[0]?.content).toBe(' back.');
   });
 });

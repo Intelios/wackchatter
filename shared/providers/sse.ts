@@ -98,8 +98,16 @@ export interface StreamUsage {
   total_tokens?: number;
 }
 
-export interface StreamState {
+/** One completion. With `n: 1` — the overwhelming case — there is only ever the first. */
+export interface StreamChoice {
   /** The FULL text so far, never a delta. */
+  content: string;
+  reasoning: string;
+  finishReason: string | null;
+}
+
+export interface StreamState {
+  /** The FULL text so far, never a delta. Always choice 0 — the reply on screen. */
   content: string;
   reasoning: string;
   finishReason: string | null;
@@ -108,6 +116,15 @@ export interface StreamState {
   done: boolean;
   /** Set when the provider reported an error inside an otherwise-200 stream. */
   error?: string;
+  /**
+   * Completions AFTER the first, in provider index order. Absent unless `n > 1` was both
+   * asked for and honoured, so every existing consumer sees exactly what it saw before.
+   *
+   * Entries may be blank: a provider is free to return fewer completions than requested,
+   * and gaps are filled rather than renumbered so an index always means the same choice.
+   * Callers that turn these into something durable are expected to drop the empty ones.
+   */
+  alternates?: StreamChoice[];
 }
 
 export interface StreamAccumulator {
@@ -151,20 +168,69 @@ function readUsage(value: unknown): StreamUsage | undefined {
 }
 
 /**
+ * An upper bound on how many completions a stream may open.
+ *
+ * Purely a guard against a malformed `index` allocating an unbounded array; no provider
+ * offers anything near it, and the UI asks for far fewer.
+ */
+const MAX_CHOICES = 64;
+
+function blankChoice(content = ''): StreamChoice {
+  return { content, reasoning: '', finishReason: null };
+}
+
+/**
+ * Which completion a chunk belongs to.
+ *
+ * Defaulting to 0 is what keeps single-choice streams working on proxies that omit
+ * `index` entirely — the common case, and the one that must not regress.
+ */
+function choiceIndex(choice: Record<string, unknown>): number {
+  const index = choice.index;
+  return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < MAX_CHOICES
+    ? index
+    : 0;
+}
+
+/**
  * @param seed Existing text to build on. Used by `continue`, where the reply extends a
- *   message that already has content.
+ *   message that already has content. It seeds choice 0 only: `continue` writes back into
+ *   one existing swipe, so it never asks for alternates in the first place.
  */
 export function createStreamAccumulator(seed = ''): StreamAccumulator {
-  const state: StreamState = {
-    content: seed,
-    reasoning: '',
-    finishReason: null,
+  /**
+   * Index-parallel with the provider's `choice.index`, which is the only stable handle on
+   * which completion a chunk belongs to. Chunks for different choices interleave freely,
+   * so taking `choices[0]` of each chunk — as this did while `n` was pinned to 1 — would
+   * splice several replies into one.
+   */
+  const choices: StreamChoice[] = [blankChoice(seed)];
+  const state = {
+    model: undefined as string | undefined,
+    usage: undefined as StreamUsage | undefined,
     done: false,
+    error: undefined as string | undefined,
   };
+
+  function choiceAt(index: number): StreamChoice {
+    while (choices.length <= index) choices.push(blankChoice());
+    return choices[index]!;
+  }
 
   function snapshot(): StreamState {
     // A fresh object each time: consumers hold onto these across renders.
-    return { ...state, usage: state.usage ? { ...state.usage } : undefined };
+    const primary = choices[0]!;
+    const result: StreamState = {
+      content: primary.content,
+      reasoning: primary.reasoning,
+      finishReason: primary.finishReason,
+      done: state.done,
+      usage: state.usage ? { ...state.usage } : undefined,
+    };
+    if (state.model !== undefined) result.model = state.model;
+    if (state.error !== undefined) result.error = state.error;
+    if (choices.length > 1) result.alternates = choices.slice(1).map((choice) => ({ ...choice }));
+    return result;
   }
 
   return {
@@ -214,10 +280,15 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
       }
 
       // A final usage-only chunk has choices: [] — must not be treated as malformed.
-      const choices = Array.isArray(root.choices) ? root.choices : [];
-      const choice = asRecord(choices[0]);
+      const incoming = Array.isArray(root.choices) ? root.choices : [];
 
-      if (choice) {
+      // Every choice in the chunk, not just the first: with `n > 1` a single chunk can
+      // carry deltas for several completions at once.
+      for (const entry of incoming) {
+        const choice = asRecord(entry);
+        if (!choice) continue;
+
+        const target = choiceAt(choiceIndex(choice));
         const delta = asRecord(choice.delta);
         const message = asRecord(choice.message);
 
@@ -231,7 +302,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
             : null;
 
         if (text) {
-          state.content += text;
+          target.content += text;
           changed = true;
         }
 
@@ -245,12 +316,12 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
               : null;
 
         if (thought) {
-          state.reasoning += thought;
+          target.reasoning += thought;
           changed = true;
         }
 
         if (typeof choice.finish_reason === 'string') {
-          state.finishReason = choice.finish_reason;
+          target.finishReason = choice.finish_reason;
           changed = true;
         }
       }
@@ -282,18 +353,34 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   const usage = readUsage(root.usage);
   if (usage) state.usage = usage;
 
-  const choice = asRecord(Array.isArray(root.choices) ? root.choices[0] : null);
-  if (!choice) return state;
+  const entries = Array.isArray(root.choices) ? root.choices : [];
+  if (!entries.length) return state;
 
-  const message = asRecord(choice.message);
-  if (message) {
-    if (typeof message.content === 'string') state.content += message.content;
-    if (typeof message.reasoning === 'string') state.reasoning = message.reasoning;
-    else if (typeof message.reasoning_content === 'string') {
-      state.reasoning = message.reasoning_content;
+  // Array order, unlike the streaming path: a complete body arrives in one piece and is
+  // already in index order, so there is nothing to interleave and no gap to fill.
+  const parsed = entries.map((entry): StreamChoice => {
+    const choice = asRecord(entry);
+    const result = blankChoice();
+    if (!choice) return result;
+
+    const message = asRecord(choice.message);
+    if (message) {
+      if (typeof message.content === 'string') result.content = message.content;
+      if (typeof message.reasoning === 'string') result.reasoning = message.reasoning;
+      else if (typeof message.reasoning_content === 'string') {
+        result.reasoning = message.reasoning_content;
+      }
     }
-  }
-  if (typeof choice.finish_reason === 'string') state.finishReason = choice.finish_reason;
+    if (typeof choice.finish_reason === 'string') result.finishReason = choice.finish_reason;
+    return result;
+  });
+
+  const primary = parsed[0]!;
+  // `+=` keeps the seed in front, for a non-streamed continue.
+  state.content += primary.content;
+  state.reasoning = primary.reasoning;
+  state.finishReason = primary.finishReason;
+  if (parsed.length > 1) state.alternates = parsed.slice(1);
 
   return state;
 }

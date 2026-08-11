@@ -137,7 +137,8 @@ select {
   white-space: nowrap;
   transition:
     background var(--wc-duration-fast) ease,
-    border-color var(--wc-duration-fast) ease;
+    border-color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
 }
 
 /* Icons inherit their box from the button, never their intrinsic SVG size. */
@@ -150,6 +151,14 @@ select {
 .wc-button:hover:not(:disabled) {
   background: var(--wc-surface-hover);
   border-color: var(--wc-border-strong);
+}
+
+/*
+ * The press. A hair of scale on the way down gives the click a tactile read without
+ * moving the layout — transform does not reflow anything around the button.
+ */
+.wc-button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .wc-button:disabled {

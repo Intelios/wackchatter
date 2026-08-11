@@ -19,11 +19,13 @@ export type SlashCommand =
   | { type: 'hide'; start: number | null; end: number | null }
   | { type: 'unhide'; start: number | null; end: number | null }
   | { type: 'jump'; index: number }
+  | { type: 'rename'; title: string }
   | { type: 'reload' };
 
 export type SlashParseResult = { ok: true; command: SlashCommand } | { ok: false; error: string };
 
 const JUMP_USAGE = 'Usage: /jump <message index> (indices start at 0).';
+const RENAME_USAGE = 'Usage: /rename <new title>.';
 
 /** The shipped commands, as shown in the composer's autocomplete box. */
 export interface SlashCommandHelp {
@@ -48,6 +50,11 @@ export const SLASH_COMMANDS: readonly SlashCommandHelp[] = [
     name: 'jump',
     usage: '/jump <message index>',
     description: 'Scroll to a message by its zero-based index.',
+  },
+  {
+    name: 'rename',
+    usage: '/rename <new title>',
+    description: 'Retitle this chat, which is how it is labelled on the start screen.',
   },
   {
     name: 'reload',
@@ -142,6 +149,12 @@ export function parseSlashCommand(input: string): SlashParseResult | null {
         };
       }
       return { ok: true, command: { type: 'jump', index } };
+    }
+    // The rest of the argument verbatim, spaces and all — a chat title is prose, not
+    // tokens, so there is nothing here to parse beyond "is it empty".
+    case 'rename': {
+      if (!arg) return { ok: false, error: RENAME_USAGE };
+      return { ok: true, command: { type: 'rename', title: arg } };
     }
     case 'reload':
       if (arg) return { ok: false, error: '`/reload` takes no arguments.' };

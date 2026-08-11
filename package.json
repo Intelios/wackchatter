@@ -1,13 +1,17 @@
 {
   "name": "wackchatter",
   "private": true,
-  "version": "0.19.0",
+  "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "bun": ">=1.2.0"
+  },
   "scripts": {
     "dev": "bun run --hot server/index.ts & vite",
     "dev:server": "bun run --hot server/index.ts",
     "dev:client": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:app": "vite build --logLevel error",
     "start": "NODE_ENV=production bun run server/index.ts",
     "test": "bun test",
     "lint": "biome check .",

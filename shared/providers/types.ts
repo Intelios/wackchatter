@@ -70,6 +70,12 @@ export interface GenerationRequest {
   /** Overrides the preset's openai_max_tokens. */
   maxTokens?: number;
   stop?: string[];
+  /**
+   * How many completions to ask for. Opt-in per request rather than read from `preset.n`,
+   * because utility generations — summaries above all — share the user's preset but would
+   * pay for alternates they immediately discard. Absent or 1 sends no `n` at all.
+   */
+  completions?: number;
 }
 
 /** The body posted to a chat-completions endpoint. Deliberately open — providers differ. */

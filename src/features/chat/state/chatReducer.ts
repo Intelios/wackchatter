@@ -11,8 +11,10 @@
  */
 
 import {
+  appendAlternates,
   appendSwipe,
   assistantPlaceholder,
+  currentInfo,
   currentText,
   fromChatMessage,
   greetingMessage,
@@ -62,6 +64,17 @@ export interface PromptInspection {
 }
 
 const MAX_INSPECTIONS = 10;
+
+/**
+ * One spare completion from a multi-choice request, on its way to becoming a swipe.
+ *
+ * Only ever produced for a generation that asked for `n > 1`, and only with text in it —
+ * a blank alternate would be an empty swipe the reader has to skip past.
+ */
+export interface GeneratedAlternate {
+  text: string;
+  extra?: MessageExtra;
+}
 
 export interface ChatState {
   chatId: string | null;
@@ -123,9 +136,9 @@ export type ChatAction =
   | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
   | { type: 'gen/inspected'; inspection: PromptInspection }
   | { type: 'gen/streaming' }
-  | { type: 'gen/finished'; text: string; extra?: MessageExtra }
-  | { type: 'gen/aborted'; text: string }
-  | { type: 'gen/failed'; message: string; text?: string }
+  | { type: 'gen/finished'; text: string; extra?: MessageExtra; alternates?: GeneratedAlternate[] }
+  | { type: 'gen/aborted'; text: string; reasoning?: string }
+  | { type: 'gen/failed'; message: string; text?: string; reasoning?: string }
   | { type: 'error/cleared' };
 
 function replaceMessage(
@@ -144,8 +157,19 @@ function lastAssistantIndex(messages: MessageState[]): number {
   return -1;
 }
 
-/** Settle a finished, aborted or failed generation back into a consistent state. */
-function settle(state: ChatState, text: string, extra?: MessageExtra): ChatState {
+/**
+ * Settle a finished, aborted or failed generation back into a consistent state.
+ *
+ * `alternates` only ever arrive on a clean finish. An abort or a failure mid-stream leaves
+ * the spare completions half-written, and half a reply is worth keeping where the reader
+ * watched it arrive — not as swipes they never saw being made.
+ */
+function settle(
+  state: ChatState,
+  text: string,
+  extra?: MessageExtra,
+  alternates: GeneratedAlternate[] = [],
+): ChatState {
   const id = state.streamingId;
   const mode = state.mode;
   if (!id || !mode) return { ...state, status: 'idle', streamingId: null, mode: null };
@@ -162,13 +186,32 @@ function settle(state: ChatState, text: string, extra?: MessageExtra): ChatState
   if (index === -1) return { ...state, ...settled };
 
   // Anything the model actually produced is kept, even from an abort or an error.
-  if (text) {
+  // Thinking models can legitimately finish (or hit their length limit) before emitting
+  // ordinary content; their reasoning is still a visible result and must not disappear.
+  if (text || extra?.reasoning) {
+    const finished = timestamp();
     return {
       ...state,
       ...settled,
-      messages: replaceMessage(state.messages, id, (message) =>
-        setText(message, text, { gen_finished: timestamp(), extra }),
-      ),
+      messages: replaceMessage(state.messages, id, (message) => {
+        // The alternates were produced by the same request as the reply above them, so
+        // they share its start time rather than claiming to have begun when it ended.
+        const started = currentInfo(message).gen_started;
+        const written = setText(message, text, { gen_finished: finished, extra });
+
+        return appendAlternates(
+          written,
+          alternates.map((alternate) => ({
+            text: alternate.text,
+            info: {
+              send_date: finished,
+              ...(started ? { gen_started: started } : {}),
+              gen_finished: finished,
+              ...(alternate.extra ? { extra: alternate.extra } : {}),
+            },
+          })),
+        );
+      }),
     };
   }
 
@@ -417,17 +460,29 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'gen/finished':
       if (state.status === 'idle') return state;
-      return settle(state, action.text, action.extra);
+      return settle(state, action.text, action.extra, action.alternates);
 
     case 'gen/aborted':
       if (state.status === 'idle') return state;
-      return settle(state, action.text, action.text ? { truncated: true } : undefined);
+      return settle(
+        state,
+        action.text,
+        action.text || action.reasoning
+          ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+          : undefined,
+      );
 
     case 'gen/failed': {
       if (state.status === 'idle') return state;
       const text = action.text ?? '';
       return {
-        ...settle(state, text, text ? { truncated: true } : undefined),
+        ...settle(
+          state,
+          text,
+          text || action.reasoning
+            ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+            : undefined,
+        ),
         error: action.message,
       };
     }

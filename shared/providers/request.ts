@@ -95,11 +95,16 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
   const seed = preset.seed;
   if (typeof seed === 'number' && seed >= 0) body.seed = seed;
 
-  // WC-07: Multi-choice completion (`n > 1`) is not wired to any UI or storage. The
-  // streaming and non-stream parsers read only `choices[0]`, so any extra completions
-  // would be paid for and discarded — and taking the first array element in each chunk
-  // is not a safe substitute for following a stable `choice.index`. Clamp to 1 until
-  // multi-choice is intentionally implemented.
+  // Multi-choice completion. Extra completions come back as extra swipes, so the number
+  // asked for is the caller's `completions`, never `preset.n` read from here: a summary
+  // runs on the user's preset and must keep asking for exactly one.
+  //
+  // 1 sends nothing rather than `n: 1`. The default is universal, and a plain endpoint
+  // that rejects unknown keys should not meet one it never needed.
+  const completions = request.completions;
+  if (typeof completions === 'number' && completions > 1) {
+    body.n = Math.floor(completions);
+  }
 
   if (descriptor.supportsExtraSamplers) {
     // These four are OpenRouter-only among OpenAI-compatible sources. A plain endpoint

@@ -71,9 +71,56 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Whether the input is wearing its composing shape — see the morph in Composer.css.
+   *
+   * State rather than `:focus`, because the two states are not the same one: sending has
+   * to relax the box back to neutral while the cursor is still sitting in it, and only
+   * touching it again should round it back. Anything that means "I am working in here"
+   * rounds it: focus, a click, a keystroke.
+   */
+  const [rounded, setRounded] = useState(false);
+  /** Runs the one-shot settle keyframes, which override the shape transition while they play. */
+  const [settling, setSettling] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
+
+  /**
+   * The input that kicked off a generation, or null when the busy flag did not start
+   * here — a summary from the chat menu, a regenerate from the transcript.
+   *
+   * The textarea is disabled while a generation runs, and a disabled element cannot hold
+   * focus: the browser drops it the moment `disabled` lands, and nothing brings it back.
+   * Snapshot where the user was working at the moment they sent, then on settle give the
+   * input back — unless they moved to something outside the composer while waiting,
+   * which is a choice to respect rather than fight.
+   */
+  const focusBeforeGenerate = useRef<Element | null>(null);
+
+  useEffect(() => {
+    if (busy || !focusBeforeGenerate.current) return;
+    const active = document.activeElement;
+    if (active === document.body || active === null || rootRef.current?.contains(active)) {
+      textarea.current?.focus({ preventScroll: true });
+    }
+    focusBeforeGenerate.current = null;
+  }, [busy]);
+
+  /**
+   * Retire the settle animation on a timer rather than on `animationend`.
+   *
+   * The event is the obvious hook and the wrong one: under reduced motion the animation is
+   * `none`, so it never fires and the flag sticks forever. A timer past the animation's
+   * length is right in both worlds.
+   */
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setTimeout(() => setSettling(false), 520);
+    return () => clearTimeout(timer);
+  }, [settling]);
 
   // --- Slash command autocomplete -------------------------------------------
 
@@ -84,7 +131,9 @@ export function Composer({
 
   const completion = slashCompletion(text);
   const suggestions = completion?.suggestions ?? [];
-  const slashOpen = Boolean(completion && suggestions.length > 0 && !slashDismissed && !disabled);
+  const slashOpen = Boolean(
+    completion && suggestions.length > 0 && !slashDismissed && !disabled && !busy,
+  );
   const completing = Boolean(completion?.completing && slashOpen);
   const activeIndex = completing ? Math.min(slashIndex, suggestions.length - 1) : -1;
 
@@ -184,12 +233,21 @@ export function Composer({
   async function submit() {
     const trimmed = text.trim();
     if (!trimmed || busy || disabled) return;
+    // The textarea is about to be disabled, which drops focus with nowhere to hand it to.
+    focusBeforeGenerate.current = document.activeElement;
     const failure = await onSend(trimmed);
     if (failure) {
       setError(failure);
+      // No generation ran, so nothing disabled the input — the snapshot must not leak
+      // into a later busy cycle it had nothing to do with.
+      focusBeforeGenerate.current = null;
       return;
     }
     setError(null);
+    // Sent: let the shape relax. A failure returns above without this, since the draft is
+    // still yours to work on and the box should still look like it.
+    setRounded(false);
+    setSettling(true);
     // Only clear what was sent: while a slow command (reload) was still running the user
     // may have started typing the next message, and that draft is theirs to keep.
     setText((current) => (current.trim() === trimmed ? '' : current));
@@ -207,11 +265,12 @@ export function Composer({
   function guided(action: (text: string) => void) {
     const trimmed = text.trim();
     if (!trimmed || busy || disabled) return;
+    focusBeforeGenerate.current = document.activeElement;
     action(trimmed);
   }
 
   return (
-    <div className="composer">
+    <div className="composer" ref={rootRef} data-busy={busy || undefined}>
       {error ? (
         <div className="composer__error" role="alert">
           {error}
@@ -266,15 +325,26 @@ export function Composer({
             className="composer__input"
             value={text}
             rows={1}
-            disabled={disabled}
+            spellCheck={true}
+            disabled={disabled || busy}
             placeholder={placeholder}
+            data-shape={rounded ? 'round' : 'neutral'}
+            data-settling={settling || undefined}
+            onFocus={() => setRounded(true)}
+            // Focus alone would leave the box flat after a send, since sending never took
+            // the cursor away — clicking back into it has to count as picking it up again.
+            onPointerDown={() => setRounded(true)}
             onChange={(event) => {
               setText(event.target.value);
               setError(null);
               setSlashDismissed(false);
               setSlashIndex(0);
+              setRounded(true);
             }}
-            onBlur={() => setSlashDismissed(true)}
+            onBlur={() => {
+              setSlashDismissed(true);
+              setRounded(false);
+            }}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={slashOpen}

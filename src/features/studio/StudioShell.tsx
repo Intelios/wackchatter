@@ -3,6 +3,7 @@ import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon, DownloadIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
@@ -139,13 +140,7 @@ export function StudioShell({
         } as CSSProperties
       }
     >
-      {backgroundUrl ? (
-        <div
-          className="shell__backdrop"
-          aria-hidden="true"
-          style={{ backgroundImage: `url("${backgroundUrl}")` }}
-        />
-      ) : null}
+      <Backdrop url={backgroundUrl} />
       {backgroundUrl ? <div className="shell__scrim" aria-hidden="true" /> : null}
       <header className="studio-shell__bar">
         <div className="studio-shell__navigation">

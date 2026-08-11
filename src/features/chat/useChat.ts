@@ -11,7 +11,7 @@ import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection, ConnectionSettings } from '@shared/providers/types.ts';
+import type { Connection } from '@shared/providers/types.ts';
 import type { RegexMacros } from '@shared/regex/engine.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
@@ -90,7 +90,8 @@ export interface UseChatOptions {
    * so the settings snapshot can follow the chat instead of the other way around.
    */
   onPersonaSwitch?: (personaId: string | null) => void;
-  connection: ConnectionSettings | null;
+  /** The selected saved connection, including its stable id for generation routing. */
+  connection: Connection | null;
   countTokens: TokenCounter;
   streamingFps: number;
   /** Lorebooks that apply to this chat, already loaded. */
@@ -251,6 +252,16 @@ export function useChat(options: UseChatOptions): UseChat {
   const personaIdRef = useRef(personaId);
   personaIdRef.current = personaId;
 
+  // Chat initialization is keyed on the selected character, not on callback or collection
+  // identities from App. App passes the persona adoption handler inline, and persona edits
+  // replace this array; putting either in loadChat's dependency list makes the init effect
+  // reload the open chat from disk on an unrelated render — including gen/started, which
+  // resets the generation to idle and causes every arriving stream frame to be ignored.
+  const personasRef = useRef(personas);
+  personasRef.current = personas;
+  const onPersonaSwitchRef = useRef(onPersonaSwitch);
+  onPersonaSwitchRef.current = onPersonaSwitch;
+
   // The card autosaves without the identity changing, so the chat-init effect must not key
   // on it — it would re-run on every keystroke. `cardLoaded` is the only stable signal; the
   // card itself is read from here at the moment creation actually needs it, so the greeting
@@ -308,17 +319,14 @@ export function useChat(options: UseChatOptions): UseChat {
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the transcript only
   const messages = useMemo(() => toChatMessages(state), [state.messages]);
 
-  const loadChat = useCallback(
-    (chat: Chat) => {
-      // Loading a chat adopts its recorded persona as the app-wide current one — the
-      // chat wins, and the settings snapshot follows it. A legacy chat without a key is
-      // stamped with the current persona instead, which changes nothing to adopt.
-      const adopted = adoptedPersona(chat, personaIdRef.current, personas);
-      if (adopted.changed) onPersonaSwitch?.(adopted.effective);
-      dispatch({ type: 'chat/loaded', chat, personaId: adopted.effective });
-    },
-    [onPersonaSwitch, personas],
-  );
+  const loadChat = useCallback((chat: Chat) => {
+    // Loading a chat adopts its recorded persona as the app-wide current one — the
+    // chat wins, and the settings snapshot follows it. A legacy chat without a key is
+    // stamped with the current persona instead, which changes nothing to adopt.
+    const adopted = adoptedPersona(chat, personaIdRef.current, personasRef.current);
+    if (adopted.changed) onPersonaSwitchRef.current?.(adopted.effective);
+    dispatch({ type: 'chat/loaded', chat, personaId: adopted.effective });
+  }, []);
 
   // --- Persona ---------------------------------------------------------------
 
@@ -552,6 +560,11 @@ export function useChat(options: UseChatOptions): UseChat {
       if (current.status !== 'idle' || summaryAbortRef.current) return;
       if (!character || !preset || !connection) return;
 
+      // Settings can change while the prompt is being assembled or global variables are
+      // persisted. Keep the request body, reply metadata, and server-side connection lookup
+      // on the same connection snapshot for the entire generation.
+      const requestConnection: Connection = { ...connection };
+
       const startAction: ChatAction = {
         type: 'gen/started',
         mode,
@@ -568,9 +581,29 @@ export function useChat(options: UseChatOptions): UseChat {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // A navigation can leave this request alive while the hook is already rendering a
+      // different chat. The controller ref is also the generation's ownership token: a
+      // newer generation replaces it, so late callbacks from this one must become inert.
+      const ownsGeneration = () =>
+        abortRef.current === controller && stateRef.current.chatId === started.chatId;
+      const ensureGenerationActive = () => {
+        if (!ownsGeneration()) return false;
+        if (controller.signal.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+        return true;
+      };
+      let streamStarted = false;
+      const endStream = () => {
+        if (!streamStarted) return;
+        stream.end();
+        streamStarted = false;
+      };
+
       // Empty until the stream starts, so a failure on the way to the provider settles as
       // "nothing came back" and the reducer removes the placeholder it added.
       let text = '';
+      let reasoning = '';
 
       try {
         const target = started.messages.find((m) => m.id === started.streamingId);
@@ -648,11 +681,17 @@ export function useChat(options: UseChatOptions): UseChat {
           return;
         }
 
+        // Extra completions become extra swipes, so they only make sense for the modes
+        // that own a swipe array. `continue` writes back into one existing swipe — it has
+        // nowhere to put a second take of the same half-finished sentence.
+        const completions = mode === 'continue' ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
+
         const body = buildRequestBody({
           messages: assembled.messages,
           preset,
-          connection,
+          connection: requestConnection,
           stream: preset.stream_openai !== false,
+          completions,
         });
 
         const inspection: PromptInspection = {
@@ -681,42 +720,93 @@ export function useChat(options: UseChatOptions): UseChat {
           await onGlobalVariablesChange(assembled.variableUpdates.global);
         }
 
+        // The global-variable write above can yield to navigation. Do not start a stream
+        // after its owner has moved on or its Stop/transition abort has already fired.
+        if (!ensureGenerationActive()) return;
+
         stream.begin(seed);
+        streamStarted = true;
         text = seed;
 
         const final = await streamGenerate(
           body,
           controller.signal,
           {
-            onFirstToken: () => dispatch({ type: 'gen/streaming' }),
+            onFirstToken: () => {
+              if (ownsGeneration() && !controller.signal.aborted) {
+                dispatch({ type: 'gen/streaming' });
+              }
+            },
             onTick: (streamState) => {
+              if (!ownsGeneration() || controller.signal.aborted) return;
               text = streamState.content;
+              reasoning = streamState.reasoning;
               stream.set(streamState.content, streamState.reasoning);
             },
           },
           seed,
+          requestConnection.id,
         );
 
-        stream.end();
+        // A non-streaming response can resolve in the same turn as an abort, so check
+        // ownership after the await as well as in the streaming callbacks.
+        if (!ensureGenerationActive()) return;
+        endStream();
+
+        // Blank ones are dropped: a provider may honour `n` with fewer completions than
+        // asked for, and an empty swipe is just something to skip past. Only trusted when
+        // this request actually asked for alternates.
+        const alternates =
+          completions > 1
+            ? (final.alternates ?? [])
+                .filter((choice) => choice.content.trim())
+                .map((choice) => ({
+                  text: choice.content,
+                  extra: {
+                    api: requestConnection.provider,
+                    model: final.model ?? requestConnection.model,
+                    ...(choice.reasoning ? { reasoning: choice.reasoning } : {}),
+                    token_count: countTokens.countText(choice.content),
+                  },
+                }))
+            : [];
+
         dispatch({
           type: 'gen/finished',
           text: final.content,
           extra: {
-            api: connection.provider,
-            model: final.model ?? connection.model,
+            api: requestConnection.provider,
+            model: final.model ?? requestConnection.model,
             ...(final.reasoning ? { reasoning: final.reasoning } : {}),
-            // A real count from the provider beats our estimate when we get one.
-            token_count: final.usage?.completion_tokens ?? countTokens.countText(final.content),
+            // A real count from the provider beats our estimate when we get one — but
+            // reported usage covers every completion in the request, so once there are
+            // alternates it is no longer this swipe's count and the estimate is closer.
+            token_count: alternates.length
+              ? countTokens.countText(final.content)
+              : (final.usage?.completion_tokens ?? countTokens.countText(final.content)),
           },
+          alternates,
         });
       } catch (error) {
-        stream.end();
+        if (ownsGeneration()) endStream();
         // Whatever arrived before the failure is kept, as SillyTavern does.
-        if (controller.signal.aborted) dispatch({ type: 'gen/aborted', text });
-        else dispatch({ type: 'gen/failed', message: (error as Error).message, text });
+        if (ownsGeneration() && controller.signal.aborted)
+          dispatch({ type: 'gen/aborted', text, reasoning });
+        else if (ownsGeneration())
+          dispatch({
+            type: 'gen/failed',
+            message: (error as Error).message,
+            text,
+            reasoning,
+          });
       } finally {
-        abortRef.current = null;
-        void refreshChats();
+        // An old request may settle after a newer generation has replaced the ref. It must
+        // not clear that controller, stop its stream, or refresh the newer chat's list.
+        if (abortRef.current === controller) {
+          endStream();
+          abortRef.current = null;
+          if (stateRef.current.chatId === started.chatId) void refreshChats();
+        }
       }
     },
     [
@@ -820,7 +910,11 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
-  }, []);
+    // Stop the shared display immediately. A pending throttled frame must not remain visible
+    // while the next chat is being loaded; a later generation's begin() will own the store
+    // again before it publishes new content.
+    stream.end();
+  }, [stream]);
 
   const cancelSummary = useCallback(() => {
     summaryAbortRef.current?.abort();
@@ -1101,6 +1195,10 @@ export function useChat(options: UseChatOptions): UseChat {
   );
 
   useEffect(() => {
+    // `chat/loaded` can arrive from a queued open or the character initialiser after the
+    // caller has already moved on. Keep this as a second line of defence for transitions
+    // that do not pass through one of the public chat-management callbacks.
+    abortRef.current?.abort();
     if (summaryChatIdRef.current && summaryChatIdRef.current !== state.chatId) {
       summaryAbortRef.current?.abort();
     }
@@ -1134,6 +1232,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const openChat = useCallback(
     async (chatId: string) => {
       userChatAction.current += 1;
+      abort();
       cancelSummary();
       try {
         await flushSaves();
@@ -1143,7 +1242,7 @@ export function useChat(options: UseChatOptions): UseChat {
       const chat = await chatApi.get(chatId);
       loadChat(chat);
     },
-    [cancelSummary, flushSaves, loadChat],
+    [abort, cancelSummary, flushSaves, loadChat],
   );
 
   // Guards against overlapping `/reload`s — each fetch is pointless once a newer one has
@@ -1174,6 +1273,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const newChat = useCallback(async () => {
     if (!characterId || !character) return;
     userChatAction.current += 1;
+    abort();
     cancelSummary();
     try {
       await flushSaves();
@@ -1188,7 +1288,7 @@ export function useChat(options: UseChatOptions): UseChat {
     loadChat(chat);
     dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });
     await refreshChats();
-  }, [cancelSummary, characterId, character, flushSaves, loadChat, refreshChats]);
+  }, [abort, cancelSummary, characterId, character, flushSaves, loadChat, refreshChats]);
 
   const renameChat = useCallback((title: string) => {
     dispatch({ type: 'chat/renamed', title });
@@ -1202,6 +1302,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const deleteChat = useCallback(
     async (chatId: string) => {
       userChatAction.current += 1;
+      if (stateRef.current.chatId === chatId) abort();
       cancelSummary();
       try {
         await flushSaves();
@@ -1212,13 +1313,14 @@ export function useChat(options: UseChatOptions): UseChat {
       if (stateRef.current.chatId === chatId) dispatch({ type: 'chat/closed' });
       await refreshChats();
     },
-    [cancelSummary, flushSaves, refreshChats],
+    [abort, cancelSummary, flushSaves, refreshChats],
   );
 
   const branchFrom = useCallback(
     async (messageId: string) => {
       if (!stateRef.current.chatId) return;
       userChatAction.current += 1;
+      abort();
       cancelSummary();
       try {
         await flushSaves();
@@ -1229,7 +1331,7 @@ export function useChat(options: UseChatOptions): UseChat {
       loadChat(branch);
       await refreshChats();
     },
-    [cancelSummary, flushSaves, loadChat, refreshChats],
+    [abort, cancelSummary, flushSaves, loadChat, refreshChats],
   );
 
   const renderGreeting = useCallback(

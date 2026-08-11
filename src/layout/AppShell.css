@@ -72,6 +72,38 @@
 }
 
 /*
+ * The crossfade. The backdrop's backgroundImage is swapped when the user picks a new
+ * picture, and background-image is not animatable — so the outgoing image is held in a
+ * ::before layer, painted from --wc-bg-prev (set by Backdrop), that fades out over the
+ * element's new one. The layer needs no filter or transform of its own: the element's
+ * own blur and overscan apply to everything painted inside it, so the two images line
+ * up exactly while they overlap. The element's transform and filter are also what make
+ * it the containing block for the layer — no positioning needed.
+ */
+.shell__backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--wc-bg-prev, none);
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity var(--wc-duration) ease;
+  pointer-events: none;
+}
+
+/*
+ * While the outgoing layer is being armed it must not fade in — it is set in a layout
+ * effect, but the layer already exists at opacity 0, so a live transition would play
+ * the fade-in. The attribute disables the transition for the arm frame; removing it
+ * re-enables it for the fade-out.
+ */
+.shell__backdrop[data-crossfade]::before {
+  opacity: 1;
+  transition: none;
+}
+
+/*
  * The contrast floor. Dim alone cannot rescue a busy photo and blur alone cannot rescue a
  * bright one, so both exist — but this is the one that guarantees text stays readable
  * whatever image the user picks.

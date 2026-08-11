@@ -21,9 +21,10 @@ import {
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
-import { ChatPicker } from './features/chat/ChatPicker.tsx';
+import { ChatContext } from './features/chat/ChatContext.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
@@ -540,7 +541,8 @@ export function App() {
       options?: { editing?: boolean; chatId?: string; panel?: RightPanelId | null },
     ) => {
       const editing = options?.editing ?? false;
-      if (avatar !== selected || editing) {
+      if (avatar !== selected || editing || options?.chatId !== undefined) {
+        chat.abort();
         chat.cancelSummary();
         try {
           await chat.flushSaves();
@@ -583,6 +585,7 @@ export function App() {
    */
   const handleCloseChat = useCallback(async () => {
     try {
+      chat.abort();
       chat.cancelSummary();
       await chat.flushSaves();
       await flushRightPanel();
@@ -596,16 +599,17 @@ export function App() {
   }, [chat, flushRightPanel]);
 
   /**
-   * The trash bin, scoped to the selected character. Every delete, restore and purge
-   * touches it, so it is refetched after each rather than kept in sync by hand.
+   * The trash bin, across every character — it is shown in User Settings, which is not a
+   * per-character place. Every delete, restore and purge touches it, so it is refetched
+   * after each rather than kept in sync by hand.
    */
   const refreshBackups = useCallback(async () => {
     try {
-      setBackups(await backupApi.list(selected ?? undefined));
+      setBackups(await backupApi.list());
     } catch {
       // Keep the last good list; a stale bin is better than a blank one.
     }
-  }, [selected]);
+  }, []);
 
   useEffect(() => {
     void refreshBackups();
@@ -624,20 +628,34 @@ export function App() {
     [chat, refreshBackups],
   );
 
-  /** Bring a deleted chat back and open it. */
+  /**
+   * Bring a deleted chat back and open it.
+   *
+   * The bin is reachable from the start screen now, where the restored chat's character is
+   * usually not the open one — and may be no character at all. Restoring across that
+   * boundary goes through the same door the recent-chat rows use, so the character is
+   * selected and its panels reset exactly as if the chat had been opened normally.
+   */
   const handleRestoreBackup = useCallback(
     async (backupId: string) => {
       try {
         const restored = await backupApi.restore(backupId);
-        await chat.refreshChats();
-        void chat.openChat(restored.id);
+        if (selected === restored.characterId) {
+          await chat.refreshChats();
+          void chat.openChat(restored.id);
+        } else {
+          void transitionToCharacter(restored.characterId, {
+            chatId: restored.id,
+            panel: null,
+          });
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
         void refreshBackups();
       }
     },
-    [chat, refreshBackups],
+    [chat, selected, transitionToCharacter, refreshBackups],
   );
 
   /** Empty one slot of the bin for good. */
@@ -683,6 +701,7 @@ export function App() {
     async (saved: CharacterDetail) => {
       const previousAvatar = selected;
       try {
+        chat.abort();
         await chat.flushSaves();
       } catch {
         // The rename already landed; a failed chat flush is surfaced by the app shell and
@@ -724,6 +743,7 @@ export function App() {
   );
 
   const handleDeleted = useCallback(() => {
+    chat.abort();
     const deleted = selected;
     if (deleted) {
       setSettings((current) => {
@@ -749,11 +769,12 @@ export function App() {
     setDetail(null);
     setEditing(false);
     void refresh();
-  }, [refresh, selected]);
+  }, [chat, refresh, selected]);
 
   /** The Studio suspends the chat shell, so both sets of pending work must land first. */
   const enterStudio = useCallback(async () => {
     try {
+      chat.abort();
       chat.cancelSummary();
       await chat.flushSaves();
       await flushRightPanel();
@@ -869,187 +890,196 @@ export function App() {
       backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
       backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
       glass={settings?.glass !== false}
+      /*
+       * One boundary per region, under the root one in main.tsx.
+       *
+       * A crash is usually about what is on screen — a card with an odd field, a message
+       * that will not render — so containing it to the region that owns that content
+       * leaves the other two working, and `resetKeys` makes navigating away a recovery
+       * path: switch panel, switch character, and the dead region comes back by itself
+       * rather than waiting for a reload it may well survive.
+       */
       left={
-        <LeftPanel
-          active={leftPanel}
-          settings={settings}
-          onSettingsChange={setSettings}
-          presets={presets}
-          presetId={presetId}
-          preset={preset}
-          onSelectPreset={selectPreset}
-          draft={presetDraft}
-          tokenCounts={preview?.tokenCounts}
-          macroWarnings={preview?.macroWarnings}
-          extraSamplersSent={
-            connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
-          }
-          connection={connection}
-          onConnectionPatch={patchActiveConnection}
-          // The last generation's result when there is one, else the live preview — so the
-          // report answers "why didn't it fire?" before you send, too.
-          worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
-          inspection={chat.inspection}
-        />
+        <ErrorBoundary where="the left panel" resetKeys={[leftPanel]}>
+          <LeftPanel
+            active={leftPanel}
+            settings={settings}
+            onSettingsChange={setSettings}
+            presets={presets}
+            presetId={presetId}
+            preset={preset}
+            onSelectPreset={selectPreset}
+            draft={presetDraft}
+            tokenCounts={preview?.tokenCounts}
+            macroWarnings={preview?.macroWarnings}
+            extraSamplersSent={
+              connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
+            }
+            connection={connection}
+            onConnectionPatch={patchActiveConnection}
+            // The last generation's result when there is one, else the live preview — so the
+            // report answers "why didn't it fire?" before you send, too.
+            worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
+            inspection={chat.inspection}
+          />
+        </ErrorBoundary>
       }
       right={
-        showEditor ? (
-          <Panel title={showEditor.name || 'Character'}>
-            <CharacterEditor
-              key={showEditor.avatar}
-              detail={showEditor}
-              onSaved={handleSaved}
-              onRenamed={(saved) => void handleRenamed(saved)}
-              onDeleted={handleDeleted}
-              onBack={() => setEditing(false)}
-              registerPersistence={(controls) => {
-                characterPersistence.current = controls;
-              }}
-              dialogueColor={dialogueColorSettings.characters[showEditor.avatar]}
-              dialogueColorsEnabled={dialogueColorSettings.enabled}
-              avatarVersion={characterAvatarVersions[showEditor.avatar]}
-              rating={characterRatings[showEditor.avatar]}
-              onRatingChange={(value) => patchCharacterRating(showEditor.avatar, value)}
-              onDialogueColorChange={(value) =>
-                patchCharacterDialogueColor(showEditor.avatar, value)
-              }
-              onAvatarChanged={() => bumpCharacterAvatar(showEditor.avatar)}
-            />
-          </Panel>
-        ) : (
-          <Panel title={RIGHT_PANELS.find((p) => p.id === rightPanel)?.label}>
-            {rightPanel === 'characters' ? (
-              <>
-                {/* The chat picker stays here: it is scoped to the selected character. */}
-                {selected ? (
-                  <ChatPicker
-                    chats={chat.chats}
-                    activeId={chat.state.chatId}
-                    metadata={chat.state.metadata}
-                    inheritedScenario={character?.scenario ?? ''}
-                    creatorNotes={character?.creator_notes ?? ''}
-                    backups={backups}
-                    onOpen={(id) => void chat.openChat(id)}
-                    onNew={() => void chat.newChat()}
-                    onDelete={(id) => void handleDeleteChat(id)}
-                    onRename={chat.renameChat}
-                    onMetadataChange={chat.updateMetadata}
-                    onRestore={(backupId) => void handleRestoreBackup(backupId)}
-                    onPurge={(backupId) => void handlePurgeBackup(backupId)}
-                    onImportChat={(file) => void handleImportChat(file)}
+        <ErrorBoundary where="the right panel" resetKeys={[rightPanel, editing, selected]}>
+          {showEditor ? (
+            <Panel title={showEditor.name || 'Character'}>
+              <CharacterEditor
+                key={showEditor.avatar}
+                detail={showEditor}
+                onSaved={handleSaved}
+                onRenamed={(saved) => void handleRenamed(saved)}
+                onDeleted={handleDeleted}
+                onBack={() => setEditing(false)}
+                registerPersistence={(controls) => {
+                  characterPersistence.current = controls;
+                }}
+                dialogueColor={dialogueColorSettings.characters[showEditor.avatar]}
+                dialogueColorsEnabled={dialogueColorSettings.enabled}
+                avatarVersion={characterAvatarVersions[showEditor.avatar]}
+                rating={characterRatings[showEditor.avatar]}
+                onRatingChange={(value) => patchCharacterRating(showEditor.avatar, value)}
+                onDialogueColorChange={(value) =>
+                  patchCharacterDialogueColor(showEditor.avatar, value)
+                }
+                onAvatarChanged={() => bumpCharacterAvatar(showEditor.avatar)}
+              />
+            </Panel>
+          ) : (
+            <Panel title={RIGHT_PANELS.find((p) => p.id === rightPanel)?.label}>
+              {rightPanel === 'characters' ? (
+                <>
+                  {/* Scoped to the selected character, so it goes when nothing is open. */}
+                  {selected ? (
+                    <ChatContext
+                      metadata={chat.state.metadata}
+                      inheritedScenario={character?.scenario ?? ''}
+                      onMetadataChange={chat.updateMetadata}
+                    />
+                  ) : null}
+                  <CharacterList
+                    characters={characters}
+                    folders={folders}
+                    collapsedFolders={collapsedCharacterFolders}
+                    ratings={characterRatings}
+                    sort={characterListSort}
+                    onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
+                    selected={selected}
+                    loading={loading}
+                    error={error}
+                    onSelect={handleSelect}
+                    onRefresh={refresh}
+                    onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
+                    onCollapsedFoldersChange={(next) =>
+                      void patchSettings({ collapsedCharacterFolders: next })
+                    }
                   />
-                ) : null}
-                <CharacterList
-                  characters={characters}
-                  folders={folders}
-                  collapsedFolders={collapsedCharacterFolders}
-                  ratings={characterRatings}
-                  sort={characterListSort}
-                  onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
-                  selected={selected}
-                  loading={loading}
-                  error={error}
-                  onSelect={handleSelect}
-                  onRefresh={refresh}
-                  onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
-                  onCollapsedFoldersChange={(next) =>
-                    void patchSettings({ collapsedCharacterFolders: next })
+                </>
+              ) : null}
+
+              {rightPanel === 'lorebooks' ? (
+                <LorePanel
+                  books={books}
+                  settings={worldInfoSettings}
+                  onBooksChanged={() => {
+                    void refreshBooks();
+                    void refreshPersonas();
+                  }}
+                  onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
+                  activeBooks={lore.activeForPersona(chat.persona?.lorebookId ?? undefined)}
+                  onBookEdited={lore.invalidate}
+                  registerPersistence={(controls) => {
+                    lorePersistence.current = controls;
+                  }}
+                />
+              ) : null}
+
+              {rightPanel === 'summary' ? (
+                <SummaryPanel
+                  chat={chat}
+                  settings={summarySettings}
+                  connections={settings?.connections ?? []}
+                  activeConnection={connection}
+                  summaryConnection={summaryConnection}
+                  onSettingsChange={(patch) =>
+                    void patchSettings({ summary: { ...summarySettings, ...patch } })
                   }
                 />
-              </>
-            ) : null}
+              ) : null}
 
-            {rightPanel === 'lorebooks' ? (
-              <LorePanel
-                books={books}
-                settings={worldInfoSettings}
-                onBooksChanged={() => {
-                  void refreshBooks();
-                  void refreshPersonas();
-                }}
-                onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
-                activeBooks={lore.activeForPersona(chat.persona?.lorebookId ?? undefined)}
-                onBookEdited={lore.invalidate}
-                registerPersistence={(controls) => {
-                  lorePersistence.current = controls;
-                }}
-              />
-            ) : null}
+              {rightPanel === 'persona' ? (
+                <PersonaPanel
+                  personas={personas}
+                  books={books}
+                  activeId={settings?.personaId ?? null}
+                  onSelect={handleSelectPersona}
+                  onChanged={refreshPersonas}
+                  registerPersistence={(controls) => {
+                    personaPersistence.current = controls;
+                  }}
+                  dialogueColors={dialogueColorSettings}
+                  avatarVersions={personaAvatarVersions}
+                  onDialogueColorChange={patchPersonaDialogueColor}
+                  onAvatarChanged={bumpPersonaAvatar}
+                  onDeleted={handlePersonaDeleted}
+                />
+              ) : null}
 
-            {rightPanel === 'summary' ? (
-              <SummaryPanel
-                chat={chat}
-                settings={summarySettings}
-                connections={settings?.connections ?? []}
-                activeConnection={connection}
-                summaryConnection={summaryConnection}
-                onSettingsChange={(patch) =>
-                  void patchSettings({ summary: { ...summarySettings, ...patch } })
-                }
-              />
-            ) : null}
-
-            {rightPanel === 'persona' ? (
-              <PersonaPanel
-                personas={personas}
-                books={books}
-                activeId={settings?.personaId ?? null}
-                onSelect={handleSelectPersona}
-                onChanged={refreshPersonas}
-                registerPersistence={(controls) => {
-                  personaPersistence.current = controls;
-                }}
-                dialogueColors={dialogueColorSettings}
-                avatarVersions={personaAvatarVersions}
-                onDialogueColorChange={patchPersonaDialogueColor}
-                onAvatarChanged={bumpPersonaAvatar}
-                onDeleted={handlePersonaDeleted}
-              />
-            ) : null}
-
-            {rightPanel === 'settings' ? (
-              <UserSettingsPanel
-                settings={settings}
-                onPatch={patchUserSettings}
-                unsavedPreset={presetDraft.dirty}
-              />
-            ) : null}
-          </Panel>
-        )
+              {rightPanel === 'settings' ? (
+                <UserSettingsPanel
+                  settings={settings}
+                  onPatch={patchUserSettings}
+                  unsavedPreset={presetDraft.dirty}
+                  backups={backups}
+                  characters={characters}
+                  onRestoreBackup={(backupId) => void handleRestoreBackup(backupId)}
+                  onPurgeBackup={(backupId) => void handlePurgeBackup(backupId)}
+                />
+              ) : null}
+            </Panel>
+          )}
+        </ErrorBoundary>
       }
     >
-      {active && character ? (
-        <ChatView
-          chat={chat}
-          characterName={character.name || active.name}
-          avatar={active.avatar}
-          characterAvatarVersion={characterAvatarVersions[active.avatar]}
-          personaAvatarVersions={personaAvatarVersions}
-          creatorNotes={character?.creator_notes ?? ''}
-          // From the card rather than the message's swipe count: re-rolling the opening
-          // message appends swipes the creator never wrote, and counting those would slide
-          // a scenario list out of step with the greetings it describes.
-          greetingCount={character ? greetingTexts(character).length : 0}
-          ready={ready}
-          onCloseChat={() => void handleCloseChat()}
-          onOpenPanel={(id) => void showRightPanel(id)}
-          guidance={guidanceSettings}
-          onGuidanceChange={(patch) =>
-            void patchSettings({ guidance: { ...guidanceSettings, ...patch } })
-          }
-          dialogueColors={dialogueColorSettings}
-          quickCommands={quickCommands}
-          onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
-          regexScripts={regexScripts}
-        />
-      ) : (
-        <StartScreen
-          characters={characters}
-          onOpenChat={handleOpenRecentChat}
-          onDeleteChat={handleDeleteChat}
-          onOpenStudio={() => void enterStudio()}
-        />
-      )}
+      <ErrorBoundary where="the chat" resetKeys={[selected, chat.state.chatId]}>
+        {active && character ? (
+          <ChatView
+            chat={chat}
+            characterName={character.name || active.name}
+            avatar={active.avatar}
+            characterAvatarVersion={characterAvatarVersions[active.avatar]}
+            personaAvatarVersions={personaAvatarVersions}
+            creatorNotes={character?.creator_notes ?? ''}
+            // From the card rather than the message's swipe count: re-rolling the opening
+            // message appends swipes the creator never wrote, and counting those would slide
+            // a scenario list out of step with the greetings it describes.
+            greetingCount={character ? greetingTexts(character).length : 0}
+            ready={ready}
+            onCloseChat={() => void handleCloseChat()}
+            onOpenPanel={(id) => void showRightPanel(id)}
+            guidance={guidanceSettings}
+            onGuidanceChange={(patch) =>
+              void patchSettings({ guidance: { ...guidanceSettings, ...patch } })
+            }
+            dialogueColors={dialogueColorSettings}
+            quickCommands={quickCommands}
+            onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            onImportChat={(file) => void handleImportChat(file)}
+            regexScripts={regexScripts}
+          />
+        ) : (
+          <StartScreen
+            characters={characters}
+            onOpenChat={handleOpenRecentChat}
+            onDeleteChat={handleDeleteChat}
+            onOpenStudio={() => void enterStudio()}
+          />
+        )}
+      </ErrorBoundary>
     </AppShell>
   );
 }

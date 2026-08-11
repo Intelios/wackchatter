@@ -15,6 +15,22 @@
   border-bottom: 1px solid var(--wc-warning);
   background: var(--wc-surface-raised);
   flex-shrink: 0;
+  /* Mounted when the draft first diverges, so the entrance plays once. The bar is a
+     warning that work is at risk — it should arrive, not just appear. */
+  animation: wc-unsaved-in var(--wc-duration) var(--wc-ease);
+}
+
+@keyframes wc-unsaved-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--wc-space-1) * -1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unsaved-bar {
+    animation: none;
+  }
 }
 
 .unsaved-bar__text {

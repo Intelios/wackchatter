@@ -235,6 +235,22 @@ describe('sending', () => {
     assertConsistent(state);
   });
 
+  test('a reasoning-only finish keeps the assistant message', () => {
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Think.' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      { type: 'gen/finished', text: '', extra: { reasoning: 'A complete train of thought.' } },
+    );
+
+    expect(state.messages.length).toBe(3);
+    expect(currentText(last(state))).toBe('');
+    expect(last(state).swipe_info[0]?.extra?.reasoning).toBe('A complete train of thought.');
+    expect(state.status).toBe('idle');
+    assertConsistent(state);
+  });
+
   test('the placeholder starts empty so it excludes itself from its own prompt', () => {
     // assemble.ts skips blank content, which is what keeps the message being generated
     // out of the history it is generated from.
@@ -577,6 +593,89 @@ describe('continuing', () => {
 
     expect(state.messages[0]!.swipes).toEqual(before.messages[0]!.swipes);
     assertConsistent(state);
+  });
+});
+
+describe('multiple completions', () => {
+  test('a send lands the reply first and the spares behind it', () => {
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Hi' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      {
+        type: 'gen/finished',
+        text: 'The first.',
+        extra: { model: 'gpt-4o' },
+        alternates: [{ text: 'The second.' }, { text: 'The third.', extra: { model: 'gpt-4o' } }],
+      },
+    );
+
+    const reply = last(state);
+    expect(reply.swipes).toEqual(['The first.', 'The second.', 'The third.']);
+    // The reply the user watched stream in is the one still on screen.
+    expect(reply.swipe_id).toBe(0);
+    expect(currentText(reply)).toBe('The first.');
+    expect(reply.swipe_info[2]?.extra?.model).toBe('gpt-4o');
+    assertConsistent(state);
+  });
+
+  test('an overswipe keeps the selection on the take that streamed in', () => {
+    const state = run(
+      loaded(),
+      { type: 'gen/started', mode: 'swipe', newId: 'x', name: 'S' },
+      { type: 'gen/finished', text: 'A fourth take.', alternates: [{ text: 'A fifth take.' }] },
+    );
+
+    expect(state.messages[0]!.swipes).toEqual([
+      'Hello.',
+      'Greetings.',
+      'Well met.',
+      'A fourth take.',
+      'A fifth take.',
+    ]);
+    expect(state.messages[0]!.swipe_id).toBe(3);
+    expect(currentText(state.messages[0]!)).toBe('A fourth take.');
+    assertConsistent(state);
+  });
+
+  test('the alternates share the start time of the request that produced them', () => {
+    const started = run(loaded(), { type: 'gen/started', mode: 'swipe', newId: 'x', name: 'S' });
+    const genStarted = started.messages[0]!.swipe_info[3]?.gen_started;
+    const state = run(started, {
+      type: 'gen/finished',
+      text: 'Fourth.',
+      alternates: [{ text: 'Fifth.' }],
+    });
+
+    expect(genStarted).toBeTruthy();
+    expect(state.messages[0]!.swipe_info[4]?.gen_started).toBe(genStarted!);
+  });
+
+  test('a failed multi-choice swipe leaves no alternates behind', () => {
+    // Only `gen/finished` can carry alternates — an abort or a failure has nothing but
+    // half-written spares — so the undo here is the same total one as always.
+    const before = loaded();
+    const state = run(
+      before,
+      { type: 'gen/started', mode: 'swipe', newId: 'x', name: 'S' },
+      { type: 'gen/failed', message: 'Rate limited.' },
+    );
+
+    expect(state.messages[0]!.swipes).toEqual(before.messages[0]!.swipes);
+    assertConsistent(state);
+  });
+
+  test('the swipes reach the wire form the transcript is saved from', () => {
+    const state = run(
+      loaded(),
+      { type: 'gen/started', mode: 'swipe', newId: 'x', name: 'S' },
+      { type: 'gen/finished', text: 'Fourth.', alternates: [{ text: 'Fifth.' }] },
+    );
+
+    const saved = toChatMessages(state)[0]!;
+    expect(saved.swipes).toEqual(['Hello.', 'Greetings.', 'Well met.', 'Fourth.', 'Fifth.']);
+    expect(saved.mes).toBe('Fourth.');
   });
 });
 

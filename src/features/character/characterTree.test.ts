@@ -12,7 +12,6 @@ function character(name: string, folder = '', extra: Partial<CharacterSummary> =
     tags: [],
     character_version: '',
     hasLorebook: false,
-    alternateGreetingCount: 0,
     modified: 0,
     ...extra,
   } satisfies CharacterSummary;

@@ -94,7 +94,8 @@
   transition:
     opacity var(--wc-duration-fast) ease,
     background var(--wc-duration-fast) ease,
-    border-color var(--wc-duration-fast) ease;
+    border-color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
 }
 
 .start-screen__chat:hover .start-screen__chat-delete,

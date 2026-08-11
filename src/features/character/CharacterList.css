@@ -54,6 +54,15 @@
   transition: background var(--wc-duration-fast) ease;
 }
 
+.character-card[data-draggable] {
+  touch-action: none;
+  cursor: grab;
+}
+
+.character-card[data-draggable][data-dragging] {
+  cursor: grabbing;
+}
+
 /* The row keeps its place in the list while its ghost follows the cursor. */
 .character-card[data-dragging] {
   opacity: 0.4;
@@ -131,6 +140,33 @@
   text-overflow: ellipsis;
 }
 
+.character-card__tags {
+  display: flex;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.character-card__tag {
+  display: inline-block;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--wc-text-xs);
+  padding: 1px var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-hover);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+}
+
+.character-card__tag--more {
+  border: var(--wc-border-width) solid var(--wc-border);
+  padding: 0 var(--wc-space-1);
+  background: transparent;
+}
+
 .character-card__badges {
   display: flex;
   align-items: center;
@@ -153,14 +189,6 @@
 
 .character-card__star[data-filled] {
   color: var(--wc-star);
-}
-
-.badge {
-  font-size: var(--wc-text-xs);
-  padding: 1px var(--wc-space-1);
-  border-radius: var(--wc-radius-sm);
-  background: var(--wc-surface-hover);
-  color: var(--wc-text-faint);
 }
 
 /* ---------------------------------------------------------------------------
@@ -265,35 +293,6 @@
   font-size: var(--wc-text-sm);
   color: var(--wc-text-faint);
   text-align: center;
-}
-
-.character-card__grip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--wc-space-4);
-  flex-shrink: 0;
-  padding: 0;
-  opacity: 0;
-  color: var(--wc-text-faint);
-  cursor: grab;
-  touch-action: none;
-  transition: opacity var(--wc-duration-fast) ease;
-}
-
-.character-card__grip svg {
-  width: 1em;
-  height: 1em;
-}
-
-.character-card:hover .character-card__grip,
-.character-card__grip:focus-visible {
-  opacity: 1;
-}
-
-/* Holds the same width when dragging is off, so rows do not shift under a search. */
-.character-card__grip--placeholder {
-  cursor: default;
 }
 
 /* The ghost under the cursor: just enough to know what is being carried. */
