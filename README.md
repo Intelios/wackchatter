@@ -111,9 +111,3 @@ src/       React app: three-column layout, panels for Connection/Prompts/Inspect
 - **The server never builds a prompt.** Assembly happens in the browser (like SillyTavern), so the server stays dumb and fast and the prompt inspector shows exactly what was sent.
 - **No blocking modals.** The chat stays live while anything else is open.
 - **Deliberate divergences from SillyTavern** (documented in `AGENTS.md`): failed regenerates restore alternates instead of destroying the swipe array, real token usage is available opt-in, migration rules all run, and unsupported World Info positions are folded rather than dropped.
-
-## Status
-
-In early development (v0.8). Not planned: impersonate, group chats, instruct mode, extensions, image generation, TTS, local models.
-
-Format and behavioural rules are pinned in `AGENTS.md` — read it before touching card, preset, or World Info code.
