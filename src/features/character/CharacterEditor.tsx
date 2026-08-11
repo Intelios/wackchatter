@@ -257,7 +257,7 @@ export function CharacterEditor({
         />
       </Section>
 
-      <Section title="Greetings" badge={`${1 + data.alternate_greetings.length}`}>
+      <Section title="Greetings">
         <TextField
           label="First message"
           value={data.first_mes}

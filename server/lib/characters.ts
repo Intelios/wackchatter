@@ -68,7 +68,6 @@ function summarize(
     tags: card.data.tags,
     character_version: card.data.character_version,
     hasLorebook: Boolean(card.data.character_book?.entries?.length),
-    alternateGreetingCount: card.data.alternate_greetings.length,
     modified,
   };
 }

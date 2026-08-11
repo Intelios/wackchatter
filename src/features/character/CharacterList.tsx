@@ -571,9 +571,6 @@ function CharacterRow({
               ))}
             </span>
           ) : null}
-          {character.alternateGreetingCount > 0 ? (
-            <span className="badge">+{character.alternateGreetingCount}</span>
-          ) : null}
         </span>
       </button>
 

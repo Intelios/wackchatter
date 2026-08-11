@@ -52,7 +52,6 @@ function detail(patch: Partial<CardDataV2> = {}, avatar = 'Nova.png'): Character
     tags: data.tags,
     character_version: data.character_version,
     hasLorebook: Boolean(data.character_book),
-    alternateGreetingCount: data.alternate_greetings.length,
     modified: 0,
     card: { data },
   };

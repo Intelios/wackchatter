@@ -182,14 +182,6 @@
   color: var(--wc-star);
 }
 
-.badge {
-  font-size: var(--wc-text-xs);
-  padding: 1px var(--wc-space-1);
-  border-radius: var(--wc-radius-sm);
-  background: var(--wc-surface-hover);
-  color: var(--wc-text-faint);
-}
-
 /* ---------------------------------------------------------------------------
  * Folders
  * ------------------------------------------------------------------------- */

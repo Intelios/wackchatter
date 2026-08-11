@@ -132,7 +132,6 @@ export interface CharacterSummary {
   tags: string[];
   character_version: string;
   hasLorebook: boolean;
-  alternateGreetingCount: number;
   /** ms epoch, from file mtime. */
   modified: number;
 }
