@@ -39,6 +39,12 @@ export interface CharacterTreeInput {
   ratings: Readonly<Record<string, number>>;
 }
 
+/** Remove app-hidden tags while preserving the card's original order. */
+export function visibleTagsOf(tags: readonly string[], hidden: readonly string[]): string[] {
+  const hiddenSet = new Set(hidden.map((tag) => tag.toLowerCase()));
+  return tags.filter((tag) => !hiddenSet.has(tag.toLowerCase()));
+}
+
 /** Name, tags and creator — the fields a person actually searches a card library by. */
 export function matchesQuery(character: CharacterSummary, query: string): boolean {
   const q = query.trim().toLowerCase();

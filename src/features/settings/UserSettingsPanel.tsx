@@ -2,7 +2,7 @@ import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatBackupSummary } from '@shared/types/chat.ts';
 import { DEFAULT_DIALOGUE_COLORS, type SettingsResponse } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckField, NumberField, SelectField } from '../../components/Field.tsx';
+import { CheckField, NumberField, SelectField, TagField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
 import { TrashIcon, UploadIcon } from '../../layout/icons.tsx';
@@ -227,6 +227,15 @@ export function UserSettingsPanel({
             })
           }
           hint="Uses each character or persona avatar by default. Individual speakers can use a custom colour or opt out in their editor."
+        />
+      </Section>
+
+      <Section title="Hidden tags">
+        <TagField
+          label="Tags to hide"
+          value={settings?.hiddenTags ?? []}
+          onChange={(hiddenTags) => onPatch({ hiddenTags })}
+          hint="These tags do not appear as chips on character cards. The cards themselves remain visible."
         />
       </Section>
 

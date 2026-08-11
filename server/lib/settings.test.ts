@@ -225,6 +225,22 @@ describe('mergeSettings', () => {
     expect(mergeSettings(current, { quickCommands: [] }).quickCommands).toEqual([]);
   });
 
+  test('hidden tags trim and deduplicate case-insensitively', () => {
+    const next = mergeSettings(base(), {
+      hiddenTags: [' OC ', 'oc', 'Fantasy', '', ' fantasy ', 42] as never,
+    });
+
+    expect(next.hiddenTags).toEqual(['OC', 'Fantasy']);
+    expect(mergeSettings(next, { hiddenTags: [] }).hiddenTags).toEqual([]);
+  });
+
+  test('a malformed hidden-tags patch cannot wipe the list', () => {
+    const current = mergeSettings(base(), { hiddenTags: ['OC', 'spoiler'] });
+    for (const patch of [{ hiddenTags: null }, { hiddenTags: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).hiddenTags).toEqual(current.hiddenTags);
+    }
+  });
+
   test('character ratings replace wholesale and discard out-of-range values', () => {
     const next = mergeSettings(base(), {
       characterRatings: { 'Alice.png': 5, 'Bob.png': 1, 'Carol.png': 0, 'Dan.png': 6 } as never,

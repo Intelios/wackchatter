@@ -68,6 +68,8 @@ export interface AppSettings {
   characterRatings: Record<string, number>;
   /** How the character list orders its cards. Rating sorts within each folder, not across. */
   characterListSort: 'name' | 'rating';
+  /** Tags omitted from character-list chips. Matching is case-insensitive. */
+  hiddenTags: string[];
   /**
    * Character folders the user has collapsed in the list.
    *
@@ -240,6 +242,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   characterRatings: {},
   characterListSort: 'name',
+  hiddenTags: [],
   collapsedCharacterFolders: [],
   quickCommands: [],
   regexScripts: [],

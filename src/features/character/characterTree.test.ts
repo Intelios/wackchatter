@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CharacterSummary } from '@shared/types/card.ts';
-import { buildCharacterTree, matchesQuery, type TreeRow } from './characterTree.ts';
+import { buildCharacterTree, matchesQuery, type TreeRow, visibleTagsOf } from './characterTree.ts';
 
 function character(name: string, folder = '', extra: Partial<CharacterSummary> = {}) {
   return {
@@ -196,5 +196,22 @@ describe('matchesQuery', () => {
   test('an empty query matches everything', () => {
     expect(matchesQuery(character('Elf'), '')).toBe(true);
     expect(matchesQuery(character('Elf'), '  ')).toBe(true);
+  });
+});
+
+describe('visibleTagsOf', () => {
+  test('hides matching tags case-insensitively and leaves the others', () => {
+    expect(visibleTagsOf(['OC', 'fantasy', 'oc', 'slow burn'], ['oc'])).toEqual([
+      'fantasy',
+      'slow burn',
+    ]);
+  });
+
+  test('returns no tags when every tag is hidden', () => {
+    expect(visibleTagsOf(['OC', 'Spoiler'], ['oc', 'spoiler'])).toEqual([]);
+  });
+
+  test('preserves the order of visible tags', () => {
+    expect(visibleTagsOf(['first', 'second', 'third'], ['second'])).toEqual(['first', 'third']);
   });
 });

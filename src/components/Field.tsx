@@ -1,5 +1,5 @@
 import { joinKeys, splitKeys } from '@shared/worldinfo/keys.ts';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ExpandIcon } from '../layout/icons.tsx';
 import { FullscreenText } from './FullscreenText.tsx';
 import './Field.css';
@@ -117,30 +117,67 @@ interface TagFieldProps {
   hint?: string;
 }
 
-/** Comma-separated editing for string arrays (tags). */
+/** Pill editing for string arrays. Enter or comma commits the current draft as a tag. */
 export function TagField({ label, value, onChange, hint }: TagFieldProps) {
   const id = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState('');
+
+  function commitDraft() {
+    const next = draft
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    if (next.length) onChange([...value, ...next]);
+    setDraft('');
+  }
+
+  function removeTag(index: number) {
+    onChange(value.filter((_, tagIndex) => tagIndex !== index));
+    inputRef.current?.focus();
+  }
 
   return (
     <div className="field">
       <label className="wc-label" htmlFor={id}>
         {label}
       </label>
-      <input
-        id={id}
-        className="wc-input"
-        type="text"
-        value={value.join(', ')}
-        placeholder="fantasy, adventure"
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split(',')
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-          )
-        }
-      />
+      <div className="tag-field__control">
+        {value.map((tag, index) => (
+          // Tags can repeat, so the index keeps each removable pill addressable.
+          // biome-ignore lint/suspicious/noArrayIndexKey: positional tag list
+          <span className="tag-field__pill" key={`${tag}-${index}`}>
+            <span className="tag-field__pill-label">{tag}</span>
+            <button
+              type="button"
+              className="tag-field__remove"
+              aria-label={`Remove ${tag}`}
+              title={`Remove ${tag}`}
+              onClick={() => removeTag(index)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          id={id}
+          className="tag-field__input"
+          type="text"
+          value={draft}
+          placeholder={value.length ? 'Add another…' : 'Type a tag and press Enter'}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ',') {
+              event.preventDefault();
+              commitDraft();
+            } else if (event.key === 'Backspace' && !draft && value.length > 0) {
+              event.preventDefault();
+              removeTag(value.length - 1);
+            }
+          }}
+        />
+      </div>
       {hint ? <p className="wc-hint">{hint}</p> : null}
     </div>
   );

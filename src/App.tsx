@@ -301,6 +301,10 @@ export function App() {
   const characterRatings: Record<string, number> = settings?.characterRatings ?? {};
   const characterListSort: 'name' | 'rating' =
     settings?.characterListSort === 'rating' ? 'rating' : 'name';
+  const hiddenTags = useMemo(
+    () => (Array.isArray(settings?.hiddenTags) ? settings.hiddenTags : []),
+    [settings?.hiddenTags],
+  );
   // Normalised server-side; the fallback only covers the pre-load render.
   const quickCommands: QuickCommand[] = settings?.quickCommands ?? [];
   // Only the enabled ones ever leave here. A disabled script is inert either way, but
@@ -965,6 +969,7 @@ export function App() {
                     characters={characters}
                     folders={folders}
                     collapsedFolders={collapsedCharacterFolders}
+                    hiddenTags={hiddenTags}
                     ratings={characterRatings}
                     sort={characterListSort}
                     onSortChange={(sort) => void patchSettings({ characterListSort: sort })}

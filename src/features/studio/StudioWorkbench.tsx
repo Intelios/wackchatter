@@ -407,7 +407,7 @@ export function StudioWorkbench({
               label="Tags"
               value={draft.data.tags}
               onChange={(value) => draft.update('tags', value)}
-              hint="Comma-separated discovery labels."
+              hint="Type a discovery label and press Enter."
             />
             <TextField
               label="Creator notes"
@@ -429,7 +429,7 @@ export function StudioWorkbench({
               label="Source"
               value={draft.data.source ?? []}
               onChange={(value) => draft.update('source', value)}
-              hint="Source links or provenance, comma-separated."
+              hint="Type a source link or provenance label and press Enter."
             />
           </>
         );
