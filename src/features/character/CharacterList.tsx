@@ -23,7 +23,7 @@ import {
   UploadIcon,
 } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
-import { buildCharacterTree, type TreeRow } from './characterTree.ts';
+import { buildCharacterTree, type TreeRow, visibleTagsOf } from './characterTree.ts';
 import './CharacterList.css';
 
 interface CharacterListProps {
@@ -31,6 +31,8 @@ interface CharacterListProps {
   /** Folder paths from the server, including empty ones. */
   folders: string[];
   collapsedFolders: string[];
+  /** Tags hidden from the chips, case-insensitively. */
+  hiddenTags: string[];
   /** The user's ratings, keyed by avatar filename. Absent means unrated. */
   ratings: Readonly<Record<string, number>>;
   /** How the cards are ordered within each folder. */
@@ -57,6 +59,7 @@ export function CharacterList({
   characters,
   folders,
   collapsedFolders,
+  hiddenTags,
   ratings,
   sort,
   onSortChange,
@@ -259,6 +262,7 @@ export function CharacterList({
                   showFolder={searching}
                   draggable={!searching}
                   current={row.character.avatar === selected}
+                  hiddenTags={hiddenTags}
                   onSelect={() => onSelect(row.character.avatar)}
                   onEdit={() => onEdit(row.character.avatar)}
                 />
@@ -464,6 +468,8 @@ interface CharacterRowProps {
   showFolder: boolean;
   draggable: boolean;
   current: boolean;
+  /** Tags hidden from the chips, case-insensitively. */
+  hiddenTags: string[];
   onSelect: () => void;
   onEdit: () => void;
 }
@@ -475,6 +481,7 @@ function CharacterRow({
   showFolder,
   draggable,
   current,
+  hiddenTags,
   onSelect,
   onEdit,
 }: CharacterRowProps) {
@@ -488,8 +495,9 @@ function CharacterRow({
     : character.creator
       ? `by ${character.creator}`
       : 'Unknown creator';
+  const visibleTags = visibleTagsOf(character.tags, hiddenTags);
   const tagOccurrences = new Map<string, number>();
-  const visibleTags = character.tags.slice(0, 3).map((tag) => {
+  const displayedTags = visibleTags.slice(0, 3).map((tag) => {
     const occurrence = tagOccurrences.get(tag) ?? 0;
     tagOccurrences.set(tag, occurrence + 1);
     return { key: `${tag}-${occurrence}`, value: tag };
@@ -531,16 +539,16 @@ function CharacterRow({
         <span className="character-card__text">
           <span className="character-card__name">{character.name}</span>
           <span className="character-card__meta">{meta}</span>
-          {character.tags.length ? (
-            <span className="character-card__tags" title={character.tags.join(', ')}>
-              {visibleTags.map(({ key, value }) => (
+          {visibleTags.length ? (
+            <span className="character-card__tags" title={visibleTags.join(', ')}>
+              {displayedTags.map(({ key, value }) => (
                 <span className="character-card__tag" key={key}>
                   {value}
                 </span>
               ))}
-              {character.tags.length > 3 ? (
+              {visibleTags.length > 3 ? (
                 <span className="character-card__tag character-card__tag--more">
-                  +{character.tags.length - 3}
+                  +{visibleTags.length - 3}
                 </span>
               ) : null}
             </span>

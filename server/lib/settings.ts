@@ -334,6 +334,23 @@ function normalizeCharacterRatings(value: unknown): Record<string, number> {
   return Object.fromEntries(entries);
 }
 
+/** Coerce the app-wide list of tags hidden from character-list chips. */
+function normalizeHiddenTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== 'string') continue;
+    const tag = candidate.trim();
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    tags.push(tag);
+  }
+  return tags;
+}
+
 /**
  * Coerce a stored quick-command list. Entries without a usable id are dropped — the id is
  * what edits and deletes address, and a duplicate id would let one command shadow another.
@@ -416,6 +433,7 @@ export function getSettings(): AppSettings {
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
+    hiddenTags: normalizeHiddenTags(stored.hiddenTags),
     quickCommands: normalizeQuickCommands(stored.quickCommands),
     regexScripts: normalizeRegexScripts(stored.regexScripts),
   };
@@ -493,6 +511,9 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       patch.characterListSort === 'name' || patch.characterListSort === 'rating'
         ? patch.characterListSort
         : current.characterListSort,
+    hiddenTags: Array.isArray(patch.hiddenTags)
+      ? normalizeHiddenTags(patch.hiddenTags)
+      : current.hiddenTags,
   };
 }
 
