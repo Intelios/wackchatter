@@ -7,3 +7,11 @@
 # unreviewable change is the last thing anyone wants.
 *.ts text diff
 *.tsx text diff
+
+# Launchers must be checked out with the line endings their interpreter expects, whatever
+# the platform or the user's core.autocrlf. A shell script that arrives with CRLF fails on
+# the shebang line with "bad interpreter", which reads like the script is broken rather
+# than merely mispunctuated.
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

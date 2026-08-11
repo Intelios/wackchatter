@@ -141,26 +141,43 @@ async function serveStatic(url: URL): Promise<Response> {
   });
 }
 
-const server = Bun.serve({
-  // Loopback only. The API is unauthenticated, so it must never be reachable from
-  // other hosts. Remote access would need explicit opt-in plus authentication.
-  hostname: '127.0.0.1',
-  port: PORT,
-  // Generation can be slow; the default 10s idle timeout would cut streams off.
-  idleTimeout: 255,
-  fetch(request) {
-    const url = new URL(request.url);
-    return handle(() => {
-      if (url.pathname.startsWith('/api')) {
-        if (forbiddenOrigin(request)) {
-          return errorResponse('Cross-origin requests are not allowed.', 403);
-        }
-        return serveApi(request, url);
-      }
-      return serveStatic(url);
+function startServer() {
+  try {
+    return Bun.serve({
+      // Loopback only. The API is unauthenticated, so it must never be reachable from
+      // other hosts. Remote access would need explicit opt-in plus authentication.
+      hostname: '127.0.0.1',
+      port: PORT,
+      // Generation can be slow; the default 10s idle timeout would cut streams off.
+      idleTimeout: 255,
+      fetch(request) {
+        const url = new URL(request.url);
+        return handle(() => {
+          if (url.pathname.startsWith('/api')) {
+            if (forbiddenOrigin(request)) {
+              return errorResponse('Cross-origin requests are not allowed.', 403);
+            }
+            return serveApi(request, url);
+          }
+          return serveStatic(url);
+        });
+      },
     });
-  },
-});
+  } catch (error) {
+    /*
+     * Overwhelmingly this is a second copy of WackChatter, and the launcher hands the
+     * user a stack trace unless we say so. Worth catching by name: the two fixes are
+     * different, and neither is guessable from "Failed to start server".
+     */
+    if ((error as { code?: string }).code !== 'EADDRINUSE') throw error;
+    console.error(`\n  Port ${PORT} is already in use.\n`);
+    console.error(`  WackChatter may already be running — check http://localhost:${PORT}`);
+    console.error(`  Otherwise start this copy elsewhere:  WC_PORT=${PORT + 1} ./start.sh\n`);
+    process.exit(1);
+  }
+}
+
+const server = startServer();
 
 const appUrl = IS_PROD ? `http://localhost:${server.port}` : 'http://localhost:5173';
 const dataNote =
