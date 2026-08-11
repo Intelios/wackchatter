@@ -239,6 +239,29 @@ export function appendSwipe(
 }
 
 /**
+ * Append extra takes WITHOUT moving the selection, unlike `appendSwipe`.
+ *
+ * This is where a multi-choice generation lands its spare completions. The reader is
+ * already looking at the reply that streamed in, so the selection has to stay where it
+ * is; the extras sit behind it as alternates to swipe into.
+ */
+export function appendAlternates(
+  message: MessageState,
+  alternates: { text: string; info?: SwipeInfo }[],
+): MessageState {
+  if (alternates.length === 0) return message;
+
+  return {
+    ...message,
+    swipes: [...message.swipes, ...alternates.map((alternate) => alternate.text)],
+    swipe_info: [
+      ...message.swipe_info,
+      ...alternates.map((alternate) => alternate.info ?? blankInfo()),
+    ],
+  };
+}
+
+/**
  * Drop a swipe, keeping the selection sensible. The last remaining swipe is emptied
  * rather than removed, since a message must always have at least one.
  */

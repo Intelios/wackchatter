@@ -656,11 +656,17 @@ export function useChat(options: UseChatOptions): UseChat {
           return;
         }
 
+        // Extra completions become extra swipes, so they only make sense for the modes
+        // that own a swipe array. `continue` writes back into one existing swipe — it has
+        // nowhere to put a second take of the same half-finished sentence.
+        const completions = mode === 'continue' ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
+
         const body = buildRequestBody({
           messages: assembled.messages,
           preset,
           connection,
           stream: preset.stream_openai !== false,
+          completions,
         });
 
         const inspection: PromptInspection = {
@@ -707,6 +713,25 @@ export function useChat(options: UseChatOptions): UseChat {
         );
 
         stream.end();
+
+        // Blank ones are dropped: a provider may honour `n` with fewer completions than
+        // asked for, and an empty swipe is just something to skip past. Only trusted when
+        // this request actually asked for alternates.
+        const alternates =
+          completions > 1
+            ? (final.alternates ?? [])
+                .filter((choice) => choice.content.trim())
+                .map((choice) => ({
+                  text: choice.content,
+                  extra: {
+                    api: connection.provider,
+                    model: final.model ?? connection.model,
+                    ...(choice.reasoning ? { reasoning: choice.reasoning } : {}),
+                    token_count: countTokens.countText(choice.content),
+                  },
+                }))
+            : [];
+
         dispatch({
           type: 'gen/finished',
           text: final.content,
@@ -714,9 +739,14 @@ export function useChat(options: UseChatOptions): UseChat {
             api: connection.provider,
             model: final.model ?? connection.model,
             ...(final.reasoning ? { reasoning: final.reasoning } : {}),
-            // A real count from the provider beats our estimate when we get one.
-            token_count: final.usage?.completion_tokens ?? countTokens.countText(final.content),
+            // A real count from the provider beats our estimate when we get one — but
+            // reported usage covers every completion in the request, so once there are
+            // alternates it is no longer this swipe's count and the estimate is closer.
+            token_count: alternates.length
+              ? countTokens.countText(final.content)
+              : (final.usage?.completion_tokens ?? countTokens.countText(final.content)),
           },
+          alternates,
         });
       } catch (error) {
         stream.end();

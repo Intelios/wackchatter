@@ -10,6 +10,14 @@ import { Slider } from '../../components/Slider.tsx';
 import type { PresetDraft } from './usePresetDraft.ts';
 import './GenerationPanel.css';
 
+/**
+ * Ceiling on simultaneous completions.
+ *
+ * Not a protocol limit — a guard on a field where a stray keystroke is a real bill, and
+ * more alternates than anyone reads before picking one.
+ */
+const MAX_COMPLETIONS = 8;
+
 interface GenerationPanelProps {
   preset: Preset;
   draft: PresetDraft;
@@ -121,10 +129,20 @@ export function GenerationPanel({
             label="Completions"
             value={preset.n ?? 1}
             min={1}
+            max={MAX_COMPLETIONS}
             step={1}
-            onChange={(value) => setField('n', Math.max(1, Math.round(value)))}
+            onChange={(value) =>
+              setField('n', Math.min(MAX_COMPLETIONS, Math.max(1, Math.round(value))))
+            }
+            hint="Replies to ask for at once. The spares arrive as swipes, and every one of them is billed."
           />
         </div>
+        {(preset.n ?? 1) > 1 ? (
+          <p className="wc-hint">
+            Continue and summaries always ask for one. An endpoint that does not support multiple
+            completions simply returns a single reply.
+          </p>
+        ) : null}
         <SelectField<ReasoningEffort>
           label="Reasoning effort"
           value={preset.reasoning_effort ?? 'auto'}

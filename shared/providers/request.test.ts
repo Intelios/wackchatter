@@ -99,19 +99,27 @@ describe('seed', () => {
 });
 
 describe('n', () => {
-  // WC-07: `n > 1` is clamped out. The parsers read only `choices[0]`, so forwarding
-  // extra completions would bill for work that is then discarded. Until multi-choice
-  // is intentionally implemented, the request never carries `n`.
-  test('n of 1 is omitted', () => {
-    expect(Object.hasOwn(build({ n: 1 }), 'n')).toBe(false);
+  test('several completions are asked for', () => {
+    expect(build({}, connection(), { completions: 4 }).n).toBe(4);
   });
 
-  test('n above 1 is clamped and never sent', () => {
-    expect(Object.hasOwn(build({ n: 3 }), 'n')).toBe(false);
+  test('one completion sends nothing — `n: 1` is the universal default', () => {
+    expect(Object.hasOwn(build({}, connection(), { completions: 1 }), 'n')).toBe(false);
   });
 
-  test('unset n is omitted', () => {
+  test('a caller that says nothing gets nothing', () => {
     expect(Object.hasOwn(build({}), 'n')).toBe(false);
+  });
+
+  // The safety property behind `completions` being a request field rather than a preset
+  // read: a summary runs on the user's preset, and must not quietly pay for alternates
+  // it has nowhere to put.
+  test('preset.n alone never reaches the wire', () => {
+    expect(Object.hasOwn(build({ n: 4 }), 'n')).toBe(false);
+  });
+
+  test('a fractional count is floored rather than sent as-is', () => {
+    expect(build({}, connection(), { completions: 2.7 }).n).toBe(2);
   });
 });
 
