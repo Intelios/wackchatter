@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
-import { ChatPicker } from './features/chat/ChatPicker.tsx';
+import { ChatContext } from './features/chat/ChatContext.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
@@ -599,16 +599,17 @@ export function App() {
   }, [chat, flushRightPanel]);
 
   /**
-   * The trash bin, scoped to the selected character. Every delete, restore and purge
-   * touches it, so it is refetched after each rather than kept in sync by hand.
+   * The trash bin, across every character — it is shown in User Settings, which is not a
+   * per-character place. Every delete, restore and purge touches it, so it is refetched
+   * after each rather than kept in sync by hand.
    */
   const refreshBackups = useCallback(async () => {
     try {
-      setBackups(await backupApi.list(selected ?? undefined));
+      setBackups(await backupApi.list());
     } catch {
       // Keep the last good list; a stale bin is better than a blank one.
     }
-  }, [selected]);
+  }, []);
 
   useEffect(() => {
     void refreshBackups();
@@ -627,20 +628,34 @@ export function App() {
     [chat, refreshBackups],
   );
 
-  /** Bring a deleted chat back and open it. */
+  /**
+   * Bring a deleted chat back and open it.
+   *
+   * The bin is reachable from the start screen now, where the restored chat's character is
+   * usually not the open one — and may be no character at all. Restoring across that
+   * boundary goes through the same door the recent-chat rows use, so the character is
+   * selected and its panels reset exactly as if the chat had been opened normally.
+   */
   const handleRestoreBackup = useCallback(
     async (backupId: string) => {
       try {
         const restored = await backupApi.restore(backupId);
-        await chat.refreshChats();
-        void chat.openChat(restored.id);
+        if (selected === restored.characterId) {
+          await chat.refreshChats();
+          void chat.openChat(restored.id);
+        } else {
+          void transitionToCharacter(restored.characterId, {
+            chatId: restored.id,
+            panel: null,
+          });
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
         void refreshBackups();
       }
     },
-    [chat, refreshBackups],
+    [chat, selected, transitionToCharacter, refreshBackups],
   );
 
   /** Empty one slot of the bin for good. */
@@ -938,23 +953,12 @@ export function App() {
             <Panel title={RIGHT_PANELS.find((p) => p.id === rightPanel)?.label}>
               {rightPanel === 'characters' ? (
                 <>
-                  {/* The chat picker stays here: it is scoped to the selected character. */}
+                  {/* Scoped to the selected character, so it goes when nothing is open. */}
                   {selected ? (
-                    <ChatPicker
-                      chats={chat.chats}
-                      activeId={chat.state.chatId}
+                    <ChatContext
                       metadata={chat.state.metadata}
                       inheritedScenario={character?.scenario ?? ''}
-                      creatorNotes={character?.creator_notes ?? ''}
-                      backups={backups}
-                      onOpen={(id) => void chat.openChat(id)}
-                      onNew={() => void chat.newChat()}
-                      onDelete={(id) => void handleDeleteChat(id)}
-                      onRename={chat.renameChat}
                       onMetadataChange={chat.updateMetadata}
-                      onRestore={(backupId) => void handleRestoreBackup(backupId)}
-                      onPurge={(backupId) => void handlePurgeBackup(backupId)}
-                      onImportChat={(file) => void handleImportChat(file)}
                     />
                   ) : null}
                   <CharacterList
@@ -1030,6 +1034,10 @@ export function App() {
                   settings={settings}
                   onPatch={patchUserSettings}
                   unsavedPreset={presetDraft.dirty}
+                  backups={backups}
+                  characters={characters}
+                  onRestoreBackup={(backupId) => void handleRestoreBackup(backupId)}
+                  onPurgeBackup={(backupId) => void handlePurgeBackup(backupId)}
                 />
               ) : null}
             </Panel>
@@ -1060,6 +1068,7 @@ export function App() {
             dialogueColors={dialogueColorSettings}
             quickCommands={quickCommands}
             onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            onImportChat={(file) => void handleImportChat(file)}
             regexScripts={regexScripts}
           />
         ) : (

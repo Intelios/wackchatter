@@ -31,6 +31,7 @@ function spies() {
     openPanel: (tab) => panels.push(tab),
     closeChat: () => calls.push('closeChat'),
     exportChat: () => calls.push('exportChat'),
+    importChat: () => calls.push('importChat'),
     insertCommand: (text) => inserted.push(text),
     editQuickCommands: () => calls.push('editQuickCommands'),
   };
@@ -80,6 +81,7 @@ describe('buildChatMenu', () => {
       'Regenerate',
       'Continue',
       'Export chat',
+      'Import chat',
       'Quick commands',
       ...JUMPS,
       'Close chat',
@@ -162,8 +164,16 @@ describe('buildChatMenu', () => {
     item(entries, 'Regenerate').onSelect();
     item(entries, 'Continue').onSelect();
     item(entries, 'Export chat').onSelect();
+    item(entries, 'Import chat').onSelect();
     item(entries, 'Close chat').onSelect();
-    expect(calls).toEqual(['newChat', 'regenerate', 'continueLast', 'exportChat', 'closeChat']);
+    expect(calls).toEqual([
+      'newChat',
+      'regenerate',
+      'continueLast',
+      'exportChat',
+      'importChat',
+      'closeChat',
+    ]);
 
     for (const label of JUMPS) item(entries, label).onSelect();
     expect(panels).toEqual(['characters', 'lorebooks', 'persona']);

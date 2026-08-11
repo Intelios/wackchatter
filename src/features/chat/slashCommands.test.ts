@@ -104,6 +104,27 @@ describe('parseSlashCommand', () => {
     });
   });
 
+  describe('/rename', () => {
+    test('the rest of the line is the title, spaces and all', () => {
+      expect(parseSlashCommand('/rename The Fountain Incident')).toEqual({
+        ok: true,
+        command: { type: 'rename', title: 'The Fountain Incident' },
+      });
+    });
+
+    test('surrounding whitespace is trimmed but inner spacing is kept', () => {
+      expect(parseSlashCommand('/rename   day  two  ')).toEqual({
+        ok: true,
+        command: { type: 'rename', title: 'day  two' },
+      });
+    });
+
+    test('a title is required — an empty rename would erase the label', () => {
+      expect(parseSlashCommand('/rename')?.ok).toBe(false);
+      expect(parseSlashCommand('/rename   ')?.ok).toBe(false);
+    });
+  });
+
   describe('/reload', () => {
     test('bare /reload parses', () => {
       expect(parseSlashCommand('/reload')).toEqual({ ok: true, command: { type: 'reload' } });
@@ -124,14 +145,22 @@ describe('slashCompletion', () => {
   test('a bare slash offers every command and is completing', () => {
     const result = slashCompletion('/');
     expect(result?.completing).toBe(true);
-    expect(result?.suggestions.map((c) => c.name)).toEqual(['hide', 'unhide', 'jump', 'reload']);
+    expect(result?.suggestions.map((c) => c.name)).toEqual([
+      'hide',
+      'unhide',
+      'jump',
+      'rename',
+      'reload',
+    ]);
   });
 
   test('a prefix filters the list and stays completing', () => {
     expect(slashCompletion('/h')?.suggestions.map((c) => c.name)).toEqual(['hide']);
     expect(slashCompletion('/u')?.suggestions.map((c) => c.name)).toEqual(['unhide']);
     expect(slashCompletion('/un')?.suggestions.map((c) => c.name)).toEqual(['unhide']);
-    expect(slashCompletion('/re')?.suggestions.map((c) => c.name)).toEqual(['reload']);
+    // Two commands share the "re" prefix, so it narrows without resolving.
+    expect(slashCompletion('/re')?.suggestions.map((c) => c.name)).toEqual(['rename', 'reload']);
+    expect(slashCompletion('/rel')?.suggestions.map((c) => c.name)).toEqual(['reload']);
     expect(slashCompletion('/h')?.completing).toBe(true);
   });
 

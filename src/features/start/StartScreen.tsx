@@ -195,6 +195,7 @@ export function StartScreen({
             ) : null}
           </div>
         )}
+
         <button type="button" className="start-screen__studio" onClick={onOpenStudio}>
           <StudioIcon />
           Character Creator Studio

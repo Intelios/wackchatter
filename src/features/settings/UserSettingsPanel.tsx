@@ -1,3 +1,5 @@
+import type { CharacterSummary } from '@shared/types/card.ts';
+import type { ChatBackupSummary } from '@shared/types/chat.ts';
 import { DEFAULT_DIALOGUE_COLORS, type SettingsResponse } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField } from '../../components/Field.tsx';
@@ -8,6 +10,7 @@ import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
 import { RegexScriptSection } from '../regex/RegexScriptList.tsx';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
 import { DataLocationSection } from './DataLocationSection.tsx';
+import { RecentlyDeletedSection } from './RecentlyDeletedSection.tsx';
 import './UserSettingsPanel.css';
 
 interface UserSettingsPanelProps {
@@ -15,10 +18,23 @@ interface UserSettingsPanelProps {
   onPatch: (patch: Record<string, unknown>) => void;
   /** Moving the data folder reloads the app, which would take an unsaved draft with it. */
   unsavedPreset?: boolean;
+  /** The chat trash bin, across every character — see RecentlyDeletedSection. */
+  backups: ChatBackupSummary[];
+  characters: CharacterSummary[];
+  onRestoreBackup: (backupId: string) => void;
+  onPurgeBackup: (backupId: string) => void;
 }
 
 /** App-level settings: how the app looks, where data lives, and the knobs with no better home. */
-export function UserSettingsPanel({ settings, onPatch, unsavedPreset }: UserSettingsPanelProps) {
+export function UserSettingsPanel({
+  settings,
+  onPatch,
+  unsavedPreset,
+  backups,
+  characters,
+  onRestoreBackup,
+  onPurgeBackup,
+}: UserSettingsPanelProps) {
   const [uploads, setUploads] = useState<BackgroundSummary[]>([]);
   const [status, setStatus] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -244,6 +260,13 @@ export function UserSettingsPanel({ settings, onPatch, unsavedPreset }: UserSett
           hint="Counts are exact for OpenAI models and an estimate everywhere else."
         />
       </Section>
+
+      <RecentlyDeletedSection
+        backups={backups}
+        characters={characters}
+        onRestore={onRestoreBackup}
+        onPurge={onPurgeBackup}
+      />
 
       <DataLocationSection unsavedPreset={unsavedPreset} />
     </div>

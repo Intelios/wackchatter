@@ -1,0 +1,93 @@
+/* Compact rows: the settings panel is a column, not a page. */
+
+.bin__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bin__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid transparent;
+}
+
+.bin__item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.bin__restore {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  text-align: left;
+  padding: var(--wc-space-2);
+}
+
+/* Also the placeholder for a character that no longer exists, hence the border and the
+   background rather than styling the img alone. */
+.bin__avatar {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface);
+  object-fit: cover;
+}
+
+.bin__restore:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.bin__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bin__name {
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bin__sep {
+  margin: 0 0.35em;
+  color: var(--wc-text-faint);
+}
+
+.bin__title {
+  font-weight: 400;
+  color: var(--wc-text-muted);
+}
+
+.bin__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+.bin__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+}
+
+.bin__count svg {
+  width: 0.9em;
+  height: 0.9em;
+}

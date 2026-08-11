@@ -23,6 +23,7 @@ import {
   MessagesIcon,
   PlusIcon,
   RefreshIcon,
+  UploadIcon,
   UserIcon,
 } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
@@ -52,6 +53,7 @@ export interface ChatMenuActions {
   openPanel: (panel: RightPanelId) => void;
   closeChat: () => void;
   exportChat: () => void;
+  importChat: () => void;
   insertCommand: (text: string) => void;
   editQuickCommands: () => void;
 }
@@ -122,6 +124,16 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       disabled: busy,
       disabledReason: BUSY,
       onSelect: actions.exportChat,
+    },
+    {
+      // Import came out of the character panel with the chat list. It belongs beside
+      // Export rather than in a panel: both are the same operation on this character's
+      // chats, pointed in opposite directions.
+      label: 'Import chat',
+      icon: <UploadIcon />,
+      disabled: busy,
+      disabledReason: BUSY,
+      onSelect: actions.importChat,
     },
 
     { kind: 'separator' },
@@ -198,6 +210,8 @@ interface ChatMenuProps {
   /** Places a command's text in the composer, ready to send. */
   onInsertCommand: (text: string) => void;
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  /** Reads a chat export into the open character as a new chat. */
+  onImportChat: (file: File) => void;
 }
 
 export function ChatMenu({
@@ -207,6 +221,7 @@ export function ChatMenu({
   quickCommands,
   onInsertCommand,
   onQuickCommandsChange,
+  onImportChat,
 }: ChatMenuProps) {
   const { messages } = chat.state;
   const last = messages[messages.length - 1] ?? null;
@@ -215,6 +230,7 @@ export function ChatMenu({
   // both popups share that anchor.
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const importInput = useRef<HTMLInputElement>(null);
 
   const entries = buildChatMenu(
     {
@@ -234,6 +250,7 @@ export function ChatMenu({
       closeChat: onCloseChat,
       insertCommand: onInsertCommand,
       editQuickCommands: () => setEditorOpen(true),
+      importChat: () => importInput.current?.click(),
       exportChat: () => {
         const chatId = chat.state.chatId;
         if (!chatId) return;
@@ -263,6 +280,18 @@ export function ChatMenu({
         open={editorOpen}
         onOpenChange={setEditorOpen}
         triggerRef={menuTriggerRef}
+      />
+      <input
+        ref={importInput}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) onImportChat(file);
+          // Allow re-selecting the same file: the value is not cleared by selection.
+          event.currentTarget.value = '';
+        }}
       />
     </div>
   );
