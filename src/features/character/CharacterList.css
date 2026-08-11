@@ -131,6 +131,33 @@
   text-overflow: ellipsis;
 }
 
+.character-card__tags {
+  display: flex;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.character-card__tag {
+  display: inline-block;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--wc-text-xs);
+  padding: 1px var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-hover);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+}
+
+.character-card__tag--more {
+  border: var(--wc-border-width) solid var(--wc-border);
+  padding: 0 var(--wc-space-1);
+  background: transparent;
+}
+
 .character-card__badges {
   display: flex;
   align-items: center;

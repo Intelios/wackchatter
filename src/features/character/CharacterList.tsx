@@ -489,6 +489,12 @@ function CharacterRow({
     : character.creator
       ? `by ${character.creator}`
       : 'Unknown creator';
+  const tagOccurrences = new Map<string, number>();
+  const visibleTags = character.tags.slice(0, 3).map((tag) => {
+    const occurrence = tagOccurrences.get(tag) ?? 0;
+    tagOccurrences.set(tag, occurrence + 1);
+    return { key: `${tag}-${occurrence}`, value: tag };
+  });
 
   return (
     // A row rather than one big button: the card needs two distinct actions,
@@ -536,12 +542,21 @@ function CharacterRow({
         />
         <span className="character-card__text">
           <span className="character-card__name">{character.name}</span>
-          <span className="character-card__meta">
-            {meta}
-            {!showFolder && character.tags.length
-              ? ` · ${character.tags.slice(0, 3).join(', ')}`
-              : ''}
-          </span>
+          <span className="character-card__meta">{meta}</span>
+          {character.tags.length ? (
+            <span className="character-card__tags" title={character.tags.join(', ')}>
+              {visibleTags.map(({ key, value }) => (
+                <span className="character-card__tag" key={key}>
+                  {value}
+                </span>
+              ))}
+              {character.tags.length > 3 ? (
+                <span className="character-card__tag character-card__tag--more">
+                  +{character.tags.length - 3}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
         </span>
         <span className="character-card__badges">
           {rating !== undefined ? (
@@ -556,7 +571,6 @@ function CharacterRow({
               ))}
             </span>
           ) : null}
-          {character.hasLorebook ? <span className="badge">Lore</span> : null}
           {character.alternateGreetingCount > 0 ? (
             <span className="badge">+{character.alternateGreetingCount}</span>
           ) : null}
