@@ -541,7 +541,8 @@ export function App() {
       options?: { editing?: boolean; chatId?: string; panel?: RightPanelId | null },
     ) => {
       const editing = options?.editing ?? false;
-      if (avatar !== selected || editing) {
+      if (avatar !== selected || editing || options?.chatId !== undefined) {
+        chat.abort();
         chat.cancelSummary();
         try {
           await chat.flushSaves();
@@ -584,6 +585,7 @@ export function App() {
    */
   const handleCloseChat = useCallback(async () => {
     try {
+      chat.abort();
       chat.cancelSummary();
       await chat.flushSaves();
       await flushRightPanel();
@@ -684,6 +686,7 @@ export function App() {
     async (saved: CharacterDetail) => {
       const previousAvatar = selected;
       try {
+        chat.abort();
         await chat.flushSaves();
       } catch {
         // The rename already landed; a failed chat flush is surfaced by the app shell and
@@ -725,6 +728,7 @@ export function App() {
   );
 
   const handleDeleted = useCallback(() => {
+    chat.abort();
     const deleted = selected;
     if (deleted) {
       setSettings((current) => {
@@ -750,11 +754,12 @@ export function App() {
     setDetail(null);
     setEditing(false);
     void refresh();
-  }, [refresh, selected]);
+  }, [chat, refresh, selected]);
 
   /** The Studio suspends the chat shell, so both sets of pending work must land first. */
   const enterStudio = useCallback(async () => {
     try {
+      chat.abort();
       chat.cancelSummary();
       await chat.flushSaves();
       await flushRightPanel();
