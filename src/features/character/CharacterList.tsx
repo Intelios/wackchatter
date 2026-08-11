@@ -17,7 +17,6 @@ import {
   ChevronIcon,
   EditIcon,
   FolderIcon,
-  GripIcon,
   MoreIcon,
   PlusIcon,
   StarIcon,
@@ -479,7 +478,7 @@ function CharacterRow({
   onSelect,
   onEdit,
 }: CharacterRowProps) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: character.avatar,
     disabled: !draggable,
   });
@@ -497,36 +496,25 @@ function CharacterRow({
   });
 
   return (
-    // A row rather than one big button: the card needs two distinct actions,
-    // and a button inside a button is invalid.
+    // The card keeps chat and edit as separate buttons, while the dnd activator sits on the
+    // row itself so a pointer drag can begin anywhere on the card.
     <div
+      ref={(node) => {
+        setNodeRef(node);
+        setActivatorNodeRef(node);
+      }}
       className="character-card"
       style={{ '--depth': depth } as CSSProperties}
       data-current={current || undefined}
+      data-draggable={draggable || undefined}
       data-dragging={isDragging || undefined}
+      {...(draggable ? attributes : {})}
+      {...(draggable ? listeners : {})}
     >
       {/*
-       * A dedicated grip rather than making the whole row draggable, exactly as PromptManager
-       * does. Hanging the listeners off the row would put dnd-kit's role and tabIndex on a
-       * div that already contains two buttons, and every click would have to be disambiguated
-       * from the start of a drag.
+       * The card itself is the activator. dnd-kit's distance threshold lets the buttons keep
+       * their click behaviour while a pointer move from any part of the card starts the drag.
        */}
-      {draggable ? (
-        <button
-          type="button"
-          className="character-card__grip"
-          ref={setNodeRef}
-          {...attributes}
-          {...listeners}
-          aria-label={`Move ${character.name}`}
-          title="Drag into a folder"
-        >
-          <GripIcon />
-        </button>
-      ) : (
-        <span className="character-card__grip character-card__grip--placeholder" />
-      )}
-
       <button
         type="button"
         className="character-card__open"
