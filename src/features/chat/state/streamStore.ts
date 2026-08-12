@@ -14,19 +14,27 @@ export interface StreamSnapshot {
   text: string;
   reasoning: string;
   active: boolean;
+  /**
+   * Whether the reply arrives token by token. False for a non-streamed request, where
+   * nothing lands until the whole thing does — so there is no progress to indicate.
+   */
+  incremental: boolean;
 }
 
 export interface StreamStore {
   subscribe(listener: () => void): () => void;
   getSnapshot(): StreamSnapshot;
-  /** Begin a generation. `seed` is the existing text for `continue`, otherwise ''. */
-  begin(seed: string): void;
+  /**
+   * Begin a generation. `seed` is the existing text for `continue`, otherwise ''.
+   * `incremental` is false when the request did not ask the provider to stream.
+   */
+  begin(seed: string, incremental?: boolean): void;
   set(text: string, reasoning?: string): void;
   /** Flush synchronously and stop. Returns the final snapshot. */
   end(): StreamSnapshot;
 }
 
-const IDLE: StreamSnapshot = { text: '', reasoning: '', active: false };
+const IDLE: StreamSnapshot = { text: '', reasoning: '', active: false, incremental: false };
 
 export function createStreamStore(fps = 30): StreamStore {
   const interval = Math.max(1, Math.round(1000 / fps));
@@ -67,9 +75,9 @@ export function createStreamStore(fps = 30): StreamStore {
       return snapshot;
     },
 
-    begin(seed: string) {
+    begin(seed: string, incremental = true) {
       clearTimer();
-      publish({ text: seed, reasoning: '', active: true });
+      publish({ text: seed, reasoning: '', active: true, incremental });
       // Starting a stream is a state transition, not a content update, so it does not
       // open a throttle window. The first token then renders the moment it arrives —
       // time-to-first-token being the latency a reader actually notices.
@@ -77,7 +85,12 @@ export function createStreamStore(fps = 30): StreamStore {
     },
 
     set(text: string, reasoning = '') {
-      const next: StreamSnapshot = { text, reasoning, active: true };
+      const next: StreamSnapshot = {
+        text,
+        reasoning,
+        active: true,
+        incremental: snapshot.incremental,
+      };
       const elapsed = Date.now() - lastPublish;
 
       if (elapsed >= interval) {

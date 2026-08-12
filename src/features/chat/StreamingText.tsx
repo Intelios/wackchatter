@@ -46,7 +46,12 @@ export function StreamingText({ store }: { store: StreamStore }) {
           }
           return <Fragment key={key}>{content}</Fragment>;
         })}
-        <span className="message__caret" aria-hidden="true" />
+        {/*
+         * Only while tokens actually trickle in. With streaming off the reply lands in
+         * one piece, so the caret would sit blinking at an empty bubble for the whole
+         * wait — motion that indicates nothing. The Stop button carries the busy state.
+         */}
+        {snapshot.incremental ? <span className="message__caret" aria-hidden="true" /> : null}
       </div>
     </>
   );

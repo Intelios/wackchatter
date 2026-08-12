@@ -22,6 +22,20 @@ describe('streamStore', () => {
     expect(store.getSnapshot().active).toBe(true);
   });
 
+  test('a non-streamed generation is marked non-incremental for the whole run', () => {
+    // The caret hangs off this flag: nothing arrives until everything does, so there is
+    // no progress to blink at.
+    const store = createStreamStore(1000);
+    store.begin('');
+    expect(store.getSnapshot().incremental).toBe(true);
+
+    store.begin('', false);
+    expect(store.getSnapshot().incremental).toBe(false);
+    store.set('the whole reply at once');
+    expect(store.getSnapshot().incremental).toBe(false);
+    expect(store.end().incremental).toBe(false);
+  });
+
   test('subscribers are notified and can unsubscribe', () => {
     const store = createStreamStore();
     let calls = 0;

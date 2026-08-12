@@ -170,6 +170,10 @@
 /* Streaming text is plain, so newlines have to be honoured manually. */
 .message__text--streaming {
   white-space: pre-wrap;
+  /* One line's worth, so the waiting bubble is the height it will be once the first
+     line arrives. Without it a non-streamed reply pops the transcript on landing,
+     since there is no caret holding the empty bubble open. */
+  min-height: 1em;
 }
 
 .message__text > :first-child {

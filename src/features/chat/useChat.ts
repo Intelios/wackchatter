@@ -686,11 +686,13 @@ export function useChat(options: UseChatOptions): UseChat {
         // nowhere to put a second take of the same half-finished sentence.
         const completions = mode === 'continue' ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
 
+        const streamed = preset.stream_openai !== false;
+
         const body = buildRequestBody({
           messages: assembled.messages,
           preset,
           connection: requestConnection,
-          stream: preset.stream_openai !== false,
+          stream: streamed,
           completions,
         });
 
@@ -724,7 +726,7 @@ export function useChat(options: UseChatOptions): UseChat {
         // after its owner has moved on or its Stop/transition abort has already fired.
         if (!ensureGenerationActive()) return;
 
-        stream.begin(seed);
+        stream.begin(seed, streamed);
         streamStarted = true;
         text = seed;
 
