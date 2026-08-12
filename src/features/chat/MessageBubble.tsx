@@ -45,9 +45,10 @@ interface MessageBubbleProps {
   /** The same split for the thinking block, which scripts can target separately. */
   displayReasoning?: string;
   /*
-   * The card's creator notes, and how many of this message's swipes the card wrote. Set on
-   * the greeting row alone — passed as primitives rather than a ready-made node so the
-   * memo below survives: a node would change identity every render.
+   * The card's creator notes, macros already resolved like `displayText`, and how many of
+   * this message's swipes the card wrote. Set on the greeting row alone — passed as
+   * primitives rather than a ready-made node so the memo below survives: a node would
+   * change identity every render.
    */
   creatorNotes?: string;
   greetingCount?: number;

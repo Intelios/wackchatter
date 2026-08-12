@@ -53,7 +53,6 @@ export function EmbeddedBook({
   // ref is the source of truth; the tick only forces a re-render after it is mutated.
   const pendingRef = useRef<PendingMap>({});
   const [, setTick] = useState(0);
-  const revisionRef = useRef(0);
 
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
@@ -130,8 +129,7 @@ export function EmbeddedBook({
       [uid]: { patch: { ...current?.patch, ...patch }, gen: (current?.gen ?? 0) + 1 },
     };
     setTick((n) => n + 1);
-    revisionRef.current += 1;
-    queue.schedule(avatar, revisionRef.current, pendingRef.current);
+    queue.schedule(avatar, queue.nextRevision(avatar), pendingRef.current);
   }
 
   return (

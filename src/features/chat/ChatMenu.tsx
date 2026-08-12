@@ -28,6 +28,7 @@ import {
 } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { chatApi } from '../../lib/api.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { QuickCommandsPopover } from './QuickCommandsPopover.tsx';
 import { commandHint, commandLabel, usableCommands } from './quickCommands.ts';
 import type { UseChat } from './useChat.ts';
@@ -254,14 +255,7 @@ export function ChatMenu({
       exportChat: () => {
         const chatId = chat.state.chatId;
         if (!chatId) return;
-        // The download attribute pattern used everywhere else, from inside a menu where
-        // there is no place to put an anchor element.
-        const anchor = document.createElement('a');
-        anchor.href = chatApi.exportUrl(chatId);
-        anchor.download = '';
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
+        downloadUrl(chatApi.exportUrl(chatId));
       },
     },
   );

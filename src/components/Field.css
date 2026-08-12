@@ -3,6 +3,17 @@
   flex-direction: column;
 }
 
+/*
+ * The JS sets an explicit height from the measured content; this caps it so one very long
+ * value cannot swallow the viewport, and scrolls inside past that point. `resize` is off
+ * because a manual drag would be overwritten on the next keystroke.
+ */
+.wc-textarea[data-autogrow] {
+  max-height: 60vh;
+  overflow-y: auto;
+  resize: none;
+}
+
 .field__head {
   display: flex;
   align-items: center;

@@ -1,5 +1,5 @@
 import { joinKeys, splitKeys } from '@shared/worldinfo/keys.ts';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ExpandIcon } from '../layout/icons.tsx';
 import { FullscreenText } from './FullscreenText.tsx';
 import './Field.css';
@@ -14,6 +14,11 @@ interface TextFieldProps {
   rows?: number;
   /** Shows a full-screen editing button on a multiline field. */
   expandable?: boolean;
+  /**
+   * Grows a multiline field to fit its content, so a long value is readable without
+   * dragging the handle every visit. `rows` stays the floor; CSS caps the ceiling.
+   */
+  autoGrow?: boolean;
   /** Shown to the right of the label, e.g. a token count. */
   meta?: string;
   /**
@@ -36,9 +41,24 @@ export function TextField({
   onCommit,
   disabled,
   expandable,
+  autoGrow,
 }: TextFieldProps) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Measured rather than computed from the text: only layout knows how the value wraps at
+  // the field's current width. Collapsing to `auto` first is what lets it shrink again.
+  //
+  // `value` is not read in here — it is the re-measure trigger. The height comes from the
+  // laid-out DOM, so the effect has to re-run once the new text has been rendered.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: value is the trigger
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || !autoGrow) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [value, autoGrow]);
 
   return (
     <div className="field">
@@ -63,7 +83,9 @@ export function TextField({
       {multiline ? (
         <textarea
           id={id}
+          ref={textareaRef}
           className="wc-textarea"
+          data-autogrow={autoGrow || undefined}
           value={value}
           rows={rows}
           placeholder={placeholder}

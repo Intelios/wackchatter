@@ -143,6 +143,9 @@ export async function handleCharacterRoute(
         headers: {
           'content-type': 'application/json',
           'content-disposition': `attachment; filename="${base}.json"`,
+          // The URL is stable but the card changes on every edit, and a download has no
+          // validator to revalidate against, so it must never be served from cache.
+          'cache-control': 'no-store',
         },
       });
     }
@@ -152,6 +155,9 @@ export async function handleCharacterRoute(
       headers: {
         'content-type': 'image/png',
         'content-disposition': `attachment; filename="${base}.png"`,
+        // The URL is stable but the card changes on every edit, and a download has no
+        // validator to revalidate against, so it must never be served from cache.
+        'cache-control': 'no-store',
       },
     });
   }

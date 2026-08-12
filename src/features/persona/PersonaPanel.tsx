@@ -77,7 +77,6 @@ export function PersonaPanel({
     draft && draftDialogueColor === undefined ? draftAvatarUrl : null,
   );
 
-  const revisionRef = useRef(0);
   /**
    * Edits made since the persona was opened.
    *
@@ -162,8 +161,7 @@ export function PersonaPanel({
     const id = draft.id;
     setDraft({ ...draft, ...update });
     queued.current = { ...queued.current, ...update };
-    revisionRef.current += 1;
-    queue.schedule(id, revisionRef.current, queued.current);
+    queue.schedule(id, queue.nextRevision(id), queued.current);
   }
 
   async function selectEditor(next: string | null): Promise<void> {

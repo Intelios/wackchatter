@@ -125,6 +125,34 @@ describe('AutosaveQueue', () => {
     expect(queue.isDirty('a')).toBe(false);
   });
 
+  test('nextRevision outranks a saved revision, so a restarted consumer cannot stall', async () => {
+    const writes: string[] = [];
+    const queue = new AutosaveQueue<string>(async (_id, snapshot) => {
+      writes.push(snapshot);
+    }, 60_000);
+
+    queue.schedule('a', queue.nextRevision('a'), 'first burst');
+    await queue.flush('a');
+
+    // The regression: an editor that owned its own counter restarted it here — its sync
+    // effect re-ran on the fresh detail the save handed back — and every later edit below
+    // the queue's high-water mark was dropped unsent, invisible to flush.
+    queue.schedule('a', queue.nextRevision('a'), 'short edit after a save');
+    await queue.flush('a');
+
+    expect(writes).toEqual(['first burst', 'short edit after a save']);
+    expect(queue.isDirty('a')).toBe(false);
+  });
+
+  test('nextRevision outranks an unsent queued revision', () => {
+    const queue = new AutosaveQueue<string>(async () => {}, 60_000);
+
+    queue.schedule('a', queue.nextRevision('a'), 'first');
+    queue.schedule('a', queue.nextRevision('a'), 'second');
+
+    expect(queue.isDirty('a')).toBe(true);
+  });
+
   test('flushAll saves every entity and reports failures after all settle', async () => {
     const saved: string[] = [];
     const queue = new AutosaveQueue<number>(async (id) => {
