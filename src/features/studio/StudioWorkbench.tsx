@@ -13,6 +13,7 @@ import {
 import { ChevronLeftIcon, DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { EmbeddedBook } from '../character/EmbeddedBook.tsx';
 import { AvatarStudio } from './AvatarStudio.tsx';
 import { measureCard } from './budget.ts';
@@ -107,7 +108,8 @@ function EditableGreetingList({
             onChange={(next) => update(index, next)}
             multiline
             expandable
-            rows={5}
+            autoGrow
+            rows={12}
             meta={`${formatTokens(tokenCounts[index] ?? 0)} tokens`}
           />
           <div className="studio-greetings__actions">
@@ -209,6 +211,18 @@ export function StudioWorkbench({
       return;
     }
     await draft.remove();
+  }
+
+  // Drain the debounce before downloading: the server exports what is on disk, so an edit
+  // still sitting in the queue would be missing from the card the user just saved out.
+  async function handleExport(format: 'png' | 'json') {
+    try {
+      await draft.flush();
+    } catch (err) {
+      draft.reportError((err as Error).message);
+      return;
+    }
+    downloadUrl(characterApi.exportUrl(draft.avatar, format));
   }
 
   async function copyRaw() {
@@ -548,20 +562,20 @@ export function StudioWorkbench({
               Retry save
             </button>
           ) : null}
-          <a
+          <button
+            type="button"
             className="wc-button wc-button--ghost"
-            href={characterApi.exportUrl(draft.avatar, 'png')}
-            download
+            onClick={() => void handleExport('png')}
           >
             <DownloadIcon /> Export PNG
-          </a>
-          <a
+          </button>
+          <button
+            type="button"
             className="wc-button wc-button--ghost"
-            href={characterApi.exportUrl(draft.avatar, 'json')}
-            download
+            onClick={() => void handleExport('json')}
           >
             <DownloadIcon /> Export JSON
-          </a>
+          </button>
           <button
             type="button"
             className="wc-button wc-button--ghost wc-button--danger"
@@ -583,7 +597,11 @@ export function StudioWorkbench({
             Back to library
           </button>
         </header>
-        <div className="studio-canvas__body">{renderSection()}</div>
+        {/* The scroller is full-width so the gutters either side of the centred column
+            scroll too; the body only centres. */}
+        <div className="studio-canvas__scroll">
+          <div className="studio-canvas__body">{renderSection()}</div>
+        </div>
       </main>
       <Inspector
         budget={budget}

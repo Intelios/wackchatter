@@ -719,4 +719,12 @@ regex keys are the escape hatches.
   prepend/append moving exactly one page each, and `windowForJump` centring while clamping
   out-of-range targets and anchoring to the tail for targets in the last page.
 
+- `src/lib/autosave.test.ts` gates the save queue, and its `nextRevision` cases are the
+  load-bearing ones: an editor must never own its own revision counter. When editors did,
+  a sync effect re-running on the fresh detail a save handed back reset the counter to zero
+  under a queue that keeps per-entity high-water marks, and every following edit was
+  rejected as stale — unsent, with no timer armed and `isDirty` false, so `flush` could not
+  rescue it either. The card looked edited and the file on disk was not, which surfaced as
+  exports serving a pre-edit card. Ask the queue for the revision; never count locally.
+
 When touching a format, add the test before the code.

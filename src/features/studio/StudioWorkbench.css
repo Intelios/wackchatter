@@ -96,15 +96,25 @@
   font-size: var(--wc-text-xl);
 }
 
+/*
+ * The scroller must span the full canvas, not just the centred column: an element the
+ * width of its content leaves the gutters owned by an ancestor, and every ancestor up to
+ * `body` is hidden or clipped, so a wheel event out there has nothing to scroll. Same
+ * split as `.studio-library` in StudioShell.css.
+ */
+.studio-canvas__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .studio-canvas__body {
   display: grid;
   align-content: start;
   gap: var(--wc-space-5);
   width: min(var(--wc-studio-canvas-width), 100%);
-  min-height: 0;
   margin: 0 auto;
   padding: var(--wc-space-6);
-  overflow-y: auto;
 }
 
 .studio-section__identity {

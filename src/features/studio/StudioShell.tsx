@@ -7,6 +7,7 @@ import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon, DownloadIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { StudioLibrary } from './StudioLibrary.tsx';
 import { StudioWorkbench } from './StudioWorkbench.tsx';
 import './StudioShell.css';
@@ -103,6 +104,18 @@ export function StudioShell({
     }
   }, [refreshLibrary]);
 
+  // Drain the debounce before downloading: the server exports what is on disk, so an edit
+  // still sitting in the queue would be missing from the card the user just saved out.
+  const exportCard = useCallback(async (target: string, format: 'png' | 'json') => {
+    try {
+      await persistenceRef.current?.flush();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    downloadUrl(characterApi.exportUrl(target, format));
+  }, []);
+
   const updateSummary = useCallback((saved: CharacterDetail) => {
     setDetail(saved);
     setLibrary((current) =>
@@ -177,21 +190,21 @@ export function StudioShell({
           {status ? <span className="studio-shell__status">{status}</span> : null}
           {detail ? (
             <>
-              <a
+              <button
+                type="button"
                 className="wc-button wc-button--ghost"
-                href={characterApi.exportUrl(detail.avatar, 'png')}
-                download
+                onClick={() => void exportCard(detail.avatar, 'png')}
               >
                 <DownloadIcon />
                 Export PNG
-              </a>
-              <a
+              </button>
+              <button
+                type="button"
                 className="wc-button wc-button--ghost"
-                href={characterApi.exportUrl(detail.avatar, 'json')}
-                download
+                onClick={() => void exportCard(detail.avatar, 'json')}
               >
                 Export JSON
-              </a>
+              </button>
             </>
           ) : null}
         </div>

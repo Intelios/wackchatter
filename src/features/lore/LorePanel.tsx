@@ -77,8 +77,6 @@ export function LorePanel({
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const revisionRef = useRef(0);
-
   // Stable refs so the long-lived queue's callbacks read the current props.
   const onBookEditedRef = useRef(onBookEdited);
   onBookEditedRef.current = onBookEdited;
@@ -140,8 +138,7 @@ export function LorePanel({
   const persist = useCallback(
     (id: string, next: WorldInfoBook) => {
       setBook(next);
-      revisionRef.current += 1;
-      queue.schedule(id, revisionRef.current, next);
+      queue.schedule(id, queue.nextRevision(id), next);
     },
     [queue],
   );

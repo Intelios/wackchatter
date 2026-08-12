@@ -44,7 +44,15 @@ export function useCardDraft({
   const dataRef = useRef(data);
   const detailRef = useRef(detail);
   const avatarRef = useRef(detail.avatar);
-  const revisionRef = useRef(0);
+  /**
+   * Edits made since the card was opened.
+   *
+   * Accumulated rather than replaced: each keystroke reschedules, so sending only the most
+   * recent field would drop every earlier one. Reset only when the card changes — never on a
+   * successful save — because the queue clones each scheduled snapshot, and clearing the
+   * accumulation mid-flight would let a later edit reschedule a patch missing fields an
+   * older, still-pending snapshot had not yet written.
+   */
   const pendingPatchRef = useRef<Partial<CardDataV2>>({});
   const bookPersistenceRef = useRef<PersistenceControls | null>(null);
   const callbacksRef = useRef({ onSaved, onRenamed, onDeleted });
@@ -76,17 +84,22 @@ export function useCardDraft({
 
   // Components are keyed by avatar, but keeping this reset here makes the hook safe for a
   // consumer that chooses to retain it across cards later.
+  //
+  // The card is the trigger, never `detail`. A successful save hands the parent a fresh
+  // detail which comes straight back down as a new object identity, so depending on it ran
+  // this reset after every save: it reverted keystrokes typed while the PATCH was in flight,
+  // cleared the accumulated patch mid-flight, and wiped the save indicator.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: avatar is the card identity
   useEffect(() => {
     avatarRef.current = avatar;
     detailRef.current = detail;
     dataRef.current = detail.card.data;
     pendingPatchRef.current = {};
-    revisionRef.current = 0;
     setData(detail.card.data);
     setFolder(detail.folder);
     setSaveState('idle');
     setSaveError(null);
-  }, [avatar, detail]);
+  }, [avatar]);
 
   useEffect(() => {
     return () => {
@@ -102,8 +115,7 @@ export function useCardDraft({
       pendingPatchRef.current = mergePatch(pendingPatchRef.current, { [key]: value });
       setSaveState('saving');
       setSaveError(null);
-      revisionRef.current += 1;
-      queue.schedule(avatar, revisionRef.current, pendingPatchRef.current);
+      queue.schedule(avatar, queue.nextRevision(avatar), pendingPatchRef.current);
     },
     [avatar, queue],
   );
@@ -119,8 +131,7 @@ export function useCardDraft({
       });
       setSaveState('saving');
       setSaveError(null);
-      revisionRef.current += 1;
-      queue.schedule(avatar, revisionRef.current, pendingPatchRef.current);
+      queue.schedule(avatar, queue.nextRevision(avatar), pendingPatchRef.current);
     },
     [avatar, queue],
   );

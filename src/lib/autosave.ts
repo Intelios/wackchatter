@@ -58,6 +58,19 @@ export class AutosaveQueue<TSnapshot, TResult = unknown> {
     this.notify();
   }
 
+  /**
+   * The next revision that outranks everything queued or saved for this entity.
+   *
+   * The queue is the only object that knows its own high-water marks, so it hands them out
+   * rather than trusting a caller to keep a counter in step. An editor that owned its
+   * counter could restart it — a React effect re-running on a new prop identity, say — and
+   * every later edit would then be silently rejected by `schedule` as stale, unsent and
+   * invisible to `flush`.
+   */
+  nextRevision(entityId: string): number {
+    return Math.max(this.latest.get(entityId)?.revision ?? 0, this.saved.get(entityId) ?? 0) + 1;
+  }
+
   /** Debounce a new immutable revision, discarding only older unsent revisions. */
   schedule(entityId: string, revision: number, snapshot: TSnapshot): void {
     const owned = structuredClone(snapshot);

@@ -10,6 +10,7 @@ import { Section } from '../../components/Section.tsx';
 import { DownloadIcon, StarIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
 import { useCardDraft } from '../studio/useCardDraft.ts';
 import { EmbeddedBook } from './EmbeddedBook.tsx';
@@ -114,6 +115,18 @@ export function CharacterEditor({
     } catch (err) {
       draft.reportError((err as Error).message);
     }
+  }
+
+  // Drain the debounce before downloading: the server exports what is on disk, so an edit
+  // still sitting in the queue would be missing from the card the user just saved out.
+  async function handleExport(format: 'png' | 'json') {
+    try {
+      await draft.flush();
+    } catch (err) {
+      draft.reportError((err as Error).message);
+      return;
+    }
+    downloadUrl(characterApi.exportUrl(avatar, format));
   }
 
   async function retrySaves() {
@@ -343,14 +356,14 @@ export function CharacterEditor({
       </Section>
 
       <div className="editor__actions">
-        <a className="wc-button" href={characterApi.exportUrl(avatar, 'png')} download>
+        <button type="button" className="wc-button" onClick={() => void handleExport('png')}>
           <DownloadIcon />
           Export PNG
-        </a>
-        <a className="wc-button" href={characterApi.exportUrl(avatar, 'json')} download>
+        </button>
+        <button type="button" className="wc-button" onClick={() => void handleExport('json')}>
           <DownloadIcon />
           Export JSON
-        </a>
+        </button>
         <button
           type="button"
           className="wc-button wc-button--danger"
