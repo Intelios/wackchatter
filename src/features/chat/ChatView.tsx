@@ -49,7 +49,10 @@ interface ChatViewProps {
   characterAvatarVersion?: number;
   /** Cache-busting versions per persona id — a row's speaker is not always the chat's. */
   personaAvatarVersions?: Readonly<Record<string, number>>;
-  /** The card's `creator_notes`, offered on the greeting. Empty shows nothing. */
+  /**
+   * The card's `creator_notes` as stored, offered on the greeting. Empty shows nothing.
+   * Macros are resolved here, on the display path, not by the caller.
+   */
   creatorNotes: string;
   /** How many greetings the card offers, so a scenario list can be lined up with them. */
   greetingCount: number;
@@ -563,6 +566,23 @@ export function ChatView({
     visibleEnd,
   ]);
 
+  /*
+   * Creator notes are card text like any other, so they get the greeting's own macro pass.
+   *
+   * A card writes "{{user}} wakes up in {{char}}'s kitchen" in its notes and means the two
+   * names — the notes sit beside a greeting whose macros are already resolved, so leaving
+   * braces in the popover reads as a bug rather than as fidelity. Same resolver, so the
+   * same fresh-runtime rule applies: a {{setvar}} in the notes cannot write to the chat.
+   *
+   * Before the scenario split rather than after it. A notes line hiding a macro whose value
+   * spans lines would then leave a run of the wrong length, and `readScenarioNotes` renders
+   * the notes whole — the fallback it is built to take, and better than a wrong highlight.
+   */
+  const renderedNotes = useMemo(
+    () => (creatorNotes.trim() ? chat.renderGreeting(creatorNotes) : creatorNotes),
+    [creatorNotes, chat.renderGreeting],
+  );
+
   return (
     <div className="chat-view">
       <div className="chat-view__scroll" ref={scrollRef}>
@@ -586,7 +606,7 @@ export function ChatView({
                 displayReasoning: displayTexts.get(message.id)?.reasoning,
                 // Row 0 only: the notes explain which greeting you are looking at, and
                 // nothing below the opening message is a greeting.
-                creatorNotes: messageIndex === 0 ? creatorNotes : undefined,
+                creatorNotes: messageIndex === 0 ? renderedNotes : undefined,
                 greetingCount: messageIndex === 0 ? greetingCount : undefined,
                 onSwipe: swipe,
                 onRegenerate: regenerate,
