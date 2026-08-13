@@ -1,8 +1,8 @@
-import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { CocreatorSession, CocreatorSessionSummary } from '@shared/types/cocreator.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, PresetSummary } from '@shared/types/preset.ts';
+import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
@@ -14,15 +14,16 @@ import { CocreatorSessions } from './CocreatorSessions.tsx';
 import './CocreatorShell.css';
 
 interface CocreatorShellProps {
-  /** Already resolved by App: the co-creator's own connection, or the chat's. */
-  connection: Connection | null;
-  /** The co-creator's own preset, or the active one. Samplers only. */
-  preset: Preset | null;
-  systemPrompt: string;
+  defaults: CoCreatorSettings;
+  connections: Connection[];
+  activeConnectionId: string | null;
+  presets: PresetSummary[];
+  activePresetId: string | null;
+  activePreset: Preset | null;
+  tokenizerEncoding?: 'auto' | 'o200k_base' | 'cl100k_base';
+  onDefaultsChange: (patch: Partial<CoCreatorSettings>) => void;
   /** The library, for the example picker. */
   characters: readonly CharacterSummary[];
-  /** Tokenizer for the co-creator's model, so every count on screen agrees. */
-  countTokens: TokenCounter;
   streamingFps: number;
   backgroundUrl: string | null;
   backgroundBlur: number;
@@ -39,11 +40,15 @@ interface CocreatorShellProps {
  * something you do beside a chat, and the screen needs the whole window.
  */
 export function CocreatorShell({
-  connection,
-  preset,
-  systemPrompt,
+  defaults,
+  connections,
+  activeConnectionId,
+  presets,
+  activePresetId,
+  activePreset,
+  tokenizerEncoding,
+  onDefaultsChange,
   characters,
-  countTokens,
   streamingFps,
   backgroundUrl,
   backgroundBlur,
@@ -157,6 +162,7 @@ export function CocreatorShell({
       className="cocreator-shell"
       data-overlay-root
       data-glass={backgroundUrl !== null && glass}
+      data-session={session !== null || undefined}
       style={
         {
           '--wc-bg-blur': `${backgroundBlur}px`,
@@ -205,11 +211,15 @@ export function CocreatorShell({
           <CocreatorDesk
             key={session.id}
             session={session}
-            connection={connection}
-            preset={preset}
-            systemPrompt={systemPrompt}
+            defaults={defaults}
+            connections={connections}
+            activeConnectionId={activeConnectionId}
+            presets={presets}
+            activePresetId={activePresetId}
+            activePreset={activePreset}
+            tokenizerEncoding={tokenizerEncoding}
+            onDefaultsChange={onDefaultsChange}
             characters={characters}
-            countTokens={countTokens}
             streamingFps={streamingFps}
             registerPersistence={registerDeskPersistence}
             onStatusChange={setStatus}

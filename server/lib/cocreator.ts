@@ -139,7 +139,26 @@ export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
   if (typeof value.presetId === 'string' || value.presetId === null) {
     settings.presetId = value.presetId as string | null;
   }
-  if (typeof value.systemPrompt === 'string') settings.systemPrompt = value.systemPrompt;
+  if (typeof value.systemPrompt === 'string' && value.systemPrompt.trim()) {
+    settings.systemPrompt = value.systemPrompt;
+  }
+  if (typeof value.analysisPrompt === 'string' && value.analysisPrompt.trim()) {
+    settings.analysisPrompt = value.analysisPrompt;
+  }
+  const modelOverride = value.modelOverride;
+  if (
+    modelOverride &&
+    typeof modelOverride === 'object' &&
+    typeof (modelOverride as Record<string, unknown>).connectionId === 'string' &&
+    typeof (modelOverride as Record<string, unknown>).model === 'string' &&
+    ((modelOverride as Record<string, unknown>).connectionId as string).trim() &&
+    ((modelOverride as Record<string, unknown>).model as string).trim()
+  ) {
+    settings.modelOverride = {
+      connectionId: (modelOverride as Record<string, unknown>).connectionId as string,
+      model: ((modelOverride as Record<string, unknown>).model as string).trim(),
+    };
+  }
   return settings;
 }
 

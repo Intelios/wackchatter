@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { currentText, swipeCount } from '@shared/chat/message.ts';
+import { currentInfo, currentText, swipeCount } from '@shared/chat/message.ts';
 import { emptyStash } from '@shared/cocreator/stash.ts';
 import type { CocreatorSession, StashProvenance } from '@shared/types/cocreator.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from '@shared/types/cocreator.ts';
@@ -106,6 +106,18 @@ describe('opening and closing', () => {
 });
 
 describe('generation: the happy path', () => {
+  test('a typed Co-Creator action is persisted on the visible user turn', () => {
+    const state = run(opened(), {
+      type: 'message/appendUser',
+      id: 'u1',
+      text: 'Custom analysis wording.',
+      extra: { coCreatorAction: 'analyseExamples' },
+    });
+
+    expect(currentText(state.messages[0]!)).toBe('Custom analysis wording.');
+    expect(currentInfo(state.messages[0]!).extra?.coCreatorAction).toBe('analyseExamples');
+  });
+
   test('send appends a placeholder without bumping the revision', () => {
     const afterUser = run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' });
     const started = cocreatorReducer(afterUser, { type: 'gen/started', mode: 'send', newId: 'a1' });

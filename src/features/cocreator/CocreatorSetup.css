@@ -1,0 +1,103 @@
+.cocreator-setup-anchor {
+  position: fixed;
+  z-index: 3;
+  top: calc((var(--wc-topbar-height) - 38px) / 2);
+  right: var(--wc-space-3);
+}
+
+.cocreator-shell[data-session] .cocreator-shell__actions {
+  padding-right: min(32vw, 360px);
+}
+
+.cocreator-setup__trigger {
+  max-width: min(32vw, 360px);
+  gap: var(--wc-space-2);
+}
+
+.cocreator-setup__trigger svg {
+  flex: 0 0 auto;
+}
+
+.cocreator-setup__trigger span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cocreator-setup {
+  width: clamp(420px, 40vw, 620px);
+  padding: var(--wc-space-3);
+}
+
+/* The model catalogue is a second popup inside this one. Let it escape the session panel;
+   ModelCombobox owns its own max-height and scrollbar. Defaults has no nested popup, so it
+   keeps the shell's normal bounded scrolling for the two prompt editors. */
+.cocreator-setup--session {
+  overflow: visible;
+}
+
+.cocreator-setup__contents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.cocreator-setup__head h2 {
+  margin: 0 0 var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+}
+
+.cocreator-setup__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  overflow: hidden;
+}
+
+.cocreator-setup__tabs button {
+  padding: var(--wc-space-2);
+  border: 0;
+  background: transparent;
+  color: var(--wc-text-muted);
+}
+
+.cocreator-setup__tabs button[aria-selected="true"] {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+}
+
+.cocreator-setup__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.cocreator-setup__prompt {
+  padding-top: var(--wc-space-2);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.cocreator-setup__prompt-actions {
+  display: flex;
+  gap: var(--wc-space-2);
+  margin-top: var(--wc-space-2);
+}
+
+.cocreator-setup__prompt-actions .wc-button,
+.cocreator-setup__inherit {
+  font-size: var(--wc-text-xs);
+}
+
+.cocreator-setup__inherit {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-muted);
+}
+
+.cocreator-setup__error {
+  margin: var(--wc-space-1) 0 0;
+  color: var(--wc-danger);
+  font-size: var(--wc-text-xs);
+}

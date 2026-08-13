@@ -315,9 +315,13 @@ function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreato
     connectionId,
     presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
     systemPrompt:
-      typeof stored.systemPrompt === 'string'
+      typeof stored.systemPrompt === 'string' && stored.systemPrompt.trim()
         ? stored.systemPrompt
         : DEFAULT_COCREATOR.systemPrompt,
+    analysisPrompt:
+      typeof stored.analysisPrompt === 'string' && stored.analysisPrompt.trim()
+        ? stored.analysisPrompt
+        : DEFAULT_COCREATOR.analysisPrompt,
     exampleFields,
   };
 }

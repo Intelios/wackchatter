@@ -1,6 +1,5 @@
-import { currentText, timestamp } from '@shared/chat/message.ts';
+import { currentInfo, currentText, timestamp } from '@shared/chat/message.ts';
 import { isSlotFilled } from '@shared/cocreator/stash.ts';
-import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type {
@@ -10,28 +9,34 @@ import type {
   SingleCardSlot,
 } from '@shared/types/cocreator.ts';
 import { SINGLE_SLOTS } from '@shared/types/cocreator.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, PresetSummary } from '@shared/types/preset.ts';
+import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { SendIcon, StopIcon } from '../../layout/icons.tsx';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { AvatarDrop } from './AvatarDrop.tsx';
 import { SLOT_LABELS } from './blocks.ts';
+import { CocreatorSetup } from './CocreatorSetup.tsx';
 import { DesignMessage } from './DesignMessage.tsx';
 import { ExamplesPanel } from './ExamplesPanel.tsx';
 import { finishSession } from './finish.ts';
-import { ANALYSE_EXAMPLES_REQUEST, isAnalyseRequest, renderStashRequest } from './prompt.ts';
+import { isAnalyseRequest, renderStashRequest } from './prompt.ts';
 import { StashPanel } from './StashPanel.tsx';
 import { useCocreator } from './useCocreator.ts';
 import { useExampleCards } from './useExampleCards.ts';
 
 interface CocreatorDeskProps {
   session: CocreatorSession;
-  connection: Connection | null;
-  preset: Preset | null;
-  systemPrompt: string;
+  defaults: CoCreatorSettings;
+  connections: Connection[];
+  activeConnectionId: string | null;
+  presets: PresetSummary[];
+  activePresetId: string | null;
+  activePreset: Preset | null;
+  tokenizerEncoding?: 'auto' | 'o200k_base' | 'cl100k_base';
+  onDefaultsChange: (patch: Partial<CoCreatorSettings>) => void;
   /** The library, for the example picker. */
   characters: readonly CharacterSummary[];
-  countTokens: TokenCounter;
   streamingFps: number;
   registerPersistence: (controls: PersistenceControls | null) => void;
   onStatusChange: (status: string) => void;
@@ -43,11 +48,15 @@ interface CocreatorDeskProps {
 /** The design conversation. Examples and the stash join it in the next phases. */
 export function CocreatorDesk({
   session,
-  connection,
-  preset,
-  systemPrompt,
+  defaults,
+  connections,
+  activeConnectionId,
+  presets,
+  activePresetId,
+  activePreset,
+  tokenizerEncoding,
+  onDefaultsChange,
   characters,
-  countTokens,
   streamingFps,
   registerPersistence,
   onStatusChange,
@@ -57,13 +66,18 @@ export function CocreatorDesk({
   const exampleBlockRef = useRef('');
   const design = useCocreator({
     session,
-    connection,
-    preset,
-    systemPrompt,
+    defaults,
+    connections,
+    activeConnectionId,
+    presets,
+    activePresetId,
+    activePreset,
+    tokenizerEncoding,
     exampleBlockRef,
-    countTokens,
     streamingFps,
   });
+
+  const { countTokens } = design;
 
   const loadedExamples = useExampleCards(design.state.examples, countTokens);
   // The latest-value ref pattern the rest of this codebase uses: assigning during render
@@ -74,6 +88,8 @@ export function CocreatorDesk({
   stateRef.current = design.state;
 
   const [draft, setDraft] = useState('');
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupMode, setSetupMode] = useState<'session' | 'defaults'>('session');
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const { persistence, saving, saveError, state, busy, blockedReason } = design;
@@ -170,7 +186,12 @@ export function CocreatorDesk({
 
   const analysed = useMemo(
     () =>
-      state.messages.some((message) => message.is_user && isAnalyseRequest(currentText(message))),
+      state.messages.some(
+        (message) =>
+          message.is_user &&
+          (currentInfo(message).extra?.coCreatorAction === 'analyseExamples' ||
+            isAnalyseRequest(currentText(message))),
+      ),
     [state.messages],
   );
 
@@ -206,144 +227,163 @@ export function CocreatorDesk({
   const lastIndex = state.messages.length - 1;
 
   return (
-    <div className="cocreator-desk">
-      <ExamplesPanel
-        selection={state.examples}
-        loaded={loadedExamples}
-        characters={characters}
-        busy={busy}
-        analysed={analysed}
-        onAdd={(avatar) => design.dispatch({ type: 'examples/add', avatar })}
-        onRemove={(avatar) => design.dispatch({ type: 'examples/remove', avatar })}
-        onSetField={(field: ExampleField, on) =>
-          design.dispatch({ type: 'examples/setField', field, on })
-        }
-        onAnalyse={() => void design.send(ANALYSE_EXAMPLES_REQUEST)}
+    <>
+      <CocreatorSetup
+        design={design}
+        defaults={defaults}
+        connections={connections}
+        activeConnectionId={activeConnectionId}
+        presets={presets}
+        activePresetId={activePresetId}
+        onDefaultsChange={onDefaultsChange}
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        mode={setupMode}
+        onModeChange={setSetupMode}
       />
+      <div className="cocreator-desk">
+        <ExamplesPanel
+          selection={state.examples}
+          loaded={loadedExamples}
+          characters={characters}
+          busy={busy}
+          analysed={analysed}
+          onAdd={(avatar) => design.dispatch({ type: 'examples/add', avatar })}
+          onRemove={(avatar) => design.dispatch({ type: 'examples/remove', avatar })}
+          onSetField={(field: ExampleField, on) =>
+            design.dispatch({ type: 'examples/setField', field, on })
+          }
+          onAnalyse={() =>
+            void design.send(design.analysisPrompt, { coCreatorAction: 'analyseExamples' })
+          }
+        />
 
-      <div className="cocreator-transcript">
-        <div className="cocreator-transcript__scroll" ref={scrollRef}>
-          <div className="cocreator-transcript__list">
-            {state.messages.length === 0 ? (
-              <p className="wc-empty">
-                Describe the character you have in mind, and work it out together.
-              </p>
+        <div className="cocreator-transcript">
+          <div className="cocreator-transcript__scroll" ref={scrollRef}>
+            <div className="cocreator-transcript__list">
+              {state.messages.length === 0 ? (
+                <p className="wc-empty">
+                  Describe the character you have in mind, and work it out together.
+                </p>
+              ) : (
+                state.messages.map((message, index) => (
+                  <DesignMessage
+                    key={message.id}
+                    message={message}
+                    canReroll={index === lastIndex && !message.is_user}
+                    streaming={state.streamingId === message.id && state.status !== 'idle'}
+                    stream={design.stream}
+                    busy={busy}
+                    countTokens={countTokens}
+                    isFilled={isFilled}
+                    onUse={(slot, text, source, label) =>
+                      handleUse(
+                        message.id,
+                        message.swipe_id,
+                        message.swipe_info[message.swipe_id]?.extra?.model as string | undefined,
+                        slot,
+                        text,
+                        source,
+                        label,
+                      )
+                    }
+                    onSelectSwipe={(id, swipeIndex) =>
+                      design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
+                    }
+                    onReroll={() => void design.reroll()}
+                    onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
+                  />
+                ))
+              )}
+
+              {state.error ? (
+                <p className="cocreator-transcript__error" role="alert">
+                  {state.error}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="cocreator-composer">
+            <textarea
+              ref={composerRef}
+              className="wc-textarea cocreator-composer__input"
+              value={draft}
+              rows={3}
+              placeholder={
+                blockedReason
+                  ? `${blockedReason}. Open Connections from the chat screen to set one up.`
+                  : 'Describe the character, or ask for a first message…'
+              }
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                // Enter sends, Shift+Enter is a newline — the composer's convention app-wide.
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            {busy ? (
+              <button
+                type="button"
+                className="wc-button wc-button--danger cocreator-composer__send"
+                onClick={design.abort}
+                title="Stop generating"
+              >
+                <StopIcon />
+                Stop
+              </button>
             ) : (
-              state.messages.map((message, index) => (
-                <DesignMessage
-                  key={message.id}
-                  message={message}
-                  canReroll={index === lastIndex && !message.is_user}
-                  streaming={state.streamingId === message.id && state.status !== 'idle'}
-                  stream={design.stream}
-                  busy={busy}
-                  countTokens={countTokens}
-                  isFilled={isFilled}
-                  onUse={(slot, text, source, label) =>
-                    handleUse(
-                      message.id,
-                      message.swipe_id,
-                      message.swipe_info[message.swipe_id]?.extra?.model as string | undefined,
-                      slot,
-                      text,
-                      source,
-                      label,
-                    )
-                  }
-                  onSelectSwipe={(id, swipeIndex) =>
-                    design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
-                  }
-                  onReroll={() => void design.reroll()}
-                  onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
-                />
-              ))
+              <button
+                type="button"
+                className="wc-button wc-button--primary cocreator-composer__send"
+                onClick={submit}
+                disabled={!draft.trim() || Boolean(blockedReason)}
+                title={blockedReason ?? 'Send'}
+              >
+                <SendIcon />
+                Send
+              </button>
             )}
-
-            {state.error ? (
-              <p className="cocreator-transcript__error" role="alert">
-                {state.error}
-              </p>
-            ) : null}
           </div>
         </div>
 
-        <div className="cocreator-composer">
-          <textarea
-            ref={composerRef}
-            className="wc-textarea cocreator-composer__input"
-            value={draft}
-            rows={3}
-            placeholder={
-              blockedReason
-                ? `${blockedReason}. Open Connections from the chat screen to set one up.`
-                : 'Describe the character, or ask for a first message…'
-            }
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              // Enter sends, Shift+Enter is a newline — the composer's convention app-wide.
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                submit();
+        <StashPanel
+          stash={state.stash}
+          countTokens={countTokens}
+          busy={busy}
+          onEditSlot={(slot: SingleCardSlot, text) =>
+            design.dispatch({ type: 'stash/editSlot', slot, text })
+          }
+          onEditGreeting={(index, text) =>
+            design.dispatch({ type: 'stash/editGreeting', index, text })
+          }
+          onMoveGreeting={(from, to) =>
+            design.dispatch({ type: 'stash/reorderGreetings', from, to })
+          }
+          onRemoveGreeting={(index) => design.dispatch({ type: 'stash/removeGreeting', index })}
+          onRemoveTag={(index) => design.dispatch({ type: 'stash/removeTag', index })}
+          onClearSlot={(slot) => design.dispatch({ type: 'stash/clear', slot })}
+          onShowModel={showStashToModel}
+          onFinish={() => void finish()}
+          finishing={finishing}
+          avatarSlot={
+            <AvatarDrop
+              sessionId={session.id}
+              avatar={state.avatar}
+              cacheKey={session.modified}
+              busy={busy || finishing}
+              onChanged={(avatar) =>
+                design.dispatch(
+                  avatar ? { type: 'avatar/set', filename: avatar } : { type: 'avatar/cleared' },
+                )
               }
-            }}
-          />
-          {busy ? (
-            <button
-              type="button"
-              className="wc-button wc-button--danger cocreator-composer__send"
-              onClick={design.abort}
-              title="Stop generating"
-            >
-              <StopIcon />
-              Stop
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="wc-button wc-button--primary cocreator-composer__send"
-              onClick={submit}
-              disabled={!draft.trim() || Boolean(blockedReason)}
-              title={blockedReason ?? 'Send'}
-            >
-              <SendIcon />
-              Send
-            </button>
-          )}
-        </div>
+              onError={onError}
+            />
+          }
+        />
       </div>
-
-      <StashPanel
-        stash={state.stash}
-        countTokens={countTokens}
-        busy={busy}
-        onEditSlot={(slot: SingleCardSlot, text) =>
-          design.dispatch({ type: 'stash/editSlot', slot, text })
-        }
-        onEditGreeting={(index, text) =>
-          design.dispatch({ type: 'stash/editGreeting', index, text })
-        }
-        onMoveGreeting={(from, to) => design.dispatch({ type: 'stash/reorderGreetings', from, to })}
-        onRemoveGreeting={(index) => design.dispatch({ type: 'stash/removeGreeting', index })}
-        onRemoveTag={(index) => design.dispatch({ type: 'stash/removeTag', index })}
-        onClearSlot={(slot) => design.dispatch({ type: 'stash/clear', slot })}
-        onShowModel={showStashToModel}
-        onFinish={() => void finish()}
-        finishing={finishing}
-        avatarSlot={
-          <AvatarDrop
-            sessionId={session.id}
-            avatar={state.avatar}
-            cacheKey={session.modified}
-            busy={busy || finishing}
-            onChanged={(avatar) =>
-              design.dispatch(
-                avatar ? { type: 'avatar/set', filename: avatar } : { type: 'avatar/cleared' },
-              )
-            }
-            onError={onError}
-          />
-        }
-      />
-    </div>
+    </>
   );
 }

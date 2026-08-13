@@ -157,6 +157,12 @@ export interface SessionModelSettings {
   connectionId?: string | null;
   presetId?: string | null;
   systemPrompt?: string;
+  analysisPrompt?: string;
+  /** A model choice belongs to the endpoint it was made against. */
+  modelOverride?: {
+    connectionId: string;
+    model: string;
+  };
 }
 
 export interface CocreatorSession {

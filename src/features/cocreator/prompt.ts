@@ -21,6 +21,7 @@ import type { MessageState } from '@shared/chat/message.ts';
 import { currentText } from '@shared/chat/message.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ApiMessage } from '@shared/types/chat.ts';
+import { DEFAULT_COCREATOR_ANALYSIS_PROMPT } from '@shared/types/settings.ts';
 
 export interface DesignPromptInput {
   systemPrompt: string;
@@ -51,11 +52,8 @@ export interface DesignPrompt {
  * model saw every example" true rather than merely claimed — the answer sits in the
  * transcript, is swipeable, and stays in context for later turns.
  */
-export const ANALYSE_EXAMPLES_REQUEST =
-  'Before we go further: list every example card I have attached, one line each, giving its ' +
-  'name and one sentence on what it is doing well. Then say in two or three sentences what ' +
-  'they have in common — voice, length, formatting, level of detail — and what you will ' +
-  'carry into the card we are building. Do not write any card fields yet.';
+/** Legacy export retained for stored-session recognition and existing callers. */
+export const ANALYSE_EXAMPLES_REQUEST = DEFAULT_COCREATOR_ANALYSIS_PROMPT;
 
 export function isAnalyseRequest(text: string): boolean {
   return text.trim() === ANALYSE_EXAMPLES_REQUEST;

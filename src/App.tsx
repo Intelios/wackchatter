@@ -299,48 +299,7 @@ export function App() {
     settings?.tokenizerEncoding,
   );
 
-  // The Co-Creator resolves its own connection and preset the same way summaries do: null
-  // follows the chat's. Its tokenizer is its own, so the example counts, the composer total
-  // and the prompt budget are all measured against the model that will actually read them.
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
-  const coCreatorConnection = coCreatorSettings.connectionId
-    ? (settings?.connections.find((entry) => entry.id === coCreatorSettings.connectionId) ??
-      connection)
-    : connection;
-  const coCreatorCountTokens = useTokenizer(
-    coCreatorConnection?.model ?? '',
-    settings?.tokenizerEncoding,
-  );
-
-  /*
-   * App holds exactly one loaded Preset — the chat's. When the Co-Creator names a different
-   * one, it has to be fetched, or the quiet failure is that it runs on the chat preset's
-   * samplers while its own picker says otherwise. Only the samplers are ever used; the
-   * preset's prompts have nothing to do with a design conversation.
-   */
-  const [coCreatorPresetOverride, setCoCreatorPresetOverride] = useState<Preset | null>(null);
-  useEffect(() => {
-    const id = coCreatorSettings.presetId;
-    if (!id || id === presetId) {
-      setCoCreatorPresetOverride(null);
-      return;
-    }
-    let cancelled = false;
-    void presetApi
-      .get(id)
-      .then((loaded) => {
-        if (!cancelled) setCoCreatorPresetOverride(loaded);
-      })
-      // A preset that has been deleted falls back to the active one, which is the same
-      // outcome as never having named it.
-      .catch(() => {
-        if (!cancelled) setCoCreatorPresetOverride(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [coCreatorSettings.presetId, presetId]);
-  const coCreatorPreset = coCreatorPresetOverride ?? preset;
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
@@ -954,11 +913,15 @@ export function App() {
   if (view === 'cocreator') {
     return (
       <CocreatorShell
-        connection={coCreatorConnection}
-        preset={coCreatorPreset}
-        systemPrompt={coCreatorSettings.systemPrompt}
+        defaults={coCreatorSettings}
+        connections={settings?.connections ?? []}
+        activeConnectionId={connection?.id ?? null}
+        presets={presets}
+        activePresetId={presetId}
+        activePreset={preset}
+        tokenizerEncoding={settings?.tokenizerEncoding}
+        onDefaultsChange={(patch) => void patchSettings({ coCreator: patch })}
         characters={characters}
-        countTokens={coCreatorCountTokens}
         streamingFps={Number(settings?.streamingFps ?? 30)}
         backgroundUrl={resolveBackgroundUrl(settings?.background)}
         backgroundBlur={Number(settings?.backgroundBlur ?? 8)}

@@ -13,16 +13,20 @@
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
+import type { MessageExtra } from '@shared/types/chat.ts';
 import type { CocreatorSaveSnapshot, CocreatorSession } from '@shared/types/cocreator.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, PresetSummary } from '@shared/types/preset.ts';
+import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { cocreatorApi, streamGenerate } from '../../lib/api.ts';
+import { cocreatorApi, presetApi, streamGenerate } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
 import { buildDesignPrompt } from './prompt.ts';
+import { resolveCocreatorSettings } from './settings.ts';
 import {
   type CocreatorAction,
   type CocreatorState,
@@ -44,9 +48,13 @@ const DEFAULT_MAX_TOKENS = 1024;
 
 export interface UseCocreatorOptions {
   session: CocreatorSession;
-  connection: Connection | null;
-  preset: Preset | null;
-  systemPrompt: string;
+  defaults: CoCreatorSettings;
+  connections: readonly Connection[];
+  activeConnectionId: string | null;
+  presets: readonly PresetSummary[];
+  activePresetId: string | null;
+  activePreset: Preset | null;
+  tokenizerEncoding?: 'auto' | 'o200k_base' | 'cl100k_base';
   /**
    * The rendered example block, behind a ref rather than a value.
    *
@@ -56,7 +64,6 @@ export interface UseCocreatorOptions {
    * "snapshot everything when the request starts" discipline the connection follows.
    */
   exampleBlockRef: RefObject<string>;
-  countTokens: TokenCounter;
   streamingFps: number;
 }
 
@@ -70,21 +77,78 @@ export interface UseCocreator {
   saveError: string | null;
   /** Why generation is unavailable, for a `disabledReason`. Null when it is available. */
   blockedReason: string | null;
-  send: (text: string) => Promise<void>;
+  send: (text: string, extra?: MessageExtra) => Promise<void>;
   /** Generate another take on the last reply — an overswipe, never destructive. */
   reroll: () => Promise<void>;
   abort: () => void;
   flushSaves: () => Promise<void>;
   persistence: PersistenceControls;
+  connection: Connection | null;
+  presetId: string | null;
+  preset: Preset | null;
+  systemPrompt: string;
+  analysisPrompt: string;
+  countTokens: TokenCounter;
 }
 
 export function useCocreator(options: UseCocreatorOptions): UseCocreator {
-  const { session, connection, preset, systemPrompt, exampleBlockRef, countTokens, streamingFps } =
-    options;
+  const {
+    session,
+    defaults,
+    connections,
+    activeConnectionId,
+    presets,
+    activePresetId,
+    activePreset,
+    tokenizerEncoding,
+    exampleBlockRef,
+    streamingFps,
+  } = options;
 
   const [state, dispatch] = useReducer(cocreatorReducer, initialCocreatorState);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const resolved = useMemo(
+    () =>
+      resolveCocreatorSettings({
+        session: state.settings,
+        defaults,
+        connections,
+        activeConnectionId,
+        presets,
+        activePresetId,
+      }),
+    [state.settings, defaults, connections, activeConnectionId, presets, activePresetId],
+  );
+  const connection = resolved.connection;
+  const systemPrompt = resolved.systemPrompt;
+  const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
+  const [loadedPreset, setLoadedPreset] = useState<{ id: string; value: Preset } | null>(null);
+
+  useEffect(() => {
+    const id = resolved.presetId;
+    if (!id || id === activePresetId) return;
+    let cancelled = false;
+    void presetApi
+      .get(id)
+      .then((value) => {
+        if (!cancelled) setLoadedPreset({ id, value });
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedPreset(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved.presetId, activePresetId]);
+
+  const preset =
+    resolved.presetId === activePresetId
+      ? activePreset
+      : loadedPreset?.id === resolved.presetId
+        ? loadedPreset.value
+        : null;
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -122,6 +186,16 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   useEffect(() => {
     dispatch({ type: 'session/loaded', session });
   }, [session.id]);
+
+  // The override is endpoint-bound. If an inherited default moves the session to another
+  // connection, remove the stale choice instead of merely ignoring it and letting it spring
+  // back if the old connection is selected again later.
+  useEffect(() => {
+    const override = state.settings.modelOverride;
+    if (override && override.connectionId !== connection?.id) {
+      dispatch({ type: 'settings/patch', patch: { modelOverride: undefined } });
+    }
+  }, [state.settings.modelOverride, connection?.id]);
 
   const captureSnapshot = useCallback((current: CocreatorState): CocreatorSaveSnapshot | null => {
     if (!current.sessionId) return null;
@@ -176,7 +250,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   }, []);
 
   const blockedReason = useMemo(() => {
-    if (!connection?.baseUrl || !connection.model) return 'No connection is configured';
+    if (!connection?.baseUrl || !connection.model) return 'No connection and model are configured';
     if (!preset) return 'No preset is loaded';
     return null;
   }, [connection, preset]);
@@ -322,7 +396,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, extra?: MessageExtra) => {
       const trimmed = text.trim();
       if (!trimmed || stateRef.current.status !== 'idle') return;
 
@@ -330,6 +404,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         type: 'message/appendUser',
         id: crypto.randomUUID(),
         text: trimmed,
+        extra,
       };
       // Fold the user's turn in first and generate from that state, so the reply is built
       // against a transcript that already contains what it is replying to.
@@ -375,5 +450,11 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     abort,
     flushSaves,
     persistence: persistenceControls,
+    connection,
+    presetId: resolved.presetId,
+    preset,
+    systemPrompt,
+    analysisPrompt: resolved.analysisPrompt,
+    countTokens,
   };
 }

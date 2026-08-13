@@ -53,6 +53,23 @@ export async function handleSettingsRoute(
     return json(withKeys(addConnection(provider)));
   }
 
+  // /api/settings/connections/:id/models — catalogue without activating the connection.
+  if (
+    segments[0] === 'connections' &&
+    segments.length === 3 &&
+    segments[2] === 'models' &&
+    method === 'GET'
+  ) {
+    const id = decodeURIComponent(segments[1] ?? '');
+    const connection = getSettings().connections.find((entry) => entry.id === id);
+    if (!connection) return notFound(`Unknown connection "${id}".`);
+    try {
+      return json({ models: await listModels(connection) });
+    } catch (error) {
+      return errorResponse((error as Error).message, 502);
+    }
+  }
+
   // /api/settings/connections/:id — edit or delete one entry.
   if (segments[0] === 'connections' && segments.length === 2) {
     const id = decodeURIComponent(segments[1] ?? '');

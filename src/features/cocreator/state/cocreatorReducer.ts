@@ -128,7 +128,7 @@ export type CocreatorAction =
   | { type: 'session/closed' }
   | { type: 'session/saved'; sessionId: string; revision: number }
   | { type: 'session/renamed'; title: string }
-  | { type: 'message/appendUser'; id: string; text: string }
+  | { type: 'message/appendUser'; id: string; text: string; extra?: MessageExtra }
   | { type: 'message/edited'; id: string; text: string }
   | { type: 'message/deleted'; id: string }
   | { type: 'swipe/select'; id: string; index: number }
@@ -265,7 +265,11 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         messages: [
           ...state.messages,
           // No persona: a design session has no story and nobody to be in it.
-          userMessage(action.id, DESIGNER_NAME, action.text, null),
+          action.extra
+            ? setText(userMessage(action.id, DESIGNER_NAME, action.text, null), action.text, {
+                extra: action.extra,
+              })
+            : userMessage(action.id, DESIGNER_NAME, action.text, null),
         ],
         revision: state.revision + 1,
         error: null,

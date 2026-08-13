@@ -532,7 +532,12 @@ export const settingsApi = {
       body: JSON.stringify({ key }),
     }),
 
-  models: () => request<{ models: ProviderModel[] }>('/settings/models'),
+  models: (connectionId?: string) =>
+    request<{ models: ProviderModel[] }>(
+      connectionId
+        ? `/settings/connections/${encodeURIComponent(connectionId)}/models`
+        : '/settings/models',
+    ),
 
   /** The id must name a stored connection — the server uses it to pick the key. */
   test: (connection: Connection) =>

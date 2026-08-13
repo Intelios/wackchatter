@@ -80,7 +80,13 @@ describe('creating and reading', () => {
           cards: ['Seraphina.png'],
           fields: { ...created.examples.fields, mes_example: true },
         },
-        settings: { connectionId: 'c1', presetId: null, systemPrompt: 'Custom.' },
+        settings: {
+          connectionId: 'c1',
+          presetId: null,
+          systemPrompt: 'Custom.',
+          analysisPrompt: 'Inspect these.',
+          modelOverride: { connectionId: 'c1', model: 'design-model' },
+        },
         messages: [message({ mes: 'Hi.' })],
       }),
     );
@@ -92,7 +98,13 @@ describe('creating and reading', () => {
     expect(read.stash.tags.map((entry) => entry.text)).toEqual(['gothic', 'keeper']);
     expect(read.examples.cards).toEqual(['Seraphina.png']);
     expect(read.examples.fields.mes_example).toBe(true);
-    expect(read.settings).toEqual({ connectionId: 'c1', presetId: null, systemPrompt: 'Custom.' });
+    expect(read.settings).toEqual({
+      connectionId: 'c1',
+      presetId: null,
+      systemPrompt: 'Custom.',
+      analysisPrompt: 'Inspect these.',
+      modelOverride: { connectionId: 'c1', model: 'design-model' },
+    });
     expect(read.messages.map((entry) => entry.mes)).toEqual(['Hi.']);
   });
 
@@ -359,6 +371,16 @@ describe('repairing stored JSON', () => {
     });
     // Null is a real value here — "follow the chat connection" — and must survive.
     expect(normalizeSessionSettings({ connectionId: null })).toEqual({ connectionId: null });
+  });
+
+  test('blank prompts and malformed model overrides are discarded', () => {
+    expect(
+      normalizeSessionSettings({
+        systemPrompt: '   ',
+        analysisPrompt: '',
+        modelOverride: { connectionId: 'c1', model: '   ' },
+      }),
+    ).toEqual({});
   });
 });
 

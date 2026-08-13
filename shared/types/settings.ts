@@ -219,6 +219,8 @@ export interface CoCreatorSettings {
    */
   presetId: string | null;
   systemPrompt: string;
+  /** Visible user turn sent by the Analyse examples action. */
+  analysisPrompt: string;
   /** Which parts of an attached example card are sent. */
   exampleFields: ExampleFields;
 }
@@ -256,10 +258,17 @@ Prose outside the blocks is for talking to the user: what you changed, what you 
 
 Never claim to have saved anything. You cannot — the user files each block themselves.`;
 
+export const DEFAULT_COCREATOR_ANALYSIS_PROMPT =
+  'Before we go further: list every example card I have attached, one line each, giving its ' +
+  'name and one sentence on what it is doing well. Then say in two or three sentences what ' +
+  'they have in common — voice, length, formatting, level of detail — and what you will ' +
+  'carry into the card we are building. Do not write any card fields yet.';
+
 export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
   connectionId: null,
   presetId: null,
   systemPrompt: DEFAULT_COCREATOR_PROMPT,
+  analysisPrompt: DEFAULT_COCREATOR_ANALYSIS_PROMPT,
   exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
 };
 

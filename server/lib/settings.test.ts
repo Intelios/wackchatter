@@ -360,6 +360,7 @@ describe('co-creator settings', () => {
 
     expect(next.coCreator.presetId).toBe('design');
     expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+    expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
     expect(next.coCreator.connectionId).toBeNull();
   });
 
@@ -391,6 +392,14 @@ describe('co-creator settings', () => {
     const current = mergeSettings(base(), { coCreator: { systemPrompt: 'Mine.' } as never });
 
     expect(mergeSettings(current, { streamingFps: 15 }).coCreator.systemPrompt).toBe('Mine.');
+  });
+
+  test('blank Co-Creator prompts restore the built-ins', () => {
+    const next = mergeSettings(base(), {
+      coCreator: { systemPrompt: ' ', analysisPrompt: '' } as never,
+    });
+    expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+    expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
   });
 
   test('a connectionId naming no saved connection falls back to following the chat', () => {
