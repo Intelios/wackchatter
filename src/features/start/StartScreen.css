@@ -16,6 +16,33 @@
   margin-bottom: var(--wc-space-6);
 }
 
+/*
+ * Everything on this screen except the chat rows is naked text on the background image —
+ * the rows carry a --wc-surface, the labels around them carry nothing. So all of it is
+ * lit for imagery rather than for a panel: light values from the on-image scale, and the
+ * halo shadow for the edge that a bright or busy picture takes away. See the note on
+ * --wc-text-on-image in tokens.css for why the surface greys cannot be used here.
+ *
+ * Grouped rather than repeated per rule so the set stays in one place — a label added to
+ * this screen later belongs in this list, not in whatever grey looked right at the time.
+ */
+.start-screen__title,
+.start-screen__version,
+.start-screen__recent-title,
+.start-screen__empty,
+.start-screen__toggle,
+.start-screen__studio {
+  text-shadow: var(--wc-shadow-text-strong);
+}
+
+/* text-shadow does nothing for an SVG stroke, so the one icon out here needs the same
+   separation as a filter. Matches the treatment the top bar's icons already get. The
+   message-count icon is deliberately not in this list — it sits inside a chat row, on a
+   surface, where a shadow would read as a smudge. */
+.start-screen__studio svg {
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.9));
+}
+
 .start-screen__title {
   font-size: 28px;
   font-weight: 700;
@@ -29,7 +56,7 @@
 
 .start-screen__version {
   font-size: var(--wc-text-sm);
-  color: var(--wc-text-muted);
+  color: var(--wc-text-on-image-muted);
   font-family: var(--wc-font-mono);
 }
 
@@ -43,12 +70,12 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--wc-text-muted);
+  color: var(--wc-text-on-image-muted);
   margin: 0 0 var(--wc-space-3);
 }
 
 .start-screen__empty {
-  color: var(--wc-text-faint);
+  color: var(--wc-text-on-image-muted);
   font-size: var(--wc-text-sm);
   margin: 0;
 }
@@ -195,13 +222,13 @@
   margin-top: var(--wc-space-2);
   padding: var(--wc-space-1) var(--wc-space-3);
   font-size: var(--wc-text-sm);
-  color: var(--wc-text-muted);
+  color: var(--wc-text-on-image-muted);
   border-radius: var(--wc-radius-sm);
   transition: color var(--wc-duration-fast) ease;
 }
 
 .start-screen__toggle:hover {
-  color: var(--wc-text);
+  color: var(--wc-text-on-image);
 }
 
 .start-screen__studio {
@@ -209,7 +236,7 @@
   align-items: center;
   gap: var(--wc-space-2);
   margin: var(--wc-space-5) auto 0;
-  color: var(--wc-text-muted);
+  color: var(--wc-text-on-image-muted);
   font-size: var(--wc-text-sm);
   text-decoration: underline;
   text-underline-offset: var(--wc-space-1);

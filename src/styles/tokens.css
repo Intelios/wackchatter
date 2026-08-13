@@ -39,6 +39,18 @@
   --wc-text-muted: #8b8b93;
   --wc-text-faint: #62626a;
 
+  /*
+   * The same scale for text with no surface under it — the start screen's labels sit
+   * straight on the user's picture. The three greys above are tuned against #16161a and
+   * are mid-tones over a photograph: --wc-text-muted measures ~2.6:1 on a bright wallpaper
+   * at the default Dim, and since a mid-tone crosses the image's own luminance as Dim
+   * moves, --wc-text-faint has a Dim setting at which it matches the background exactly and
+   * disappears. These stay lighter than an image is likely to be, and take their separation
+   * from --wc-shadow-text-strong rather than from their value.
+   */
+  --wc-text-on-image: var(--wc-text);
+  --wc-text-on-image-muted: #c6c6ce;
+
   /* Lines */
   --wc-border: #2a2a2e;
   --wc-border-strong: #3a3a40;
@@ -85,6 +97,14 @@
   --wc-scrim: rgba(0, 0, 0, 0.65);
   /* For a label sitting directly on an image, where a scrim would cover too much. */
   --wc-shadow-text: 0 1px 3px rgb(0 0 0 / 0.9);
+  /*
+   * One step further, for a label with nothing at all behind it. The tight offset gives an
+   * edge; the wide soft halo is what actually carries a light glyph over a bright, busy
+   * photograph — it darkens the few pixels around each stroke instead of the whole region,
+   * which is how map labels and subtitles stay readable over arbitrary imagery. A contrast
+   * ratio cannot see it, so read it alongside --wc-text-on-image rather than instead of it.
+   */
+  --wc-shadow-text-strong: 0 1px 3px rgb(0 0 0 / 0.9), 0 0 10px rgb(0 0 0 / 0.75);
   /* A barely-there lift, for a panel inside a panel. */
   --wc-tint: rgb(255 255 255 / 0.03);
 
