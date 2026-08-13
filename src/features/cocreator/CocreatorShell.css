@@ -1,0 +1,858 @@
+/*
+ * The Co-Creator's chrome.
+ *
+ * Every colour, space and radius comes from tokens.css — what makes this read as its own
+ * area is layout and density, not a second palette. It shares the Studio's shell structure
+ * on purpose: the two are siblings, and a third idiom would just be noise.
+ */
+
+.cocreator-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--wc-topbar-height) 1fr;
+  height: 100%;
+  overflow: clip;
+}
+
+.cocreator-shell > .shell__backdrop,
+.cocreator-shell > .shell__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.cocreator-shell__bar,
+.cocreator-shell__body {
+  position: relative;
+  z-index: 1;
+}
+
+.cocreator-shell__bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: 0 var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.cocreator-shell__navigation,
+.cocreator-shell__title,
+.cocreator-shell__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.cocreator-shell__navigation {
+  justify-self: start;
+}
+
+.cocreator-shell__title {
+  justify-self: center;
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cocreator-shell__actions {
+  justify-self: end;
+}
+
+.cocreator-shell__status {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
+}
+
+.cocreator-shell__body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cocreator-shell__error {
+  position: absolute;
+  z-index: 2;
+  top: var(--wc-space-3);
+  left: 50%;
+  max-width: var(--wc-studio-error-width);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-popup);
+  color: var(--wc-danger);
+  transform: translateX(-50%);
+  white-space: pre-wrap;
+}
+
+/* The bar and the panels only — never a message bubble, which would recomposite on scroll. */
+.cocreator-shell[data-glass="true"] .cocreator-shell__bar {
+  backdrop-filter: blur(var(--wc-glass-blur)) saturate(var(--wc-glass-saturation));
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .cocreator-shell[data-glass="true"] .cocreator-shell__bar {
+    backdrop-filter: none;
+  }
+}
+
+/* --- Sessions ---------------------------------------------------------- */
+
+.cocreator-sessions {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--wc-space-6);
+}
+
+.cocreator-sessions__hero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--wc-space-6);
+  max-width: var(--wc-cocreator-session-width);
+  margin: 0 auto var(--wc-space-6);
+}
+
+.cocreator-sessions__hero h1 {
+  margin-bottom: var(--wc-space-2);
+  font-size: var(--wc-text-xl);
+}
+
+.cocreator-sessions__hero p:not(.cocreator-sessions__eyebrow) {
+  color: var(--wc-text-muted);
+}
+
+.cocreator-sessions__eyebrow {
+  margin-bottom: var(--wc-space-1);
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.cocreator-sessions__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  max-width: var(--wc-cocreator-session-width);
+  margin: 0 auto;
+}
+
+.cocreator-session {
+  display: flex;
+  align-items: stretch;
+  gap: var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.cocreator-session:hover {
+  border-color: var(--wc-accent);
+}
+
+.cocreator-session__open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--wc-space-3);
+  min-width: 0;
+  padding: var(--wc-space-3);
+  text-align: left;
+}
+
+/* The same size as a recent-chat row's thumbnail — it is the same kind of row. */
+.cocreator-session__avatar {
+  flex-shrink: 0;
+  width: var(--wc-avatar-md);
+  height: var(--wc-avatar-md);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+}
+
+.cocreator-session__avatar--empty {
+  border: var(--wc-border-width) dashed var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.cocreator-session__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  min-width: 0;
+}
+
+.cocreator-session__title {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.cocreator-session__title strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cocreator-session__finished {
+  flex-shrink: 0;
+  padding: 0 var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+}
+
+.cocreator-session__preview,
+.cocreator-session__meta {
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cocreator-session__meta {
+  display: flex;
+  gap: var(--wc-space-3);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.cocreator-session > .wc-button {
+  align-self: center;
+  margin-right: var(--wc-space-2);
+}
+
+/* --- The desk ---------------------------------------------------------- */
+
+/*
+ * Transcript centre, stash right.
+ *
+ * The stash sits where the Studio's Inspector does, because it is the same kind of thing:
+ * the artefact being assembled, beside the surface you assemble it from. That mirroring is
+ * what makes the Co-Creator read as the Studio's sibling rather than a fourth idiom.
+ */
+.cocreator-desk {
+  display: grid;
+  grid-template-columns: var(--wc-cocreator-examples-width) minmax(0, 1fr) var(
+      --wc-cocreator-stash-width
+    );
+  height: 100%;
+  min-height: 0;
+}
+
+.cocreator-transcript {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.cocreator-transcript__scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wc-space-5) var(--wc-space-4);
+}
+
+/*
+ * Centred on the app's measure. This is the whole reason the desk reads as a conversation
+ * rather than a form: the Studio's canvas is a column of fields, and this is a column of
+ * turns.
+ */
+.cocreator-transcript__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-4);
+  max-width: var(--wc-measure);
+  margin-inline: auto;
+}
+
+.cocreator-transcript__error {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-danger);
+  white-space: pre-wrap;
+}
+
+.design-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-bubble);
+}
+
+/* The user's own turns sit flat, so the model's replies are what the eye lands on. */
+.design-message[data-user="true"] {
+  border-color: transparent;
+  background: var(--wc-surface);
+}
+
+.design-message__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  font-size: var(--wc-text-xs);
+}
+
+.design-message__name {
+  color: var(--wc-text-muted);
+  font-weight: 600;
+}
+
+.design-message__model,
+.design-message__badge {
+  color: var(--wc-text-faint);
+}
+
+.design-message__badge {
+  padding: 0 var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.design-message__spacer {
+  flex: 1;
+}
+
+/* The row's controls stay out of the way until the turn is under the cursor. */
+.design-message__header .design-message__action {
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.design-message:hover .design-message__header .design-message__action,
+.design-message__header .design-message__action:focus-visible,
+.design-message__header .design-message__action[data-confirming="true"] {
+  opacity: 1;
+}
+
+.design-message__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.design-message__swipes {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+}
+
+.design-message__swipe-count {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.design-message__action[data-invisible] {
+  visibility: hidden;
+}
+
+.design-message__reroll {
+  font-size: var(--wc-text-sm);
+}
+
+.cocreator-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--wc-space-2);
+  max-width: var(--wc-measure);
+  width: 100%;
+  margin-inline: auto;
+  padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
+}
+
+.cocreator-composer__input {
+  resize: none;
+}
+
+/* --- Card blocks ------------------------------------------------------- */
+
+/*
+ * A block reads as prose with a mark down its side, not as a code box. The fence lines never
+ * reach the DOM — the parser consumed them — so this is the only thing telling the reader
+ * "this bit is bound for a field".
+ */
+.card-block {
+  margin: 0 0 var(--wc-space-3);
+  border-left: var(--wc-cocreator-block-mark) solid var(--wc-accent);
+  border-radius: 0 var(--wc-radius-sm) var(--wc-radius-sm) 0;
+  background: var(--wc-accent-subtle);
+}
+
+.card-block[data-unknown] {
+  border-left-color: var(--wc-text-faint);
+}
+
+.card-block__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  font-size: var(--wc-text-xs);
+}
+
+.card-block__label {
+  color: var(--wc-accent);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.card-block[data-unknown] .card-block__label {
+  color: var(--wc-text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--wc-font-mono);
+}
+
+.card-block__hint {
+  color: var(--wc-text-faint);
+  font-style: italic;
+}
+
+.card-block__tokens {
+  margin-left: auto;
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-block__body {
+  padding: 0 var(--wc-space-3) var(--wc-space-1);
+}
+
+/* The trigger is a text button, not an icon — it is the primary action on a block. */
+.cocreator-use-as > button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: 0 var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+}
+
+.cocreator-use-as > button:hover:not(:disabled) {
+  background: var(--wc-surface-raised);
+  color: var(--wc-text);
+}
+
+.cocreator-use-as > button svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+.card-block .cocreator-use-as > button {
+  color: var(--wc-accent);
+}
+
+/* --- The stash --------------------------------------------------------- */
+
+.stash-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  border-left: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.stash-panel__header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.stash-panel__header h2 {
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.stash-panel__count {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.stash-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wc-space-3);
+}
+
+.stash-panel__empty {
+  text-align: left;
+}
+
+.stash-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.stash-panel__group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.stash-panel__group-header > .wc-button {
+  margin-left: auto;
+  font-size: var(--wc-text-xs);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.stash-panel__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1);
+}
+
+.stash-panel__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: 0 var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+}
+
+.stash-panel__tag:hover:not(:disabled) {
+  border-color: var(--wc-danger);
+  color: var(--wc-danger);
+}
+
+.stash-panel__footer {
+  display: flex;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.stash-panel__footer > .wc-button {
+  flex: 1;
+  justify-content: center;
+}
+
+/* A filled slot uses the same accent pairing an active Studio rail item does. */
+.stash-slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-2);
+  border-left: var(--wc-cocreator-block-mark) solid var(--wc-accent);
+  border-radius: 0 var(--wc-radius-sm) var(--wc-radius-sm) 0;
+  background: var(--wc-surface-raised);
+}
+
+.stash-slot__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+}
+
+.stash-slot__label {
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.stash-slot__tokens,
+.stash-slot__meta {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.stash-slot__spacer {
+  flex: 1;
+}
+
+.stash-slot__action[data-invisible] {
+  visibility: hidden;
+}
+
+.stash-slot__header .stash-slot__action {
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.stash-slot:hover .stash-slot__action,
+.stash-slot__action:focus-visible,
+.stash-slot__action[data-confirming="true"] {
+  opacity: 1;
+}
+
+/* Clamped: the panel is a manifest, not a reader. Edit or Finish to see it in full. */
+.stash-slot__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  white-space: pre-wrap;
+}
+
+.stash-slot__input {
+  resize: vertical;
+  font-size: var(--wc-text-sm);
+}
+
+/* --- Examples ---------------------------------------------------------- */
+
+/*
+ * Left, because it is input — the position the Studio's section rail occupies. The stash is
+ * right, where the Inspector sits, because it is the artefact being assembled.
+ */
+.examples-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  border-right: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.examples-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.examples-panel__header h2 {
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.examples-panel__count {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.examples-panel__count[data-warn] {
+  color: var(--wc-warning, var(--wc-danger));
+}
+
+.examples-panel__attach {
+  margin-left: auto;
+}
+
+.examples-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wc-space-3);
+}
+
+.examples-panel__empty {
+  text-align: left;
+}
+
+.examples-card {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.examples-card[data-missing] {
+  opacity: 0.6;
+}
+
+.examples-card img {
+  flex-shrink: 0;
+  width: var(--wc-avatar-sm);
+  height: var(--wc-avatar-sm);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+}
+
+.examples-card__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.examples-card__name {
+  overflow: hidden;
+  font-size: var(--wc-text-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.examples-card__tokens {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.examples-card > .wc-button {
+  margin-left: auto;
+}
+
+.examples-panel__warning {
+  padding: var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+}
+
+.examples-panel__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  margin-top: var(--wc-space-2);
+}
+
+.examples-panel__fields-label {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.examples-panel__field {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.examples-panel__footer {
+  padding: var(--wc-space-3);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.examples-panel__footer > .wc-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.examples-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  width: var(--wc-cocreator-examples-width);
+}
+
+.examples-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.examples-picker__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  text-align: left;
+}
+
+.examples-picker__item:hover {
+  background: var(--wc-surface-raised);
+}
+
+.examples-picker__item img {
+  width: var(--wc-avatar-sm);
+  height: var(--wc-avatar-sm);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+}
+
+/* --- Artwork ----------------------------------------------------------- */
+
+.avatar-drop {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.avatar-drop__target {
+  display: grid;
+  place-items: center;
+  width: var(--wc-studio-card-avatar);
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border: var(--wc-border-width) dashed var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.avatar-drop:not([data-empty]) .avatar-drop__target {
+  border-style: solid;
+}
+
+.avatar-drop[data-over] .avatar-drop__target,
+.avatar-drop__target:hover:not(:disabled) {
+  border-color: var(--wc-accent);
+}
+
+.avatar-drop__target img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-drop__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wc-space-1);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  text-align: center;
+}
+
+.avatar-drop__clear {
+  position: absolute;
+  top: var(--wc-space-1);
+  right: calc(50% - var(--wc-studio-card-avatar) / 2 + var(--wc-space-1));
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.avatar-drop:hover .avatar-drop__clear,
+.avatar-drop__clear:focus-visible,
+.avatar-drop__clear[data-confirming="true"] {
+  opacity: 1;
+}

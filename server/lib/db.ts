@@ -10,7 +10,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { detectCloudProvider } from './location.ts';
 import { PATHS } from './paths.ts';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -47,6 +47,48 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- Character Co-Creator: a design conversation and the card fields stashed out of it.
+-- Deliberately NOT the chats table: a session has no character, is never backed up on
+-- delete, and must not appear in the recent-chats list or the per-character picker.
+CREATE TABLE IF NOT EXISTS cocreator_sessions (
+  id              TEXT    PRIMARY KEY,
+  title           TEXT    NOT NULL,
+  created         INTEGER NOT NULL,
+  modified        INTEGER NOT NULL,
+  revision        INTEGER NOT NULL DEFAULT 0,
+  -- CardStash: a partial CardDataV2 plus per-slot provenance. See shared/cocreator/stash.ts.
+  stash           TEXT    NOT NULL DEFAULT '{"alternate_greetings":[],"tags":[]}',
+  -- {cards: string[] (avatar filenames), fields: Record<ExampleField, boolean>}
+  examples        TEXT    NOT NULL DEFAULT '{"cards":[],"fields":{}}',
+  -- Per-session overrides of AppSettings.coCreator. A missing key follows the app setting.
+  settings        TEXT    NOT NULL DEFAULT '{}',
+  -- Filename under data/cocreator/avatars, or NULL. Bytes never live in this database.
+  avatar          TEXT,
+  -- The card this session produced, once Finish has run. Kept rather than deleting the
+  -- session: the transcript is the reasoning behind the card and is worth going back to.
+  finished_avatar TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_cocreator_sessions_modified
+  ON cocreator_sessions(modified DESC);
+
+-- One row per turn, shaped like the messages table so shared/chat/message.ts serves both.
+-- No name column: a design session has exactly two speakers, so the label is UI text
+-- rather than data worth storing per row.
+CREATE TABLE IF NOT EXISTS cocreator_messages (
+  session_id TEXT    NOT NULL REFERENCES cocreator_sessions(id) ON DELETE CASCADE,
+  id         TEXT    NOT NULL,
+  position   INTEGER NOT NULL,
+  is_user    INTEGER NOT NULL,
+  swipe_id   INTEGER NOT NULL DEFAULT 0,
+  swipes     TEXT    NOT NULL,
+  swipe_info TEXT    NOT NULL,
+  PRIMARY KEY (session_id, id)
+) WITHOUT ROWID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cocreator_messages_order
+  ON cocreator_messages(session_id, position);
 `;
 
 export function createSchema(database: Database): void {

@@ -15,9 +15,12 @@ import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
 import { normalizeRegexScript } from '../../shared/regex/io.ts';
+import type { ExampleFields } from '../../shared/types/cocreator.ts';
+import { DEFAULT_EXAMPLE_FIELDS } from '../../shared/types/cocreator.ts';
 import type { RegexScript } from '../../shared/types/regex.ts';
 import type {
   AppSettings,
+  CoCreatorSettings,
   DialogueColorOverride,
   DialogueColorSettings,
   GuidanceSettings,
@@ -27,6 +30,7 @@ import type {
 import {
   CHARACTER_RATING_MAX,
   CHARACTER_RATING_MIN,
+  DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
@@ -286,6 +290,38 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
   };
 }
 
+/**
+ * Coerce Co-Creator preferences and revalidate their optional connection reference.
+ *
+ * `presetId` is deliberately NOT validated against anything here: presets are files, not
+ * settings, so the server would have to read the directory to check. A dangling id falls
+ * back to the active preset on the client, which is the same outcome with less coupling.
+ */
+function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreatorSettings {
+  const stored = isRecord(value) ? value : {};
+  const connectionId =
+    typeof stored.connectionId === 'string' &&
+    connections.some((connection) => connection.id === stored.connectionId)
+      ? stored.connectionId
+      : null;
+
+  const storedFields = isRecord(stored.exampleFields) ? stored.exampleFields : {};
+  const exampleFields = { ...DEFAULT_EXAMPLE_FIELDS } as ExampleFields;
+  for (const key of Object.keys(DEFAULT_EXAMPLE_FIELDS) as (keyof ExampleFields)[]) {
+    if (typeof storedFields[key] === 'boolean') exampleFields[key] = storedFields[key];
+  }
+
+  return {
+    connectionId,
+    presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
+    systemPrompt:
+      typeof stored.systemPrompt === 'string'
+        ? stored.systemPrompt
+        : DEFAULT_COCREATOR.systemPrompt,
+    exampleFields,
+  };
+}
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 function normalizeDialogueColorMap(value: unknown): Record<string, DialogueColorOverride> {
@@ -430,6 +466,7 @@ export function getSettings(): AppSettings {
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
     summary: normalizeSummary(stored.summary, connections),
+    coCreator: normalizeCoCreator(stored.coCreator, connections),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
@@ -473,6 +510,21 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     summary: patch.summary
       ? normalizeSummary({ ...current.summary, ...patch.summary }, current.connections)
       : normalizeSummary(current.summary, current.connections),
+    coCreator: patch.coCreator
+      ? normalizeCoCreator(
+          {
+            ...current.coCreator,
+            ...patch.coCreator,
+            // Nested one level deeper than the rest, so it needs its own spread or toggling
+            // one field would reset the other seven.
+            exampleFields: {
+              ...current.coCreator.exampleFields,
+              ...(patch.coCreator.exampleFields ?? {}),
+            },
+          },
+          current.connections,
+        )
+      : normalizeCoCreator(current.coCreator, current.connections),
     dialogueColors: patch.dialogueColors
       ? normalizeDialogueColors({
           ...current.dialogueColors,
@@ -661,6 +713,7 @@ export function deleteConnectionEntry(id: string): AppSettings | null {
     connections: dropped.connections,
     connectionId: dropped.connectionId,
     summary: normalizeSummary(current.summary, dropped.connections),
+    coCreator: normalizeCoCreator(current.coCreator, dropped.connections),
   });
 }
 

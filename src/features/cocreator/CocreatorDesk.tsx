@@ -1,0 +1,349 @@
+import { currentText, timestamp } from '@shared/chat/message.ts';
+import { isSlotFilled } from '@shared/cocreator/stash.ts';
+import type { TokenCounter } from '@shared/prompt/token-cache.ts';
+import type { Connection } from '@shared/providers/types.ts';
+import type { CharacterSummary } from '@shared/types/card.ts';
+import type {
+  CardSlot,
+  CocreatorSession,
+  ExampleField,
+  SingleCardSlot,
+} from '@shared/types/cocreator.ts';
+import { SINGLE_SLOTS } from '@shared/types/cocreator.ts';
+import type { Preset } from '@shared/types/preset.ts';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { SendIcon, StopIcon } from '../../layout/icons.tsx';
+import type { PersistenceControls } from '../../lib/autosave.ts';
+import { AvatarDrop } from './AvatarDrop.tsx';
+import { SLOT_LABELS } from './blocks.ts';
+import { DesignMessage } from './DesignMessage.tsx';
+import { ExamplesPanel } from './ExamplesPanel.tsx';
+import { finishSession } from './finish.ts';
+import { ANALYSE_EXAMPLES_REQUEST, isAnalyseRequest, renderStashRequest } from './prompt.ts';
+import { StashPanel } from './StashPanel.tsx';
+import { useCocreator } from './useCocreator.ts';
+import { useExampleCards } from './useExampleCards.ts';
+
+interface CocreatorDeskProps {
+  session: CocreatorSession;
+  connection: Connection | null;
+  preset: Preset | null;
+  systemPrompt: string;
+  /** The library, for the example picker. */
+  characters: readonly CharacterSummary[];
+  countTokens: TokenCounter;
+  streamingFps: number;
+  registerPersistence: (controls: PersistenceControls | null) => void;
+  onStatusChange: (status: string) => void;
+  /** Hand the finished card to the Studio. */
+  onFinished: (avatar: string) => void;
+  onError: (message: string) => void;
+}
+
+/** The design conversation. Examples and the stash join it in the next phases. */
+export function CocreatorDesk({
+  session,
+  connection,
+  preset,
+  systemPrompt,
+  characters,
+  countTokens,
+  streamingFps,
+  registerPersistence,
+  onStatusChange,
+  onFinished,
+  onError,
+}: CocreatorDeskProps) {
+  const exampleBlockRef = useRef('');
+  const design = useCocreator({
+    session,
+    connection,
+    preset,
+    systemPrompt,
+    exampleBlockRef,
+    countTokens,
+    streamingFps,
+  });
+
+  const loadedExamples = useExampleCards(design.state.examples, countTokens);
+  // The latest-value ref pattern the rest of this codebase uses: assigning during render
+  // keeps the next generation on the block the panel is currently showing.
+  exampleBlockRef.current = loadedExamples.text;
+
+  const stateRef = useRef(design.state);
+  stateRef.current = design.state;
+
+  const [draft, setDraft] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const { persistence, saving, saveError, state, busy, blockedReason } = design;
+
+  useEffect(() => {
+    registerPersistence(persistence);
+    return () => registerPersistence(null);
+  }, [persistence, registerPersistence]);
+
+  useEffect(() => {
+    onStatusChange(saveError ? saveError : saving ? 'Saving…' : '');
+  }, [saving, saveError, onStatusChange]);
+
+  /*
+   * Follow the tail.
+   *
+   * A layout effect, not an effect: on mount it runs before paint, so opening a session with
+   * history does not flash the top of the transcript before jumping. The transcript is short
+   * enough that chat's windowing scheme would be machinery with no problem to solve — a
+   * design session is tens of turns, not hundreds.
+   *
+   * The deps are the trigger, not values this reads. It re-runs when a turn is added or a
+   * generation changes state; nothing inside depends on either.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the trigger
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [state.messages.length, state.status]);
+
+  // The composer is the only thing on this screen you can do anything with on arrival.
+  useEffect(() => {
+    composerRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const submit = useCallback(() => {
+    const text = draft.trim();
+    if (!text || busy || blockedReason) return;
+    setDraft('');
+    void design.send(text);
+  }, [draft, busy, blockedReason, design]);
+
+  /**
+   * File a piece of the transcript into a slot.
+   *
+   * Provenance is captured here rather than in the reducer because this is the only place
+   * that knows which message and swipe the text was read from — and that is the whole point
+   * of recording it: with free model swapping, a finished card can be three models' work.
+   */
+  const handleUse = useCallback(
+    (
+      messageId: string,
+      swipeIndex: number,
+      model: string | undefined,
+      slot: CardSlot,
+      text: string,
+      source: 'block' | 'message' | 'selection',
+      label?: string,
+    ) => {
+      design.dispatch({
+        type: 'stash/set',
+        slot,
+        text,
+        provenance: {
+          messageId,
+          swipeIndex,
+          at: timestamp(),
+          source,
+          ...(model ? { model } : {}),
+          ...(label ? { label } : {}),
+        },
+      });
+    },
+    [design],
+  );
+
+  const isFilled = useCallback((slot: CardSlot) => isSlotFilled(state.stash, slot), [state.stash]);
+
+  /** Show the assistant the stash — as a visible turn, never as a hidden prompt addition. */
+  const showStashToModel = useCallback(() => {
+    const slots: { label: string; text: string }[] = [];
+    for (const slot of SINGLE_SLOTS) {
+      const entry = state.stash[slot];
+      if (entry?.text) slots.push({ label: SLOT_LABELS[slot], text: entry.text });
+    }
+    state.stash.alternate_greetings.forEach((entry, index) => {
+      slots.push({ label: `${SLOT_LABELS.alternate_greeting} #${index + 1}`, text: entry.text });
+    });
+    if (state.stash.tags.length) {
+      slots.push({ label: SLOT_LABELS.tags, text: state.stash.tags.map((e) => e.text).join(', ') });
+    }
+    void design.send(renderStashRequest(slots));
+  }, [design, state.stash]);
+
+  const analysed = useMemo(
+    () =>
+      state.messages.some((message) => message.is_user && isAnalyseRequest(currentText(message))),
+    [state.messages],
+  );
+
+  const [finishing, setFinishing] = useState(false);
+
+  /**
+   * Create the card, then hand off.
+   *
+   * Flush first, and let a failed flush abort — the same bargain every navigation edge in
+   * this app makes. Recording which card the session produced rides the ordinary autosave
+   * rather than a second write path, so there is only one way a session reaches the server.
+   */
+  const finish = useCallback(async () => {
+    setFinishing(true);
+    try {
+      await design.flushSaves();
+      const avatar = await finishSession({
+        sessionId: session.id,
+        stash: stateRef.current.stash,
+        avatar: stateRef.current.avatar,
+        cacheKey: session.modified,
+      });
+      design.dispatch({ type: 'finished/recorded', avatar });
+      await design.flushSaves();
+      onFinished(avatar);
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setFinishing(false);
+    }
+  }, [design, session.id, session.modified, onFinished, onError]);
+
+  const lastIndex = state.messages.length - 1;
+
+  return (
+    <div className="cocreator-desk">
+      <ExamplesPanel
+        selection={state.examples}
+        loaded={loadedExamples}
+        characters={characters}
+        busy={busy}
+        analysed={analysed}
+        onAdd={(avatar) => design.dispatch({ type: 'examples/add', avatar })}
+        onRemove={(avatar) => design.dispatch({ type: 'examples/remove', avatar })}
+        onSetField={(field: ExampleField, on) =>
+          design.dispatch({ type: 'examples/setField', field, on })
+        }
+        onAnalyse={() => void design.send(ANALYSE_EXAMPLES_REQUEST)}
+      />
+
+      <div className="cocreator-transcript">
+        <div className="cocreator-transcript__scroll" ref={scrollRef}>
+          <div className="cocreator-transcript__list">
+            {state.messages.length === 0 ? (
+              <p className="wc-empty">
+                Describe the character you have in mind, and work it out together.
+              </p>
+            ) : (
+              state.messages.map((message, index) => (
+                <DesignMessage
+                  key={message.id}
+                  message={message}
+                  canReroll={index === lastIndex && !message.is_user}
+                  streaming={state.streamingId === message.id && state.status !== 'idle'}
+                  stream={design.stream}
+                  busy={busy}
+                  countTokens={countTokens}
+                  isFilled={isFilled}
+                  onUse={(slot, text, source, label) =>
+                    handleUse(
+                      message.id,
+                      message.swipe_id,
+                      message.swipe_info[message.swipe_id]?.extra?.model as string | undefined,
+                      slot,
+                      text,
+                      source,
+                      label,
+                    )
+                  }
+                  onSelectSwipe={(id, swipeIndex) =>
+                    design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
+                  }
+                  onReroll={() => void design.reroll()}
+                  onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
+                />
+              ))
+            )}
+
+            {state.error ? (
+              <p className="cocreator-transcript__error" role="alert">
+                {state.error}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="cocreator-composer">
+          <textarea
+            ref={composerRef}
+            className="wc-textarea cocreator-composer__input"
+            value={draft}
+            rows={3}
+            placeholder={
+              blockedReason
+                ? `${blockedReason}. Open Connections from the chat screen to set one up.`
+                : 'Describe the character, or ask for a first message…'
+            }
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter sends, Shift+Enter is a newline — the composer's convention app-wide.
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+          {busy ? (
+            <button
+              type="button"
+              className="wc-button wc-button--danger cocreator-composer__send"
+              onClick={design.abort}
+              title="Stop generating"
+            >
+              <StopIcon />
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="wc-button wc-button--primary cocreator-composer__send"
+              onClick={submit}
+              disabled={!draft.trim() || Boolean(blockedReason)}
+              title={blockedReason ?? 'Send'}
+            >
+              <SendIcon />
+              Send
+            </button>
+          )}
+        </div>
+      </div>
+
+      <StashPanel
+        stash={state.stash}
+        countTokens={countTokens}
+        busy={busy}
+        onEditSlot={(slot: SingleCardSlot, text) =>
+          design.dispatch({ type: 'stash/editSlot', slot, text })
+        }
+        onEditGreeting={(index, text) =>
+          design.dispatch({ type: 'stash/editGreeting', index, text })
+        }
+        onMoveGreeting={(from, to) => design.dispatch({ type: 'stash/reorderGreetings', from, to })}
+        onRemoveGreeting={(index) => design.dispatch({ type: 'stash/removeGreeting', index })}
+        onRemoveTag={(index) => design.dispatch({ type: 'stash/removeTag', index })}
+        onClearSlot={(slot) => design.dispatch({ type: 'stash/clear', slot })}
+        onShowModel={showStashToModel}
+        onFinish={() => void finish()}
+        finishing={finishing}
+        avatarSlot={
+          <AvatarDrop
+            sessionId={session.id}
+            avatar={state.avatar}
+            cacheKey={session.modified}
+            busy={busy || finishing}
+            onChanged={(avatar) =>
+              design.dispatch(
+                avatar ? { type: 'avatar/set', filename: avatar } : { type: 'avatar/cleared' },
+              )
+            }
+            onError={onError}
+          />
+        }
+      />
+    </div>
+  );
+}

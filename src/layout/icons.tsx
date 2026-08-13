@@ -401,6 +401,23 @@ export function StudioIcon({ className }: IconProps) {
 }
 
 /**
+ * Character Co-Creator — the Studio's card, in conversation.
+ *
+ * Deliberately shares `StudioIcon`'s card outline: the two are siblings, and the speech tail
+ * is the whole difference between building a card by hand and talking one out.
+ */
+export function CoCreatorIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="3" width="12" height="16" rx="2" />
+      <path d="M6.5 8h5" />
+      <path d="M6.5 11.5h3" />
+      <path d="M12 13h8a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4l-3 2.5V19a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+/**
  * A star, for the character rating. `filled` paints the whole star so a rating reads at a
  * glance; otherwise it is an outline for the unearned slots.
  */

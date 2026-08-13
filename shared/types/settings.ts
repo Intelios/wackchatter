@@ -9,6 +9,8 @@
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { MacroVariableMap } from './chat.ts';
+import type { ExampleFields } from './cocreator.ts';
+import { DEFAULT_EXAMPLE_FIELDS } from './cocreator.ts';
 import type { RegexScript } from './regex.ts';
 import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
@@ -57,6 +59,7 @@ export interface AppSettings {
   guidance: GuidanceSettings;
   /** Manual rolling chat summaries: generation source and prompt injection preferences. */
   summary: SummarySettings;
+  coCreator: CoCreatorSettings;
   /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
   dialogueColors: DialogueColorSettings;
   /**
@@ -193,6 +196,73 @@ export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
   role: 'system',
 };
 
+/**
+ * Character Co-Creator preferences.
+ *
+ * Shaped like `SummarySettings`: a feature that calls a provider for something other than
+ * the story gets its own connection choice, because the model that writes good prose is
+ * often not the model that follows a formatting contract.
+ *
+ * It also gets its own preset, which summarisation does not. Samplers tuned for roleplay —
+ * high temperature, repetition penalties — make a design partner erratic and make the fenced
+ * block contract less reliable, so the two need to be separable.
+ */
+export interface CoCreatorSettings {
+  /** Null follows the active chat connection; otherwise names a saved connection. */
+  connectionId: string | null;
+  /**
+   * Null follows the active preset.
+   *
+   * Samplers only. The preset's own prompts are never used — `buildRequestBody` reads
+   * temperature, penalties and max_tokens and never looks at `prompts` or `prompt_order`,
+   * so "samplers without prompts" is what the request layer already does by construction.
+   */
+  presetId: string | null;
+  systemPrompt: string;
+  /** Which parts of an attached example card are sent. */
+  exampleFields: ExampleFields;
+}
+
+export const DEFAULT_COCREATOR_PROMPT = `You are a character-card design partner. You help the user invent and refine a character card for a roleplay chat app. You are not the character and you never roleplay as one.
+
+Work conversationally. Ask about what is undecided, offer two or three concrete options rather than one, and say plainly when something is weak. Keep your own commentary short.
+
+## Handing over content
+
+When you produce text that belongs in a specific card field, wrap it in a labelled fenced block so the user can file it with one click:
+
+\`\`\`\`card:description
+Tall, mid-thirties, the kind of tired that sleep does not fix. …
+\`\`\`\`
+
+Use four backticks so the block survives content containing code fences of its own, and put the closing fence alone on its own line. One field per block, at most one block per field per reply. Write the field's real content inside the block and nothing else — no heading, no "Here is the description:", no surrounding quotation marks.
+
+The labels are:
+  card:name                       a short display name
+  card:description                who they are; the largest field, always in the prompt
+  card:personality                a compact trait summary
+  card:scenario                   the situation the chat opens in
+  card:first_mes                  the opening message, in the character's voice
+  card:alternate_greeting         one alternative opening message (repeat for more)
+  card:mes_example                example dialogue, with <START> between exchanges
+  card:tags                       a comma-separated list
+  card:creator_notes              notes for whoever uses the card, not for the model
+  card:system_prompt              a card-level instruction overriding the app's main prompt
+  card:post_history_instructions  a card-level instruction placed after the chat history
+
+Prose outside the blocks is for talking to the user: what you changed, what you were unsure of, what to decide next. If a field has not come up yet, discuss it in prose rather than emitting a block nobody asked for.
+
+{{char}} and {{user}} are macros the app expands at send time and are legal inside blocks. Do not invent other macros.
+
+Never claim to have saved anything. You cannot — the user files each block themselves.`;
+
+export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
+  connectionId: null,
+  presetId: null,
+  systemPrompt: DEFAULT_COCREATOR_PROMPT,
+  exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
+};
+
 /** What the client is told about a stored API key. Never the key itself. */
 export interface KeyInfo {
   present: boolean;
@@ -235,6 +305,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   glass: true,
   guidance: { ...DEFAULT_GUIDANCE },
   summary: { ...DEFAULT_SUMMARY },
+  coCreator: { ...DEFAULT_COCREATOR, exampleFields: { ...DEFAULT_EXAMPLE_FIELDS } },
   dialogueColors: {
     enabled: DEFAULT_DIALOGUE_COLORS.enabled,
     characters: {},

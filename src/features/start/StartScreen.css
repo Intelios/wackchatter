@@ -231,11 +231,19 @@
   color: var(--wc-text-on-image);
 }
 
+/* Two doors into the creator tools, side by side — neither is the primary one. */
+.start-screen__creator-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--wc-space-5);
+  margin-top: var(--wc-space-5);
+}
+
 .start-screen__studio {
   display: inline-flex;
   align-items: center;
   gap: var(--wc-space-2);
-  margin: var(--wc-space-5) auto 0;
   color: var(--wc-text-on-image-muted);
   font-size: var(--wc-text-sm);
   text-decoration: underline;

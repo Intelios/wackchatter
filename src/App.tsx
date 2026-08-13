@@ -12,6 +12,8 @@ import type {
 } from '@shared/types/settings.ts';
 import {
   activeConnection,
+  type CoCreatorSettings,
+  DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
   DEFAULT_SUMMARY,
@@ -28,6 +30,7 @@ import { ChatContext } from './features/chat/ChatContext.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
+import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
@@ -58,7 +61,9 @@ import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
-  const [view, setView] = useState<'app' | 'studio'>('app');
+  const [view, setView] = useState<'app' | 'studio' | 'cocreator'>('app');
+  /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
+  const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
 
@@ -89,6 +94,7 @@ export function App() {
   const lorePersistence = useRef<PersistenceControls | null>(null);
   const personaPersistence = useRef<PersistenceControls | null>(null);
   const studioPersistence = useRef<PersistenceControls | null>(null);
+  const cocreatorPersistence = useRef<PersistenceControls | null>(null);
 
   const flushRightPanel = useCallback(async () => {
     const controls = editing
@@ -292,6 +298,49 @@ export function App() {
     summaryConnection?.model ?? '',
     settings?.tokenizerEncoding,
   );
+
+  // The Co-Creator resolves its own connection and preset the same way summaries do: null
+  // follows the chat's. Its tokenizer is its own, so the example counts, the composer total
+  // and the prompt budget are all measured against the model that will actually read them.
+  const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
+  const coCreatorConnection = coCreatorSettings.connectionId
+    ? (settings?.connections.find((entry) => entry.id === coCreatorSettings.connectionId) ??
+      connection)
+    : connection;
+  const coCreatorCountTokens = useTokenizer(
+    coCreatorConnection?.model ?? '',
+    settings?.tokenizerEncoding,
+  );
+
+  /*
+   * App holds exactly one loaded Preset — the chat's. When the Co-Creator names a different
+   * one, it has to be fetched, or the quiet failure is that it runs on the chat preset's
+   * samplers while its own picker says otherwise. Only the samplers are ever used; the
+   * preset's prompts have nothing to do with a design conversation.
+   */
+  const [coCreatorPresetOverride, setCoCreatorPresetOverride] = useState<Preset | null>(null);
+  useEffect(() => {
+    const id = coCreatorSettings.presetId;
+    if (!id || id === presetId) {
+      setCoCreatorPresetOverride(null);
+      return;
+    }
+    let cancelled = false;
+    void presetApi
+      .get(id)
+      .then((loaded) => {
+        if (!cancelled) setCoCreatorPresetOverride(loaded);
+      })
+      // A preset that has been deleted falls back to the active one, which is the same
+      // outcome as never having named it.
+      .catch(() => {
+        if (!cancelled) setCoCreatorPresetOverride(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [coCreatorSettings.presetId, presetId]);
+  const coCreatorPreset = coCreatorPresetOverride ?? preset;
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
@@ -796,6 +845,49 @@ export function App() {
       setError((err as Error).message);
       return;
     }
+    // Cleared, or entering the Studio again later would re-open the handed-off card.
+    setStudioInitialAvatar(null);
+    setView('app');
+    void refresh();
+  }, [refresh]);
+
+  /** Same bargain as the Studio: it suspends the chat shell, so pending work lands first. */
+  const enterCoCreator = useCallback(async () => {
+    try {
+      chat.abort();
+      chat.cancelSummary();
+      await chat.flushSaves();
+      await flushRightPanel();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setView('cocreator');
+  }, [chat, flushRightPanel]);
+
+  /**
+   * Finish: leave the Co-Creator for the Studio, on the card it just made.
+   *
+   * The desk has already flushed and created the card, so this only moves. Refreshing first
+   * means the Studio's library — and the chat app behind it — know about the new card before
+   * either renders.
+   */
+  const finishCoCreator = useCallback(
+    (avatar: string) => {
+      setStudioInitialAvatar(avatar);
+      setView('studio');
+      void refresh();
+    },
+    [refresh],
+  );
+
+  const exitCoCreator = useCallback(async () => {
+    try {
+      await cocreatorPersistence.current?.flush();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
     setView('app');
     void refresh();
   }, [refresh]);
@@ -848,6 +940,7 @@ export function App() {
    */
   const documentTitle = useMemo(() => {
     if (view === 'studio') return 'Character Creator Studio';
+    if (view === 'cocreator') return 'Character Co-Creator';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
   }, [view, active, chat.state.title]);
@@ -857,6 +950,28 @@ export function App() {
   }, [documentTitle]);
 
   const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
+
+  if (view === 'cocreator') {
+    return (
+      <CocreatorShell
+        connection={coCreatorConnection}
+        preset={coCreatorPreset}
+        systemPrompt={coCreatorSettings.systemPrompt}
+        characters={characters}
+        countTokens={coCreatorCountTokens}
+        streamingFps={Number(settings?.streamingFps ?? 30)}
+        backgroundUrl={resolveBackgroundUrl(settings?.background)}
+        backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+        backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+        glass={settings?.glass !== false}
+        onExit={exitCoCreator}
+        onFinished={finishCoCreator}
+        registerPersistence={(controls) => {
+          cocreatorPersistence.current = controls;
+        }}
+      />
+    );
+  }
 
   if (view === 'studio') {
     return (
@@ -875,6 +990,8 @@ export function App() {
           void patchSettings({ studioInspectorCollapsed: collapsed })
         }
         onExit={exitStudio}
+        onOpenCoCreator={() => void enterCoCreator()}
+        initialAvatar={studioInitialAvatar}
         registerPersistence={(controls) => {
           studioPersistence.current = controls;
         }}
@@ -1082,6 +1199,7 @@ export function App() {
             onOpenChat={handleOpenRecentChat}
             onDeleteChat={handleDeleteChat}
             onOpenStudio={() => void enterStudio()}
+            onOpenCoCreator={() => void enterCoCreator()}
           />
         )}
       </ErrorBoundary>

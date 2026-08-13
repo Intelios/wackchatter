@@ -18,6 +18,7 @@
 
 import type { DataDirSource, LocationKind } from '../../shared/types/location.ts';
 import { resetChatStore } from './chats.ts';
+import { resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { drainLocks } from './fs.ts';
 import { activeGenerations } from './generate.ts';
@@ -63,8 +64,9 @@ export function degradedReason(): string | null {
 
 /** Drop everything memoised from the old root, in the order their dependencies require. */
 function quiesce(): void {
-  // Store first: it holds prepared statements bound to the connection the next call closes.
+  // Stores first: they hold prepared statements bound to the connection the next call closes.
   resetChatStore();
+  resetCocreatorStore();
   closeDatabase();
   resetSettingsCache();
 }

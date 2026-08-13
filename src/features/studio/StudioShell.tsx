@@ -25,6 +25,9 @@ interface StudioShellProps {
   inspectorCollapsed: boolean;
   onInspectorCollapsedChange: (collapsed: boolean) => void;
   onExit: () => Promise<void>;
+  onOpenCoCreator: () => void;
+  /** Open the workbench on this card rather than the library — the Co-Creator's handoff. */
+  initialAvatar?: string | null;
   registerPersistence: (controls: PersistenceControls | null) => void;
 }
 
@@ -42,6 +45,8 @@ export function StudioShell({
   inspectorCollapsed,
   onInspectorCollapsedChange,
   onExit,
+  onOpenCoCreator,
+  initialAvatar,
   registerPersistence,
 }: StudioShellProps) {
   const [library, setLibrary] = useState<CharacterSummary[]>([...characters]);
@@ -79,6 +84,16 @@ export function StudioShell({
       setLoading(false);
     }
   }, []);
+
+  /*
+   * The Co-Creator's handoff. Keyed on the avatar, so arriving with one opens it exactly
+   * once; the Studio is otherwise entered on the library and this must not re-open a card
+   * the user has since navigated away from.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the handed-off card
+  useEffect(() => {
+    if (initialAvatar) void open(initialAvatar);
+  }, [initialAvatar]);
 
   const registerDraftPersistence = useCallback(
     (controls: PersistenceControls | null) => {
@@ -236,6 +251,7 @@ export function StudioShell({
             folders={libraryFolders}
             onOpen={(avatar) => void open(avatar)}
             onRefresh={refreshLibrary}
+            onOpenCoCreator={onOpenCoCreator}
           />
         ) : null}
       </div>

@@ -1,6 +1,12 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import { useMemo, useRef, useState } from 'react';
-import { DownloadIcon, PlusIcon, TrashIcon, UploadIcon } from '../../layout/icons.tsx';
+import {
+  CoCreatorIcon,
+  DownloadIcon,
+  PlusIcon,
+  TrashIcon,
+  UploadIcon,
+} from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 
 interface StudioLibraryProps {
@@ -8,13 +14,20 @@ interface StudioLibraryProps {
   folders: readonly string[];
   onOpen: (avatar: string) => void;
   onRefresh: () => Promise<void>;
+  onOpenCoCreator: () => void;
 }
 
 function timestamp(value: number): string {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function StudioLibrary({ characters, folders, onOpen, onRefresh }: StudioLibraryProps) {
+export function StudioLibrary({
+  characters,
+  folders,
+  onOpen,
+  onRefresh,
+  onOpenCoCreator,
+}: StudioLibraryProps) {
   const [query, setQuery] = useState('');
   const [folder, setFolder] = useState('');
   const [busy, setBusy] = useState(false);
@@ -127,6 +140,10 @@ export function StudioLibrary({ characters, folders, onOpen, onRefresh }: Studio
           >
             <PlusIcon />
             New card
+          </button>
+          <button type="button" className="wc-button" disabled={busy} onClick={onOpenCoCreator}>
+            <CoCreatorIcon />
+            Design with an assistant
           </button>
           <button
             type="button"

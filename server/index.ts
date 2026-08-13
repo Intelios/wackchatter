@@ -19,6 +19,7 @@ import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
+import { handleCocreatorRoute } from './routes/cocreator.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
 import { handleLocationRoute } from './routes/location.ts';
 import { handleLorebookRoute } from './routes/lorebooks.ts';
@@ -62,6 +63,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   backgrounds: handleBackgroundRoute,
   backups: handleBackupRoute,
   characters: handleCharacterRoute,
+  cocreator: handleCocreatorRoute,
   presets: handlePresetRoute,
   location: handleLocationRoute,
   lorebooks: handleLorebookRoute,
