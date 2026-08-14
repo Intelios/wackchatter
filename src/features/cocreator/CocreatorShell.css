@@ -39,6 +39,7 @@
   padding: 0 var(--wc-space-3);
   border-bottom: var(--wc-border-width) solid var(--wc-border);
   background: var(--wc-surface);
+  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
 }
 
 .cocreator-shell__navigation,
@@ -76,6 +77,8 @@
 .cocreator-shell__body {
   min-height: 0;
   overflow: hidden;
+  transform-origin: center 20%;
+  animation: wc-view-body-enter var(--wc-duration-view) var(--wc-ease);
 }
 
 .cocreator-shell__error {
@@ -1042,4 +1045,11 @@
 .avatar-drop__clear:focus-visible,
 .avatar-drop__clear[data-confirming="true"] {
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cocreator-shell__bar,
+  .cocreator-shell__body {
+    animation: none;
+  }
 }

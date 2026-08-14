@@ -27,6 +27,7 @@
   padding: 0 var(--wc-space-3);
   border-bottom: var(--wc-border-width) solid var(--wc-border);
   background: var(--wc-surface);
+  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
 }
 
 .studio-shell__navigation,
@@ -68,6 +69,8 @@
 .studio-shell__body {
   min-height: 0;
   overflow: hidden;
+  transform-origin: center 20%;
+  animation: wc-view-body-enter var(--wc-duration-view) var(--wc-ease);
 }
 
 .studio-shell__error {
@@ -239,5 +242,12 @@
   .studio-shell > .shell__scrim {
     background: var(--wc-bg);
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-shell__bar,
+  .studio-shell__body {
+    animation: none;
   }
 }

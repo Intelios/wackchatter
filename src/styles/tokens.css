@@ -182,10 +182,12 @@
   --wc-glass-saturation: 140%;
 
   /* Motion. One layout duration and one curve keeps panel movement coherent;
-     --wc-duration-fast is for hover and focus, which must not feel laggy. */
+     --wc-duration-fast is for hover and focus, which must not feel laggy;
+     --wc-duration-view is for workspace view switches (Studio, Co-Creator). */
   --wc-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --wc-duration: 260ms;
   --wc-duration-fast: 120ms;
+  --wc-duration-view: 320ms;
   /* How far an incoming swipe or re-roll travels before settling. */
   --wc-swipe-distance: 28px;
 
@@ -196,6 +198,7 @@
   :root {
     --wc-duration: 0ms;
     --wc-duration-fast: 0ms;
+    --wc-duration-view: 0ms;
   }
 }
 

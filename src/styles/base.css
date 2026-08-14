@@ -228,3 +228,32 @@ select {
   font-size: var(--wc-text-sm);
   text-align: center;
 }
+
+/* --- View transitions ---------------------------------------------------- */
+/*
+ * Entering a separate workspace (Creator Studio, Co-Creator) or returning to the chat shell.
+ * The backdrop is shared and stays fixed; only the chrome (top bar) and workspace body
+ * animate in, so the wallpaper never flashes or reloads.
+ */
+
+@keyframes wc-view-bar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes wc-view-body-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.988);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
