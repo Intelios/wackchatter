@@ -434,3 +434,14 @@ export function StarIcon({ className, filled }: IconProps & { filled?: boolean }
     </svg>
   );
 }
+
+/** Layers / stacks — for Example sets. */
+export function LayersIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="m12 2 10 5-10 5-10-5Z" />
+      <path d="m2 12 10 5 10-5" />
+      <path d="m2 17 10 5 10-5" />
+    </svg>
+  );
+}

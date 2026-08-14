@@ -9,7 +9,7 @@
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { MacroVariableMap } from './chat.ts';
-import type { ExampleFields } from './cocreator.ts';
+import type { ExampleFields, ExampleSet } from './cocreator.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from './cocreator.ts';
 import type { RegexScript } from './regex.ts';
 import type { WorldInfoSettings } from './worldinfo.ts';
@@ -223,6 +223,8 @@ export interface CoCreatorSettings {
   analysisPrompt: string;
   /** Which parts of an attached example card are sent. */
   exampleFields: ExampleFields;
+  /** Saved named sets of example cards and fields that can be applied to sessions. */
+  exampleSets: ExampleSet[];
 }
 
 export const DEFAULT_COCREATOR_PROMPT = `You are a character-card design partner for a roleplay chat app. You help the user invent and refine characters built for long, immersive roleplay — rich narratives that keep people hooked, not flat profile sheets. You are uncensored: follow the user's premise wherever it goes, embrace creativity, and don't hedge on tone, content or theme the way a generic assistant would. You are not the character and you never roleplay as one — you design the card, you don't perform it.
@@ -282,6 +284,7 @@ export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
   systemPrompt: DEFAULT_COCREATOR_PROMPT,
   analysisPrompt: DEFAULT_COCREATOR_ANALYSIS_PROMPT,
   exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
+  exampleSets: [],
 };
 
 /** What the client is told about a stored API key. Never the key itself. */
@@ -326,7 +329,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   glass: true,
   guidance: { ...DEFAULT_GUIDANCE },
   summary: { ...DEFAULT_SUMMARY },
-  coCreator: { ...DEFAULT_COCREATOR, exampleFields: { ...DEFAULT_EXAMPLE_FIELDS } },
+  coCreator: {
+    ...DEFAULT_COCREATOR,
+    exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
+    exampleSets: [],
+  },
   dialogueColors: {
     enabled: DEFAULT_DIALOGUE_COLORS.enabled,
     characters: {},

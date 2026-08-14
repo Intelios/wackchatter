@@ -24,6 +24,7 @@ import {
   migrateLegacyConnection,
   nextConnectionName,
   reassignCharacterDialogueColor,
+  reassignCharacterExampleSets,
   reassignCharacterRating,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
@@ -412,6 +413,84 @@ describe('co-creator settings', () => {
     const next = mergeSettings(base(), { coCreator: { systemPrompt: 42 } as never });
 
     expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+  });
+
+  test('exampleSets normalizes valid sets and drops malformed entries', () => {
+    const next = mergeSettings(base(), {
+      coCreator: {
+        exampleSets: [
+          {
+            id: 'set-1',
+            name: 'Fantasy Benchmarks',
+            cards: ['elf.png', 'knight.png'],
+            fields: { description: true, scenario: false },
+          },
+          { id: '', name: 'Empty ID' }, // dropped
+          { id: 'set-1', name: 'Duplicate ID' }, // dropped
+          'invalid' as never, // dropped
+        ],
+      } as never,
+    });
+
+    expect(next.coCreator.exampleSets).toEqual([
+      {
+        id: 'set-1',
+        name: 'Fantasy Benchmarks',
+        cards: ['elf.png', 'knight.png'],
+        fields: {
+          ...DEFAULT_COCREATOR.exampleFields,
+          description: true,
+          scenario: false,
+        },
+      },
+    ]);
+  });
+});
+
+describe('example set character identity changes', () => {
+  test('a character rename updates references across saved example sets', () => {
+    const current = mergeSettings(base(), {
+      coCreator: {
+        exampleSets: [
+          {
+            id: 's1',
+            name: 'Set 1',
+            cards: ['Old.png', 'Other.png'],
+            fields: { ...DEFAULT_COCREATOR.exampleFields },
+          },
+          {
+            id: 's2',
+            name: 'Set 2',
+            cards: ['Unrelated.png'],
+            fields: { ...DEFAULT_COCREATOR.exampleFields },
+          },
+        ],
+      } as never,
+    });
+
+    const next = reassignCharacterExampleSets(current, 'Old.png', 'New.png');
+    expect(next?.coCreator.exampleSets[0]?.cards).toEqual(['New.png', 'Other.png']);
+    expect(next?.coCreator.exampleSets[1]?.cards).toEqual(['Unrelated.png']);
+
+    expect(reassignCharacterExampleSets(current, 'Missing.png', 'New.png')).toBeNull();
+  });
+
+  test('deleting a character removes it from saved example sets', () => {
+    const current = mergeSettings(base(), {
+      coCreator: {
+        exampleSets: [
+          {
+            id: 's1',
+            name: 'Set 1',
+            cards: ['Doomed.png', 'Kept.png'],
+            fields: { ...DEFAULT_COCREATOR.exampleFields },
+          },
+        ],
+      } as never,
+    });
+
+    const next = reassignCharacterExampleSets(current, 'Doomed.png', null);
+    expect(next?.coCreator.exampleSets[0]?.cards).toEqual(['Kept.png']);
   });
 });
 

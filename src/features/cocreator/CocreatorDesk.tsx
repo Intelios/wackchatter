@@ -246,6 +246,7 @@ export function CocreatorDesk({
           selection={state.examples}
           loaded={loadedExamples}
           characters={characters}
+          exampleSets={defaults.exampleSets ?? []}
           busy={busy}
           analysed={analysed}
           onAdd={(avatar) => design.dispatch({ type: 'examples/add', avatar })}
@@ -253,6 +254,14 @@ export function CocreatorDesk({
           onSetField={(field: ExampleField, on) =>
             design.dispatch({ type: 'examples/setField', field, on })
           }
+          onApplySet={(set) =>
+            design.dispatch({
+              type: 'examples/applySet',
+              cards: set.cards,
+              fields: set.fields,
+            })
+          }
+          onExampleSetsChange={(sets) => onDefaultsChange({ exampleSets: sets })}
           onAnalyse={() =>
             void design.send(design.analysisPrompt, { coCreatorAction: 'analyseExamples' })
           }

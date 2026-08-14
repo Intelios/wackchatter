@@ -15,7 +15,7 @@ import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
 import { normalizeRegexScript } from '../../shared/regex/io.ts';
-import type { ExampleFields } from '../../shared/types/cocreator.ts';
+import type { ExampleFields, ExampleSet } from '../../shared/types/cocreator.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from '../../shared/types/cocreator.ts';
 import type { RegexScript } from '../../shared/types/regex.ts';
 import type {
@@ -291,6 +291,39 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
 }
 
 /**
+ * Coerce a stored example-set list.
+ *
+ * Entries without a usable id are dropped — the persona rule: the id is what edits and
+ * deletes address, and a duplicate id would let one set shadow another.
+ */
+function normalizeExampleSets(value: unknown): ExampleSet[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const sets: ExampleSet[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    const name = typeof entry.name === 'string' ? entry.name : '';
+    const cards = Array.isArray(entry.cards)
+      ? entry.cards.filter((c): c is string => typeof c === 'string' && Boolean(c.trim()))
+      : [];
+
+    const storedFields = isRecord(entry.fields) ? entry.fields : {};
+    const fields = { ...DEFAULT_EXAMPLE_FIELDS } as ExampleFields;
+    for (const key of Object.keys(DEFAULT_EXAMPLE_FIELDS) as (keyof ExampleFields)[]) {
+      if (typeof storedFields[key] === 'boolean') fields[key] = storedFields[key];
+    }
+
+    sets.push({ id, name, cards, fields });
+  }
+  return sets;
+}
+
+/**
  * Coerce Co-Creator preferences and revalidate their optional connection reference.
  *
  * `presetId` is deliberately NOT validated against anything here: presets are files, not
@@ -311,6 +344,8 @@ function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreato
     if (typeof storedFields[key] === 'boolean') exampleFields[key] = storedFields[key];
   }
 
+  const exampleSets = normalizeExampleSets(stored.exampleSets);
+
   return {
     connectionId,
     presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
@@ -323,6 +358,7 @@ function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreato
         ? stored.analysisPrompt
         : DEFAULT_COCREATOR.analysisPrompt,
     exampleFields,
+    exampleSets,
   };
 }
 
@@ -525,6 +561,10 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
               ...current.coCreator.exampleFields,
               ...(patch.coCreator.exampleFields ?? {}),
             },
+            exampleSets:
+              patch.coCreator.exampleSets !== undefined
+                ? patch.coCreator.exampleSets
+                : current.coCreator.exampleSets,
           },
           current.connections,
         )
@@ -789,4 +829,40 @@ export function reassignGlobalLorebooks(
       : stored.map((id) => (id === oldId ? newId : id));
 
   return { ...current, globalLorebooks: next };
+}
+
+/**
+ * Re-key or remove avatar filenames referenced in saved example sets.
+ * When oldAvatar is renamed to newAvatar, occurrences of oldAvatar become newAvatar.
+ * When oldAvatar is deleted (newAvatar is null), oldAvatar is removed from any set.
+ * Returns updated AppSettings, or null if no sets referenced oldAvatar.
+ */
+export function reassignCharacterExampleSets(
+  current: AppSettings,
+  oldAvatar: string,
+  newAvatar: string | null,
+): AppSettings | null {
+  const sets = current.coCreator.exampleSets;
+  if (!sets || sets.length === 0) return null;
+
+  let changed = false;
+  const updatedSets: ExampleSet[] = sets.map((set) => {
+    if (!set.cards.includes(oldAvatar)) return set;
+    changed = true;
+    const cards =
+      newAvatar === null
+        ? set.cards.filter((card) => card !== oldAvatar)
+        : set.cards.map((card) => (card === oldAvatar ? newAvatar : card));
+    return { ...set, cards };
+  });
+
+  if (!changed) return null;
+
+  return {
+    ...current,
+    coCreator: {
+      ...current.coCreator,
+      exampleSets: updatedSets,
+    },
+  };
 }

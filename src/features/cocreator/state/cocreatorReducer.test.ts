@@ -393,6 +393,30 @@ describe('examples', () => {
         .examples.fields.mes_example,
     ).toBe(true);
   });
+
+  test('applying an example set replaces cards and fields atomically', () => {
+    const initial = run(
+      opened(),
+      { type: 'examples/add', avatar: 'Old1.png' },
+      { type: 'examples/add', avatar: 'Old2.png' },
+    );
+
+    const customFields = {
+      ...DEFAULT_EXAMPLE_FIELDS,
+      description: false,
+      alternate_greetings: true,
+    };
+
+    const next = cocreatorReducer(initial, {
+      type: 'examples/applySet',
+      cards: ['New1.png', 'New2.png', 'New3.png'],
+      fields: customFields,
+    });
+
+    expect(next.examples.cards).toEqual(['New1.png', 'New2.png', 'New3.png']);
+    expect(next.examples.fields).toEqual(customFields);
+    expect(next.revision).toBe(initial.revision + 1);
+  });
 });
 
 describe('the swipe invariant survives arbitrary action sequences', () => {

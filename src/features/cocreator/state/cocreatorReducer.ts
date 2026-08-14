@@ -45,6 +45,7 @@ import {
   type CocreatorSession,
   DEFAULT_EXAMPLE_FIELDS,
   type ExampleField,
+  type ExampleFields,
   type ExampleSelection,
   type SessionModelSettings,
   type SingleCardSlot,
@@ -149,6 +150,7 @@ export type CocreatorAction =
   | { type: 'examples/remove'; avatar: string }
   | { type: 'examples/reorder'; from: number; to: number }
   | { type: 'examples/setField'; field: ExampleField; on: boolean }
+  | { type: 'examples/applySet'; cards: string[]; fields: ExampleFields }
   | { type: 'settings/patch'; patch: SessionModelSettings }
   | { type: 'avatar/set'; filename: string }
   | { type: 'avatar/cleared' }
@@ -438,6 +440,16 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         revision: state.revision + 1,
       };
     }
+
+    case 'examples/applySet':
+      return {
+        ...state,
+        examples: {
+          cards: [...action.cards],
+          fields: { ...action.fields },
+        },
+        revision: state.revision + 1,
+      };
 
     case 'settings/patch':
       return {

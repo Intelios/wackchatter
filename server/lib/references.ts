@@ -19,6 +19,7 @@ import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
   reassignCharacterDialogueColor,
+  reassignCharacterExampleSets,
   reassignCharacterRating,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
@@ -34,12 +35,15 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
   if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
   const updatedRatings = reassignCharacterRating(current, oldAvatar, newAvatar);
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
+  const updatedSets = reassignCharacterExampleSets(current, oldAvatar, newAvatar);
+  if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
 
   try {
     chatStore().reassignCharacter(oldAvatar, newAvatar);
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
+    if (updatedSets) saveSettings({ coCreator: current.coCreator });
     throw error;
   }
 
@@ -57,6 +61,13 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
           ? [
               () => {
                 saveSettings({ characterRatings: current.characterRatings });
+              },
+            ]
+          : []),
+        ...(updatedSets
+          ? [
+              () => {
+                saveSettings({ coCreator: current.coCreator });
               },
             ]
           : []),
@@ -79,12 +90,15 @@ export function cascadeCharacterDelete(avatar: string): void {
   if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
   const updatedRatings = reassignCharacterRating(current, avatar, null);
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
+  const updatedSets = reassignCharacterExampleSets(current, avatar, null);
+  if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
 
   try {
     chatStore().deleteChatsForCharacter(avatar);
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
+    if (updatedSets) saveSettings({ coCreator: current.coCreator });
     throw error;
   }
 }

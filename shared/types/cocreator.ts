@@ -146,6 +146,19 @@ export interface ExampleSelection {
 }
 
 /**
+ * A named collection of example cards and field settings that can be saved and reused
+ * across Co-Creator sessions.
+ *
+ * The persona rule: `id` is opaque and stable; `name` is user-editable.
+ */
+export interface ExampleSet {
+  id: string;
+  name: string;
+  cards: string[];
+  fields: ExampleFields;
+}
+
+/**
  * Per-session overrides of `AppSettings.coCreator`.
  *
  * Three states per field, expressed through optionality: absent follows the app setting,

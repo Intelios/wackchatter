@@ -1,9 +1,10 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
-import type { ExampleField, ExampleSelection } from '@shared/types/cocreator.ts';
+import type { ExampleField, ExampleSelection, ExampleSet } from '@shared/types/cocreator.ts';
 import { useMemo, useState } from 'react';
 import { Popover } from '../../components/Popover.tsx';
 import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
+import { ExampleSetsPopover } from './ExampleSetsPopover.tsx';
 import { EXAMPLE_FIELD_LABELS, EXAMPLE_FIELD_ORDER, EXAMPLE_TOKEN_WARNING } from './examples.ts';
 import type { LoadedExamples } from './useExampleCards.ts';
 
@@ -11,12 +12,15 @@ interface ExamplesPanelProps {
   selection: ExampleSelection;
   loaded: LoadedExamples;
   characters: readonly CharacterSummary[];
+  exampleSets: readonly ExampleSet[];
   busy: boolean;
   /** True once the analysis request is already in the transcript. */
   analysed: boolean;
   onAdd: (avatar: string) => void;
   onRemove: (avatar: string) => void;
   onSetField: (field: ExampleField, on: boolean) => void;
+  onApplySet: (set: ExampleSet) => void;
+  onExampleSetsChange: (sets: ExampleSet[]) => void;
   onAnalyse: () => void;
 }
 
@@ -31,14 +35,18 @@ export function ExamplesPanel({
   selection,
   loaded,
   characters,
+  exampleSets,
   busy,
   analysed,
   onAdd,
   onRemove,
   onSetField,
+  onApplySet,
+  onExampleSetsChange,
   onAnalyse,
 }: ExamplesPanelProps) {
   const [picking, setPicking] = useState(false);
+  const [setsOpen, setSetsOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const available = useMemo(() => {
@@ -65,46 +73,62 @@ export function ExamplesPanel({
         <span className="examples-panel__count" data-warn={heavy || undefined}>
           {selection.cards.length === 0 ? 'none' : `${loaded.tokens} tok`}
         </span>
-        <Popover
-          open={picking}
-          onOpenChange={setPicking}
-          label="Attach an example card"
-          placement="bottom-start"
-          role="dialog"
-          icon={<PlusIcon />}
-          className="examples-panel__attach"
-          popupClassName="examples-picker__popup"
-        >
-          <div className="examples-picker">
-            <input
-              type="search"
-              className="wc-input"
-              value={query}
-              placeholder="Search your cards…"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="examples-picker__list">
-              {available.length === 0 ? (
-                <p className="wc-empty">No other cards match.</p>
-              ) : (
-                available.map((character) => (
-                  <button
-                    key={character.avatar}
-                    type="button"
-                    className="examples-picker__item"
-                    onClick={() => {
-                      onAdd(character.avatar);
-                      setPicking(false);
-                    }}
-                  >
-                    <img src={characterApi.imageUrl(character.avatar, character.modified)} alt="" />
-                    <span>{character.name}</span>
-                  </button>
-                ))
-              )}
+        <div className="examples-panel__actions">
+          <ExampleSetsPopover
+            sets={exampleSets}
+            currentCards={selection.cards}
+            currentFields={selection.fields}
+            characters={characters}
+            open={setsOpen}
+            onOpenChange={setSetsOpen}
+            onApplySet={onApplySet}
+            onSetsChange={onExampleSetsChange}
+            disabled={busy}
+          />
+          <Popover
+            open={picking}
+            onOpenChange={setPicking}
+            label="Attach an example card"
+            placement="bottom-start"
+            role="dialog"
+            icon={<PlusIcon />}
+            className="examples-panel__attach"
+            popupClassName="examples-picker__popup"
+          >
+            <div className="examples-picker">
+              <input
+                type="search"
+                className="wc-input"
+                value={query}
+                placeholder="Search your cards…"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <div className="examples-picker__list">
+                {available.length === 0 ? (
+                  <p className="wc-empty">No other cards match.</p>
+                ) : (
+                  available.map((character) => (
+                    <button
+                      key={character.avatar}
+                      type="button"
+                      className="examples-picker__item"
+                      onClick={() => {
+                        onAdd(character.avatar);
+                        setPicking(false);
+                      }}
+                    >
+                      <img
+                        src={characterApi.imageUrl(character.avatar, character.modified)}
+                        alt=""
+                      />
+                      <span>{character.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        </Popover>
+          </Popover>
+        </div>
       </header>
 
       <div className="examples-panel__body">
