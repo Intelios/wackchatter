@@ -794,6 +794,9 @@ export function App() {
       setError((err as Error).message);
       return;
     }
+    // Entering by hand opens the library. Only the Co-Creator's handoff names a card, and a
+    // handoff the user has already left must not be re-opened by a later, unrelated entry.
+    setStudioInitialAvatar(null);
     setView('studio');
   }, [chat, flushRightPanel]);
 

@@ -19,7 +19,7 @@
 
 import type { MessageState } from '@shared/chat/message.ts';
 import { currentText } from '@shared/chat/message.ts';
-import type { TokenCounter } from '@shared/prompt/token-cache.ts';
+import { messageCoster, type TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ApiMessage } from '@shared/types/chat.ts';
 import { DEFAULT_COCREATOR_ANALYSIS_PROMPT } from '@shared/types/settings.ts';
 
@@ -72,11 +72,9 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
   // the panel has one number to show.
   if (exampleBlock.trim()) fixed.push({ role: 'system', content: exampleBlock });
 
-  // gpt-tokenizer includes completion priming in every whole-chat count, so subtract it when
-  // costing an individual message and charge it once against the assembled payload. Same
-  // accounting as shared/prompt/assemble.ts:483.
-  const replyPriming = countTokens.countChat([]);
-  const messageCost = (message: ApiMessage) => countTokens.countChat([message]) - replyPriming;
+  // The same accounting `assemblePrompt` uses, from the same helper: an individual message
+  // costs its tokens without the priming every whole-chat count carries.
+  const { cost: messageCost } = messageCoster(countTokens);
 
   const fixedTokens = countTokens.countChat(fixed);
   const systemTokens = fixed[0] ? messageCost(fixed[0]) : 0;

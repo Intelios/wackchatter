@@ -22,6 +22,7 @@ import { ExamplesPanel } from './ExamplesPanel.tsx';
 import { finishSession } from './finish.ts';
 import { isAnalyseRequest, renderStashRequest } from './prompt.ts';
 import { StashPanel } from './StashPanel.tsx';
+import { type CocreatorAction, cocreatorReducer } from './state/cocreatorReducer.ts';
 import { useCocreator } from './useCocreator.ts';
 import { useExampleCards } from './useExampleCards.ts';
 
@@ -214,8 +215,15 @@ export function CocreatorDesk({
         avatar: stateRef.current.avatar,
         cacheKey: session.modified,
       });
-      design.dispatch({ type: 'finished/recorded', avatar });
-      await design.flushSaves();
+      // Flushed against the state the reducer produces, not the ref: React has not
+      // re-rendered yet, so `stateRef` still holds the pre-dispatch revision and the flush
+      // would find nothing dirty — leaving `finishedAvatar` to a debounced save racing the
+      // navigation below. Same pattern `useCocreator.send` uses to generate from a turn it
+      // has only just dispatched.
+      const recorded: CocreatorAction = { type: 'finished/recorded', avatar };
+      const next = cocreatorReducer(stateRef.current, recorded);
+      design.dispatch(recorded);
+      await design.flushSaves(next);
       onFinished(avatar);
     } catch (error) {
       onError((error as Error).message);

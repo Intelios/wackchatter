@@ -81,7 +81,8 @@ export interface UseCocreator {
   /** Generate another take on the last reply — an overswipe, never destructive. */
   reroll: () => Promise<void>;
   abort: () => void;
-  flushSaves: () => Promise<void>;
+  /** `base` flushes a state the reducer has produced but React has not yet committed. */
+  flushSaves: (base?: CocreatorState) => Promise<void>;
   persistence: PersistenceControls;
   connection: Connection | null;
   presetId: string | null;
@@ -220,21 +221,32 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     if (snapshot) persistence.schedule(snapshot);
   }, [captureSnapshot, persistence, state]);
 
-  const flushSaves = useCallback(async () => {
-    const current = stateRef.current;
-    const snapshot = captureSnapshot(current);
-    if (!snapshot || snapshot.revision <= current.persistedRevision) return;
+  /**
+   * Drain this session's queue.
+   *
+   * `base` exists for the one caller that flushes in the same turn it dispatched: React has
+   * not re-rendered yet, so `stateRef` still holds the pre-dispatch state and the flush would
+   * find nothing dirty. Passing the state the reducer produced makes the write cover the
+   * action that prompted it.
+   */
+  const flushSaves = useCallback(
+    async (base?: CocreatorState) => {
+      const current = base ?? stateRef.current;
+      const snapshot = captureSnapshot(current);
+      if (!snapshot || snapshot.revision <= current.persistedRevision) return;
 
-    persistence.schedule(snapshot);
-    try {
-      await persistence.flush(snapshot.sessionId);
-      setSaveError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setSaveError(message);
-      throw error;
-    }
-  }, [captureSnapshot, persistence]);
+      persistence.schedule(snapshot);
+      try {
+        await persistence.flush(snapshot.sessionId);
+        setSaveError(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSaveError(message);
+        throw error;
+      }
+    },
+    [captureSnapshot, persistence],
+  );
 
   const retrySave = useCallback(async () => {
     await flushSaves();

@@ -428,3 +428,50 @@ describe('migration', () => {
     expect(store.getSession(created.id)?.title).toBe('Survivor');
   });
 });
+
+describe('reassigning an attached example card', () => {
+  function sessionWith(cards: string[]): string {
+    const created = store.createSession({});
+    const saved = store.patchSession(created.id, {
+      revision: created.revision + 1,
+      examples: { cards, fields: {} as never },
+    });
+    expect(saved.kind).toBe('saved');
+    return created.id;
+  }
+
+  test('a rename repoints only the sessions that attached the old card', () => {
+    const attached = sessionWith(['Mika.png', 'Niamh.png']);
+    const untouched = sessionWith(['Niamh.png']);
+
+    expect(store.reassignExampleCard('Mika.png', 'Mika2.png')).toBe(1);
+
+    expect(store.getSession(attached)?.examples.cards).toEqual(['Mika2.png', 'Niamh.png']);
+    expect(store.getSession(untouched)?.examples.cards).toEqual(['Niamh.png']);
+  });
+
+  test('a null detaches the card rather than leaving a name nothing can load', () => {
+    const attached = sessionWith(['Mika.png', 'Niamh.png']);
+
+    expect(store.reassignExampleCard('Mika.png', null)).toBe(1);
+
+    expect(store.getSession(attached)?.examples.cards).toEqual(['Niamh.png']);
+  });
+
+  test('a rename onto an already-attached card does not list it twice', () => {
+    const attached = sessionWith(['Mika.png', 'Niamh.png']);
+
+    store.reassignExampleCard('Mika.png', 'Niamh.png');
+
+    expect(store.getSession(attached)?.examples.cards).toEqual(['Niamh.png']);
+  });
+
+  test('the session keeps its revision, so an open client is not forced into a conflict', () => {
+    const attached = sessionWith(['Mika.png']);
+    const before = store.getSession(attached)!.revision;
+
+    store.reassignExampleCard('Mika.png', 'Mika2.png');
+
+    expect(store.getSession(attached)?.revision).toBe(before);
+  });
+});

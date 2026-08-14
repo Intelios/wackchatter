@@ -20,6 +20,31 @@ export interface TokenCounter {
 
 const DEFAULT_LIMIT = 2048;
 
+/** Per-message costing with the whole-chat reply priming separated out. */
+export interface MessageCoster {
+  /** One message's tokens, excluding the priming every whole-chat count carries. */
+  cost(message: ApiMessage): number;
+  /** The priming itself, charged once against the assembled payload. */
+  readonly replyPriming: number;
+}
+
+/**
+ * Cost individual messages against a counter that prices whole chats.
+ *
+ * gpt-tokenizer includes completion priming in every `countChat`, so assigning a message to
+ * a prompt slot has to subtract it and the final payload has to charge it once. Shared
+ * rather than restated by each prompt builder: both `assemblePrompt` and the Co-Creator's
+ * `buildDesignPrompt` need the identical accounting, and a divergence between them would
+ * show up only as budgets that quietly disagree.
+ */
+export function messageCoster(counter: TokenCounter): MessageCoster {
+  const replyPriming = counter.countChat([]);
+  return {
+    replyPriming,
+    cost: (message) => counter.countChat([message]) - replyPriming,
+  };
+}
+
 /**
  * Wrap a counter in a least-recently-used cache.
  *
@@ -53,7 +78,10 @@ export function memoizeCounter(counter: TokenCounter, limit = DEFAULT_LIMIT): To
   return {
     countText,
     countChat: (messages) => {
-      if (messages.length === 0) return 0;
+      // Not a plain `return 0`: a whole-chat count of nothing is the reply priming the
+      // counter charges on every call, and `messageCoster` subtracts exactly that. Cached
+      // under a fixed key so the fast path still skips the stringify.
+      if (messages.length === 0) return cached('chat:[]', () => counter.countChat([]));
       if (messages.length === 1) {
         const m = messages[0]!;
         return cached(

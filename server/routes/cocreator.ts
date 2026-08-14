@@ -100,21 +100,35 @@ export async function handleCocreatorRoute(
       const file = form.get('image');
       if (!(file instanceof File)) return errorResponse('No image provided.');
 
-      await atomicWrite(path, new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
       // The filename is derived from the id, so this is idempotent — but the row still has
       // to learn the avatar exists, and that write needs a revision like any other.
+      //
+      // Claimed before the bytes land: a concurrent save can move the revision on between
+      // the read above and this write, and a rejected patch that had already written the
+      // file would leave artwork on disk that no session names.
       const result = store.patchSession(id, {
         revision: session.revision + 1,
         avatar: `${id}.png`,
       });
+      if (result.kind !== 'saved') return saveResponse(result);
+
+      await atomicWrite(path, bytes);
       return saveResponse(result);
     }
 
     if (method === 'DELETE') {
       const session = store.getSession(id);
       if (!session) return notFound('Session not found.');
+
+      // Released before the file goes, for the same reason the upload claims it first: a
+      // rejected patch that had already unlinked would leave the row naming artwork that
+      // `GET /:id/avatar` can no longer serve.
+      const result = store.patchSession(id, { revision: session.revision + 1, avatar: null });
+      if (result.kind !== 'saved') return saveResponse(result);
+
       if (existsSync(path)) unlinkSync(path);
-      return saveResponse(store.patchSession(id, { revision: session.revision + 1, avatar: null }));
+      return saveResponse(result);
     }
 
     return null;

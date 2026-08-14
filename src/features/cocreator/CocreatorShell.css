@@ -21,11 +21,21 @@
   z-index: 0;
 }
 
-.cocreator-shell__bar {
-  position: relative;
-  z-index: 3;
-}
-
+/*
+ * One stacking level for both, and they must stay equal.
+ *
+ * The bar and the body are separate grid rows, so nothing in one ever overlaps the other by
+ * layout — except the setup trigger, which is `position: fixed` over the bar's row while
+ * living in the desk inside the body. `z-index: 1` on the body makes it a stacking context,
+ * so that trigger is stacked *as part of the body* no matter what z-index it carries: lift
+ * the bar above the body and the trigger goes under the bar with it, and the bar's frosted
+ * background hides it completely.
+ *
+ * Raising the bar therefore buys nothing — `.examples-panel` is inside the body's context
+ * and cannot escape it either — and costs the only control on this screen that opens the
+ * model and prompt settings.
+ */
+.cocreator-shell__bar,
 .cocreator-shell__body {
   position: relative;
   z-index: 1;

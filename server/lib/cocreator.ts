@@ -97,6 +97,14 @@ export interface CocreatorStore {
   /** Metadata-only write. Never touches the transcript. */
   patchSession(id: string, patch: CocreatorPatch): CocreatorSaveResult;
   deleteSession(id: string): boolean;
+  /**
+   * Repoint (or drop, for a null) an attached example card across every session.
+   *
+   * Sessions hold avatar filenames, so a character rename strands them exactly as it would
+   * strand a chat's `character_id` — hence the same cascade, and for the same reason the
+   * chat store's `reassignCharacter` exists. Returns how many sessions changed.
+   */
+  reassignExampleCard(oldAvatar: string, newAvatar: string | null): number;
 }
 
 function parseJson<T>(raw: string, fallback: T): T {
@@ -199,6 +207,12 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       'SELECT * FROM cocreator_messages WHERE session_id = ? ORDER BY position ASC',
     ),
     deleteMessages: database.query('DELETE FROM cocreator_messages WHERE session_id = ?'),
+    selectAllExamples: database.query<{ id: string; examples: string }, []>(
+      'SELECT id, examples FROM cocreator_sessions',
+    ),
+    updateExamples: database.query(
+      'UPDATE cocreator_sessions SET examples = $examples WHERE id = $id',
+    ),
     insertMessage: database.query(
       `INSERT INTO cocreator_messages
          (session_id, id, position, is_user, swipe_id, swipes, swipe_info)
@@ -405,6 +419,32 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     },
   );
 
+  /*
+   * Deliberately no revision bump, matching `chatStore().reassignCharacter`: this is a
+   * repair of a reference the user never edited, not a change to their session, and
+   * bumping would 409 every client that happens to have the session open.
+   */
+  const reassignExampleCard = database.transaction(
+    (oldAvatar: string, newAvatar: string | null): number => {
+      let changed = 0;
+      for (const row of statements.selectAllExamples.all()) {
+        const examples = normalizeExamples(parseJson<unknown>(row.examples, null));
+        if (!examples.cards.includes(oldAvatar)) continue;
+        const cards =
+          newAvatar === null
+            ? examples.cards.filter((card) => card !== oldAvatar)
+            : // De-duplicated: a rename onto a name already attached must not list it twice.
+              [...new Set(examples.cards.map((card) => (card === oldAvatar ? newAvatar : card)))];
+        statements.updateExamples.run({
+          $id: row.id,
+          $examples: JSON.stringify({ ...examples, cards }),
+        });
+        changed += 1;
+      }
+      return changed;
+    },
+  );
+
   return {
     listSessions(): CocreatorSessionSummary[] {
       return listAll.all().map((row) => {
@@ -452,6 +492,8 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       // connection.
       return statements.deleteSession.run(id).changes > 0;
     },
+
+    reassignExampleCard,
   };
 }
 
