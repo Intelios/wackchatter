@@ -932,6 +932,8 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   // --- Optional example dialogue ----------------------------------------
   const acceptedExamples: ApiMessage[] = [];
+  let currentPromptTokens = fixedTokens;
+
   if (examplesSlotIndex !== -1) {
     const blocks = parseExampleDialogue(character.mes_example, env, {
       seed,
@@ -944,10 +946,11 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     );
 
     for (const block of blocks) {
-      const candidate = [{ role: 'system' as const, content: divider }, ...block];
-      const next = [...acceptedExamples, ...candidate];
-      if (countTokens.countChat(materialize(next, [])) > maxPromptTokens) break;
+      const candidate: ApiMessage[] = [{ role: 'system' as const, content: divider }, ...block];
+      const candidateCost = candidate.reduce((sum, message) => sum + messageCost(message), 0);
+      if (currentPromptTokens + candidateCost > maxPromptTokens) break;
       acceptedExamples.push(...candidate);
+      currentPromptTokens += candidateCost;
     }
     tokenCounts.dialogueExamples = acceptedExamples.reduce(
       (sum, message) => sum + messageCost(message),
@@ -1015,11 +1018,12 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         apiMessage.name = sanitizeName(message.name);
       }
 
-      const candidate = [apiMessage, ...packedHistory];
-      if (countTokens.countChat(materialize(acceptedExamples, candidate)) > maxPromptTokens) {
+      const cost = messageCost(apiMessage);
+      if (currentPromptTokens + cost > maxPromptTokens) {
         droppedMessages = i + 1;
         break;
       }
+      currentPromptTokens += cost;
       packedHistory.unshift(apiMessage);
     }
   }
@@ -1028,10 +1032,11 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     ...(newChatMarker ? [{ role: 'system' as const, content: newChatMarker }] : []),
     ...applyDepthInjections(packedHistory, groupedInjections),
   ].at(-1)?.role;
+  const sendIfEmptyCost = sendIfEmpty ? messageCost({ role: 'user', content: sendIfEmpty }) : 0;
   const canIncludeSendIfEmpty =
     Boolean(sendIfEmpty) &&
     historyTailRole === 'assistant' &&
-    countTokens.countChat(materialize(acceptedExamples, packedHistory, true)) <= maxPromptTokens;
+    currentPromptTokens + sendIfEmptyCost <= maxPromptTokens;
   const final = materialize(acceptedExamples, packedHistory, canIncludeSendIfEmpty);
   const totalTokens = countTokens.countChat(final);
   tokenCounts.chatHistory = packedHistory.reduce((sum, message) => sum + messageCost(message), 0);
