@@ -90,7 +90,9 @@ export async function callUpstream(
 
   if (!connection) throw new Error('No connection configured. Add one in Connections.');
   if (!connection.baseUrl) throw new Error('No endpoint configured. Set one in Connections.');
-  if (!connection.model) throw new Error('No model selected. Choose one in Connections.');
+  if (typeof body.model !== 'string' || !body.model.trim()) {
+    throw new Error('No model selected. Choose one in Connections or for this request.');
+  }
 
   return fetch(completionsUrl(connection), {
     method: 'POST',

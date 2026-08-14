@@ -1,7 +1,7 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { MessagesIcon, StudioIcon, TrashIcon } from '../../layout/icons.tsx';
+import { CoCreatorIcon, MessagesIcon, StudioIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
 import './StartScreen.css';
 
@@ -13,6 +13,7 @@ interface StartScreenProps {
   onOpenChat: (avatar: string, chatId: string) => void;
   onDeleteChat: (chatId: string) => Promise<void>;
   onOpenStudio: () => void;
+  onOpenCoCreator: () => void;
 }
 
 interface RecentChat extends ChatSummary {
@@ -49,6 +50,7 @@ export function StartScreen({
   onOpenChat,
   onDeleteChat,
   onOpenStudio,
+  onOpenCoCreator,
 }: StartScreenProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [recent, setRecent] = useState<ChatSummary[] | null>(null);
@@ -196,10 +198,16 @@ export function StartScreen({
           </div>
         )}
 
-        <button type="button" className="start-screen__studio" onClick={onOpenStudio}>
-          <StudioIcon />
-          Character Creator Studio
-        </button>
+        <div className="start-screen__creator-links">
+          <button type="button" className="start-screen__studio" onClick={onOpenStudio}>
+            <StudioIcon />
+            Character Creator Studio
+          </button>
+          <button type="button" className="start-screen__studio" onClick={onOpenCoCreator}>
+            <CoCreatorIcon />
+            Character Co-Creator
+          </button>
+        </div>
       </div>
     </div>
   );

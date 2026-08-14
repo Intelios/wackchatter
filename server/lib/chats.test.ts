@@ -385,7 +385,7 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('3');
+    ).toBe('4');
   });
 
   test('adds persona_id to a v2 database without losing its messages', () => {
@@ -418,7 +418,7 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('3');
+    ).toBe('4');
   });
 });
 

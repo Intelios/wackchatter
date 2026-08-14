@@ -24,6 +24,14 @@ import type {
   StaleChatRevision,
 } from '@shared/types/chat.ts';
 import type {
+  CardStash,
+  CocreatorSaveSnapshot,
+  CocreatorSession,
+  CocreatorSessionSummary,
+  ExampleSelection,
+  SessionModelSettings,
+} from '@shared/types/cocreator.ts';
+import type {
   BrowseResult,
   LocationInfo,
   LocationKind,
@@ -409,6 +417,66 @@ export const chatApi = {
   },
 };
 
+export const cocreatorApi = {
+  list: () => request<CocreatorSessionSummary[]>('/cocreator'),
+
+  get: (id: string) => request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}`),
+
+  create: (title?: string) =>
+    request<CocreatorSession>('/cocreator', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title }),
+    }),
+
+  /** Whole-session write — the only path that changes messages. */
+  save: (snapshot: CocreatorSaveSnapshot, options?: Pick<RequestInit, 'keepalive'>) =>
+    request<CocreatorSession>(`/cocreator/${encodeURIComponent(snapshot.sessionId)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(snapshot),
+      ...options,
+    }),
+
+  /** Metadata-only write. Never touches the transcript. */
+  patch: (
+    id: string,
+    updates: {
+      revision: number;
+      title?: string;
+      stash?: CardStash;
+      examples?: ExampleSelection;
+      settings?: SessionModelSettings;
+      avatar?: string | null;
+      finishedAvatar?: string | null;
+    },
+  ) =>
+    request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(updates),
+    }),
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/cocreator/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  setAvatar: (id: string, image: File) => {
+    const form = new FormData();
+    form.set('image', image);
+    return request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}/avatar`, {
+      method: 'PUT',
+      body: form,
+    });
+  },
+
+  clearAvatar: (id: string) =>
+    request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}/avatar`, { method: 'DELETE' }),
+
+  /** `cacheKey` is the session's `modified`, since the filename is stable per session. */
+  avatarUrl: (id: string, cacheKey?: number) =>
+    `/api/cocreator/${encodeURIComponent(id)}/avatar${cacheKey ? `?v=${cacheKey}` : ''}`,
+};
+
 export const backupApi = {
   list: (characterId?: string) =>
     request<ChatBackupSummary[]>(
@@ -464,7 +532,12 @@ export const settingsApi = {
       body: JSON.stringify({ key }),
     }),
 
-  models: () => request<{ models: ProviderModel[] }>('/settings/models'),
+  models: (connectionId?: string) =>
+    request<{ models: ProviderModel[] }>(
+      connectionId
+        ? `/settings/connections/${encodeURIComponent(connectionId)}/models`
+        : '/settings/models',
+    ),
 
   /** The id must name a stored connection — the server uses it to pick the key. */
   test: (connection: Connection) =>

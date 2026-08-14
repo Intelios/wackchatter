@@ -59,7 +59,7 @@ import {
   substituteMacros,
 } from './macros.ts';
 import { getPromptOrder } from './preset-io.ts';
-import type { TokenCounter } from './token-cache.ts';
+import { messageCoster, type TokenCounter } from './token-cache.ts';
 
 export interface AssembleOptions {
   preset: Preset;
@@ -480,8 +480,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   // gpt-tokenizer includes completion priming in every whole-chat count. Subtract it
   // when assigning an individual message to a prompt slot, then charge it once in the
   // final assembled payload.
-  const replyPriming = countTokens.countChat([]);
-  const messageCost = (message: ApiMessage) => countTokens.countChat([message]) - replyPriming;
+  const { replyPriming, cost: messageCost } = messageCoster(countTokens);
   const finalControls = finalControlsInput.filter((control) => control.content.trim());
   for (const control of finalControls) {
     const tokens = messageCost({ role: control.role, content: control.content });
@@ -932,6 +931,8 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   // --- Optional example dialogue ----------------------------------------
   const acceptedExamples: ApiMessage[] = [];
+  let currentPromptTokens = fixedTokens;
+
   if (examplesSlotIndex !== -1) {
     const blocks = parseExampleDialogue(character.mes_example, env, {
       seed,
@@ -944,15 +945,15 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     );
 
     for (const block of blocks) {
-      const candidate = [{ role: 'system' as const, content: divider }, ...block];
-      const next = [...acceptedExamples, ...candidate];
-      if (countTokens.countChat(materialize(next, [])) > maxPromptTokens) break;
+      const candidate: ApiMessage[] = [{ role: 'system' as const, content: divider }, ...block];
+      const candidateCost = candidate.reduce((sum, message) => sum + messageCost(message), 0);
+      if (currentPromptTokens + candidateCost > maxPromptTokens) break;
       acceptedExamples.push(...candidate);
+      currentPromptTokens += candidateCost;
     }
-    tokenCounts.dialogueExamples = acceptedExamples.reduce(
-      (sum, message) => sum + messageCost(message),
-      0,
-    );
+    // The acceptance loop already accumulated exactly this; walking the list again would
+    // cost every accepted message a second time for an answer we are holding.
+    tokenCounts.dialogueExamples = currentPromptTokens - fixedTokens;
   }
 
   // --- Optional chat history ---------------------------------------------
@@ -1015,11 +1016,12 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         apiMessage.name = sanitizeName(message.name);
       }
 
-      const candidate = [apiMessage, ...packedHistory];
-      if (countTokens.countChat(materialize(acceptedExamples, candidate)) > maxPromptTokens) {
+      const cost = messageCost(apiMessage);
+      if (currentPromptTokens + cost > maxPromptTokens) {
         droppedMessages = i + 1;
         break;
       }
+      currentPromptTokens += cost;
       packedHistory.unshift(apiMessage);
     }
   }
@@ -1028,12 +1030,33 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     ...(newChatMarker ? [{ role: 'system' as const, content: newChatMarker }] : []),
     ...applyDepthInjections(packedHistory, groupedInjections),
   ].at(-1)?.role;
+  const sendIfEmptyCost = sendIfEmpty ? messageCost({ role: 'user', content: sendIfEmpty }) : 0;
   const canIncludeSendIfEmpty =
     Boolean(sendIfEmpty) &&
     historyTailRole === 'assistant' &&
-    countTokens.countChat(materialize(acceptedExamples, packedHistory, true)) <= maxPromptTokens;
-  const final = materialize(acceptedExamples, packedHistory, canIncludeSendIfEmpty);
-  const totalTokens = countTokens.countChat(final);
+    currentPromptTokens + sendIfEmptyCost <= maxPromptTokens;
+  /*
+   * The running total is an estimate, so the assembled array gets the last word.
+   *
+   * `materialize` is not additive: `squash_system_messages` merges adjacent system messages,
+   * and the fixed baseline was measured with the examples and history slots empty — so
+   * prompts that merged there, including the depth injections `applyDepthInjections` emits
+   * contiguously over an empty history, stand apart again once real turns separate them.
+   * The incremental budget cannot see that and can therefore land over the limit.
+   *
+   * Shedding against a real count costs one extra materialise per message actually removed,
+   * which is zero in the overwhelmingly common case where the estimate was right — so the
+   * fast path stays fast and the limit goes back to being a guarantee rather than a guess.
+   */
+  let final = materialize(acceptedExamples, packedHistory, canIncludeSendIfEmpty);
+  let totalTokens = countTokens.countChat(final);
+  while (totalTokens > maxPromptTokens && packedHistory.length > 0) {
+    // Oldest first, the same direction the packing loop gave up in.
+    packedHistory.shift();
+    droppedMessages += 1;
+    final = materialize(acceptedExamples, packedHistory, canIncludeSendIfEmpty);
+    totalTokens = countTokens.countChat(final);
+  }
   tokenCounts.chatHistory = packedHistory.reduce((sum, message) => sum + messageCost(message), 0);
   if (newChatMarker)
     tokenCounts.chatHistory += messageCost({ role: 'system', content: newChatMarker });

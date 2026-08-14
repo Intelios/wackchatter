@@ -22,6 +22,8 @@ export interface MessageExtra {
   reasoning?: string;
   /** Set when generation was interrupted. */
   truncated?: boolean;
+  /** Co-Creator-only provenance for user actions whose wording is editable. */
+  coCreatorAction?: 'analyseExamples';
   [key: string]: unknown;
 }
 

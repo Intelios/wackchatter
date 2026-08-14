@@ -7,7 +7,13 @@ interface AvatarStudioProps {
   onReplace: (image: File) => Promise<void>;
 }
 
-async function cropToCardRatio(file: File): Promise<File> {
+/**
+ * Centre-crop to the card's 2:3 ratio at 600x900.
+ *
+ * Exported so the Co-Creator's drop target does the identical thing — a card's artwork must
+ * not depend on which screen it was dropped onto.
+ */
+export async function cropToCardRatio(file: File): Promise<File> {
   const url = URL.createObjectURL(file);
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {

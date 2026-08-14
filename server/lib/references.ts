@@ -14,11 +14,13 @@
 
 import { updateWorldLinksRecoverable } from './characters.ts';
 import { chatStore } from './chats.ts';
+import { cocreatorStore } from './cocreator.ts';
 import { updatePersonaLorebookReferences } from './personas.ts';
 import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
   reassignCharacterDialogueColor,
+  reassignCharacterExampleSets,
   reassignCharacterRating,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
@@ -34,12 +36,18 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
   if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
   const updatedRatings = reassignCharacterRating(current, oldAvatar, newAvatar);
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
+  const updatedSets = reassignCharacterExampleSets(current, oldAvatar, newAvatar);
+  if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
 
   try {
     chatStore().reassignCharacter(oldAvatar, newAvatar);
+    // Sessions hold the same avatar filenames the example sets do, so the rename has to
+    // reach both or the identical reference is repaired in one place and dangles in the other.
+    cocreatorStore().reassignExampleCard(oldAvatar, newAvatar);
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
+    if (updatedSets) saveSettings({ coCreator: current.coCreator });
     throw error;
   }
 
@@ -60,8 +68,18 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
               },
             ]
           : []),
+        ...(updatedSets
+          ? [
+              () => {
+                saveSettings({ coCreator: current.coCreator });
+              },
+            ]
+          : []),
         () => {
           chatStore().reassignCharacter(newAvatar, oldAvatar);
+        },
+        () => {
+          cocreatorStore().reassignExampleCard(newAvatar, oldAvatar);
         },
       ],
       WHAT,
@@ -79,12 +97,18 @@ export function cascadeCharacterDelete(avatar: string): void {
   if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
   const updatedRatings = reassignCharacterRating(current, avatar, null);
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
+  const updatedSets = reassignCharacterExampleSets(current, avatar, null);
+  if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
 
   try {
     chatStore().deleteChatsForCharacter(avatar);
+    // Detached, not snapshotted: the session keeps its transcript, it just stops naming a
+    // card that no longer exists — the same thing the example sets do above.
+    cocreatorStore().reassignExampleCard(avatar, null);
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
+    if (updatedSets) saveSettings({ coCreator: current.coCreator });
     throw error;
   }
 }

@@ -14,6 +14,7 @@
 
 .popover__popup {
   position: absolute;
+  z-index: 10;
   /* .chat-column clips its overflow, so a long popup has to scroll rather than grow past
      the top of the column and get cut off. */
   max-height: min(60vh, var(--wc-scroll-cap));
@@ -34,8 +35,6 @@
    * flat dissolve.
    */
   animation: wc-pop-in var(--wc-duration) var(--wc-ease);
-  /* No z-index needed: the composer is a later sibling than the transcript, so this
-     already paints above it. */
 }
 
 @keyframes wc-pop-in {
@@ -88,8 +87,6 @@
  */
 .popover[data-align="end"] .popover__popup {
   right: 0;
-  /* Above later-painting siblings inside the same bubble, such as the swipe row. */
-  z-index: 2;
 }
 
 /* A count over the trigger's corner. Absolute so it cannot change the button's size and

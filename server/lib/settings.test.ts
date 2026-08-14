@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { Connection } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import {
+  DEFAULT_COCREATOR,
   DEFAULT_CONNECTION_ID,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
@@ -23,6 +24,7 @@ import {
   migrateLegacyConnection,
   nextConnectionName,
   reassignCharacterDialogueColor,
+  reassignCharacterExampleSets,
   reassignCharacterRating,
   reassignGlobalLorebooks,
   removePersonaDialogueColor,
@@ -348,6 +350,147 @@ describe('mergeSettings', () => {
       regexScripts: [{ id: 'a', scriptName: 'legacy', placement: [1, 4] }] as never,
     });
     expect(next.regexScripts[0]?.placement).toEqual([1, 4]);
+  });
+});
+
+describe('co-creator settings', () => {
+  test('a partial coCreator patch keeps every untouched field', () => {
+    // The bug a shallow spread would cause: picking a model in the Co-Creator silently
+    // resets the system prompt someone spent an afternoon tuning.
+    const next = mergeSettings(base(), { coCreator: { presetId: 'design' } as never });
+
+    expect(next.coCreator.presetId).toBe('design');
+    expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+    expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
+    expect(next.coCreator.connectionId).toBeNull();
+  });
+
+  test('toggling one example field does not reset the other seven', () => {
+    // exampleFields is nested one level deeper than the rest of the block, so it needs its
+    // own spread — without it, checking "example dialogue" would uncheck everything else.
+    const next = mergeSettings(base(), {
+      coCreator: { exampleFields: { mes_example: true } } as never,
+    });
+
+    expect(next.coCreator.exampleFields.mes_example).toBe(true);
+    expect(next.coCreator.exampleFields.description).toBe(true);
+    expect(next.coCreator.exampleFields.personality).toBe(true);
+    expect(next.coCreator.exampleFields.character_book).toBe(false);
+  });
+
+  test('an example field set to false stays false — it is a value, not an absence', () => {
+    const off = mergeSettings(base(), {
+      coCreator: { exampleFields: { description: false } } as never,
+    });
+
+    expect(off.coCreator.exampleFields.description).toBe(false);
+    expect(mergeSettings(off, { streamingFps: 15 }).coCreator.exampleFields.description).toBe(
+      false,
+    );
+  });
+
+  test('omitting coCreator leaves it untouched', () => {
+    const current = mergeSettings(base(), { coCreator: { systemPrompt: 'Mine.' } as never });
+
+    expect(mergeSettings(current, { streamingFps: 15 }).coCreator.systemPrompt).toBe('Mine.');
+  });
+
+  test('blank Co-Creator prompts restore the built-ins', () => {
+    const next = mergeSettings(base(), {
+      coCreator: { systemPrompt: ' ', analysisPrompt: '' } as never,
+    });
+    expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+    expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
+  });
+
+  test('a connectionId naming no saved connection falls back to following the chat', () => {
+    const next = mergeSettings(base(), { coCreator: { connectionId: 'ghost' } as never });
+
+    expect(next.coCreator.connectionId).toBeNull();
+  });
+
+  test('a wrong-typed field falls back to its default rather than poisoning the file', () => {
+    const next = mergeSettings(base(), { coCreator: { systemPrompt: 42 } as never });
+
+    expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+  });
+
+  test('exampleSets normalizes valid sets and drops malformed entries', () => {
+    const next = mergeSettings(base(), {
+      coCreator: {
+        exampleSets: [
+          {
+            id: 'set-1',
+            name: 'Fantasy Benchmarks',
+            cards: ['elf.png', 'knight.png'],
+            fields: { description: true, scenario: false },
+          },
+          { id: '', name: 'Empty ID' }, // dropped
+          { id: 'set-1', name: 'Duplicate ID' }, // dropped
+          'invalid' as never, // dropped
+        ],
+      } as never,
+    });
+
+    expect(next.coCreator.exampleSets).toEqual([
+      {
+        id: 'set-1',
+        name: 'Fantasy Benchmarks',
+        cards: ['elf.png', 'knight.png'],
+        fields: {
+          ...DEFAULT_COCREATOR.exampleFields,
+          description: true,
+          scenario: false,
+        },
+      },
+    ]);
+  });
+});
+
+describe('example set character identity changes', () => {
+  test('a character rename updates references across saved example sets', () => {
+    const current = mergeSettings(base(), {
+      coCreator: {
+        exampleSets: [
+          {
+            id: 's1',
+            name: 'Set 1',
+            cards: ['Old.png', 'Other.png'],
+            fields: { ...DEFAULT_COCREATOR.exampleFields },
+          },
+          {
+            id: 's2',
+            name: 'Set 2',
+            cards: ['Unrelated.png'],
+            fields: { ...DEFAULT_COCREATOR.exampleFields },
+          },
+        ],
+      } as never,
+    });
+
+    const next = reassignCharacterExampleSets(current, 'Old.png', 'New.png');
+    expect(next?.coCreator.exampleSets[0]?.cards).toEqual(['New.png', 'Other.png']);
+    expect(next?.coCreator.exampleSets[1]?.cards).toEqual(['Unrelated.png']);
+
+    expect(reassignCharacterExampleSets(current, 'Missing.png', 'New.png')).toBeNull();
+  });
+
+  test('deleting a character removes it from saved example sets', () => {
+    const current = mergeSettings(base(), {
+      coCreator: {
+        exampleSets: [
+          {
+            id: 's1',
+            name: 'Set 1',
+            cards: ['Doomed.png', 'Kept.png'],
+            fields: { ...DEFAULT_COCREATOR.exampleFields },
+          },
+        ],
+      } as never,
+    });
+
+    const next = reassignCharacterExampleSets(current, 'Doomed.png', null);
+    expect(next?.coCreator.exampleSets[0]?.cards).toEqual(['Kept.png']);
   });
 });
 

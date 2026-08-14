@@ -40,18 +40,23 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/generate.ts The one place that calls a provider.
   lib/lorebooks.ts Standalone lorebook files. Filename IS the name.
   lib/personas.ts  Personas + avatars. Filename is an opaque id.
+  lib/cocreator.ts createCocreatorStore(db) — design sessions. No delete backups, by design.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant, as a type.
+  cocreator/     CardStash — the filed-card model. Shared so the server can count its slots.
   prompt/        Assembly engine, macros, preset I/O, defaults, token cache.
   providers/     Request building + SSE parsing. Both unit-tested.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine. No I/O.
-  types/         Card, preset, worldinfo, chat, settings, regex.
+  types/         Card, preset, worldinfo, chat, settings, regex, cocreator.
 src/             React app.
   layout/        AppShell — the three-column grid.
-  features/      character/, preset/, chat/, connection/, lore/, persona/.
+  features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
+                 cocreator/.
+  lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
-                 secrets.json, lorebooks/, personas/, backups/ (the deleted-chat trash bin),
+                 secrets.json, lorebooks/, personas/, cocreator/avatars/,
+                 backups/ (the deleted-chat trash bin),
                  .wackchatter (marks the folder as a library).
                  The default location, not a fixed one — see "The data directory moves".
 ```
@@ -451,11 +456,29 @@ regex keys are the escape hatches.
 
 ## UI conventions
 
-- **Character Creator Studio is a separate area, not a modal or panel.** It deliberately
-  replaces the chat shell for full-card authoring, so it is the explicit exception to the
-  usual "chat stays live" rule. Entering flushes the active chat and right panel first; exit
-  flushes the Studio card queue first. A failed flush aborts the transition rather than hiding
-  unsaved work. The normal right-panel character editor remains the quick-edit surface.
+- **The two creator areas are separate destinations, not modals or panels.** The Character
+  Creator Studio and the Character Co-Creator each replace the chat shell outright, and they
+  are the only exceptions to the usual "chat stays live" rule — card authoring needs the whole
+  window, and neither is something you do beside a conversation. Entering either flushes the
+  active chat and right panel first; leaving flushes that area's own queue first. A failed
+  flush aborts the transition rather than hiding unsaved work. The normal right-panel
+  character editor remains the quick-edit surface.
+- **The Studio is manual, the Co-Creator is conversational, and the handoff runs one way.**
+  Finish creates a card from the stash and lands in the Studio workbench on it; there is no
+  path back. The rule that separates the Co-Creator from an auto-filling generator is that
+  **the model never writes a field** — it proposes in labelled fenced blocks, and every slot
+  in a finished card got there because someone clicked "Use as". Two invariants hold that
+  line, and both are asserted in tests rather than merely intended: **everything the model
+  sees is in the transcript the user can read** (the stash is never appended to a prompt, and
+  "Analyse examples" and "Show the assistant" are ordinary visible turns), and **block
+  affordances appear only on a settled message**, because parsing per frame would put
+  streamed text in React state.
+- **The Co-Creator's re-roll is an overswipe, never destructive.** It appends a take rather
+  than replacing one, so nothing is displaced and a failure has nothing to restore — stronger
+  than chat's fix for the same hazard. It also runs from *any* take, unlike chat's
+  overswipe-off-the-end, so the reducer records `resumeSwipeId` and puts the reader back
+  where they were when a re-roll produces nothing. Do not "restore parity" with chat by
+  adding a destructive regenerate here.
 - **A full-width header row over three columns.** The chat column is `1fr` so panels
   compress it rather than cover it. Widths are CSS variables on `.shell`, animated with
   one transition; the header row is a **fixed** track so `grid-template-columns` stays the
@@ -676,6 +699,22 @@ regex keys are the escape hatches.
   guidance last, guides before the last message, disabled and blank guides contributing
   nothing, several guides sharing one wire message in list order, and that a `{{char}}`
   typed by the user stays literal while one in the template expands.
+- `src/features/cocreator/blocks.test.ts` pins the fenced-block contract: that a four-backtick
+  fence survives a three-backtick fence inside it (and that a three-backtick one does not,
+  which is why the default prompt asks for four), that an unterminated fence keeps its content
+  as `closed: false` rather than losing it, that an unrecognised label is never coerced into a
+  plausible slot, and that a plain ```` ```json ```` fence is left alone and never scanned.
+- `shared/cocreator/stash.test.ts` pins append-versus-replace per slot and that `toCardPatch`
+  never emits `name`, `character_book` or `extensions` — the last of which is what keeps
+  Finish clear of `mergeCardData`'s shallow spread.
+- `src/features/cocreator/prompt.test.ts` asserts the stash cannot reach the model for any
+  stash value, and that the transcript packs newest-first with the system prompt and examples
+  pinned — without that trimming, a long design session becomes an opaque provider error.
+- `src/features/cocreator/state/cocreatorReducer.test.ts` covers the failure paths, including
+  that a failed re-roll leaves no blank alternate *and* returns the reader to the take they
+  were on, plus an invariant sweep over a long mixed action sequence.
+- `server/lib/cocreator.test.ts` covers the three revision branches, that deleting a session
+  cascades its message rows, and that a v3 database gains both new tables and is stamped 4.
 - `src/features/chat/guides.test.ts` covers the list edits, including that `nextGuideName`
   fills the lowest free slot rather than counting entries.
 - `src/features/chat/quickCommands.test.ts` does the same for quick commands, including

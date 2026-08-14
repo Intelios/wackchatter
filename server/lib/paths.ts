@@ -29,6 +29,8 @@ export interface DataPaths {
   lorebooks: string;
   personas: string;
   personaAvatars: string;
+  /** Artwork dropped into a Co-Creator session, before Finish embeds it in a card. */
+  cocreatorAvatars: string;
   backgrounds: string;
   /** Deleted chats wait here, restorable, until pruned by the retention cap. */
   backups: string;
@@ -46,6 +48,7 @@ function buildPaths(dataDir: string): DataPaths {
     lorebooks: join(dataDir, 'lorebooks'),
     personas: join(dataDir, 'personas'),
     personaAvatars: join(dataDir, 'personas', 'avatars'),
+    cocreatorAvatars: join(dataDir, 'cocreator', 'avatars'),
     backgrounds: join(dataDir, 'backgrounds'),
     backups: join(dataDir, 'backups'),
     settings: join(dataDir, 'settings.json'),
@@ -107,6 +110,7 @@ export function ensureDataDirs(): void {
     PATHS.lorebooks,
     PATHS.personas,
     PATHS.personaAvatars,
+    PATHS.cocreatorAvatars,
     PATHS.backgrounds,
     PATHS.backups,
   ]) {

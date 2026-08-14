@@ -401,6 +401,23 @@ export function StudioIcon({ className }: IconProps) {
 }
 
 /**
+ * Character Co-Creator — the Studio's card, in conversation.
+ *
+ * Deliberately shares `StudioIcon`'s card outline: the two are siblings, and the speech tail
+ * is the whole difference between building a card by hand and talking one out.
+ */
+export function CoCreatorIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="3" width="12" height="16" rx="2" />
+      <path d="M6.5 8h5" />
+      <path d="M6.5 11.5h3" />
+      <path d="M12 13h8a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4l-3 2.5V19a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+/**
  * A star, for the character rating. `filled` paints the whole star so a rating reads at a
  * glance; otherwise it is an outline for the unearned slots.
  */
@@ -414,6 +431,17 @@ export function StarIcon({ className, filled }: IconProps & { filled?: boolean }
       data-filled={filled || undefined}
     >
       <path d="M12 3.5 14.8 9l6 .9-4.35 4.2 1 6L12 17.2l-5.45 2.9 1-6L3.2 9.9l6-.9Z" />
+    </svg>
+  );
+}
+
+/** Layers / stacks — for Example sets. */
+export function LayersIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="m12 2 10 5-10 5-10-5Z" />
+      <path d="m2 12 10 5 10-5" />
+      <path d="m2 17 10 5 10-5" />
     </svg>
   );
 }

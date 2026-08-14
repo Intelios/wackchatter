@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createBlankCard, mergeCardData, readCard, writeCard } from './card.ts';
 import { updateWorldLinks, updateWorldLinksRecoverable } from './characters.ts';
 import { resetChatStore } from './chats.ts';
+import { resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { DEFAULT_DATA_DIR, ensureDataDirs, setDataDir } from './paths.ts';
 import { cascadeCharacterDelete, cascadeCharacterRename } from './references.ts';
@@ -129,7 +130,11 @@ describe('character cascades', () => {
     setDataDir(dir);
     ensureDataDirs();
     resetSettingsCache();
+    // Both stores, in the same order `quiesce()` drops them: the cascades reach the chat
+    // rows and the sessions' attached example cards, and either store left memoised from a
+    // previous case holds statements bound to a connection this one has already closed.
     resetChatStore();
+    resetCocreatorStore();
   });
 
   afterEach(() => {
@@ -137,6 +142,7 @@ describe('character cascades', () => {
     setDataDir(DEFAULT_DATA_DIR);
     resetSettingsCache();
     resetChatStore();
+    resetCocreatorStore();
     rmSync(dir, { recursive: true, force: true });
   });
 

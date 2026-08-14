@@ -160,6 +160,7 @@
   padding: 0 var(--wc-space-4);
   border-bottom: 1px solid var(--wc-border);
   min-width: 0;
+  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
 }
 
 .shell__cluster {
@@ -292,6 +293,12 @@
 .shell > .chat-column {
   position: relative;
   z-index: 1;
+}
+
+.shell > .panel,
+.shell > .chat-column {
+  transform-origin: center 20%;
+  animation: wc-view-body-enter var(--wc-duration-view) var(--wc-ease);
 }
 
 /*
@@ -492,5 +499,13 @@
     /* The user's dim setting must not make the fallback translucent — the whole point
        of the override is an opaque, high-contrast floor. */
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell__bar,
+  .shell > .panel,
+  .shell > .chat-column {
+    animation: none;
   }
 }
