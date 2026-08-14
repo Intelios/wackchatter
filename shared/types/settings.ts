@@ -259,10 +259,16 @@ Prose outside the blocks is for talking to the user: what you changed, what you 
 Never claim to have saved anything. You cannot — the user files each block themselves.`;
 
 export const DEFAULT_COCREATOR_ANALYSIS_PROMPT =
-  'Before we go further: list every example card I have attached, one line each, giving its ' +
-  'name and one sentence on what it is doing well. Then say in two or three sentences what ' +
-  'they have in common — voice, length, formatting, level of detail — and what you will ' +
-  'carry into the card we are building. Do not write any card fields yet.';
+  'Before we go further, I want a thorough read of the example cards so we agree on the ' +
+  'craft we are aiming for.\n\n' +
+  'List every example card I have attached, in order. For each one, give a short paragraph: ' +
+  'which fields it actually uses, what each of those fields is doing well (voice, length, ' +
+  'formatting, how much is stated versus implied), and anything it does poorly or that you ' +
+  'would not carry over.\n\n' +
+  'After the per-card notes, tell me: what they share in craft — voice, length, formatting, ' +
+  'level of detail; where they disagree or pull in different directions; and what you will ' +
+  'carry into the character we are building versus what you will deliberately leave behind.\n\n' +
+  'Do not write any card fields yet.';
 
 export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
   connectionId: null,

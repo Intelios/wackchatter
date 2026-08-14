@@ -202,7 +202,7 @@ describe('context budget', () => {
 
 describe('the analyse request', () => {
   test('it names what verification needs: every card, then what they share', () => {
-    expect(ANALYSE_EXAMPLES_REQUEST).toContain('list every example card');
+    expect(ANALYSE_EXAMPLES_REQUEST).toContain('List every example card');
     expect(ANALYSE_EXAMPLES_REQUEST).toContain('Do not write any card fields yet');
   });
 
