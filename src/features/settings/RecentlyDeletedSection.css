@@ -1,5 +1,63 @@
 /* Compact rows: the settings panel is a column, not a page. */
 
+.bin__toolbar {
+  margin-bottom: var(--wc-space-2);
+}
+
+.bin__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+  padding: 0 var(--wc-space-1) var(--wc-space-2);
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.bin__count-label {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+.bin__delete-all {
+  font-size: var(--wc-text-xs);
+  padding: var(--wc-space-1) var(--wc-space-2);
+  gap: var(--wc-space-1);
+}
+
+.bin__delete-all svg {
+  width: 1em;
+  height: 1em;
+}
+
+.bin__confirm-banner {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-danger-subtle);
+  border: 1px solid var(--wc-danger);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.bin__confirm-text {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  line-height: 1.45;
+  color: var(--wc-text);
+  font-weight: 500;
+}
+
+.bin__confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.bin__confirm-actions .wc-button {
+  font-size: var(--wc-text-xs);
+  padding: var(--wc-space-1) var(--wc-space-2);
+}
+
 .bin__list {
   display: flex;
   flex-direction: column;

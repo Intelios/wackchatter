@@ -490,6 +490,13 @@ export const backupApi = {
   /** Permanently empty this slot of the bin. */
   remove: (backupId: string) =>
     request<{ ok: true }>(`/backups/${encodeURIComponent(backupId)}`, { method: 'DELETE' }),
+
+  /** Permanently empty all slots of the bin, optionally filtered by character. */
+  removeAll: (characterId?: string) =>
+    request<{ ok: true; deleted: number }>(
+      characterId ? `/backups?character=${encodeURIComponent(characterId)}` : '/backups',
+      { method: 'DELETE' },
+    ),
 };
 
 export const settingsApi = {

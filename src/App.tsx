@@ -684,6 +684,17 @@ export function App() {
     [refreshBackups],
   );
 
+  /** Empty all slots of the bin for good. */
+  const handlePurgeAllBackups = useCallback(async () => {
+    try {
+      await backupApi.removeAll();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      void refreshBackups();
+    }
+  }, [refreshBackups]);
+
   const handleImportChat = useCallback(
     async (file: File) => {
       if (!selected) return;
@@ -1126,6 +1137,7 @@ export function App() {
                   characters={characters}
                   onRestoreBackup={(backupId) => void handleRestoreBackup(backupId)}
                   onPurgeBackup={(backupId) => void handlePurgeBackup(backupId)}
+                  onPurgeAllBackups={() => void handlePurgeAllBackups()}
                 />
               ) : null}
             </Panel>

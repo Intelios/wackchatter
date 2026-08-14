@@ -26,6 +26,7 @@ interface RecentlyDeletedSectionProps {
   characters: CharacterSummary[];
   onRestore: (backupId: string) => void;
   onPurge: (backupId: string) => void;
+  onPurgeAll?: () => void;
 }
 
 function deletedLabel(timestamp: number): string {
@@ -41,8 +42,10 @@ export function RecentlyDeletedSection({
   characters,
   onRestore,
   onPurge,
+  onPurgeAll,
 }: RecentlyDeletedSectionProps) {
   const [purging, setPurging] = useState<string | null>(null);
+  const [confirmingAll, setConfirmingAll] = useState(false);
 
   const byAvatar = useMemo(() => {
     const map = new Map<string, CharacterSummary>();
@@ -57,7 +60,54 @@ export function RecentlyDeletedSection({
           Nothing here. Deleted chats wait in this bin instead of going straight out.
         </p>
       ) : (
-        <ul className="bin__list">
+        <>
+          <div className="bin__toolbar">
+            {confirmingAll ? (
+              <div className="bin__confirm-banner" role="alert">
+                <p className="bin__confirm-text">
+                  Permanently delete all {backups.length}{' '}
+                  {backups.length === 1 ? 'backup' : 'backups'}? This cannot be undone.
+                </p>
+                <div className="bin__confirm-actions">
+                  <button
+                    type="button"
+                    className="wc-button wc-button--danger"
+                    onClick={() => {
+                      setConfirmingAll(false);
+                      onPurgeAll?.();
+                    }}
+                  >
+                    Delete all forever
+                  </button>
+                  <button
+                    type="button"
+                    className="wc-button wc-button--ghost"
+                    onClick={() => setConfirmingAll(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bin__actions">
+                <span className="bin__count-label">
+                  {backups.length} {backups.length === 1 ? 'deleted chat' : 'deleted chats'}
+                </span>
+                {onPurgeAll ? (
+                  <button
+                    type="button"
+                    className="wc-button wc-button--ghost wc-button--danger bin__delete-all"
+                    onClick={() => setConfirmingAll(true)}
+                    title="Delete all backups forever"
+                  >
+                    <TrashIcon />
+                    <span>Delete all</span>
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
+          <ul className="bin__list">
           {backups.map((backup) => {
             // A backup outlives its character, and the server refuses to restore into one
             // that is gone. Nothing to show a picture of in that case, so the row drops the
@@ -128,7 +178,7 @@ export function RecentlyDeletedSection({
               </li>
             );
           })}
-        </ul>
+        </ul></>
       )}
     </Section>
   );
