@@ -1,18 +1,15 @@
 /**
- * Quick commands — user-defined snippets the chat menu's flyout inserts into the composer.
+ * Quick commands — user-defined snippets dropped into the composer.
  *
- * This is only the editor. It opens from the flyout's "Edit quick commands…" entry, and it
- * anchors to the burger button: its Popover root is stretched over the ChatMenu wrapper —
- * exactly that button's box — so the popup's ordinary CSS anchoring grows it from the
- * right place without a visible trigger of its own. Everything about this feature lives
- * in the burger menu; the composer never grew a button for it.
+ * This is only the editor. It opens from the "Edit quick commands…" entry in the bolt menu,
+ * and anchors to the trigger button.
  *
  * The list edits are in `quickCommands.ts`, so what remains here is markup and one confirm.
  */
 
 import type { QuickCommand } from '@shared/types/settings.ts';
 import { type RefObject, useEffect, useRef, useState } from 'react';
-import { Popover } from '../../components/Popover.tsx';
+import { Popover, type PopoverPlacement } from '../../components/Popover.tsx';
 import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { addCommand, removeCommand, updateCommand } from './quickCommands.ts';
 import './QuickCommandsPopover.css';
@@ -22,8 +19,12 @@ interface QuickCommandsPopoverProps {
   onCommandsChange: (commands: QuickCommand[]) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The burger button — the anchor this popup grows from. */
+  /** The anchor button this popup grows from. */
   triggerRef: RefObject<HTMLButtonElement | null>;
+  title?: string;
+  hint?: string;
+  emptyHint?: string;
+  placement?: PopoverPlacement;
 }
 
 export function QuickCommandsPopover({
@@ -32,11 +33,15 @@ export function QuickCommandsPopover({
   open,
   onOpenChange,
   triggerRef,
+  title = 'Quick commands',
+  hint = 'Named snippets dropped into the message box, ready to send. Nothing ships with the app — these are yours to write.',
+  emptyHint = 'No commands yet. Add one, then pick it from the bolt menu — try “Generate an ending”.',
+  placement = 'top-start',
 }: QuickCommandsPopoverProps) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // The menu selection that opened this restores focus to the burger button AFTER the
+  // The menu selection that opened this restores focus to the trigger button AFTER the
   // action runs, so the first field waits one tick to take it.
   useEffect(() => {
     if (!open) return;
@@ -50,7 +55,7 @@ export function QuickCommandsPopover({
 
   return (
     <Popover
-      label="Quick commands"
+      label={title}
       icon={null}
       open={open}
       onOpenChange={(next) => {
@@ -59,24 +64,19 @@ export function QuickCommandsPopover({
       }}
       className="popover--editor"
       popupClassName="quick-commands"
-      placement="top-start"
+      placement={placement}
       role="dialog"
       triggerRef={triggerRef}
       renderTrigger={() => null}
     >
       <div className="quick-commands__body" ref={bodyRef}>
         <div className="quick-commands__head">
-          <h2 className="quick-commands__title">Quick commands</h2>
-          <p className="quick-commands__hint">
-            Named snippets the chat menu drops into the message box, ready to send. Nothing ships
-            with the app — these are yours to write.
-          </p>
+          <h2 className="quick-commands__title">{title}</h2>
+          <p className="quick-commands__hint">{hint}</p>
         </div>
 
         {commands.length === 0 ? (
-          <p className="quick-commands__empty">
-            No commands yet. Add one, then pick it from the chat menu — try “Generate an ending”.
-          </p>
+          <p className="quick-commands__empty">{emptyHint}</p>
         ) : (
           <ul className="quick-commands__list">
             {commands.map((command) => (

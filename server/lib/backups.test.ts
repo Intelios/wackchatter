@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Chat, ChatMessage } from '../../shared/types/chat.ts';
 import {
+  deleteAllChatBackups,
   deleteChatBackup,
   listChatBackups,
   MAX_CHAT_BACKUPS,
@@ -178,6 +179,46 @@ describe('deleteChatBackup', () => {
 
   test('a missing backup reports false', () => {
     expect(deleteChatBackup('nothing-here', dir)).toBe(false);
+  });
+});
+
+describe('deleteAllChatBackups', () => {
+  test('removes all backup files and reports the count', () => {
+    writeChatBackup(chat({ title: 'chat 1' }), dir);
+    writeChatBackup(chat({ title: 'chat 2' }), dir);
+    writeChatBackup(chat({ title: 'chat 3' }), dir);
+    expect(fileNames().length).toBe(3);
+
+    const deleted = deleteAllChatBackups(undefined, dir);
+    expect(deleted).toBe(3);
+    expect(fileNames().length).toBe(0);
+  });
+
+  test('filters by characterId, leaving others intact', () => {
+    writeChatBackup(chat({ characterId: 'Seraphina.png', title: 'Seraphina 1' }), dir);
+    writeChatBackup(chat({ characterId: 'Seraphina.png', title: 'Seraphina 2' }), dir);
+    writeChatBackup(chat({ characterId: 'Other.png', title: 'Other 1' }), dir);
+    expect(fileNames().length).toBe(3);
+
+    const deleted = deleteAllChatBackups('Seraphina.png', dir);
+    expect(deleted).toBe(2);
+    expect(fileNames().length).toBe(1);
+    expect(listChatBackups(undefined, dir).map((b) => b.characterId)).toEqual(['Other.png']);
+  });
+
+  test('returns 0 when directory is empty or missing', () => {
+    expect(deleteAllChatBackups(undefined, dir)).toBe(0);
+    expect(deleteAllChatBackups(undefined, join(dir, 'nope'))).toBe(0);
+  });
+
+  test('removes corrupt json files as well when purging all', () => {
+    writeChatBackup(chat(), dir);
+    writeFileSync(join(dir, 'corrupt.json'), '{ not valid json');
+    expect(fileNames().length).toBe(2);
+
+    const deleted = deleteAllChatBackups(undefined, dir);
+    expect(deleted).toBe(2);
+    expect(fileNames().length).toBe(0);
   });
 });
 

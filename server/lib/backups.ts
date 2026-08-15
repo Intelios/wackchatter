@@ -116,6 +116,28 @@ export function deleteChatBackup(backupId: string, dir: string = PATHS.backups):
   return true;
 }
 
+/** Permanently empty all slots in the trash bin, optionally filtered by character. */
+export function deleteAllChatBackups(characterId?: string, dir: string = PATHS.backups): number {
+  if (!existsSync(dir)) return 0;
+  const files = listBackupFiles(dir);
+  let count = 0;
+  for (const file of files) {
+    if (characterId) {
+      const chat = readBackupFile(file, dir);
+      if (!chat || chat.characterId !== characterId) continue;
+    }
+    const path = safeJoin(dir, file);
+    if (!path || !existsSync(path)) continue;
+    try {
+      unlinkSync(path);
+      count++;
+    } catch {
+      // Corrupt or locked files are skipped, never fatal to the batch.
+    }
+  }
+  return count;
+}
+
 /**
  * Recreate a backed-up chat and remove the file, so restoring is a move out of the bin.
  *

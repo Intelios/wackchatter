@@ -7,18 +7,15 @@
  * `useLorebooks` handles the same problem.
  */
 
-import type { QuickCommand } from '@shared/types/settings.ts';
-import { useRef, useState } from 'react';
-import type { MenuEntry, MenuSubmenu } from '../../components/Menu.tsx';
+import { useRef } from 'react';
+import type { MenuEntry } from '../../components/Menu.tsx';
 import { Menu } from '../../components/Menu.tsx';
 import {
-  BoltIcon,
   BookIcon,
   BranchIcon,
   CloseIcon,
   ContinueIcon,
   DownloadIcon,
-  EditIcon,
   MenuIcon,
   MessagesIcon,
   PlusIcon,
@@ -29,8 +26,6 @@ import {
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { chatApi } from '../../lib/api.ts';
 import { downloadUrl } from '../../lib/download.ts';
-import { QuickCommandsPopover } from './QuickCommandsPopover.tsx';
-import { commandHint, commandLabel, usableCommands } from './quickCommands.ts';
 import type { UseChat } from './useChat.ts';
 
 export interface ChatMenuState {
@@ -42,8 +37,6 @@ export interface ChatMenuState {
   lastMessageId: string | null;
   /** The transcript ends on the user's turn, so there is nothing to continue. */
   lastIsUser: boolean;
-  /** User-defined snippets inserted into the composer. Blank ones never arrive. */
-  quickCommands: QuickCommand[];
 }
 
 export interface ChatMenuActions {
@@ -55,13 +48,6 @@ export interface ChatMenuActions {
   closeChat: () => void;
   exportChat: () => void;
   importChat: () => void;
-  insertCommand: (text: string) => void;
-  editQuickCommands: () => void;
-}
-
-interface QuickCommandsActions {
-  insertCommand: (text: string) => void;
-  editQuickCommands: () => void;
 }
 
 const BUSY = 'Wait for the current reply to finish.';
@@ -69,14 +55,7 @@ const SUMMARY_BUSY = 'Cancel or finish the current summary first.';
 const EMPTY = 'This chat has no messages yet.';
 
 export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): MenuEntry[] {
-  const {
-    busy,
-    summaryRunning = false,
-    messageCount,
-    lastMessageId,
-    lastIsUser,
-    quickCommands,
-  } = state;
+  const { busy, summaryRunning = false, messageCount, lastMessageId, lastIsUser } = state;
   const empty = messageCount === 0;
   const generationBlocked = busy || summaryRunning;
   const generationBlockedReason = summaryRunning ? SUMMARY_BUSY : BUSY;
@@ -139,10 +118,6 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
 
     { kind: 'separator' },
 
-    buildQuickCommandsSubmenu(quickCommands, actions),
-
-    { kind: 'separator' },
-
     // Jumps, not actions — these open the panel where the tool already lives, rather than
     // growing a second copy of it in here.
     {
@@ -165,72 +140,19 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
   ];
 }
 
-/**
- * The quick-commands flyout. Deliberately NOT gated on `busy`: picking a command only
- * fills the composer, and the composer accepts text mid-generation — queueing your next
- * move is the point. With no commands defined the edit entry alone remains — that is the
- * discovery path for the feature.
- */
-export function buildQuickCommandsSubmenu(
-  quickCommands: QuickCommand[],
-  actions: QuickCommandsActions,
-): MenuSubmenu {
-  const usable = usableCommands(quickCommands);
-
-  const commandEntries: MenuEntry[] = usable.map((command) => ({
-    key: command.id,
-    label: commandLabel(command),
-    icon: <BoltIcon />,
-    // The hint repeats the label on unnamed commands, so it only joins a real name.
-    hint: command.name.trim() ? commandHint(command) : undefined,
-    onSelect: () => actions.insertCommand(command.text),
-  }));
-
-  return {
-    kind: 'submenu',
-    label: 'Quick commands',
-    icon: <BoltIcon />,
-    hint: usable.length > 0 ? String(usable.length) : undefined,
-    entries: [
-      ...commandEntries,
-      ...(commandEntries.length > 0 ? [{ kind: 'separator' as const }] : []),
-      {
-        label: 'Edit quick commands…',
-        icon: <EditIcon />,
-        onSelect: actions.editQuickCommands,
-      },
-    ],
-  };
-}
-
 interface ChatMenuProps {
   chat: UseChat;
   onCloseChat: () => void;
   onOpenPanel: (panel: RightPanelId) => void;
-  quickCommands: QuickCommand[];
-  /** Places a command's text in the composer, ready to send. */
-  onInsertCommand: (text: string) => void;
-  onQuickCommandsChange: (commands: QuickCommand[]) => void;
   /** Reads a chat export into the open character as a new chat. */
   onImportChat: (file: File) => void;
 }
 
-export function ChatMenu({
-  chat,
-  onCloseChat,
-  onOpenPanel,
-  quickCommands,
-  onInsertCommand,
-  onQuickCommandsChange,
-  onImportChat,
-}: ChatMenuProps) {
+export function ChatMenu({ chat, onCloseChat, onOpenPanel, onImportChat }: ChatMenuProps) {
   const { messages } = chat.state;
   const last = messages[messages.length - 1] ?? null;
 
-  // The editor opens from inside the menu but grows out of the burger button itself, so
-  // both popups share that anchor.
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
 
   const entries = buildChatMenu(
@@ -240,7 +162,6 @@ export function ChatMenu({
       messageCount: messages.length,
       lastMessageId: last?.id ?? null,
       lastIsUser: Boolean(last?.is_user),
-      quickCommands,
     },
     {
       newChat: () => void chat.newChat(),
@@ -249,8 +170,6 @@ export function ChatMenu({
       continueLast: () => void chat.continueLast(),
       openPanel: onOpenPanel,
       closeChat: onCloseChat,
-      insertCommand: onInsertCommand,
-      editQuickCommands: () => setEditorOpen(true),
       importChat: () => importInput.current?.click(),
       exportChat: () => {
         const chatId = chat.state.chatId;
@@ -266,13 +185,6 @@ export function ChatMenu({
         label="Chat options"
         icon={<MenuIcon />}
         entries={entries}
-        triggerRef={menuTriggerRef}
-      />
-      <QuickCommandsPopover
-        commands={quickCommands}
-        onCommandsChange={onQuickCommandsChange}
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
         triggerRef={menuTriggerRef}
       />
       <input

@@ -1,6 +1,7 @@
 /** Backup CRUD — the trash bin deleted chats land in. */
 
 import {
+  deleteAllChatBackups,
   deleteChatBackup,
   listChatBackups,
   readChatBackup,
@@ -20,6 +21,13 @@ export async function handleBackupRoute(
   if (segments.length === 0 && method === 'GET') {
     const character = new URL(request.url).searchParams.get('character');
     return json(listChatBackups(character ?? undefined));
+  }
+
+  // /api/backups?character=<avatar>
+  if (segments.length === 0 && method === 'DELETE') {
+    const character = new URL(request.url).searchParams.get('character');
+    const deleted = deleteAllChatBackups(character ?? undefined);
+    return json({ ok: true, deleted });
   }
 
   if (segments.length === 0) return null;

@@ -58,6 +58,14 @@ export function StartScreen({
   const [confirming, setConfirming] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!confirming) return;
+    const timer = setTimeout(() => {
+      setConfirming(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+
+  useEffect(() => {
     let cancelled = false;
     void versionApi
       .get()
@@ -181,7 +189,10 @@ export function StartScreen({
                       : `Delete chat with ${chat.characterName}`
                   }
                 >
-                  <TrashIcon />
+                  <TrashIcon className="start-screen__chat-delete-icon" />
+                  {confirming === chat.id ? (
+                    <span className="start-screen__chat-delete-label">Delete?</span>
+                  ) : null}
                 </button>
               </div>
             ))}

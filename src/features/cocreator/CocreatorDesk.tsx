@@ -16,6 +16,7 @@ import { SendIcon, StopIcon } from '../../layout/icons.tsx';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { AvatarDrop } from './AvatarDrop.tsx';
 import { SLOT_LABELS } from './blocks.ts';
+import { CocreatorQuickCommands } from './CocreatorQuickCommands.tsx';
 import { CocreatorSetup } from './CocreatorSetup.tsx';
 import { DesignMessage } from './DesignMessage.tsx';
 import { ExamplesPanel } from './ExamplesPanel.tsx';
@@ -232,6 +233,14 @@ export function CocreatorDesk({
     }
   }, [design, session.id, session.modified, onFinished, onError]);
 
+  const handleInsertQuickCommand = useCallback((text: string) => {
+    setDraft((current) => {
+      const trimmed = current.trimEnd();
+      return trimmed ? `${trimmed}\n${text}` : text;
+    });
+    setTimeout(() => composerRef.current?.focus({ preventScroll: true }), 0);
+  }, []);
+
   const lastIndex = state.messages.length - 1;
 
   return (
@@ -322,6 +331,11 @@ export function CocreatorDesk({
           </div>
 
           <div className="cocreator-composer">
+            <CocreatorQuickCommands
+              quickCommands={defaults.quickCommands ?? []}
+              onInsertCommand={handleInsertQuickCommand}
+              onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}
+            />
             <textarea
               ref={composerRef}
               className="wc-textarea cocreator-composer__input"

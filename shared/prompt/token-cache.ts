@@ -73,7 +73,8 @@ export function memoizeCounter(counter: TokenCounter, limit = DEFAULT_LIMIT): To
     return result;
   }
 
-  const countText = (text: string) => (text ? cached(`text:${text}`, () => counter.countText(text)) : 0);
+  const countText = (text: string) =>
+    text ? cached(`text:${text}`, () => counter.countText(text)) : 0;
 
   return {
     countText,
@@ -84,9 +85,8 @@ export function memoizeCounter(counter: TokenCounter, limit = DEFAULT_LIMIT): To
       if (messages.length === 0) return cached('chat:[]', () => counter.countChat([]));
       if (messages.length === 1) {
         const m = messages[0]!;
-        return cached(
-          `msg:${m.role}:${m.name ?? ''}:${m.content}`,
-          () => counter.countChat(messages),
+        return cached(`msg:${m.role}:${m.name ?? ''}:${m.content}`, () =>
+          counter.countChat(messages),
         );
       }
       const materialized = [...messages];

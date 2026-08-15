@@ -23,6 +23,7 @@ interface UserSettingsPanelProps {
   characters: CharacterSummary[];
   onRestoreBackup: (backupId: string) => void;
   onPurgeBackup: (backupId: string) => void;
+  onPurgeAllBackups?: () => void;
 }
 
 /** App-level settings: how the app looks, where data lives, and the knobs with no better home. */
@@ -34,6 +35,7 @@ export function UserSettingsPanel({
   characters,
   onRestoreBackup,
   onPurgeBackup,
+  onPurgeAllBackups,
 }: UserSettingsPanelProps) {
   const [uploads, setUploads] = useState<BackgroundSummary[]>([]);
   const [status, setStatus] = useState('');
@@ -275,6 +277,7 @@ export function UserSettingsPanel({
         characters={characters}
         onRestore={onRestoreBackup}
         onPurge={onPurgeBackup}
+        onPurgeAll={onPurgeAllBackups}
       />
 
       <DataLocationSection unsavedPreset={unsavedPreset} />
