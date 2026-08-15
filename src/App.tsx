@@ -1158,6 +1158,10 @@ export function App() {
             // message appends swipes the creator never wrote, and counting those would slide
             // a scenario list out of step with the greetings it describes.
             greetingCount={character ? greetingTexts(character).length : 0}
+            // The card, for the sheet on the character's avatar. Already loaded, so this
+            // is the same object the transcript is rendering from.
+            card={character}
+            onEditCharacter={() => void transitionToCharacter(active.avatar, { editing: true })}
             ready={ready}
             onCloseChat={() => void handleCloseChat()}
             onOpenPanel={(id) => void showRightPanel(id)}

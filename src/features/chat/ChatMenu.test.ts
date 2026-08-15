@@ -23,6 +23,7 @@ function spies() {
     closeChat: () => calls.push('closeChat'),
     exportChat: () => calls.push('exportChat'),
     importChat: () => calls.push('importChat'),
+    openCard: () => calls.push('openCard'),
   };
   return { calls, panels, actions };
 }
@@ -44,7 +45,17 @@ function actionLabels(entries: MenuEntry[]): string[] {
   return entries.filter((entry): entry is MenuAction => !isSeparator(entry)).map((e) => e.label);
 }
 
+/** Entries that open a right panel, in the order their panels are asserted below. */
 const JUMPS = ['Chat context…', 'Lore…', 'Persona…'];
+
+/**
+ * Everything that stays available whatever the chat is doing.
+ *
+ * The card is in here rather than in JUMPS because it opens an overlay rather than a panel,
+ * but it shares their one important property: it only ever reads, so nothing about a chat's
+ * state can make it unsafe.
+ */
+const ALWAYS_OPEN = ['Character card…', ...JUMPS];
 
 describe('buildChatMenu', () => {
   test('offers every tool on a healthy transcript', () => {
@@ -56,7 +67,7 @@ describe('buildChatMenu', () => {
       'Continue',
       'Export chat',
       'Import chat',
-      ...JUMPS,
+      ...ALWAYS_OPEN,
       'Close chat',
     ]);
     for (const label of actionLabels(entries)) {
@@ -78,14 +89,14 @@ describe('buildChatMenu', () => {
       expect(item(entries, label).disabled).toBe(true);
       expect(item(entries, label).disabledReason).toBe('This chat has no messages yet.');
     }
-    for (const label of ['New chat', 'Close chat', ...JUMPS]) {
+    for (const label of ['New chat', 'Close chat', ...ALWAYS_OPEN]) {
       expect(item(entries, label).disabled).toBeFalsy();
     }
   });
 
   test('a generation in flight disables every action but the jumps', () => {
     const entries = build({ busy: true });
-    const open = [...JUMPS];
+    const open = [...ALWAYS_OPEN];
     for (const label of actionLabels(entries)) {
       if (open.includes(label)) {
         expect(item(entries, label).disabled).toBeFalsy();
@@ -112,7 +123,13 @@ describe('buildChatMenu', () => {
         'Cancel or finish the current summary first.',
       );
     }
-    for (const label of ['New chat', 'Save checkpoint', 'Export chat', 'Close chat', ...JUMPS]) {
+    for (const label of [
+      'New chat',
+      'Save checkpoint',
+      'Export chat',
+      'Close chat',
+      ...ALWAYS_OPEN,
+    ]) {
       expect(item(entries, label).disabled).toBeFalsy();
     }
   });
@@ -144,6 +161,20 @@ describe('buildChatMenu', () => {
 
     for (const label of JUMPS) item(entries, label).onSelect();
     expect(panels).toEqual(['characters', 'lorebooks', 'persona']);
+
+    item(entries, 'Character card…').onSelect();
+    expect(calls[calls.length - 1]).toBe('openCard');
+  });
+
+  /*
+   * The one read-only entry among mutating neighbours, and the reason it is not busy-gated:
+   * the composer suppresses `/card` while a reply is streaming, so this is the only way to
+   * check a detail in the window where you are most likely to want one.
+   */
+  test('the card stays open mid-generation, unlike everything around it', () => {
+    for (const state of [{ busy: true }, { summaryRunning: true }, { messageCount: 0 }]) {
+      expect(item(build(state), 'Character card…').disabled).toBeFalsy();
+    }
   });
 
   test('Export chat is disabled mid-generation, since the reply is not saved yet', () => {

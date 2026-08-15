@@ -1,0 +1,32 @@
+/*
+ * The card sheet's popup box. Anchoring belongs to Popover.css and the bands to
+ * CardSheet.css; this is the size and the scroll ownership.
+ */
+
+.card-sheet-popup {
+  width: var(--wc-card-sheet-width);
+  padding: var(--wc-space-3);
+  /*
+   * The popup does not scroll — `.card-sheet__body` does.
+   *
+   * Popover.css gives every popup `overflow-y: auto`, which is right for a menu and wrong
+   * here: it would put a second scrollbar around a sheet that already has one, and the find
+   * row and the chips would scroll away from a reader who is using them to navigate. The
+   * flex column plus `min-height: 0` is what lets the body take the leftover height and
+   * scroll inside it, under the max-height Popover measures for us.
+   */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-sheet-popup .card-sheet {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The trigger is the avatar, so the wrapper must not add a box of its own to the
+   message head's grid. */
+.message__card {
+  display: flex;
+}

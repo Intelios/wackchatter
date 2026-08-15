@@ -8,12 +8,15 @@ import {
   PlugIcon,
   RefreshIcon,
 } from '../../layout/icons.tsx';
+import type { CardReaderInit } from './CardReader.tsx';
+import { CardSheetPopover } from './CardSheetPopover.tsx';
 import { CreatorNotesPopover } from './CreatorNotesPopover.tsx';
 import { formatTimestamp } from './formatDate.ts';
 import { Markdown } from './Markdown.tsx';
 import { MessageMenu } from './MessageMenu.tsx';
 import { Reasoning } from './Reasoning.tsx';
 import { StreamingText } from './StreamingText.tsx';
+import type { CardStore } from './state/cardStore.ts';
 import type { GenMode } from './state/chatReducer.ts';
 import type { StreamStore } from './state/streamStore.ts';
 import { resolveSwipeMotion, type SwipeMotionDir } from './swipeMotion.ts';
@@ -52,6 +55,18 @@ interface MessageBubbleProps {
    */
   creatorNotes?: string;
   greetingCount?: number;
+  /*
+   * The open character's card, for the sheet on the avatar. A store rather than the card
+   * itself, and for the same reason `stream` is one: its identity never changes, so the
+   * memo below survives an editor autosave that would otherwise repaint every row on
+   * screen twice a second. Absent on user rows, which get a plain avatar and no
+   * affordance — a persona has no card to read.
+   */
+  cardStore?: CardStore;
+  /** Leaves for the character editor, from inside the sheet. */
+  onEditCharacter?: () => void;
+  /** Hands the sheet's place to the full-width reader. */
+  onOpenCardReader?: (init: CardReaderInit) => void;
   /*
    * The id-taking handlers take it as an argument rather than being closed over the
    * message in ChatView. A per-row closure would change identity on every render and
@@ -93,6 +108,9 @@ export const MessageBubble = memo(function MessageBubble({
   displayReasoning,
   creatorNotes,
   greetingCount,
+  cardStore,
+  onEditCharacter,
+  onOpenCardReader,
   onSwipe,
   onRegenerate,
   onContinue,
@@ -200,13 +218,25 @@ export const MessageBubble = memo(function MessageBubble({
     >
       <div className="message__bubble">
         <header className="message__head">
-          <div className="message__avatar">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" />
-            ) : (
-              <span aria-hidden="true">{message.name.slice(0, 1).toUpperCase()}</span>
-            )}
-          </div>
+          {/* A card to read makes the avatar a control; without one it stays a picture. */}
+          {cardStore ? (
+            <CardSheetPopover
+              store={cardStore}
+              name={message.name}
+              avatarUrl={avatarUrl}
+              onEditCharacter={onEditCharacter}
+              onOpenReader={onOpenCardReader}
+              busy={busy}
+            />
+          ) : (
+            <div className="message__avatar">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" />
+              ) : (
+                <span aria-hidden="true">{message.name.slice(0, 1).toUpperCase()}</span>
+              )}
+            </div>
+          )}
 
           <div className="message__ident">
             <span className="message__name">{message.name}</span>

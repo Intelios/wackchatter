@@ -1,0 +1,61 @@
+/*
+ * The card at reading width, over the chat column.
+ *
+ * A grid item pinned to the column's cell — row 2, column 2 — exactly like
+ * `.fullscreen-text`, so the grid sizes it and it inherits the panel-open transition for
+ * free. z-index 3 rather than 2: the two overlays can be up at once (this one is chat-side,
+ * the expanded field editor is panel-side), and a card opened on top of a field editor
+ * should be the one you can read.
+ *
+ * Solid even in glass mode via --wc-surface-popup — translucency here would put the
+ * background image behind a wall of prose.
+ */
+.card-reader {
+  grid-column: 2;
+  grid-row: 2;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-4);
+  padding: var(--wc-space-5);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-reader__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+  flex: none;
+}
+
+.card-reader__title {
+  font-size: var(--wc-text-lg);
+  color: var(--wc-text);
+  overflow-wrap: anywhere;
+}
+
+.card-reader__actions {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-shrink: 0;
+}
+
+/*
+ * The same measure the transcript uses, centred. A card read edge to edge on a wide screen
+ * is a worse read than the 380px panel this replaces — the line length is the whole point
+ * of coming here rather than staying in the popover.
+ */
+.card-reader__measure {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--wc-measure);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}

@@ -1,6 +1,7 @@
 import { currentText, type MessageState } from '@shared/chat/message.ts';
 import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
+import type { CardDataV2 } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
@@ -24,12 +25,14 @@ import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
+import { CardReader, type CardReaderInit } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { QuickCommands } from './QuickCommands.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
+import { createCardStore } from './state/cardStore.ts';
 import {
   appendTranscriptWindow,
   initialTranscriptWindow,
@@ -57,6 +60,13 @@ interface ChatViewProps {
   creatorNotes: string;
   /** How many greetings the card offers, so a scenario list can be lined up with them. */
   greetingCount: number;
+  /**
+   * The open character's card, for the sheet on their avatar. Already in memory — the chat
+   * cannot render without it — so reading it back costs no fetch.
+   */
+  card: CardDataV2 | null;
+  /** Leaves the chat for the character editor, offered from inside the sheet. */
+  onEditCharacter: () => void;
   /** False until an endpoint and model are configured. */
   ready: boolean;
   /** Leave the chat and go back to the no-character state. */
@@ -93,6 +103,8 @@ export function ChatView({
   personaAvatarVersions,
   creatorNotes,
   greetingCount,
+  card,
+  onEditCharacter,
   ready,
   onCloseChat,
   onOpenPanel,
@@ -386,6 +398,25 @@ export function ChatView({
     }
   }, [state.messages.length, window.chatId, state.chatId, window.end]);
 
+  // --- The card reader -------------------------------------------------------
+
+  /*
+   * Three separate doors open it: Expand from the popover on an avatar, `/card`, and the
+   * chat menu. Plain state — a re-render of this component costs the transcript nothing,
+   * because every bubble prop is already referentially stable — with one hoisted opener so
+   * the bubbles can reach it without taking a new prop identity every render.
+   *
+   * Declared above `runCommand` rather than beside the other hoisted callbacks: a
+   * dependency array is evaluated during render, so a `const` declared further down would
+   * still be in its temporal dead zone when that array is built.
+   */
+  const [cardReader, setCardReader] = useState<CardReaderInit | null>(null);
+  const openCardReader = useCallback(
+    (init: CardReaderInit = {}) => setCardReader({ query: init.query, sectionId: init.sectionId }),
+    [],
+  );
+  const closeCardReader = useCallback(() => setCardReader(null), []);
+
   // --- Slash commands --------------------------------------------------------
 
   const runCommand = useCallback(
@@ -411,6 +442,13 @@ export function ChatView({
           chat.renameChat(command.title);
           return null;
         }
+        // Reading, not mutating — so unlike its neighbours it needs no open chat and no
+        // messages, and it cannot fail. `/card` on its own opens the reader; with an
+        // argument it opens it already searching.
+        case 'card': {
+          openCardReader({ query: command.query });
+          return null;
+        }
         case 'reload': {
           if (!state.chatId) return 'No chat is open to reload.';
           if (generationBlocked) {
@@ -427,7 +465,7 @@ export function ChatView({
         }
       }
     },
-    [state.chatId, state.messages, generationBlocked, chat, jumpTo],
+    [state.chatId, state.messages, generationBlocked, chat, jumpTo, openCardReader],
   );
 
   /**
@@ -459,18 +497,60 @@ export function ChatView({
    * makes the memo compare unequal every time and re-render the whole transcript. Keyed on
    * the message id rather than closed over the message, so one stable callback serves
    * every row.
+   *
+   * All nine go through a ref rather than a dependency array, and the reason is that the
+   * obvious `[chat]` does not work: `useChat` returns a fresh object literal on every
+   * render, so keying on it rebuilt all nine every time and the memo below has never once
+   * bailed out. Keying on the individual methods instead — `[chat.swipe]` and friends —
+   * fixes the every-render case but not the rest: `swipe`, `regenerate` and `continueLast`
+   * all descend from `generate`, whose own dependency list carries the stream and most of
+   * the settings, so they still turn over whenever a setting changes. A ref is the only
+   * version that is stable for the component's life, which is what the memo needs.
+   *
+   * Assigned during render rather than in an effect, matching `editCharacterRef` below:
+   * these are only ever invoked from event handlers, which cannot run before the commit
+   * that would have updated the ref, so there is no window in which reading it is stale.
    */
-  const swipe = useCallback((direction: -1 | 1) => void chat.swipe(direction), [chat]);
-  const regenerate = useCallback(() => void chat.regenerate(), [chat]);
-  const continueLast = useCallback(() => void chat.continueLast(), [chat]);
-  const editMessage = useCallback((id: string, text: string) => chat.editMessage(id, text), [chat]);
-  const editReasoning = useCallback(
-    (id: string, reasoning: string) => chat.editReasoning(id, reasoning),
-    [chat],
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
+
+  const swipe = useCallback((direction: -1 | 1) => void chatRef.current.swipe(direction), []);
+  const regenerate = useCallback(() => void chatRef.current.regenerate(), []);
+  const continueLast = useCallback(() => void chatRef.current.continueLast(), []);
+  const editMessage = useCallback(
+    (id: string, text: string) => chatRef.current.editMessage(id, text),
+    [],
   );
-  const deleteMessage = useCallback((id: string) => chat.deleteMessage(id), [chat]);
-  const toggleHidden = useCallback((id: string) => chat.toggleHidden(id), [chat]);
-  const branchFrom = useCallback((id: string) => void chat.branchFrom(id), [chat]);
+  const editReasoning = useCallback(
+    (id: string, reasoning: string) => chatRef.current.editReasoning(id, reasoning),
+    [],
+  );
+  const deleteMessage = useCallback((id: string) => chatRef.current.deleteMessage(id), []);
+  const toggleHidden = useCallback((id: string) => chatRef.current.toggleHidden(id), []);
+  const branchFrom = useCallback((id: string) => void chatRef.current.branchFrom(id), []);
+
+  /*
+   * The same treatment, for the same reason, on a callback from `App` rather than from
+   * `chat`: the only honest version of it closes over the selected avatar and a
+   * `transitionToCharacter` that itself depends on `chat`, so a dependency array would hand
+   * every row a new prop on every render.
+   */
+  const editCharacterRef = useRef(onEditCharacter);
+  editCharacterRef.current = onEditCharacter;
+  const editCharacter = useCallback(() => editCharacterRef.current(), []);
+
+  /*
+   * The card, out of band.
+   *
+   * Created once and synced from an effect, so the bubbles that carry the sheet's trigger
+   * never see the card change identity — see `state/cardStore.ts` for what a plain prop
+   * would cost while someone is typing in the character editor. `set` ignores a snapshot
+   * that matches the one it holds, so running this on every render is free.
+   */
+  const [cardStore] = useState(createCardStore);
+  useEffect(() => {
+    cardStore.set({ avatar, card, render: chat.renderGreeting });
+  }, [cardStore, avatar, card, chat.renderGreeting]);
 
   const lastId = state.messages[state.messages.length - 1]?.id ?? null;
   // A transcript ending on the user's turn is one still owed a reply — after a failure,
@@ -586,6 +666,17 @@ export function ChatView({
 
   return (
     <div className="chat-view">
+      {/* Portals itself into the shell's overlay root, over the chat column. */}
+      {cardReader ? (
+        <CardReader
+          store={cardStore}
+          init={cardReader}
+          onClose={closeCardReader}
+          onEditCharacter={editCharacter}
+          busy={busy}
+        />
+      ) : null}
+
       <div className="chat-view__scroll" ref={scrollRef}>
         <div className="chat-view__content" ref={contentRef}>
           {state.messages.length === 0 ? (
@@ -641,6 +732,12 @@ export function ChatView({
                   avatarUrl={characterAvatarUrl}
                   dialogueActive={characterDialogue.active}
                   dialogueColor={characterDialogue.color}
+                  // Character rows only. A persona has no card, so a user row's avatar
+                  // stays a picture rather than becoming a control that opens someone
+                  // else's description.
+                  cardStore={cardStore}
+                  onEditCharacter={editCharacter}
+                  onOpenCardReader={openCardReader}
                 />
               );
             })
@@ -724,6 +821,7 @@ export function ChatView({
               onCloseChat={onCloseChat}
               onOpenPanel={onOpenPanel}
               onImportChat={onImportChat}
+              onOpenCard={openCardReader}
             />
             <QuickCommands
               quickCommands={quickCommands}

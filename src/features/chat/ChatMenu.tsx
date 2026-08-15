@@ -13,6 +13,7 @@ import { Menu } from '../../components/Menu.tsx';
 import {
   BookIcon,
   BranchIcon,
+  CardIcon,
   CloseIcon,
   ContinueIcon,
   DownloadIcon,
@@ -48,6 +49,7 @@ export interface ChatMenuActions {
   closeChat: () => void;
   exportChat: () => void;
   importChat: () => void;
+  openCard: () => void;
 }
 
 const BUSY = 'Wait for the current reply to finish.';
@@ -118,6 +120,20 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
 
     { kind: 'separator' },
 
+    /*
+     * Deliberately not gated on `busy`, unlike everything above it.
+     *
+     * Its neighbours mutate the chat, so blocking them mid-reply is right. This one only
+     * reads, and "what colour is her hair" is a question you ask *while* a reply is
+     * arriving — the composer suppresses `/card` in that window, so this entry is the
+     * mid-generation way in. Do not "restore consistency" by disabling it.
+     */
+    {
+      label: 'Character card…',
+      icon: <CardIcon />,
+      onSelect: actions.openCard,
+    },
+
     // Jumps, not actions — these open the panel where the tool already lives, rather than
     // growing a second copy of it in here.
     {
@@ -146,9 +162,17 @@ interface ChatMenuProps {
   onOpenPanel: (panel: RightPanelId) => void;
   /** Reads a chat export into the open character as a new chat. */
   onImportChat: (file: File) => void;
+  /** Opens the card reader — the one entry here that works mid-generation. */
+  onOpenCard: () => void;
 }
 
-export function ChatMenu({ chat, onCloseChat, onOpenPanel, onImportChat }: ChatMenuProps) {
+export function ChatMenu({
+  chat,
+  onCloseChat,
+  onOpenPanel,
+  onImportChat,
+  onOpenCard,
+}: ChatMenuProps) {
   const { messages } = chat.state;
   const last = messages[messages.length - 1] ?? null;
 
@@ -170,6 +194,7 @@ export function ChatMenu({ chat, onCloseChat, onOpenPanel, onImportChat }: ChatM
       continueLast: () => void chat.continueLast(),
       openPanel: onOpenPanel,
       closeChat: onCloseChat,
+      openCard: onOpenCard,
       importChat: () => importInput.current?.click(),
       exportChat: () => {
         const chatId = chat.state.chatId;

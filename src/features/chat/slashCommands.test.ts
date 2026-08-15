@@ -136,6 +136,39 @@ describe('parseSlashCommand', () => {
   });
 });
 
+describe('/card', () => {
+  /*
+   * The only command whose argument is optional. Both halves stand alone: `/card` means
+   * "show me the card", `/card hair` means "show me the bit about hair" — so an empty
+   * argument is a valid command rather than the usage error every other command returns.
+   */
+  test('opens the card with no argument at all', () => {
+    expect(parseSlashCommand('/card')).toEqual({ ok: true, command: { type: 'card', query: '' } });
+  });
+
+  test('an argument becomes the search, verbatim', () => {
+    expect(parseSlashCommand('/card hair')).toEqual({
+      ok: true,
+      command: { type: 'card', query: 'hair' },
+    });
+  });
+
+  // A search term is prose, like a chat title — "blonde hair" is one query, not two tokens.
+  test('a multi-word search survives whole', () => {
+    expect(parseSlashCommand('/card golden blonde hair')).toEqual({
+      ok: true,
+      command: { type: 'card', query: 'golden blonde hair' },
+    });
+  });
+
+  test('surrounding whitespace is trimmed off the query', () => {
+    expect(parseSlashCommand('  /card   hair   ')).toEqual({
+      ok: true,
+      command: { type: 'card', query: 'hair' },
+    });
+  });
+});
+
 describe('slashCompletion', () => {
   test('a plain message is not a command', () => {
     expect(slashCompletion('hello')).toBeNull();
@@ -151,6 +184,7 @@ describe('slashCompletion', () => {
       'jump',
       'rename',
       'reload',
+      'card',
     ]);
   });
 
@@ -161,6 +195,7 @@ describe('slashCompletion', () => {
     // Two commands share the "re" prefix, so it narrows without resolving.
     expect(slashCompletion('/re')?.suggestions.map((c) => c.name)).toEqual(['rename', 'reload']);
     expect(slashCompletion('/rel')?.suggestions.map((c) => c.name)).toEqual(['reload']);
+    expect(slashCompletion('/c')?.suggestions.map((c) => c.name)).toEqual(['card']);
     expect(slashCompletion('/h')?.completing).toBe(true);
   });
 
@@ -185,7 +220,7 @@ describe('slashCompletion', () => {
 
   test('the registry covers every command the parser recognises', () => {
     const names = new Set(SLASH_COMMANDS.map((command) => command.name));
-    for (const input of ['/hide', '/unhide', '/jump', '/reload']) {
+    for (const input of ['/hide', '/unhide', '/jump', '/rename', '/reload', '/card']) {
       expect(names.has(input.slice(1))).toBe(true);
     }
   });
