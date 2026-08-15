@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { MenuAction, MenuEntry } from '../../components/Menu.tsx';
 import type { QuickCommand } from '@shared/types/settings.ts';
+import type { MenuAction, MenuEntry } from '../../components/Menu.tsx';
 import {
   buildCocreatorQuickCommandsMenu,
   type CocreatorQuickCommandsActions,
@@ -52,9 +52,7 @@ describe('buildCocreatorQuickCommandsMenu', () => {
 
   test('selecting a command inserts its text', () => {
     const { inserted, actions } = spies();
-    const [openings, personality] = menuActions(
-      buildCocreatorQuickCommandsMenu(COMMANDS, actions),
-    );
+    const [openings, personality] = menuActions(buildCocreatorQuickCommandsMenu(COMMANDS, actions));
 
     openings!.onSelect();
     personality!.onSelect();

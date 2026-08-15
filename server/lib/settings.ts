@@ -566,10 +566,9 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
               patch.coCreator.exampleSets !== undefined
                 ? patch.coCreator.exampleSets
                 : current.coCreator.exampleSets,
-            quickCommands:
-              Array.isArray(patch.coCreator.quickCommands)
-                ? patch.coCreator.quickCommands
-                : current.coCreator.quickCommands,
+            quickCommands: Array.isArray(patch.coCreator.quickCommands)
+              ? patch.coCreator.quickCommands
+              : current.coCreator.quickCommands,
           },
           current.connections,
         )

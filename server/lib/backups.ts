@@ -117,10 +117,7 @@ export function deleteChatBackup(backupId: string, dir: string = PATHS.backups):
 }
 
 /** Permanently empty all slots in the trash bin, optionally filtered by character. */
-export function deleteAllChatBackups(
-  characterId?: string,
-  dir: string = PATHS.backups,
-): number {
+export function deleteAllChatBackups(characterId?: string, dir: string = PATHS.backups): number {
   if (!existsSync(dir)) return 0;
   const files = listBackupFiles(dir);
   let count = 0;
@@ -140,7 +137,6 @@ export function deleteAllChatBackups(
   }
   return count;
 }
-
 
 /**
  * Recreate a backed-up chat and remove the file, so restoring is a move out of the bin.

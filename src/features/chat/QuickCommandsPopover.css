@@ -9,20 +9,17 @@
  * ordinary CSS anchoring (bottom: 100%, left: 0) does the rest. The root keeps pointer-events
  * off so the button underneath stays clickable; the popup itself turns them back on.
  */
-.chat-quick-commands,
-.chat-menu {
+.chat-quick-commands {
   position: relative;
 }
 
-.chat-quick-commands > .popover--editor,
-.chat-menu > .popover--editor {
+.chat-quick-commands > .popover--editor {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.chat-quick-commands > .popover--editor .popover__popup,
-.chat-menu > .popover--editor .popover__popup {
+.chat-quick-commands > .popover--editor .popover__popup {
   pointer-events: auto;
 }
 

@@ -108,77 +108,78 @@ export function RecentlyDeletedSection({
             )}
           </div>
           <ul className="bin__list">
-          {backups.map((backup) => {
-            // A backup outlives its character, and the server refuses to restore into one
-            // that is gone. Nothing to show a picture of in that case, so the row drops the
-            // avatar and says why rather than offering a click that can only fail.
-            const character = byAvatar.get(backup.characterId);
-            return (
-              <li key={backup.backupId} className="bin__item">
-                <button
-                  type="button"
-                  className="bin__restore"
-                  onClick={() => onRestore(backup.backupId)}
-                  disabled={!character}
-                  title={
-                    character
-                      ? 'Restore this chat'
-                      : `${backup.characterId} no longer exists — re-import the character, then restore.`
-                  }
-                >
-                  {character ? (
-                    <img
-                      className="bin__avatar"
-                      src={characterApi.imageUrl(backup.characterId)}
-                      alt=""
-                    />
-                  ) : (
-                    <span className="bin__avatar" aria-hidden="true" />
-                  )}
-                  <span className="bin__info">
-                    <span className="bin__name">
-                      {character?.name ?? backup.characterId.replace(/\.png$/i, '')}
-                      <span className="bin__sep">–</span>
-                      <span className="bin__title">{backup.title}</span>
+            {backups.map((backup) => {
+              // A backup outlives its character, and the server refuses to restore into one
+              // that is gone. Nothing to show a picture of in that case, so the row drops the
+              // avatar and says why rather than offering a click that can only fail.
+              const character = byAvatar.get(backup.characterId);
+              return (
+                <li key={backup.backupId} className="bin__item">
+                  <button
+                    type="button"
+                    className="bin__restore"
+                    onClick={() => onRestore(backup.backupId)}
+                    disabled={!character}
+                    title={
+                      character
+                        ? 'Restore this chat'
+                        : `${backup.characterId} no longer exists — re-import the character, then restore.`
+                    }
+                  >
+                    {character ? (
+                      <img
+                        className="bin__avatar"
+                        src={characterApi.imageUrl(backup.characterId)}
+                        alt=""
+                      />
+                    ) : (
+                      <span className="bin__avatar" aria-hidden="true" />
+                    )}
+                    <span className="bin__info">
+                      <span className="bin__name">
+                        {character?.name ?? backup.characterId.replace(/\.png$/i, '')}
+                        <span className="bin__sep">–</span>
+                        <span className="bin__title">{backup.title}</span>
+                      </span>
+                      <span className="bin__meta">
+                        <span>deleted {deletedLabel(backup.deleted)}</span>
+                        {backup.messageCount > 0 ? (
+                          <span className="bin__count" title={`${backup.messageCount} messages`}>
+                            <MessagesIcon />
+                            {backup.messageCount}
+                          </span>
+                        ) : null}
+                      </span>
                     </span>
-                    <span className="bin__meta">
-                      <span>deleted {deletedLabel(backup.deleted)}</span>
-                      {backup.messageCount > 0 ? (
-                        <span className="bin__count" title={`${backup.messageCount} messages`}>
-                          <MessagesIcon />
-                          {backup.messageCount}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="wc-button wc-button--ghost wc-button--danger"
-                  data-confirming={purging === backup.backupId}
-                  onClick={() =>
-                    purging === backup.backupId
-                      ? onPurge(backup.backupId)
-                      : setPurging(backup.backupId)
-                  }
-                  onBlur={() => setPurging(null)}
-                  title={
-                    purging === backup.backupId
-                      ? 'Click again to delete forever'
-                      : 'Delete this backup forever'
-                  }
-                  aria-label={
-                    purging === backup.backupId
-                      ? 'Click again to delete forever'
-                      : `Delete backup of ${backup.title} forever`
-                  }
-                >
-                  <TrashIcon />
-                </button>
-              </li>
-            );
-          })}
-        </ul></>
+                  </button>
+                  <button
+                    type="button"
+                    className="wc-button wc-button--ghost wc-button--danger"
+                    data-confirming={purging === backup.backupId}
+                    onClick={() =>
+                      purging === backup.backupId
+                        ? onPurge(backup.backupId)
+                        : setPurging(backup.backupId)
+                    }
+                    onBlur={() => setPurging(null)}
+                    title={
+                      purging === backup.backupId
+                        ? 'Click again to delete forever'
+                        : 'Delete this backup forever'
+                    }
+                    aria-label={
+                      purging === backup.backupId
+                        ? 'Click again to delete forever'
+                        : `Delete backup of ${backup.title} forever`
+                    }
+                  >
+                    <TrashIcon />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </Section>
   );

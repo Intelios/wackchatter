@@ -518,9 +518,9 @@ describe('example set character identity changes', () => {
       { coCreator: { quickCommands: 'bad' } },
       { coCreator: {} },
     ]) {
-      expect(
-        mergeSettings(current, patch as never).coCreator.quickCommands,
-      ).toEqual(current.coCreator.quickCommands);
+      expect(mergeSettings(current, patch as never).coCreator.quickCommands).toEqual(
+        current.coCreator.quickCommands,
+      );
     }
   });
 
