@@ -497,29 +497,43 @@ export function ChatView({
    * makes the memo compare unequal every time and re-render the whole transcript. Keyed on
    * the message id rather than closed over the message, so one stable callback serves
    * every row.
+   *
+   * All nine go through a ref rather than a dependency array, and the reason is that the
+   * obvious `[chat]` does not work: `useChat` returns a fresh object literal on every
+   * render, so keying on it rebuilt all nine every time and the memo below has never once
+   * bailed out. Keying on the individual methods instead — `[chat.swipe]` and friends —
+   * fixes the every-render case but not the rest: `swipe`, `regenerate` and `continueLast`
+   * all descend from `generate`, whose own dependency list carries the stream and most of
+   * the settings, so they still turn over whenever a setting changes. A ref is the only
+   * version that is stable for the component's life, which is what the memo needs.
+   *
+   * Assigned during render rather than in an effect, matching `editCharacterRef` below:
+   * these are only ever invoked from event handlers, which cannot run before the commit
+   * that would have updated the ref, so there is no window in which reading it is stale.
    */
-  const swipe = useCallback((direction: -1 | 1) => void chat.swipe(direction), [chat]);
-  const regenerate = useCallback(() => void chat.regenerate(), [chat]);
-  const continueLast = useCallback(() => void chat.continueLast(), [chat]);
-  const editMessage = useCallback((id: string, text: string) => chat.editMessage(id, text), [chat]);
-  const editReasoning = useCallback(
-    (id: string, reasoning: string) => chat.editReasoning(id, reasoning),
-    [chat],
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
+
+  const swipe = useCallback((direction: -1 | 1) => void chatRef.current.swipe(direction), []);
+  const regenerate = useCallback(() => void chatRef.current.regenerate(), []);
+  const continueLast = useCallback(() => void chatRef.current.continueLast(), []);
+  const editMessage = useCallback(
+    (id: string, text: string) => chatRef.current.editMessage(id, text),
+    [],
   );
-  const deleteMessage = useCallback((id: string) => chat.deleteMessage(id), [chat]);
-  const toggleHidden = useCallback((id: string) => chat.toggleHidden(id), [chat]);
-  const branchFrom = useCallback((id: string) => void chat.branchFrom(id), [chat]);
+  const editReasoning = useCallback(
+    (id: string, reasoning: string) => chatRef.current.editReasoning(id, reasoning),
+    [],
+  );
+  const deleteMessage = useCallback((id: string) => chatRef.current.deleteMessage(id), []);
+  const toggleHidden = useCallback((id: string) => chatRef.current.toggleHidden(id), []);
+  const branchFrom = useCallback((id: string) => void chatRef.current.branchFrom(id), []);
 
   /*
-   * Through a ref, unlike the callbacks above.
-   *
-   * Those are keyed on `chat`, which is a fresh object literal every render — fine for
-   * them, because they are recreated together and the transcript re-renders on chat state
-   * anyway. This one comes from `App`, where the only honest version of it closes over the
-   * selected avatar and a `transitionToCharacter` that itself depends on `chat`. Keying on
-   * that would hand every row a new prop on every render and quietly undo the memo the rest
-   * of this section exists to protect. The ref keeps the identity fixed for the component's
-   * life while still calling the current one.
+   * The same treatment, for the same reason, on a callback from `App` rather than from
+   * `chat`: the only honest version of it closes over the selected avatar and a
+   * `transitionToCharacter` that itself depends on `chat`, so a dependency array would hand
+   * every row a new prop on every render.
    */
   const editCharacterRef = useRef(onEditCharacter);
   editCharacterRef.current = onEditCharacter;
