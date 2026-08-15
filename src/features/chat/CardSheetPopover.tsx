@@ -15,7 +15,8 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Popover } from '../../components/Popover.tsx';
-import { EditIcon } from '../../layout/icons.tsx';
+import { EditIcon, ExpandIcon } from '../../layout/icons.tsx';
+import type { CardReaderInit } from './CardReader.tsx';
 import { CardSheetView, useCardSheetState } from './CardSheetView.tsx';
 import { type CardSheet, readCardSheet } from './cardSheet.ts';
 import type { CardStore } from './state/cardStore.ts';
@@ -37,6 +38,8 @@ interface CardSheetPopoverProps {
   avatarUrl: string | null;
   /** Leaves the chat for the character editor. Absent means the action is not offered. */
   onEditCharacter?: () => void;
+  /** Hands the sheet's place over to the full reader. Absent hides the Expand button. */
+  onOpenReader?: (init: CardReaderInit) => void;
   /** A generation is running, which makes leaving for the editor destructive. */
   busy?: boolean;
 }
@@ -46,6 +49,7 @@ export function CardSheetPopover({
   name,
   avatarUrl,
   onEditCharacter,
+  onOpenReader,
   busy,
 }: CardSheetPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -126,7 +130,22 @@ export function CardSheetPopover({
         </button>
       )}
     >
-      <CardSheetBody store={store} onEditCharacter={onEditCharacter} busy={busy} />
+      <CardSheetBody
+        store={store}
+        onEditCharacter={onEditCharacter}
+        // Carries the reader your place rather than restarting it at the top, and shuts the
+        // popover behind you — two copies of the same card, one over the other, would leave
+        // no way to tell which one your next keystroke goes to.
+        onExpand={
+          onOpenReader
+            ? (init) => {
+                setOpen(false);
+                onOpenReader(init);
+              }
+            : undefined
+        }
+        busy={busy}
+      />
     </Popover>
   );
 }
@@ -134,6 +153,7 @@ export function CardSheetPopover({
 interface CardSheetBodyProps {
   store: CardStore;
   onEditCharacter?: () => void;
+  onExpand?: (init: CardReaderInit) => void;
   busy?: boolean;
 }
 
@@ -143,7 +163,7 @@ interface CardSheetBodyProps {
  * Mounted only while the popup is open — `Popover` renders its children on open — so a
  * closed sheet costs nothing at all, and an open one re-renders only itself.
  */
-function CardSheetBody({ store, onEditCharacter, busy }: CardSheetBodyProps) {
+function CardSheetBody({ store, onEditCharacter, onExpand, busy }: CardSheetBodyProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const sheet = useMemo(
     () => (snapshot.card ? readCardSheet(snapshot.card, snapshot.render) : NO_CARD),
@@ -157,20 +177,33 @@ function CardSheetBody({ store, onEditCharacter, busy }: CardSheetBodyProps) {
       variant="popover"
       {...state}
       actions={
-        onEditCharacter ? (
-          <button
-            type="button"
-            className="wc-button wc-button--ghost card-sheet__action"
-            // Disabled beats refused: leaving for the editor aborts the generation, so
-            // mid-stream this would silently throw away the reply being written.
-            disabled={busy}
-            title={busy ? 'Wait for the current reply to finish.' : 'Edit this card'}
-            aria-label="Edit this card"
-            onClick={onEditCharacter}
-          >
-            <EditIcon />
-          </button>
-        ) : null
+        <>
+          {onExpand ? (
+            <button
+              type="button"
+              className="wc-button wc-button--ghost card-sheet__action"
+              title="Read at full width"
+              aria-label="Read this card at full width"
+              onClick={() => onExpand({ query: state.query, sectionId: state.sectionId })}
+            >
+              <ExpandIcon />
+            </button>
+          ) : null}
+          {onEditCharacter ? (
+            <button
+              type="button"
+              className="wc-button wc-button--ghost card-sheet__action"
+              // Disabled beats refused: leaving for the editor aborts the generation, so
+              // mid-stream this would silently throw away the reply being written.
+              disabled={busy}
+              title={busy ? 'Wait for the current reply to finish.' : 'Edit this card'}
+              aria-label="Edit this card"
+              onClick={onEditCharacter}
+            >
+              <EditIcon />
+            </button>
+          ) : null}
+        </>
       }
     />
   );

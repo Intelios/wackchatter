@@ -8,6 +8,7 @@ import {
   PlugIcon,
   RefreshIcon,
 } from '../../layout/icons.tsx';
+import type { CardReaderInit } from './CardReader.tsx';
 import { CardSheetPopover } from './CardSheetPopover.tsx';
 import { CreatorNotesPopover } from './CreatorNotesPopover.tsx';
 import { formatTimestamp } from './formatDate.ts';
@@ -64,6 +65,8 @@ interface MessageBubbleProps {
   cardStore?: CardStore;
   /** Leaves for the character editor, from inside the sheet. */
   onEditCharacter?: () => void;
+  /** Hands the sheet's place to the full-width reader. */
+  onOpenCardReader?: (init: CardReaderInit) => void;
   /*
    * The id-taking handlers take it as an argument rather than being closed over the
    * message in ChatView. A per-row closure would change identity on every render and
@@ -107,6 +110,7 @@ export const MessageBubble = memo(function MessageBubble({
   greetingCount,
   cardStore,
   onEditCharacter,
+  onOpenCardReader,
   onSwipe,
   onRegenerate,
   onContinue,
@@ -221,6 +225,7 @@ export const MessageBubble = memo(function MessageBubble({
               name={message.name}
               avatarUrl={avatarUrl}
               onEditCharacter={onEditCharacter}
+              onOpenReader={onOpenCardReader}
               busy={busy}
             />
           ) : (

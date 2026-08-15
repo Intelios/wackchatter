@@ -25,6 +25,7 @@ import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
+import { CardReader, type CardReaderInit } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
@@ -397,6 +398,25 @@ export function ChatView({
     }
   }, [state.messages.length, window.chatId, state.chatId, window.end]);
 
+  // --- The card reader -------------------------------------------------------
+
+  /*
+   * Three separate doors open it: Expand from the popover on an avatar, `/card`, and the
+   * chat menu. Plain state — a re-render of this component costs the transcript nothing,
+   * because every bubble prop is already referentially stable — with one hoisted opener so
+   * the bubbles can reach it without taking a new prop identity every render.
+   *
+   * Declared above `runCommand` rather than beside the other hoisted callbacks: a
+   * dependency array is evaluated during render, so a `const` declared further down would
+   * still be in its temporal dead zone when that array is built.
+   */
+  const [cardReader, setCardReader] = useState<CardReaderInit | null>(null);
+  const openCardReader = useCallback(
+    (init: CardReaderInit = {}) => setCardReader({ query: init.query, sectionId: init.sectionId }),
+    [],
+  );
+  const closeCardReader = useCallback(() => setCardReader(null), []);
+
   // --- Slash commands --------------------------------------------------------
 
   const runCommand = useCallback(
@@ -422,6 +442,13 @@ export function ChatView({
           chat.renameChat(command.title);
           return null;
         }
+        // Reading, not mutating — so unlike its neighbours it needs no open chat and no
+        // messages, and it cannot fail. `/card` on its own opens the reader; with an
+        // argument it opens it already searching.
+        case 'card': {
+          openCardReader({ query: command.query });
+          return null;
+        }
         case 'reload': {
           if (!state.chatId) return 'No chat is open to reload.';
           if (generationBlocked) {
@@ -438,7 +465,7 @@ export function ChatView({
         }
       }
     },
-    [state.chatId, state.messages, generationBlocked, chat, jumpTo],
+    [state.chatId, state.messages, generationBlocked, chat, jumpTo, openCardReader],
   );
 
   /**
@@ -625,6 +652,17 @@ export function ChatView({
 
   return (
     <div className="chat-view">
+      {/* Portals itself into the shell's overlay root, over the chat column. */}
+      {cardReader ? (
+        <CardReader
+          store={cardStore}
+          init={cardReader}
+          onClose={closeCardReader}
+          onEditCharacter={editCharacter}
+          busy={busy}
+        />
+      ) : null}
+
       <div className="chat-view__scroll" ref={scrollRef}>
         <div className="chat-view__content" ref={contentRef}>
           {state.messages.length === 0 ? (
@@ -685,6 +723,7 @@ export function ChatView({
                   // else's description.
                   cardStore={cardStore}
                   onEditCharacter={editCharacter}
+                  onOpenCardReader={openCardReader}
                 />
               );
             })
@@ -768,6 +807,7 @@ export function ChatView({
               onCloseChat={onCloseChat}
               onOpenPanel={onOpenPanel}
               onImportChat={onImportChat}
+              onOpenCard={openCardReader}
             />
             <QuickCommands
               quickCommands={quickCommands}

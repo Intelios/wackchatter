@@ -276,6 +276,21 @@ export function BookIcon({ className }: IconProps) {
   );
 }
 
+/* A portrait card: a frame with a head and shoulders in it, and ruled lines beside them.
+   Every nearer shape is taken — UserIcon is the persona, BookIcon is lore, NotesIcon is the
+   creator's notes — and this one has to read as "the character's card" at 15px. */
+export function CardIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="2" />
+      <path d="M6 16.5a3 3 0 0 1 6 0" />
+      <path d="M15 9.5h3" />
+      <path d="M15 13h3" />
+    </svg>
+  );
+}
+
 /* A circled i rather than another sheet of paper: SummaryIcon already owns that shape, and
    at 16px in a message footer the two would be indistinguishable. */
 export function NotesIcon({ className }: IconProps) {

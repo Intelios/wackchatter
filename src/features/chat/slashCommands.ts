@@ -20,7 +20,9 @@ export type SlashCommand =
   | { type: 'unhide'; start: number | null; end: number | null }
   | { type: 'jump'; index: number }
   | { type: 'rename'; title: string }
-  | { type: 'reload' };
+  | { type: 'reload' }
+  /** Opens the card reader. An empty query just opens it. */
+  | { type: 'card'; query: string };
 
 export type SlashParseResult = { ok: true; command: SlashCommand } | { ok: false; error: string };
 
@@ -60,6 +62,11 @@ export const SLASH_COMMANDS: readonly SlashCommandHelp[] = [
     name: 'reload',
     usage: '/reload',
     description: 'Save and re-fetch this chat from the server.',
+  },
+  {
+    name: 'card',
+    usage: '/card or /card <text to find>',
+    description: "Read this character's card, optionally jumping to what you searched for.",
   },
 ];
 
@@ -159,6 +166,13 @@ export function parseSlashCommand(input: string): SlashParseResult | null {
     case 'reload':
       if (arg) return { ok: false, error: '`/reload` takes no arguments.' };
       return { ok: true, command: { type: 'reload' } };
+    /*
+     * The only command whose argument is optional, because both halves are useful on their
+     * own: `/card` is "show me the card" and `/card hair` is "show me the bit about hair".
+     * Verbatim like `/rename` — a search term is prose, and "blonde hair" is one query.
+     */
+    case 'card':
+      return { ok: true, command: { type: 'card', query: arg } };
     default:
       return { ok: false, error: `Unknown command "/${firstWord}".` };
   }
