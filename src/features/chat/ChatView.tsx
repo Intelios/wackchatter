@@ -28,6 +28,7 @@ import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
+import { QuickCommands } from './QuickCommands.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
 import {
   appendTranscriptWindow,
@@ -111,7 +112,7 @@ export function ChatView({
   // before a prepend so the same document position can be restored after it commits.
   const restorePrependScroll = useRef<{ messageId: string; offset: number } | null>(null);
 
-  // The write path from the chat menu's quick commands into the composer's private draft.
+  // The write path from quick commands into the composer's private draft.
   const composerRef = useRef<ComposerHandle>(null);
 
   const { state, stream, busy, generationBlocked } = chat;
@@ -722,10 +723,12 @@ export function ChatView({
               chat={chat}
               onCloseChat={onCloseChat}
               onOpenPanel={onOpenPanel}
+              onImportChat={onImportChat}
+            />
+            <QuickCommands
               quickCommands={quickCommands}
               onInsertCommand={(text) => composerRef.current?.insert(text)}
               onQuickCommandsChange={onQuickCommandsChange}
-              onImportChat={onImportChat}
             />
             <GuidesPopover
               guides={guides}

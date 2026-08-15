@@ -1,12 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { QuickCommand } from '@shared/types/settings.ts';
-import {
-  isSeparator,
-  isSubmenu,
-  type MenuAction,
-  type MenuEntry,
-  type MenuSubmenu,
-} from '../../components/Menu.tsx';
+import { isSeparator, type MenuAction, type MenuEntry } from '../../components/Menu.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { buildChatMenu, type ChatMenuActions, type ChatMenuState } from './ChatMenu.tsx';
 
@@ -16,13 +9,11 @@ const healthy: ChatMenuState = {
   messageCount: 4,
   lastMessageId: 'm4',
   lastIsUser: false,
-  quickCommands: [],
 };
 
 function spies() {
   const calls: string[] = [];
   const panels: RightPanelId[] = [];
-  const inserted: string[] = [];
   const actions: ChatMenuActions = {
     newChat: () => calls.push('newChat'),
     checkpoint: (id) => calls.push(`checkpoint:${id}`),
@@ -32,16 +23,9 @@ function spies() {
     closeChat: () => calls.push('closeChat'),
     exportChat: () => calls.push('exportChat'),
     importChat: () => calls.push('importChat'),
-    insertCommand: (text) => inserted.push(text),
-    editQuickCommands: () => calls.push('editQuickCommands'),
   };
-  return { calls, panels, inserted, actions };
+  return { calls, panels, actions };
 }
-
-const COMMANDS: QuickCommand[] = [
-  { id: 'c1', name: 'Ending', text: 'Write a definitive ending.' },
-  { id: 'c2', name: 'Recap', text: 'Summarise the story so far.' },
-];
 
 function build(state: Partial<ChatMenuState> = {}, actions?: ChatMenuActions): MenuEntry[] {
   return buildChatMenu({ ...healthy, ...state }, actions ?? spies().actions);
@@ -50,24 +34,14 @@ function build(state: Partial<ChatMenuState> = {}, actions?: ChatMenuActions): M
 function item(entries: MenuEntry[], label: string): MenuAction {
   const found = entries.find(
     (entry): entry is MenuAction =>
-      !isSeparator(entry) && !isSubmenu(entry) && entry.label === label,
+      !isSeparator(entry) && entry.kind !== 'submenu' && entry.label === label,
   );
   if (!found) throw new Error(`No menu entry labelled "${label}"`);
   return found;
 }
 
-function submenu(entries: MenuEntry[], label: string): MenuSubmenu {
-  const found = entries.find(
-    (entry): entry is MenuSubmenu => isSubmenu(entry) && entry.label === label,
-  );
-  if (!found) throw new Error(`No submenu labelled "${label}"`);
-  return found;
-}
-
 function actionLabels(entries: MenuEntry[]): string[] {
-  return entries
-    .filter((entry): entry is MenuAction | MenuSubmenu => !isSeparator(entry))
-    .map((e) => e.label);
+  return entries.filter((entry): entry is MenuAction => !isSeparator(entry)).map((e) => e.label);
 }
 
 const JUMPS = ['Chat context…', 'Lore…', 'Persona…'];
@@ -82,13 +56,11 @@ describe('buildChatMenu', () => {
       'Continue',
       'Export chat',
       'Import chat',
-      'Quick commands',
       ...JUMPS,
       'Close chat',
     ]);
     for (const label of actionLabels(entries)) {
-      if (label === 'Quick commands') expect(submenu(entries, label).disabled).toBeFalsy();
-      else expect(item(entries, label).disabled).toBeFalsy();
+      expect(item(entries, label).disabled).toBeFalsy();
     }
   });
 
@@ -109,18 +81,14 @@ describe('buildChatMenu', () => {
     for (const label of ['New chat', 'Close chat', ...JUMPS]) {
       expect(item(entries, label).disabled).toBeFalsy();
     }
-    expect(submenu(entries, 'Quick commands').disabled).toBeFalsy();
   });
 
-  test('a generation in flight disables every action but the jumps and the commands', () => {
-    // Commands only fill the composer, and the composer accepts text mid-generation —
-    // queueing your next move while a reply streams is the point.
-    const entries = build({ busy: true, quickCommands: COMMANDS });
-    const open = [...JUMPS, 'Quick commands'];
+  test('a generation in flight disables every action but the jumps', () => {
+    const entries = build({ busy: true });
+    const open = [...JUMPS];
     for (const label of actionLabels(entries)) {
       if (open.includes(label)) {
-        if (label === 'Quick commands') expect(submenu(entries, label).disabled).toBeFalsy();
-        else expect(item(entries, label).disabled).toBeFalsy();
+        expect(item(entries, label).disabled).toBeFalsy();
       } else {
         const entry = item(entries, label);
         expect(entry.disabled).toBe(true);
@@ -147,7 +115,6 @@ describe('buildChatMenu', () => {
     for (const label of ['New chat', 'Save checkpoint', 'Export chat', 'Close chat', ...JUMPS]) {
       expect(item(entries, label).disabled).toBeFalsy();
     }
-    expect(submenu(entries, 'Quick commands').disabled).toBeFalsy();
   });
 
   test('the checkpoint is taken at the last message', () => {
@@ -209,87 +176,5 @@ describe('buildChatMenu', () => {
         if (!isSeparator(entry) && entry.disabled) expect(entry.disabledReason).toBeTruthy();
       }
     }
-  });
-});
-
-describe('buildChatMenu quick commands', () => {
-  function flyout(state: Partial<ChatMenuState> = {}, actions?: ChatMenuActions) {
-    return submenu(build({ quickCommands: COMMANDS, ...state }, actions), 'Quick commands');
-  }
-
-  function flyoutActions(menu: MenuSubmenu): MenuAction[] {
-    return menu.entries.filter((entry): entry is MenuAction => !isSeparator(entry));
-  }
-
-  test('the burger menu carries one Quick commands entry; the commands live in its flyout', () => {
-    const entries = build({ quickCommands: COMMANDS });
-    expect(actionLabels(entries)).toContain('Quick commands');
-    expect(flyoutActions(flyout()).map((entry) => entry.label)).toEqual([
-      'Ending',
-      'Recap',
-      'Edit quick commands…',
-    ]);
-  });
-
-  test('the flyout hints at how many commands it holds', () => {
-    expect(flyout().hint).toBe('2');
-    expect(flyout({ quickCommands: [] }).hint).toBeUndefined();
-  });
-
-  test('selecting a command inserts its text verbatim', () => {
-    const { inserted, actions } = spies();
-    const [ending, recap] = flyoutActions(flyout({}, actions));
-
-    ending!.onSelect();
-    recap!.onSelect();
-    expect(inserted).toEqual(['Write a definitive ending.', 'Summarise the story so far.']);
-  });
-
-  test('the edit entry opens the editor', () => {
-    const { calls, actions } = spies();
-    flyoutActions(flyout({}, actions)).at(-1)!.onSelect();
-    expect(calls).toEqual(['editQuickCommands']);
-  });
-
-  test('commands sit ahead of the edit entry, with a separator between', () => {
-    const menu = flyout();
-    expect(isSeparator(menu.entries[2]!)).toBe(true);
-    expect(menu.entries.at(-1)!.kind).toBeUndefined();
-  });
-
-  test('blank commands stay out of the flyout — they would insert nothing', () => {
-    const commands: QuickCommand[] = [
-      { id: 'a', name: 'Real', text: 'Do the thing.' },
-      { id: 'b', name: 'Draft', text: '   ' },
-    ];
-    const labels = flyoutActions(submenu(build({ quickCommands: commands }), 'Quick commands'));
-    expect(labels.map((entry) => entry.label)).toEqual(['Real', 'Edit quick commands…']);
-  });
-
-  test('an unnamed command borrows its label from the text', () => {
-    const commands: QuickCommand[] = [{ id: 'a', name: '', text: 'Do the thing.' }];
-    const labels = flyoutActions(submenu(build({ quickCommands: commands }), 'Quick commands'));
-    expect(labels.map((entry) => entry.label)).toContain('Do the thing.');
-  });
-
-  test('duplicate names both survive — entries are keyed by id, not label', () => {
-    const commands: QuickCommand[] = [
-      { id: 'a', name: 'Ending', text: 'first' },
-      { id: 'b', name: 'Ending', text: 'second' },
-    ];
-    const { inserted, actions } = spies();
-    const endings = flyoutActions(
-      submenu(build({ quickCommands: commands }, actions), 'Quick commands'),
-    ).filter((entry) => entry.label === 'Ending');
-
-    expect(endings).toHaveLength(2);
-    for (const ending of endings) ending.onSelect();
-    expect(inserted).toEqual(['first', 'second']);
-  });
-
-  test('with no commands the edit entry alone remains, as the discovery path', () => {
-    const menu = flyout({ quickCommands: [] });
-    expect(menu.entries).toHaveLength(1);
-    expect(flyoutActions(menu)[0]!.label).toBe('Edit quick commands…');
   });
 });

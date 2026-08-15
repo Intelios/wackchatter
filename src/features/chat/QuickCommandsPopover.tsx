@@ -1,11 +1,8 @@
 /**
- * Quick commands — user-defined snippets the chat menu's flyout inserts into the composer.
+ * Quick commands — user-defined snippets dropped into the composer.
  *
- * This is only the editor. It opens from the flyout's "Edit quick commands…" entry, and it
- * anchors to the burger button: its Popover root is stretched over the ChatMenu wrapper —
- * exactly that button's box — so the popup's ordinary CSS anchoring grows it from the
- * right place without a visible trigger of its own. Everything about this feature lives
- * in the burger menu; the composer never grew a button for it.
+ * This is only the editor. It opens from the "Edit quick commands…" entry in the bolt menu,
+ * and anchors to the trigger button.
  *
  * The list edits are in `quickCommands.ts`, so what remains here is markup and one confirm.
  */
@@ -37,8 +34,8 @@ export function QuickCommandsPopover({
   onOpenChange,
   triggerRef,
   title = 'Quick commands',
-  hint = 'Named snippets the chat menu drops into the message box, ready to send. Nothing ships with the app — these are yours to write.',
-  emptyHint = 'No commands yet. Add one, then pick it from the chat menu — try “Generate an ending”.',
+  hint = 'Named snippets dropped into the message box, ready to send. Nothing ships with the app — these are yours to write.',
+  emptyHint = 'No commands yet. Add one, then pick it from the bolt menu — try “Generate an ending”.',
   placement = 'top-start',
 }: QuickCommandsPopoverProps) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);

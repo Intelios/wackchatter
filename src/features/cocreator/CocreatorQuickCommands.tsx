@@ -8,40 +8,13 @@
 
 import type { QuickCommand } from '@shared/types/settings.ts';
 import { useRef, useState } from 'react';
-import { Menu, type MenuEntry } from '../../components/Menu.tsx';
-import { BoltIcon, EditIcon } from '../../layout/icons.tsx';
+import { Menu } from '../../components/Menu.tsx';
+import { BoltIcon } from '../../layout/icons.tsx';
+import { buildQuickCommandsMenu, type QuickCommandsActions } from '../chat/QuickCommands.tsx';
 import { QuickCommandsPopover } from '../chat/QuickCommandsPopover.tsx';
-import { commandHint, commandLabel, usableCommands } from '../chat/quickCommands.ts';
 
-export interface CocreatorQuickCommandsActions {
-  insertCommand: (text: string) => void;
-  editQuickCommands: () => void;
-}
-
-export function buildCocreatorQuickCommandsMenu(
-  quickCommands: QuickCommand[],
-  actions: CocreatorQuickCommandsActions,
-): MenuEntry[] {
-  const usable = usableCommands(quickCommands);
-
-  const commandEntries: MenuEntry[] = usable.map((command) => ({
-    key: command.id,
-    label: commandLabel(command),
-    icon: <BoltIcon />,
-    hint: command.name.trim() ? commandHint(command) : undefined,
-    onSelect: () => actions.insertCommand(command.text),
-  }));
-
-  return [
-    ...commandEntries,
-    ...(commandEntries.length > 0 ? [{ kind: 'separator' as const }] : []),
-    {
-      label: 'Edit quick commands…',
-      icon: <EditIcon />,
-      onSelect: actions.editQuickCommands,
-    },
-  ];
-}
+export type CocreatorQuickCommandsActions = QuickCommandsActions;
+export const buildCocreatorQuickCommandsMenu = buildQuickCommandsMenu;
 
 interface CocreatorQuickCommandsProps {
   quickCommands: QuickCommand[];
