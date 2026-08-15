@@ -158,7 +158,9 @@ export function readCardSheet(
   let rung: CardSheetRung = 'fields';
 
   for (const { field, text } of fields) {
-    const split = STRUCTURED_FIELDS.includes(field) ? splitCardText(text) : null;
+    const split = STRUCTURED_FIELDS.includes(field)
+      ? splitCardText(text, CARD_FIELD_LABELS[field])
+      : null;
     if (!split) {
       sections.push({
         id: `field:${field}`,

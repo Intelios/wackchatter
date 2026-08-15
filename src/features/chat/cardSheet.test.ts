@@ -128,6 +128,137 @@ describe('reading a card as a sheet', () => {
   });
 });
 
+describe('a field that carries its own structure', () => {
+  const structured = [
+    'Appearance:',
+    'Standing at 5\'7", her raven-black hair falls in twin tails.',
+    '',
+    'Backstory:',
+    'She grew up within sight of the light.',
+  ].join('\n');
+
+  test('the description splits into its headings and the sheet says so', () => {
+    const sheet = readCardSheet(card({ description: structured }));
+
+    expect(sheet.rung).toBe('headings');
+    expect(sheet.sections.map((section) => section.label)).toEqual([
+      'Appearance',
+      'Backstory',
+      'Personality',
+      'Scenario',
+      'Examples',
+    ]);
+  });
+
+  /*
+   * The first invariant, and the reason a wrong guess is survivable: a split refines one
+   * field. Whatever `cardStructure.ts` decides about the description, the personality,
+   * scenario, examples and lorebook are still their own chips — so the worst a parse can do
+   * is give you a chip you ignore, never take away a section you needed.
+   */
+  test('a split refines a field; it never replaces the card', () => {
+    const sheet = readCardSheet(
+      card({
+        description: structured,
+        character_book: book([{ keys: ['lamp'], content: 'Brass, and freshly polished.' }]),
+      }),
+    );
+    const all = sheet.sections.map((section) => section.text).join('\n');
+
+    for (const fragment of ['twin tails', 'fiercely private', 'supply boat', '{{char}}: Mm.']) {
+      expect(all).toContain(fragment);
+    }
+    expect(sheet.sections.some((section) => section.label === 'Lorebook')).toBe(true);
+  });
+
+  /*
+   * The second invariant. Every character of the description lands in exactly one section,
+   * heading lines included — nothing is summarised, reordered, or quietly dropped on the way
+   * to a chip.
+   */
+  test('the sections of a field partition that field exactly', () => {
+    const sheet = readCardSheet(card({ description: structured }));
+    const fromDescription = sheet.sections.filter(
+      (section) => section.source.kind === 'split' && section.source.field === 'description',
+    );
+
+    expect(fromDescription.map((section) => section.text).join('')).toBe(structured);
+  });
+
+  test('sections carry the style that found them, for anything that needs to explain itself', () => {
+    const sheet = readCardSheet(
+      card({ description: '## Appearance\nRaven.\n\n## Backstory\nCoast.' }),
+    );
+
+    expect(sheet.sections[0]?.source).toEqual({
+      kind: 'split',
+      field: 'description',
+      style: 'markdown',
+    });
+  });
+
+  test('ids come from the heading, so the open section survives an edit above it', () => {
+    const first = readCardSheet(card({ description: structured }));
+    const shifted = readCardSheet(card({ description: `A new opening line.\n\n${structured}` }));
+
+    expect(first.sections[0]?.id).toBe('description:appearance');
+    expect(shifted.sections.map((section) => section.id)).toContain('description:appearance');
+  });
+
+  /*
+   * Both are transcripts of a sort, and every heuristic in `cardStructure.ts` false-positives
+   * on one: forty chips named after whatever the speaker said first.
+   */
+  test('example dialogue and the lorebook are never split', () => {
+    const sheet = readCardSheet(
+      card({
+        mes_example: '## Appearance\nMm.\n\n## Backstory\nMm.',
+        character_book: book([
+          { keys: ['lamp'], content: '## Appearance\nBrass.\n\n## Age\nOld.' },
+        ]),
+      }),
+    );
+
+    expect(sheet.sections.map((section) => section.label)).toContain('Examples');
+    expect(sheet.sections.map((section) => section.label)).toContain('Lorebook');
+    expect(sheet.rung).toBe('fields');
+  });
+
+  test('a heading found in the personality is labelled from the personality', () => {
+    const sheet = readCardSheet(
+      card({ description: '', personality: 'Warmth:\nReal, but rationed.\n\nTemper:\nSlow.' }),
+    );
+
+    expect(sheet.sections.map((section) => section.label)).toEqual([
+      'Warmth',
+      'Temper',
+      'Scenario',
+      'Examples',
+    ]);
+  });
+
+  test('two headings of the same name still get their own chip', () => {
+    const sheet = readCardSheet(
+      card({
+        description: '## Appearance\nHuman: raven hair.\n\n## Appearance\nWolf: grey, and larger.',
+      }),
+    );
+    const ids = sheet.sections.map((section) => section.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain('description:appearance');
+    expect(ids).toContain('description:appearance-2');
+  });
+
+  test('appearance opens by default even when the card puts it second', () => {
+    const sheet = readCardSheet(
+      card({ description: 'Backstory:\nThe coast.\n\nAppearance:\nRaven hair.' }),
+    );
+
+    expect(defaultSectionId(sheet)).toBe('description:appearance');
+  });
+});
+
 describe('choosing which section opens', () => {
   function sheetOf(...labels: string[]): CardSheet {
     return {
