@@ -21,6 +21,7 @@ import { DesignMessage } from './DesignMessage.tsx';
 import { ExamplesPanel } from './ExamplesPanel.tsx';
 import { finishSession } from './finish.ts';
 import { isAnalyseRequest, renderStashRequest } from './prompt.ts';
+import { CocreatorQuickCommands } from './CocreatorQuickCommands.tsx';
 import { StashPanel } from './StashPanel.tsx';
 import { type CocreatorAction, cocreatorReducer } from './state/cocreatorReducer.ts';
 import { useCocreator } from './useCocreator.ts';
@@ -232,6 +233,14 @@ export function CocreatorDesk({
     }
   }, [design, session.id, session.modified, onFinished, onError]);
 
+  const handleInsertQuickCommand = useCallback((text: string) => {
+    setDraft((current) => {
+      const trimmed = current.trimEnd();
+      return trimmed ? `${trimmed}\n${text}` : text;
+    });
+    setTimeout(() => composerRef.current?.focus({ preventScroll: true }), 0);
+  }, []);
+
   const lastIndex = state.messages.length - 1;
 
   return (
@@ -322,6 +331,11 @@ export function CocreatorDesk({
           </div>
 
           <div className="cocreator-composer">
+            <CocreatorQuickCommands
+              quickCommands={defaults.quickCommands ?? []}
+              onInsertCommand={handleInsertQuickCommand}
+              onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}
+            />
             <textarea
               ref={composerRef}
               className="wc-textarea cocreator-composer__input"

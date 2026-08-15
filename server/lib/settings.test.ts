@@ -492,6 +492,50 @@ describe('example set character identity changes', () => {
     const next = reassignCharacterExampleSets(current, 'Doomed.png', null);
     expect(next?.coCreator.exampleSets[0]?.cards).toEqual(['Kept.png']);
   });
+
+  test('coCreator quick commands replace wholesale, an empty list clearing them all', () => {
+    const current = mergeSettings(base(), {
+      coCreator: {
+        quickCommands: [{ id: 'c1', name: 'Openings', text: 'Give me 3 alternate openings.' }],
+      } as never,
+    });
+    expect(current.coCreator.quickCommands).toEqual([
+      { id: 'c1', name: 'Openings', text: 'Give me 3 alternate openings.' },
+    ]);
+    expect(
+      mergeSettings(current, { coCreator: { quickCommands: [] } as never }).coCreator.quickCommands,
+    ).toEqual([]);
+  });
+
+  test('a malformed coCreator quick-commands patch cannot wipe the list', () => {
+    const current = mergeSettings(base(), {
+      coCreator: {
+        quickCommands: [{ id: 'c1', name: 'Openings', text: 'Give me 3 alternate openings.' }],
+      } as never,
+    });
+    for (const patch of [
+      { coCreator: { quickCommands: null } },
+      { coCreator: { quickCommands: 'bad' } },
+      { coCreator: {} },
+    ]) {
+      expect(
+        mergeSettings(current, patch as never).coCreator.quickCommands,
+      ).toEqual(current.coCreator.quickCommands);
+    }
+  });
+
+  test('coCreator quick commands remain separate from chat quick commands', () => {
+    const next = mergeSettings(base(), {
+      quickCommands: [{ id: 'chat-cmd', name: 'Chat Cmd', text: 'Chat text' }],
+      coCreator: {
+        quickCommands: [{ id: 'cc-cmd', name: 'CoCreator Cmd', text: 'CoCreator text' }],
+      } as never,
+    });
+    expect(next.quickCommands).toEqual([{ id: 'chat-cmd', name: 'Chat Cmd', text: 'Chat text' }]);
+    expect(next.coCreator.quickCommands).toEqual([
+      { id: 'cc-cmd', name: 'CoCreator Cmd', text: 'CoCreator text' },
+    ]);
+  });
 });
 
 describe('dialogue colour identity changes', () => {

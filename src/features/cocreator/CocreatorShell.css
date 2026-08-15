@@ -382,13 +382,50 @@
 
 .cocreator-composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: var(--wc-space-2);
   max-width: var(--wc-measure);
   width: 100%;
   margin-inline: auto;
   padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
+}
+
+.cocreator-quick-commands {
+  position: relative;
+}
+
+.cocreator-quick-commands > .popover--editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cocreator-quick-commands > .popover--editor .popover__popup {
+  pointer-events: auto;
+}
+
+.cocreator-composer .popover__trigger {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  color: var(--wc-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
+}
+
+.cocreator-composer .popover__trigger:hover,
+.cocreator-composer .popover__trigger[aria-expanded="true"] {
+  border-color: var(--wc-border-strong);
+  color: var(--wc-text);
 }
 
 .cocreator-composer__input {
