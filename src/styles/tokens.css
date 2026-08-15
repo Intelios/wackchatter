@@ -151,6 +151,9 @@
   --wc-measure: 860px;
   /* Ceiling for lists that would otherwise run the length of the panel. */
   --wc-scroll-cap: 420px;
+  /* The card sheet on an avatar. Wide enough for a description to read as prose, narrow
+     enough to leave the transcript it hangs over visible either side of it. */
+  --wc-card-sheet-width: 420px;
   /* The crash screen. Narrower than the transcript's measure on purpose: a stack trace is
      not prose, and long lines of it are harder to scan, not easier. */
   --wc-crash-width: 620px;

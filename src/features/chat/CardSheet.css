@@ -1,0 +1,216 @@
+/*
+ * The card sheet's three bands. The popover and the reader supply their own box; this is
+ * what sits inside either of them, and the only difference between the two is measure and
+ * type size — see [data-variant] at the bottom.
+ */
+
+.card-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  min-height: 0;
+}
+
+/* --- Find --------------------------------------------------------------- */
+
+.card-sheet__find {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: 0 var(--wc-space-2);
+  height: var(--wc-control);
+  background: var(--wc-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  transition: border-color var(--wc-duration-fast) ease;
+  flex: none;
+}
+
+.card-sheet__find:focus-within {
+  border-color: var(--wc-accent);
+}
+
+.card-sheet__find-icon {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+}
+
+.card-sheet__input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--wc-text);
+  font-family: inherit;
+  font-size: var(--wc-text-sm);
+}
+
+.card-sheet__input:focus {
+  outline: none;
+}
+
+.card-sheet__input::placeholder {
+  color: var(--wc-text-faint);
+}
+
+.card-sheet__count {
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.card-sheet__count[data-empty] {
+  color: var(--wc-text-faint);
+}
+
+/*
+ * Sits in the find row rather than a footer: the row is already the sheet's control strip,
+ * and a second one would cost height the reading area needs more.
+ *
+ * Scoped under `.card-sheet` to outrank `.wc-button`, not to be tidy. The two are the same
+ * specificity, so which wins comes down to the order Vite happens to inject the two
+ * stylesheets — and that order is not the same in dev as it is in a production bundle.
+ * Losing it leaves the button at its default padding, three pixels taller than the row it
+ * sits in. `.message__notes .popover__trigger` next door does this for the same reason.
+ */
+.card-sheet .card-sheet__action {
+  width: var(--wc-control-sm);
+  height: var(--wc-control-sm);
+  padding: 0;
+  color: var(--wc-text-faint);
+  flex-shrink: 0;
+}
+
+.card-sheet .card-sheet__action:hover:not(:disabled) {
+  color: var(--wc-text);
+}
+
+/* --- The section index -------------------------------------------------- */
+
+.card-sheet__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1);
+  flex: none;
+}
+
+.card-sheet__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: 2px var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  border-radius: 999px;
+  background: var(--wc-surface);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  transition:
+    color var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease;
+}
+
+.card-sheet__chip:hover {
+  background: var(--wc-surface-hover);
+  color: var(--wc-text);
+}
+
+.card-sheet__chip[aria-selected="true"] {
+  background: var(--wc-accent-subtle);
+  border-color: var(--wc-accent);
+  color: var(--wc-accent);
+}
+
+/* Faded, not hidden. The list must not reflow as you type, and a section you cannot see is
+   a section you cannot reach. */
+.card-sheet__chip[data-quiet] {
+  opacity: 0.45;
+}
+
+.card-sheet__chip-count {
+  font-family: var(--wc-font-mono);
+  font-size: 10px;
+  color: var(--wc-accent);
+}
+
+.card-sheet__chip[aria-selected="true"] .card-sheet__chip-count {
+  color: inherit;
+}
+
+/* --- The open section --------------------------------------------------- */
+
+.card-sheet__body {
+  min-height: 0;
+  overflow-y: auto;
+  font-size: var(--wc-text-sm);
+  line-height: 1.65;
+  color: var(--wc-text);
+  /* Cards carry unbroken URLs and the odd wall of underscores. */
+  overflow-wrap: anywhere;
+}
+
+.card-sheet__text > :first-child,
+.card-sheet__plain:first-child {
+  margin-top: 0;
+}
+
+.card-sheet__text > :last-child {
+  margin-bottom: 0;
+}
+
+.card-sheet__text p,
+.card-sheet__text ul,
+.card-sheet__text ol {
+  margin: 0 0 var(--wc-space-2);
+}
+
+.card-sheet__text a {
+  color: var(--wc-accent);
+}
+
+/* The filtering view. Pre-wrap because the card's own line breaks are the only structure
+   left once markdown is off. */
+.card-sheet__plain {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.card-sheet__plain mark {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  border-radius: var(--wc-radius-sm);
+  padding: 0 2px;
+}
+
+.card-sheet__empty {
+  margin: 0;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-faint);
+}
+
+/* --- Sizes -------------------------------------------------------------- */
+
+/*
+ * The popover is a glance and the reader is a read, so the difference between them is
+ * measure and type size — nothing structural. The popover's own height cap comes from
+ * Popover.tsx, which measures the room inside the transcript.
+ */
+.card-sheet[data-variant="reader"] {
+  gap: var(--wc-space-4);
+}
+
+.card-sheet[data-variant="reader"] .card-sheet__body {
+  font-size: var(--wc-text-base);
+  line-height: 1.75;
+}
+
+.card-sheet[data-variant="reader"] .card-sheet__chip {
+  font-size: var(--wc-text-sm);
+  padding: 3px var(--wc-space-3);
+}

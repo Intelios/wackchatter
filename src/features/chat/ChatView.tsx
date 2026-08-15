@@ -1,6 +1,7 @@
 import { currentText, type MessageState } from '@shared/chat/message.ts';
 import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
+import type { CardDataV2 } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
@@ -30,6 +31,7 @@ import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { QuickCommands } from './QuickCommands.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
+import { createCardStore } from './state/cardStore.ts';
 import {
   appendTranscriptWindow,
   initialTranscriptWindow,
@@ -57,6 +59,13 @@ interface ChatViewProps {
   creatorNotes: string;
   /** How many greetings the card offers, so a scenario list can be lined up with them. */
   greetingCount: number;
+  /**
+   * The open character's card, for the sheet on their avatar. Already in memory — the chat
+   * cannot render without it — so reading it back costs no fetch.
+   */
+  card: CardDataV2 | null;
+  /** Leaves the chat for the character editor, offered from inside the sheet. */
+  onEditCharacter: () => void;
   /** False until an endpoint and model are configured. */
   ready: boolean;
   /** Leave the chat and go back to the no-character state. */
@@ -93,6 +102,8 @@ export function ChatView({
   personaAvatarVersions,
   creatorNotes,
   greetingCount,
+  card,
+  onEditCharacter,
   ready,
   onCloseChat,
   onOpenPanel,
@@ -472,6 +483,34 @@ export function ChatView({
   const toggleHidden = useCallback((id: string) => chat.toggleHidden(id), [chat]);
   const branchFrom = useCallback((id: string) => void chat.branchFrom(id), [chat]);
 
+  /*
+   * Through a ref, unlike the callbacks above.
+   *
+   * Those are keyed on `chat`, which is a fresh object literal every render — fine for
+   * them, because they are recreated together and the transcript re-renders on chat state
+   * anyway. This one comes from `App`, where the only honest version of it closes over the
+   * selected avatar and a `transitionToCharacter` that itself depends on `chat`. Keying on
+   * that would hand every row a new prop on every render and quietly undo the memo the rest
+   * of this section exists to protect. The ref keeps the identity fixed for the component's
+   * life while still calling the current one.
+   */
+  const editCharacterRef = useRef(onEditCharacter);
+  editCharacterRef.current = onEditCharacter;
+  const editCharacter = useCallback(() => editCharacterRef.current(), []);
+
+  /*
+   * The card, out of band.
+   *
+   * Created once and synced from an effect, so the bubbles that carry the sheet's trigger
+   * never see the card change identity — see `state/cardStore.ts` for what a plain prop
+   * would cost while someone is typing in the character editor. `set` ignores a snapshot
+   * that matches the one it holds, so running this on every render is free.
+   */
+  const [cardStore] = useState(createCardStore);
+  useEffect(() => {
+    cardStore.set({ avatar, card, render: chat.renderGreeting });
+  }, [cardStore, avatar, card, chat.renderGreeting]);
+
   const lastId = state.messages[state.messages.length - 1]?.id ?? null;
   // A transcript ending on the user's turn is one still owed a reply — after a failure,
   // an abort, or deleting the reply. That is what makes retry available.
@@ -641,6 +680,11 @@ export function ChatView({
                   avatarUrl={characterAvatarUrl}
                   dialogueActive={characterDialogue.active}
                   dialogueColor={characterDialogue.color}
+                  // Character rows only. A persona has no card, so a user row's avatar
+                  // stays a picture rather than becoming a control that opens someone
+                  // else's description.
+                  cardStore={cardStore}
+                  onEditCharacter={editCharacter}
                 />
               );
             })

@@ -62,6 +62,25 @@
   object-fit: cover;
 }
 
+/*
+ * The character's avatar opens their card.
+ *
+ * The affordance has to be discoverable without being noise, because the element looked
+ * inert for the app's whole life before this: a border that warms on hover says "this is a
+ * control" to anyone who happens to pass over it, and the trigger's `title` — "<name>'s
+ * card" — says what it does. Nothing changes at rest, so a transcript at rest is unchanged.
+ *
+ * The base button reset (base.css) already zeroes padding and inherits the font, and the
+ * class beats it on background and border, so the element needs no reset of its own.
+ */
+.message__avatar--card:hover {
+  border-color: var(--wc-accent);
+}
+
+.message__avatar--card[aria-expanded="true"] {
+  border-color: var(--wc-accent);
+}
+
 .message__ident {
   display: flex;
   align-items: baseline;
