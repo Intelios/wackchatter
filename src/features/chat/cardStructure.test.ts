@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { type FieldSplit, findHeadingSections, splitCardText } from './cardStructure.ts';
+import {
+  type FieldSplit,
+  findGroupSections,
+  findHeadingSections,
+  splitCardText,
+} from './cardStructure.ts';
 
 function split(text: string, fallback = 'Description'): FieldSplit | null {
   return findHeadingSections(text, fallback);
@@ -380,11 +385,158 @@ describe('line endings', () => {
   });
 });
 
-describe('the seam', () => {
-  test('splitCardText is the heading pass until groups land', () => {
-    const text = '## Appearance\nRaven hair.\n\n## Backstory\nThe coast.';
+describe('PList groups', () => {
+  function group(text: string, fallback = 'Description'): FieldSplit | null {
+    return findGroupSections(text, fallback);
+  }
 
-    expect(splitCardText(text, 'Description')).toEqual(findHeadingSections(text, 'Description'));
+  function groupLabels(text: string, fallback = 'Description'): string[] {
+    return group(text, fallback)?.parts.map((part) => part.label) ?? [];
+  }
+
+  test('two attribute lines are a structure', () => {
+    const text = [
+      '[Seraphina\'s Personality= "caring", "protective", "compassionate"]',
+      '[Seraphina\'s body= "pink hair", "long hair", "amber eyes"]',
+    ].join('\n');
+
+    expect(group(text)?.style).toBe('plist');
+    expect(groupLabels(text)).toEqual(['Personality', 'Body']);
+    expectExactPartition(text, group(text));
+  });
+
+  /* The chip already sits under her avatar; whose body it is was never in question. */
+  test('the possessive is dropped from the label', () => {
+    const text = '[Mika\'s appearance= "blonde"]\n[Mika\'s likes= "cameras"]';
+
+    expect(groupLabels(text)).toEqual(['Appearance', 'Likes']);
+  });
+
+  test('a label with no possessive is left alone', () => {
+    const text = '[Personality: "caring", "gentle"]\n[Body: "pink hair", "amber eyes"]';
+
+    expect(groupLabels(text)).toEqual(['Personality', 'Body']);
+  });
+
+  /*
+   * The shape the default SillyTavern card actually has: attributes, then two screens of
+   * example dialogue, then one stray bracketed line at the very bottom. Taking every match
+   * would hand `body` the whole transcript and add a chip called Genre.
+   */
+  test('a stray bracketed line below the dialogue is not one of the attributes', () => {
+    const text = [
+      '[Seraphina\'s Personality= "caring", "protective"]',
+      '[Seraphina\'s body= "pink hair", "amber eyes"]',
+      '<START>',
+      '{{user}}: "Describe your traits?"',
+      '{{char}}: *She smiles, and the light bends around her.*',
+      '[Genre: fantasy; Tags: adventure, Magic]',
+    ].join('\n');
+
+    expect(groupLabels(text)).toEqual(['Personality', 'Body', 'Description']);
+    expectExactPartition(text, group(text));
+
+    // The attribute keeps its own line and nothing else; the transcript is its own section.
+    const parts = group(text)?.parts ?? [];
+    expect(text.slice(parts[1]?.start ?? 0, parts[1]?.end ?? 0)).not.toContain('<START>');
+    expect(text.slice(parts[2]?.start ?? 0, parts[2]?.end ?? 0)).toContain('Genre: fantasy');
+  });
+
+  test('text above the attributes takes the field name too', () => {
+    const text = 'Seraphina guards the forest.\n\n[Personality: "caring"]\n[Body: "pink hair"]';
+
+    expect(groupLabels(text)).toEqual(['Description', 'Personality', 'Body']);
+    expectExactPartition(text, group(text));
+  });
+
+  test('one attribute line is not a dialect', () => {
+    expect(group('[Seraphina\'s body= "pink hair", "amber eyes"]')).toBeNull();
+  });
+
+  /*
+   * A card that writes every sentence in brackets is not offering an index, and forty chips
+   * would read worse than the one section it already is. Falling to the field rung is the
+   * ladder working, not failing.
+   */
+  test('a pathological number of groups falls through instead of exploding', () => {
+    const many = Array.from({ length: 40 }, (_, i) => `[Trait${i}: "value"]`).join('\n');
+    const some = Array.from({ length: 30 }, (_, i) => `[Trait${i}: "value"]`).join('\n');
+
+    expect(group(many)).toBeNull();
+    expect(group(some)?.parts).toHaveLength(30);
+  });
+
+  test('a markdown link is not an attribute line', () => {
+    expect(group('[the wiki](https://example.com)\n[the map](https://example.com/map)')).toBeNull();
+  });
+});
+
+describe('W++ groups', () => {
+  function group(text: string): FieldSplit | null {
+    return findGroupSections(text, 'Description');
+  }
+
+  test('attribute lines inside the braces are the sections', () => {
+    const text = [
+      '[character("Aqua")',
+      '{',
+      'Species("Goddess")',
+      'Mind("Selfish" + "Childish")',
+      'Body("blue hair" + "blue eyes")',
+      '}]',
+    ].join('\n');
+
+    expect(group(text)?.style).toBe('wpp');
+    expect(group(text)?.parts.map((part) => part.label)).toEqual([
+      'Description',
+      'Species',
+      'Mind',
+      'Body',
+      'Description',
+    ]);
+    expectExactPartition(text, group(text));
+  });
+
+  /*
+   * The guard that matters. Allowing a space in the attribute name would find attributes in
+   * any narration that used a parenthetical, and narration is most of what a card is.
+   */
+  test('narration with a parenthetical is not an attribute', () => {
+    const text = 'She smiled ("softly")\nHe answered ("not at all")';
+
+    expect(group(text)).toBeNull();
+  });
+
+  test('the header the dialect opens with is not an attribute', () => {
+    const text = '[character("Aqua")\n[character("Kazuma")';
+
+    expect(group(text)).toBeNull();
+  });
+});
+
+describe('the seam', () => {
+  test('headings are tried before groups', () => {
+    const text = [
+      '## Appearance',
+      '[Seraphina\'s body= "pink hair"]',
+      '',
+      '## Personality',
+      '[Seraphina\'s Personality= "caring"]',
+    ].join('\n');
+
+    // Prose under headings that mentions a bracketed list, not a bracketed card with stray
+    // hashes — so the headings win and the brackets stay inside their sections.
+    expect(splitCardText(text, 'Description')?.style).toBe('markdown');
+  });
+
+  test('groups answer when headings find nothing', () => {
+    const text = '[Personality: "caring", "gentle"]\n[Body: "pink hair", "amber eyes"]';
+
+    expect(splitCardText(text, 'Description')).toEqual(findGroupSections(text, 'Description'));
+    expect(findHeadingSections(text, 'Description')).toBeNull();
+  });
+
+  test('a plain paragraph is still no structure at all', () => {
     expect(splitCardText('One undivided paragraph, as most cards are.', 'Description')).toBeNull();
   });
 });

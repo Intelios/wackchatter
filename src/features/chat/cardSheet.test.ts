@@ -259,6 +259,72 @@ describe('a field that carries its own structure', () => {
   });
 });
 
+describe('a field written in a bracketed dialect', () => {
+  /* The default SillyTavern card, near enough: attributes, then example dialogue. */
+  const plist = [
+    '[Seraphina\'s Personality= "caring", "protective", "compassionate"]',
+    '[Seraphina\'s body= "pink hair", "long hair", "amber eyes"]',
+    '<START>',
+    '{{user}}: "Describe your traits?"',
+    '{{char}}: *She smiles, and the light bends around her.*',
+  ].join('\n');
+
+  test('the attributes become sections and the sheet drops to the group rung', () => {
+    const sheet = readCardSheet(card({ description: plist, personality: '', scenario: '' }));
+
+    expect(sheet.rung).toBe('groups');
+    expect(sheet.sections.map((section) => section.label)).toEqual([
+      'Personality',
+      'Body',
+      'Description',
+      'Examples',
+    ]);
+  });
+
+  test('the attributes keep their own lines and the transcript keeps its own section', () => {
+    const sheet = readCardSheet(card({ description: plist, personality: '', scenario: '' }));
+
+    expect(sheet.sections[1]?.text).toContain('pink hair');
+    expect(sheet.sections[1]?.text).not.toContain('<START>');
+    expect(sheet.sections[2]?.text).toContain('<START>');
+  });
+
+  test('the split still refines one field and partitions it exactly', () => {
+    const sheet = readCardSheet(card({ description: plist }));
+    const fromDescription = sheet.sections.filter(
+      (section) => section.source.kind === 'split' && section.source.field === 'description',
+    );
+
+    expect(fromDescription.map((section) => section.text).join('')).toBe(plist);
+    for (const label of ['Personality', 'Scenario', 'Examples']) {
+      expect(sheet.sections.some((section) => section.label === label)).toBe(true);
+    }
+  });
+
+  /* "Body" is already one of the names appearance goes by, so the card opens where it should. */
+  test('a body attribute is what opens by default', () => {
+    const sheet = readCardSheet(card({ description: plist, personality: '', scenario: '' }));
+
+    expect(defaultSectionId(sheet)).toBe('description:body');
+  });
+
+  /*
+   * A PList group called Personality alongside the card's own personality field: two chips
+   * reading the same, both the card's own words, and distinct ids so both stay reachable.
+   * Renaming either would be the sheet inventing text about a card it did not write.
+   */
+  test('a group may share a label with a field without shadowing it', () => {
+    const sheet = readCardSheet(card({ description: plist }));
+    const personality = sheet.sections.filter((section) => section.label === 'Personality');
+
+    expect(personality).toHaveLength(2);
+    expect(personality.map((section) => section.id)).toEqual([
+      'description:personality',
+      'field:personality',
+    ]);
+  });
+});
+
 describe('choosing which section opens', () => {
   function sheetOf(...labels: string[]): CardSheet {
     return {
