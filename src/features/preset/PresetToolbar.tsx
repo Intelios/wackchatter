@@ -1,6 +1,6 @@
 import type { PresetSummary } from '@shared/types/preset.ts';
 import { useRef } from 'react';
-import { DownloadIcon, EditIcon, UploadIcon } from '../../layout/icons.tsx';
+import { CopyIcon, DownloadIcon, EditIcon, UploadIcon } from '../../layout/icons.tsx';
 import { presetApi } from '../../lib/api.ts';
 import type { PresetDraft } from './usePresetDraft.ts';
 import './PresetToolbar.css';
@@ -66,6 +66,17 @@ export function PresetToolbar({ presets, presetId, onSelectPreset, draft }: Pres
           onClick={draft.startRename}
         >
           <EditIcon />
+        </button>
+
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          title="Duplicate preset"
+          aria-label="Duplicate preset"
+          disabled={!presetId}
+          onClick={() => void draft.duplicate()}
+        >
+          <CopyIcon />
         </button>
 
         <button

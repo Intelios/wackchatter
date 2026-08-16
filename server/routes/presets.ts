@@ -5,6 +5,7 @@ import type { Preset } from '../../shared/types/preset.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import {
   deletePreset,
+  duplicatePreset,
   getPreset,
   importPreset,
   listPresets,
@@ -39,6 +40,17 @@ export async function handlePresetRoute(
 
   if (segments.length === 0) return null;
   const id = decodeURIComponent(segments[0]!);
+
+  // /api/presets/:id/duplicate
+  if (segments[1] === 'duplicate' && method === 'POST') {
+    const body = await readJson<{ preset?: Preset }>(request).catch(() => null);
+    try {
+      const summary = await duplicatePreset(id, body?.preset);
+      return summary ? json(summary, { status: 201 }) : notFound('Preset not found.');
+    } catch (error) {
+      return errorResponse((error as Error).message);
+    }
+  }
 
   // /api/presets/:id/export
   if (segments[1] === 'export' && method === 'GET') {

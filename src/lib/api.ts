@@ -205,6 +205,13 @@ export const presetApi = {
       body: JSON.stringify({ name }),
     }),
 
+  duplicate: (id: string, preset?: Preset) =>
+    request<PresetSummary>(`/presets/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ preset }),
+    }),
+
   remove: (id: string) =>
     request<{ ok: true }>(`/presets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 

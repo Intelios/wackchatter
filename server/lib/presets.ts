@@ -81,6 +81,21 @@ function presetExists(name: string): boolean {
   return existsSync(join(PATHS.presets, `${name}.json`));
 }
 
+/** Duplicate a preset. Creates a new JSON file under a free name derived from the original. */
+export async function duplicatePreset(
+  id: string,
+  customPreset?: Preset,
+): Promise<PresetSummary | null> {
+  const preset = customPreset ? normalizePreset(customPreset) : getPreset(id);
+  if (!preset) return null;
+
+  const base = sanitizeFilename(`${id} (copy)`) ?? 'Preset (copy)';
+  const newId = uniqueName(base, presetExists);
+
+  await savePreset(newId, preset);
+  return { id: newId, name: newId, modified: Date.now() };
+}
+
 /** Import a preset under a free name derived from the supplied filename. */
 export async function importPreset(raw: unknown, suggestedName: string): Promise<PresetSummary> {
   const preset = normalizePreset(raw);

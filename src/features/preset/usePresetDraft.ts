@@ -44,6 +44,7 @@ export interface PresetDraft {
   save: () => Promise<void>;
   revert: () => void;
   rename: (next: string) => Promise<void>;
+  duplicate: () => Promise<void>;
   importPreset: (file: File | undefined) => Promise<void>;
 }
 
@@ -122,6 +123,18 @@ export function usePresetDraft({
     [onPresetsChanged, onSelectPreset, presetId],
   );
 
+  const duplicate = useCallback(async () => {
+    if (!presetId) return;
+    try {
+      const duplicated = await presetApi.duplicate(presetId, dirty && preset ? preset : undefined);
+      onPresetsChanged();
+      onSelectPreset(duplicated.id);
+      setStatus(`Duplicated as “${duplicated.id}”`);
+    } catch (err) {
+      setStatus((err as Error).message);
+    }
+  }, [dirty, onPresetsChanged, onSelectPreset, preset, presetId]);
+
   const importPreset = useCallback(
     async (file: File | undefined) => {
       if (!file) return;
@@ -155,6 +168,7 @@ export function usePresetDraft({
     save,
     revert: onRevertPreset,
     rename,
+    duplicate,
     importPreset,
   };
 }
