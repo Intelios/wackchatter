@@ -12,7 +12,7 @@ import { GuidedSwipeIcon, SendIcon, StopIcon, WandIcon } from '../../layout/icon
 import { type SlashCommandHelp, slashCompletion } from './slashCommands.ts';
 import './Composer.css';
 
-const MAX_ROWS = 12;
+const MAX_ROWS = 16;
 
 /**
  * The one write path into the composer's private draft — quick commands use it to place
@@ -187,7 +187,7 @@ export function Composer({
    * and clamps to MAX_ROWS, and with `text` as the only trigger that wrong height then
    * sticks for the life of the component.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = textarea.current;
     if (!element) return;
 
@@ -198,17 +198,45 @@ export function Composer({
       // This is the case worth special-casing rather than trusting the measurement for:
       // measured while the composer is narrow (mid-transition, or laid out inside a
       // collapsed column) the PLACEHOLDER wraps to a character per line, `scrollHeight`
-      // comes back enormous, and the clamp below pins an empty composer at twelve rows
+      // comes back enormous, and the clamp below pins an empty composer at max rows
       // for the life of the component.
       if (!text) {
         element.style.height = '';
         return;
       }
 
+      const style = getComputedStyle(element);
+      const lineHeight = Number.parseFloat(style.lineHeight) || 23.25;
+      const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+      const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+      const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
+      const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+      const verticalPadding = paddingTop + paddingBottom;
+      const verticalBorders = borderTop + borderBottom;
+
+      const maxHeight =
+        (Number.isFinite(lineHeight) ? lineHeight * MAX_ROWS : Number.POSITIVE_INFINITY) +
+        verticalPadding +
+        verticalBorders;
+
+      const prevScrollTop = element.scrollTop;
       element.style.height = 'auto';
-      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
-      const max = Number.isFinite(lineHeight) ? lineHeight * MAX_ROWS : Number.POSITIVE_INFINITY;
-      element.style.height = `${Math.min(element.scrollHeight, max)}px`;
+
+      const targetHeight = Math.min(element.scrollHeight + verticalBorders, maxHeight);
+      element.style.height = `${targetHeight}px`;
+
+      // Restore scroll position or follow the caret
+      if (document.activeElement === element) {
+        const isNearEnd = element.selectionEnd === null || element.selectionEnd >= text.length - 1;
+        if (isNearEnd) {
+          element.scrollTop = element.scrollHeight;
+        } else {
+          element.scrollTop = prevScrollTop;
+        }
+        rootRef.current?.scrollIntoView({ block: 'nearest' });
+      } else {
+        element.scrollTop = prevScrollTop;
+      }
     };
 
     resize();
@@ -330,7 +358,12 @@ export function Composer({
             placeholder={placeholder}
             data-shape={rounded ? 'round' : 'neutral'}
             data-settling={settling || undefined}
-            onFocus={() => setRounded(true)}
+            onFocus={() => {
+              setRounded(true);
+              requestAnimationFrame(() => {
+                rootRef.current?.scrollIntoView({ block: 'nearest' });
+              });
+            }}
             // Focus alone would leave the box flat after a send, since sending never took
             // the cursor away — clicking back into it has to count as picking it up again.
             onPointerDown={() => setRounded(true)}
@@ -340,6 +373,9 @@ export function Composer({
               setSlashDismissed(false);
               setSlashIndex(0);
               setRounded(true);
+              requestAnimationFrame(() => {
+                rootRef.current?.scrollIntoView({ block: 'nearest' });
+              });
             }}
             onBlur={() => {
               setSlashDismissed(true);

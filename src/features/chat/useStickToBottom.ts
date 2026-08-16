@@ -77,5 +77,22 @@ export function useStickToBottom<T extends HTMLElement>(
     return () => observer.disconnect();
   }, [contentRef, scrollToBottom]);
 
+  // Follow scroll container viewport resize (e.g. composer expansion/collapse, window resize, panel movement)
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    let lastHeight = scrollEl.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const newHeight = scrollEl.clientHeight;
+      if (newHeight === lastHeight) return;
+      lastHeight = newHeight;
+      if (following.current) scrollToBottom();
+    });
+
+    observer.observe(scrollEl);
+    return () => observer.disconnect();
+  }, [scrollRef, scrollToBottom]);
+
   return { scrollToBottom, stopFollowing, isFollowing: following };
 }
