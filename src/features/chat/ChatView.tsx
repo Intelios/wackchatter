@@ -679,175 +679,183 @@ export function ChatView({
 
       <div className="chat-view__scroll" ref={scrollRef}>
         <div className="chat-view__content" ref={contentRef}>
-          <div className="chat-view__messages">
-            {state.messages.length === 0 ? (
-              <div className="wc-empty">
-                <span>No messages yet. Say something to {characterName}.</span>
-              </div>
-            ) : (
-              visibleMessages.map((message, index) => {
-                const messageIndex = visibleStart + index;
-                const shared = {
-                  message,
-                  streaming: state.streamingId === message.id,
-                  mode: state.mode,
-                  stream,
-                  isLast: message.id === lastId,
-                  busy,
-                  summaryRunning: chat.summaryStatus.running,
-                  displayText: displayTexts.get(message.id)?.text,
-                  displayReasoning: displayTexts.get(message.id)?.reasoning,
-                  // Row 0 only: the notes explain which greeting you are looking at, and
-                  // nothing below the opening message is a greeting.
-                  creatorNotes: messageIndex === 0 ? renderedNotes : undefined,
-                  greetingCount: messageIndex === 0 ? greetingCount : undefined,
-                  onSwipe: swipe,
-                  onRegenerate: regenerate,
-                  onContinue: continueLast,
-                  onRetry: regenerate,
-                  onEdit: editMessage,
-                  onEditReasoning: editReasoning,
-                  onDelete: deleteMessage,
-                  onToggleHidden: toggleHidden,
-                  onBranch: branchFrom,
-                };
-                if (message.is_user) {
-                  const speaker = speakerOf(message);
-                  return (
-                    <UserMessageBubble
-                      key={message.id}
-                      {...shared}
-                      persona={speaker}
-                      avatarVersion={speaker ? personaAvatarVersions?.[speaker.id] : undefined}
-                      // Lookups, not the settings object: an unrelated settings change
-                      // must not re-render every user row.
-                      dialogueEnabled={dialogueColors.enabled}
-                      override={speaker ? dialogueColors.personas[speaker.id] : undefined}
-                    />
-                  );
-                }
+          {state.messages.length === 0 ? (
+            <div className="wc-empty">
+              <span>No messages yet. Say something to {characterName}.</span>
+            </div>
+          ) : (
+            visibleMessages.map((message, index) => {
+              const messageIndex = visibleStart + index;
+              const shared = {
+                message,
+                streaming: state.streamingId === message.id,
+                mode: state.mode,
+                stream,
+                isLast: message.id === lastId,
+                busy,
+                summaryRunning: chat.summaryStatus.running,
+                displayText: displayTexts.get(message.id)?.text,
+                displayReasoning: displayTexts.get(message.id)?.reasoning,
+                // Row 0 only: the notes explain which greeting you are looking at, and
+                // nothing below the opening message is a greeting.
+                creatorNotes: messageIndex === 0 ? renderedNotes : undefined,
+                greetingCount: messageIndex === 0 ? greetingCount : undefined,
+                onSwipe: swipe,
+                onRegenerate: regenerate,
+                onContinue: continueLast,
+                onRetry: regenerate,
+                onEdit: editMessage,
+                onEditReasoning: editReasoning,
+                onDelete: deleteMessage,
+                onToggleHidden: toggleHidden,
+                onBranch: branchFrom,
+              };
+              if (message.is_user) {
+                const speaker = speakerOf(message);
                 return (
-                  <MessageBubble
+                  <UserMessageBubble
                     key={message.id}
                     {...shared}
-                    avatarUrl={characterAvatarUrl}
-                    dialogueActive={characterDialogue.active}
-                    dialogueColor={characterDialogue.color}
-                    // Character rows only. A persona has no card, so a user row's avatar
-                    // stays a picture rather than becoming a control that opens someone
-                    // else's description.
-                    cardStore={cardStore}
-                    onEditCharacter={editCharacter}
-                    onOpenCardReader={openCardReader}
+                    persona={speaker}
+                    avatarVersion={speaker ? personaAvatarVersions?.[speaker.id] : undefined}
+                    // Lookups, not the settings object: an unrelated settings change
+                    // must not re-render every user row.
+                    dialogueEnabled={dialogueColors.enabled}
+                    override={speaker ? dialogueColors.personas[speaker.id] : undefined}
                   />
                 );
-              })
-            )}
-          </div>
-
-          {state.error ? (
-            <div className="chat-view__error" role="alert">
-              <span className="chat-view__error-text">{state.error}</span>
-              {/* The whole point of a failure notice: a way to try again without retyping. */}
-              {awaitingReply ? (
-                <button
-                  type="button"
-                  className="wc-button chat-view__retry"
-                  onClick={() => void chat.regenerate()}
-                  disabled={busy || !ready}
-                >
-                  <RefreshIcon />
-                  Retry
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {chat.saveError ? (
-            <div className="chat-view__error" role="alert">
-              <span className="chat-view__error-text">
-                Could not save this chat: {chat.saveError}
-              </span>
-              <button
-                type="button"
-                className="wc-button chat-view__retry"
-                onClick={() => void chat.retrySave()}
-                disabled={busy || chat.saving}
-              >
-                <RefreshIcon />
-                Retry save
-              </button>
-            </div>
-          ) : null}
-
-          {chat.loadError ? (
-            <div className="chat-view__error" role="alert">
-              <span className="chat-view__error-text">
-                Could not load this character's chats: {chat.loadError}
-              </span>
-              <button
-                type="button"
-                className="wc-button chat-view__retry"
-                onClick={chat.retryLoad}
-                disabled={busy}
-              >
-                <RefreshIcon />
-                Retry load
-              </button>
-            </div>
-          ) : null}
-
-          <Composer
-            ref={composerRef}
-            onSend={handleSend}
-            // The other two composer submits. Both put new text at the end of the transcript,
-            // so both earn the same snap as an ordinary send.
-            onGuide={(text) => {
-              snapToEnd();
-              void chat.guidedRespond(text);
-            }}
-            onGuidedSwipe={(text) => {
-              snapToEnd();
-              void chat.guidedSwipe(text);
-            }}
-            guidedSwipeDisabledReason={guidedSwipeDisabledReason}
-            onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
-            busy={generationBlocked}
-            disabled={!ready || loadBlocksChat}
-            // Deliberately not gated on `ready`: closing or starting a chat has to work
-            // before a connection is configured.
-            leading={
-              <>
-                <ChatMenu
-                  chat={chat}
-                  onCloseChat={onCloseChat}
-                  onOpenPanel={onOpenPanel}
-                  onImportChat={onImportChat}
-                  onOpenCard={openCardReader}
+              }
+              return (
+                <MessageBubble
+                  key={message.id}
+                  {...shared}
+                  avatarUrl={characterAvatarUrl}
+                  dialogueActive={characterDialogue.active}
+                  dialogueColor={characterDialogue.color}
+                  // Character rows only. A persona has no card, so a user row's avatar
+                  // stays a picture rather than becoming a control that opens someone
+                  // else's description.
+                  cardStore={cardStore}
+                  onEditCharacter={editCharacter}
+                  onOpenCardReader={openCardReader}
                 />
-                <QuickCommands
-                  quickCommands={quickCommands}
-                  onInsertCommand={(text) => composerRef.current?.insert(text)}
-                  onQuickCommandsChange={onQuickCommandsChange}
-                />
-                <GuidesPopover
-                  guides={guides}
-                  onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
-                  guidance={guidance}
-                  onGuidanceChange={onGuidanceChange}
-                  disabled={!state.chatId}
-                />
-              </>
-            }
-            placeholder={
-              loadBlocksChat
-                ? 'Retry loading this character before sending a message.'
-                : ready
-                  ? `Message ${characterName}…`
-                  : 'Configure an endpoint and model in the Connections panel first.'
-            }
-          />
+              );
+            })
+          )}
         </div>
+      </div>
+
+      {/*
+        The dock: everything pinned below the transcript, OUTSIDE the scroll container.
+        That placement is the anchor — a composer rendered inside `.chat-view__scroll`
+        scrolls away with the messages, which is exactly the regression this undoes. It
+        still grows with the draft; growth shrinks the transcript's viewport instead of
+        extending a page, and `useStickToBottom` re-pins the bottom as it does, so the
+        message above stays readable beside what you are typing.
+      */}
+      <div className="chat-view__dock">
+        {state.error ? (
+          <div className="chat-view__error" role="alert">
+            <span className="chat-view__error-text">{state.error}</span>
+            {/* The whole point of a failure notice: a way to try again without retyping. */}
+            {awaitingReply ? (
+              <button
+                type="button"
+                className="wc-button chat-view__retry"
+                onClick={() => void chat.regenerate()}
+                disabled={busy || !ready}
+              >
+                <RefreshIcon />
+                Retry
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {chat.saveError ? (
+          <div className="chat-view__error" role="alert">
+            <span className="chat-view__error-text">
+              Could not save this chat: {chat.saveError}
+            </span>
+            <button
+              type="button"
+              className="wc-button chat-view__retry"
+              onClick={() => void chat.retrySave()}
+              disabled={busy || chat.saving}
+            >
+              <RefreshIcon />
+              Retry save
+            </button>
+          </div>
+        ) : null}
+
+        {chat.loadError ? (
+          <div className="chat-view__error" role="alert">
+            <span className="chat-view__error-text">
+              Could not load this character's chats: {chat.loadError}
+            </span>
+            <button
+              type="button"
+              className="wc-button chat-view__retry"
+              onClick={chat.retryLoad}
+              disabled={busy}
+            >
+              <RefreshIcon />
+              Retry load
+            </button>
+          </div>
+        ) : null}
+
+        <Composer
+          ref={composerRef}
+          onSend={handleSend}
+          // The other two composer submits. Both put new text at the end of the transcript,
+          // so both earn the same snap as an ordinary send.
+          onGuide={(text) => {
+            snapToEnd();
+            void chat.guidedRespond(text);
+          }}
+          onGuidedSwipe={(text) => {
+            snapToEnd();
+            void chat.guidedSwipe(text);
+          }}
+          guidedSwipeDisabledReason={guidedSwipeDisabledReason}
+          onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
+          busy={generationBlocked}
+          disabled={!ready || loadBlocksChat}
+          // Deliberately not gated on `ready`: closing or starting a chat has to work
+          // before a connection is configured.
+          leading={
+            <>
+              <ChatMenu
+                chat={chat}
+                onCloseChat={onCloseChat}
+                onOpenPanel={onOpenPanel}
+                onImportChat={onImportChat}
+                onOpenCard={openCardReader}
+              />
+              <QuickCommands
+                quickCommands={quickCommands}
+                onInsertCommand={(text) => composerRef.current?.insert(text)}
+                onQuickCommandsChange={onQuickCommandsChange}
+              />
+              <GuidesPopover
+                guides={guides}
+                onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
+                guidance={guidance}
+                onGuidanceChange={onGuidanceChange}
+                disabled={!state.chatId}
+              />
+            </>
+          }
+          placeholder={
+            loadBlocksChat
+              ? 'Retry loading this character before sending a message.'
+              : ready
+                ? `Message ${characterName}…`
+                : 'Configure an endpoint and model in the Connections panel first.'
+          }
+        />
       </div>
     </div>
   );

@@ -16,6 +16,13 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /*
+   * Both edges, so the transcript keeps the composer's centre line.
+   *
+   * `margin: 0 auto` centres inside the *content* box, which a classic scrollbar eats into
+   * from one side only — the transcript would sit half a scrollbar left of the composer
+   * below it. No-op under the overlay scrollbars macOS defaults to, which reserve nothing.
+   */
   scrollbar-gutter: stable both-edges;
   /* Content-anchoring would fight the ResizeObserver that follows the stream. */
   overflow-anchor: none;
@@ -24,8 +31,6 @@
 .chat-view__content {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
-  box-sizing: border-box;
   gap: var(--wc-space-3);
   /* A readable measure, centred, rather than full-bleed text at any window width. */
   max-width: var(--wc-measure);
@@ -34,11 +39,24 @@
   padding: var(--wc-space-4) var(--wc-space-4) var(--wc-space-5);
 }
 
-.chat-view__messages {
+/*
+ * The pinned bottom: failure notices and the composer, a sibling of the scroll container
+ * rather than a row inside it. Being outside `.chat-view__scroll` is the whole anchor —
+ * the transcript scrolls behind this, and nothing here moves with it.
+ *
+ * `flex-shrink: 0` against the scroller's `flex: 1; min-height: 0` is what turns the
+ * composer's growth into a shorter transcript instead of a taller page. It carries the
+ * measure and the horizontal padding, so both children line up with the bubbles above.
+ */
+.chat-view__dock {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--wc-space-3);
-  flex: 1;
+  width: 100%;
+  max-width: var(--wc-measure);
+  margin: 0 auto;
+  padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
+  gap: var(--wc-space-2);
 }
 
 .chat-view__error {
