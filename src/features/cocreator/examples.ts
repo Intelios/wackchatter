@@ -44,15 +44,6 @@ export const EXAMPLE_FIELD_LABELS: Readonly<Record<ExampleField, string>> = {
   character_book: 'Embedded lorebook',
 };
 
-/**
- * Roughly where example context starts costing more than it teaches.
- *
- * Not a limit — the user may go past it — but the point at which the panel says so. Beyond
- * a few thousand tokens of examples, models start reproducing an example's specifics rather
- * than its register.
- */
-export const EXAMPLE_TOKEN_WARNING = 6000;
-
 export function emptyExampleSelection(): ExampleSelection {
   return { cards: [], fields: { ...DEFAULT_EXAMPLE_FIELDS } };
 }
