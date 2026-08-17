@@ -4,7 +4,6 @@ import type { MenuAction, MenuEntry } from '../../components/Menu.tsx';
 import { buildQuickCommandsMenu, type QuickCommandsActions } from './QuickCommands.tsx';
 import {
   addCommand,
-  commandHint,
   commandLabel,
   nextCommandName,
   removeCommand,
@@ -87,7 +86,7 @@ describe('usableCommands', () => {
   });
 });
 
-describe('commandLabel and commandHint', () => {
+describe('commandLabel', () => {
   test('the name wins when it has one', () => {
     expect(commandLabel(list()[0]!)).toBe('Ending');
   });
@@ -95,18 +94,6 @@ describe('commandLabel and commandHint', () => {
   test('a blank name falls back to a snippet of the text', () => {
     const command: QuickCommand = { id: 'a', name: '   ', text: 'Do the thing.\nMore.' };
     expect(commandLabel(command)).toBe('Do the thing.');
-  });
-
-  test('the hint is the first line, truncated', () => {
-    const command: QuickCommand = {
-      id: 'a',
-      name: 'Long',
-      text: 'A rather long prompt that goes on and on forever.\nSecond line.',
-    };
-    const hint = commandHint(command);
-    expect(hint).toBe('A rather long prompt that goes o…');
-    expect(hint.length).toBe(33);
-    expect(hint).not.toContain('Second line.');
   });
 });
 
@@ -185,6 +172,14 @@ describe('buildQuickCommandsMenu', () => {
     const { actions } = spies();
     const labels = menuActions(buildQuickCommandsMenu(commands, actions));
     expect(labels.map((entry) => entry.label)).toContain('Do the thing.');
+  });
+
+  test('entries carry no hint — the label is the whole command', () => {
+    // A hint shares the label's line and does not shrink, so a long name plus a snippet
+    // stacks the label one word per line. The user wrote the command; the name is enough.
+    const { actions } = spies();
+    const entries = menuActions(buildQuickCommandsMenu(COMMANDS, actions));
+    for (const entry of entries) expect(entry.hint).toBeUndefined();
   });
 
   test('duplicate names both survive — entries are keyed by id, not label', () => {

@@ -50,11 +50,6 @@ export function commandLabel(command: QuickCommand): string {
   return command.name.trim() || snippet(command.text);
 }
 
-/** A short preview of the text, for the menu's hint column. */
-export function commandHint(command: QuickCommand): string {
-  return snippet(command.text);
-}
-
 function snippet(text: string): string {
   const line = (text.trim().split('\n')[0] ?? '').trim();
   return line.length > 32 ? `${line.slice(0, 32)}…` : line;

@@ -73,9 +73,77 @@ function resolveReasoningEffort(preset: Preset): string | undefined {
   return REASONING_EFFORT_MAP[effort] ?? effort;
 }
 
+/**
+ * An Anthropic model on OpenRouter, matched by id prefix.
+ *
+ * OpenRouter namespaces every Anthropic model as `anthropic/claude-…`. The id is the only
+ * signal available: this module is pure so the browser can build the exact payload, and the
+ * model catalogue lives in a component's state, not here. SillyTavern matches on the model id
+ * for the same reason.
+ */
+export function isAnthropicModel(model: string): boolean {
+  return model.trim().toLowerCase().startsWith('anthropic/');
+}
+
+/**
+ * Share of the reply budget each effort spends on thinking. SillyTavern's ratios verbatim
+ * (`calculateClaudeBudgetTokens`), so a preset means the same thing in both apps. `min` is the
+ * floor itself, which is why its ratio is zero rather than a fraction.
+ */
+const CLAUDE_BUDGET_RATIO: Record<string, number> = {
+  min: 0,
+  low: 0.1,
+  medium: 0.25,
+  high: 0.5,
+  max: 0.95,
+};
+
+/** Anthropic rejects a thinking budget below this. */
+const CLAUDE_MIN_BUDGET = 1024;
+/** OpenRouter's ceiling on the Anthropic thinking budget. */
+const CLAUDE_MAX_BUDGET = 128000;
+/** Anthropic requires streaming past this, so a blocking request cannot ask for more. */
+const CLAUDE_MAX_BUDGET_BLOCKING = 21333;
+
+/**
+ * The thinking budget to buy for a Claude model, or null to leave thinking off.
+ *
+ * `auto` returns null and Claude simply does not think — Anthropic's own default. That keeps
+ * the effort selector honest as an on/off switch: nobody starts paying for thinking they did
+ * not ask for, and the "auto sends nothing" rule holds on this path too.
+ */
+export function claudeThinkingBudget(
+  responseTokens: number,
+  preset: Preset,
+  stream: boolean,
+): number | null {
+  const effort = preset.reasoning_effort;
+  if (!effort || effort === 'auto') return null;
+
+  const ratio = CLAUDE_BUDGET_RATIO[effort];
+  if (ratio === undefined) return null;
+
+  const budget = Math.max(Math.floor(responseTokens * ratio), CLAUDE_MIN_BUDGET);
+  return Math.min(budget, stream ? CLAUDE_MAX_BUDGET : CLAUDE_MAX_BUDGET_BLOCKING);
+}
+
+/** Samplers Anthropic will not take once thinking is on. The last three it never took. */
+const CLAUDE_THINKING_CONFLICTS = [
+  'temperature',
+  'top_p',
+  'top_k',
+  'min_p',
+  'top_a',
+  'repetition_penalty',
+];
+
 export function buildRequestBody(request: GenerationRequest): ChatCompletionBody {
   const { messages, preset, connection, stream } = request;
   const descriptor = PROVIDERS[connection.provider];
+
+  // Named rather than inlined: the Claude thinking budget below is sized from the reply
+  // budget and then added to it, so both have to read the same number.
+  const responseTokens = request.maxTokens ?? preset.openai_max_tokens ?? 300;
 
   const body: ChatCompletionBody = {
     model: connection.model,
@@ -85,7 +153,7 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     top_p: preset.top_p ?? 1,
     frequency_penalty: preset.frequency_penalty ?? 0,
     presence_penalty: preset.presence_penalty ?? 0,
-    max_tokens: request.maxTokens ?? preset.openai_max_tokens ?? 300,
+    max_tokens: responseTokens,
   };
 
   // Absent, not empty. An empty array is a validation error on several backends.
@@ -135,7 +203,27 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
 
   if (connection.provider === 'openrouter') {
     const reasoning: Record<string, unknown> = { exclude: connection.showReasoning === false };
-    if (reasoningEffort) reasoning.effort = reasoningEffort;
+
+    // Anthropic ignores a bare `{exclude}` and no longer honours the `:thinking` suffix — an
+    // explicit budget is the only switch. We size it here rather than sending `effort`, which
+    // OpenRouter would turn into a budget we cannot see: `max_tokens` has to clear that number,
+    // so guessing at their ratios would be the only alternative.
+    const claudeBudget = isAnthropicModel(connection.model)
+      ? claudeThinkingBudget(responseTokens, preset, stream)
+      : null;
+
+    if (claudeBudget !== null) {
+      reasoning.max_tokens = claudeBudget;
+      // On top of the reply rather than carved out of it: the reply keeps the length the user
+      // asked for, and `max_tokens` clears the budget by construction.
+      body.max_tokens = responseTokens + claudeBudget;
+      // Anthropic rejects temperature/top_p/top_k alongside thinking, and the other three it
+      // never accepted at all. Deleted here, after the sampler block above has written them.
+      for (const key of CLAUDE_THINKING_CONFLICTS) delete body[key];
+    } else if (reasoningEffort) {
+      reasoning.effort = reasoningEffort;
+    }
+
     body.reasoning = reasoning;
     // OpenRouter's own usage flag. It does not accept OpenAI's stream_options.
     if (connection.reportUsage) body.usage = { include: true };

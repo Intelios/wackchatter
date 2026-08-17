@@ -1,3 +1,4 @@
+import { claudeThinkingBudget, isAnthropicModel } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import {
   CHARACTER_NAMES_BEHAVIOR,
@@ -42,6 +43,16 @@ export function GenerationPanel({
   onConnectionPatch,
 }: GenerationPanelProps) {
   const setField = draft.setField;
+
+  // Claude on OpenRouter reads the effort selector as an on/off switch for thinking, and pays
+  // for it with tokens on top of the reply. Both are worth stating where the knob is, and the
+  // number comes from the same helper the request builder uses so it cannot drift.
+  const responseTokens = preset.openai_max_tokens ?? 300;
+  const claudeOnOpenRouter =
+    connection?.provider === 'openrouter' && isAnthropicModel(connection.model);
+  const claudeBudget = claudeOnOpenRouter
+    ? claudeThinkingBudget(responseTokens, preset, preset.stream_openai !== false)
+    : null;
 
   return (
     <div className="generation-panel">
@@ -157,6 +168,13 @@ export function GenerationPanel({
           onChange={(value) => setField('reasoning_effort', value)}
           hint="Only reasoning models use this. Auto sends nothing, which suits every other model."
         />
+        {claudeOnOpenRouter ? (
+          <p className="wc-hint">
+            {claudeBudget === null
+              ? 'Claude on OpenRouter thinks only when an effort is set — on Auto it does not think at all.'
+              : `Claude on OpenRouter gets a ${claudeBudget.toLocaleString()}-token thinking budget on top of the ${responseTokens.toLocaleString()}-token reply, asking for ${(responseTokens + claudeBudget).toLocaleString()} in total. Temperature, Top P and Top K are not sent — Anthropic rejects them while thinking.`}
+          </p>
+        ) : null}
       </Section>
 
       {connection && onConnectionPatch ? (
@@ -286,6 +304,7 @@ export function GenerationPanel({
             onChange={(e) => setField('stream_openai', e.target.checked)}
           />
           <span>Stream responses</span>
+          <span className="wc-hint">Chat only — the Co-Creator has its own toggle.</span>
         </label>
       </Section>
     </div>

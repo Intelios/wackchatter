@@ -124,6 +124,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   );
   const connection = resolved.connection;
   const systemPrompt = resolved.systemPrompt;
+  const streaming = resolved.streaming;
   const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
   const [loadedPreset, setLoadedPreset] = useState<{ id: string; value: Preset } | null>(null);
 
@@ -336,18 +337,17 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
           return;
         }
 
-        const streamed = preset.stream_openai !== false;
         const body = buildRequestBody({
           messages: prompt.messages,
           preset,
           connection: requestConnection,
-          stream: streamed,
+          stream: streaming,
           maxTokens,
         });
 
         if (!ensureActive()) return;
 
-        stream.begin('', streamed);
+        stream.begin('', streaming);
         streamStarted = true;
 
         const final = await streamGenerate(
@@ -404,7 +404,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         }
       }
     },
-    [connection, preset, systemPrompt, exampleBlockRef, countTokens, stream],
+    [connection, preset, systemPrompt, exampleBlockRef, countTokens, stream, streaming],
   );
 
   const send = useCallback(

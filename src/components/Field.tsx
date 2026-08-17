@@ -467,9 +467,10 @@ interface CheckFieldProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   hint?: string;
+  disabled?: boolean;
 }
 
-export function CheckField({ label, checked, onChange, hint }: CheckFieldProps) {
+export function CheckField({ label, checked, onChange, hint, disabled }: CheckFieldProps) {
   const id = useId();
 
   return (
@@ -479,6 +480,7 @@ export function CheckField({ label, checked, onChange, hint }: CheckFieldProps) 
           id={id}
           type="checkbox"
           checked={checked}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.checked)}
         />
         <span>{label}</span>

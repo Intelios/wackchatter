@@ -445,6 +445,32 @@ describe('co-creator settings', () => {
       },
     ]);
   });
+
+  test('streaming defaults to true when absent from stored settings', () => {
+    const next = mergeSettings(base(), {});
+    expect(next.coCreator.streaming).toBe(true);
+  });
+
+  test('streaming can be toggled off without losing other fields', () => {
+    const next = mergeSettings(base(), { coCreator: { streaming: false } as never });
+
+    expect(next.coCreator.streaming).toBe(false);
+    expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
+    expect(next.coCreator.presetId).toBeNull();
+  });
+
+  test('streaming reverts to the default when set to a non-boolean', () => {
+    const next = mergeSettings(base(), { coCreator: { streaming: 'yes' } as never });
+
+    expect(next.coCreator.streaming).toBe(true);
+  });
+
+  test('explicit streaming true survives a round-trip', () => {
+    const first = mergeSettings(base(), { coCreator: { streaming: true } as never });
+    const second = mergeSettings(first, { streamingFps: 15 });
+
+    expect(second.coCreator.streaming).toBe(true);
+  });
 });
 
 describe('example set character identity changes', () => {

@@ -360,6 +360,8 @@ function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreato
     exampleFields,
     exampleSets,
     quickCommands: normalizeQuickCommands(stored.quickCommands),
+    streaming:
+      typeof stored.streaming === 'boolean' ? stored.streaming : DEFAULT_COCREATOR.streaming,
   };
 }
 
