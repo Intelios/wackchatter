@@ -1,8 +1,15 @@
 import { currentInfo, currentText, type MessageState, swipeCount } from '@shared/chat/message.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardSlot } from '@shared/types/cocreator.ts';
-import { memo, useMemo, useState } from 'react';
-import { ChevronIcon, ChevronLeftIcon, RefreshIcon, TrashIcon } from '../../layout/icons.tsx';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronIcon,
+  ChevronLeftIcon,
+  CopyIcon,
+  EditIcon,
+  RefreshIcon,
+  TrashIcon,
+} from '../../layout/icons.tsx';
 import { Markdown } from '../chat/Markdown.tsx';
 import { Reasoning } from '../chat/Reasoning.tsx';
 import { StreamingText } from '../chat/StreamingText.tsx';
@@ -29,6 +36,7 @@ export interface DesignMessageProps {
   ) => void;
   onSelectSwipe: (id: string, index: number) => void;
   onReroll: () => void;
+  onEdit: (id: string, text: string) => void;
   onDelete: (id: string) => void;
 }
 
@@ -66,14 +74,32 @@ export const DesignMessage = memo(function DesignMessage({
   onUse,
   onSelectSwipe,
   onReroll,
+  onEdit,
   onDelete,
 }: DesignMessageProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const swipes = swipeCount(message);
   const info = currentInfo(message);
   const text = currentText(message);
   const canSwipeBack = message.swipe_id > 0;
+
+  useEffect(() => {
+    if (editing) textarea.current?.focus({ preventScroll: true });
+  }, [editing]);
+
+  function startEditing() {
+    setDraft(text);
+    setEditing(true);
+  }
+
+  function commitEdit() {
+    if (draft !== text) onEdit(message.id, draft);
+    setEditing(false);
+  }
 
   // Only assistant turns carry card content; a user turn is an instruction, not material.
   const parsed = useMemo(
@@ -93,69 +119,121 @@ export const DesignMessage = memo(function DesignMessage({
         ) : null}
         {info.extra?.truncated ? <span className="design-message__badge">truncated</span> : null}
         <span className="design-message__spacer" />
-        <button
-          type="button"
-          className="wc-button wc-button--ghost wc-button--danger design-message__action"
-          data-confirming={confirmDelete}
-          disabled={busy}
-          onClick={() => (confirmDelete ? onDelete(message.id) : setConfirmDelete(true))}
-          onBlur={() => setConfirmDelete(false)}
-          title={
-            busy
-              ? 'Generating a reply'
-              : confirmDelete
-                ? 'Click again to delete'
-                : 'Delete this turn'
-          }
-          aria-label={confirmDelete ? 'Click again to delete' : 'Delete this turn'}
-        >
-          <TrashIcon />
-        </button>
+        {!editing ? (
+          <>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost design-message__action"
+              onClick={startEditing}
+              disabled={busy}
+              title={busy ? 'Generating a reply' : 'Edit this turn'}
+              aria-label="Edit"
+            >
+              <EditIcon />
+            </button>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost design-message__action"
+              onClick={() => void navigator.clipboard.writeText(text)}
+              title="Copy text"
+              aria-label="Copy text"
+            >
+              <CopyIcon />
+            </button>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost wc-button--danger design-message__action"
+              data-confirming={confirmDelete}
+              disabled={busy}
+              onClick={() => (confirmDelete ? onDelete(message.id) : setConfirmDelete(true))}
+              onBlur={() => setConfirmDelete(false)}
+              title={
+                busy
+                  ? 'Generating a reply'
+                  : confirmDelete
+                    ? 'Click again to delete'
+                    : 'Delete this turn'
+              }
+              aria-label={confirmDelete ? 'Click again to delete' : 'Delete this turn'}
+            >
+              <TrashIcon />
+            </button>
+          </>
+        ) : null}
       </header>
 
-      <div className="design-message__body" ref={setBodyEl}>
-        {streaming ? (
-          <StreamingText store={stream} />
-        ) : (
-          <>
-            {info.extra?.reasoning ? <Reasoning text={String(info.extra.reasoning)} /> : null}
-            {parsed ? (
-              parsed.parts.map((part, index) =>
-                part.kind === 'prose' ? (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
-                  <Markdown key={`prose-${index}`} text={part.text} />
-                ) : (
-                  <CardBlockView
+      {editing ? (
+        <div className="design-message__editor">
+          <textarea
+            ref={textarea}
+            className="wc-textarea"
+            value={draft}
+            rows={Math.min(20, Math.max(3, draft.split('\n').length + 1))}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setEditing(false);
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) commitEdit();
+            }}
+          />
+          <div className="design-message__editor-actions">
+            <button type="button" className="wc-button wc-button--primary" onClick={commitEdit}>
+              Save
+            </button>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={() => setEditing(false)}
+            >
+              Cancel
+            </button>
+            <span className="wc-hint">⌘↵ to save, Esc to cancel</span>
+          </div>
+        </div>
+      ) : (
+        <div className="design-message__body" ref={setBodyEl}>
+          {streaming ? (
+            <StreamingText store={stream} />
+          ) : (
+            <>
+              {info.extra?.reasoning ? <Reasoning text={String(info.extra.reasoning)} /> : null}
+              {parsed ? (
+                parsed.parts.map((part, index) =>
+                  part.kind === 'prose' ? (
                     // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
-                    key={`block-${index}`}
-                    block={part.block}
-                    busy={busy}
-                    countTokens={countTokens}
-                    isFilled={isFilled}
-                    onUse={(slot, blockText) =>
-                      onUse(
-                        slot,
-                        blockText,
-                        'block',
-                        part.block.slot ? undefined : part.block.label,
-                      )
-                    }
-                  />
-                ),
-              )
-            ) : (
-              /*
-               * `Markdown`'s default class, deliberately. Prose typography — paragraph
-               * rhythm, emphasis colour, the scrolling `pre`, the inline-code chip — is the
-               * same problem on both surfaces, and a second copy would drift silently.
-               */
-              <Markdown text={text} />
-            )}
-          </>
-        )}
-      </div>
+                    <Markdown key={`prose-${index}`} text={part.text} />
+                  ) : (
+                    <CardBlockView
+                      // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
+                      key={`block-${index}`}
+                      block={part.block}
+                      busy={busy}
+                      countTokens={countTokens}
+                      isFilled={isFilled}
+                      onUse={(slot, blockText) =>
+                        onUse(
+                          slot,
+                          blockText,
+                          'block',
+                          part.block.slot ? undefined : part.block.label,
+                        )
+                      }
+                    />
+                  ),
+                )
+              ) : (
+                /*
+                 * `Markdown`'s default class, deliberately. Prose typography — paragraph
+                 * rhythm, emphasis colour, the scrolling `pre`, the inline-code chip — is the
+                 * same problem on both surfaces, and a second copy would drift silently.
+                 */
+                <Markdown text={text} />
+              )}
+            </>
+          )}
+        </div>
+      )}
 
-      {!message.is_user && !streaming ? (
+      {!message.is_user && !streaming && !editing ? (
         <footer className="design-message__footer">
           {swipes > 1 ? (
             <div className="design-message__swipes">

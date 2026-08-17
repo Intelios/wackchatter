@@ -380,6 +380,20 @@
   font-size: var(--wc-text-sm);
 }
 
+/* --- Editor (mirrors MessageBubble.css) ----------------------------------- */
+
+.design-message__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.design-message__editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
 .cocreator-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

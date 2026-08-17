@@ -317,6 +317,7 @@ export function CocreatorDesk({
                       design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
                     }
                     onReroll={() => void design.reroll()}
+                    onEdit={(id, text) => design.dispatch({ type: 'message/edited', id, text })}
                     onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
                   />
                 ))
