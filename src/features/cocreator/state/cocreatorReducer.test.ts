@@ -286,6 +286,34 @@ describe('swipe selection', () => {
   });
 });
 
+describe('editing the transcript', () => {
+  test('an edit writes only the selected swipe', () => {
+    const before = run(
+      withExchange(),
+      { type: 'gen/started', mode: 'swipe', newId: 'x' },
+      { type: 'gen/finished', text: 'Second.' },
+      { type: 'swipe/select', id: 'a1', index: 0 },
+    );
+    const state = cocreatorReducer(before, {
+      type: 'message/edited',
+      id: 'a1',
+      text: 'Rewritten.',
+    });
+
+    expect(state.messages[1]!.swipes).toEqual(['Rewritten.', 'Second.']);
+    expect(state.revision).toBe(before.revision + 1);
+    assertConsistent(state);
+  });
+
+  test('editing a user message replaces its only swipe', () => {
+    const base = withExchange();
+    const state = run(base, { type: 'message/edited', id: 'u1', text: 'Changed.' });
+
+    expect(currentText(state.messages[0]!)).toBe('Changed.');
+    assertConsistent(state);
+  });
+});
+
 describe('what a mid-flight save is allowed to make durable', () => {
   test('a send in flight projects the transcript without its placeholder', () => {
     const running = run(run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' }), {

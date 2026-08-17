@@ -93,7 +93,10 @@ export function CocreatorDesk({
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupMode, setSetupMode] = useState<'session' | 'defaults'>('session');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const following = useRef(true);
+  const programmatic = useRef(false);
   const { persistence, saving, saveError, state, busy, blockedReason } = design;
 
   useEffect(() => {
@@ -113,14 +116,51 @@ export function CocreatorDesk({
    * enough that chat's windowing scheme would be machinery with no problem to solve — a
    * design session is tens of turns, not hundreds.
    *
-   * The deps are the trigger, not values this reads. It re-runs when a turn is added or a
-   * generation changes state; nothing inside depends on either.
+   * Only scrolls when the user is already at the bottom — scrolling up to read something
+   * pauses the follow until they come back down.
    */
+  const pinBottom = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    programmatic.current = true;
+    node.scrollTop = node.scrollHeight;
+    requestAnimationFrame(() => {
+      programmatic.current = false;
+    });
+  }, []);
+
+  // Track whether the user is still at the bottom.
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+
+    const onScroll = () => {
+      if (programmatic.current) return;
+      const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+      following.current = distance <= 80;
+    };
+
+    node.addEventListener('scroll', onScroll, { passive: true });
+    return () => node.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Follow content growth React never re-rendered the list for (per-token streaming).
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+
+    const observer = new ResizeObserver(() => {
+      if (following.current) pinBottom();
+    });
+
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [pinBottom]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the trigger
   useLayoutEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [state.messages.length, state.status]);
+    if (following.current) pinBottom();
+  }, [state.messages.length, state.status, pinBottom]);
 
   // The composer is the only thing on this screen you can do anything with on arrival.
   useEffect(() => {
@@ -286,7 +326,7 @@ export function CocreatorDesk({
 
         <div className="cocreator-transcript">
           <div className="cocreator-transcript__scroll" ref={scrollRef}>
-            <div className="cocreator-transcript__list">
+            <div className="cocreator-transcript__list" ref={contentRef}>
               {state.messages.length === 0 ? (
                 <p className="wc-empty">
                   Describe the character you have in mind, and work it out together.
@@ -317,6 +357,7 @@ export function CocreatorDesk({
                       design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
                     }
                     onReroll={() => void design.reroll()}
+                    onEdit={(id, text) => design.dispatch({ type: 'message/edited', id, text })}
                     onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
                   />
                 ))

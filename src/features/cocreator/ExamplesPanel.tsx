@@ -5,7 +5,7 @@ import { Popover } from '../../components/Popover.tsx';
 import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import { ExampleSetsPopover } from './ExampleSetsPopover.tsx';
-import { EXAMPLE_FIELD_LABELS, EXAMPLE_FIELD_ORDER, EXAMPLE_TOKEN_WARNING } from './examples.ts';
+import { EXAMPLE_FIELD_LABELS, EXAMPLE_FIELD_ORDER } from './examples.ts';
 import type { LoadedExamples } from './useExampleCards.ts';
 
 interface ExamplesPanelProps {
@@ -64,13 +64,11 @@ export function ExamplesPanel({
     return map;
   }, [characters]);
 
-  const heavy = loaded.tokens > EXAMPLE_TOKEN_WARNING;
-
   return (
     <aside className="examples-panel" aria-label="Example cards">
       <header className="examples-panel__header">
         <h2>Examples</h2>
-        <span className="examples-panel__count" data-warn={heavy || undefined}>
+        <span className="examples-panel__count">
           {selection.cards.length === 0 ? 'none' : `${loaded.tokens} tok`}
         </span>
         <div className="examples-panel__actions">
@@ -164,14 +162,6 @@ export function ExamplesPanel({
             </div>
           );
         })}
-
-        {heavy ? (
-          <p className="examples-panel__warning" role="status">
-            Past about {EXAMPLE_TOKEN_WARNING.toLocaleString()} tokens of examples, models tend to
-            copy an example's specifics rather than its register. Detach one, or turn off a field
-            below.
-          </p>
-        ) : null}
 
         {selection.cards.length > 0 ? (
           <div className="examples-panel__fields">

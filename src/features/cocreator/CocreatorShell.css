@@ -380,6 +380,20 @@
   font-size: var(--wc-text-sm);
 }
 
+/* --- Editor (mirrors MessageBubble.css) ----------------------------------- */
+
+.design-message__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.design-message__editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
 .cocreator-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -713,10 +727,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.examples-panel__count[data-warn] {
-  color: var(--wc-warning, var(--wc-danger));
-}
-
 .examples-panel__actions {
   display: flex;
   align-items: center;
@@ -779,14 +789,6 @@
 
 .examples-card > .wc-button {
   margin-left: auto;
-}
-
-.examples-panel__warning {
-  padding: var(--wc-space-2);
-  border: var(--wc-border-width) solid var(--wc-border);
-  border-radius: var(--wc-radius-sm);
-  color: var(--wc-text-muted);
-  font-size: var(--wc-text-xs);
 }
 
 .examples-panel__fields {
