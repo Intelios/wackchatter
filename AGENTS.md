@@ -333,6 +333,14 @@ deliberately not among them.
 - OpenRouter nests `provider: {order, allow_fallbacks, quantizations}` — `order`, not
   `only`, and `allow_fallbacks` inside `provider`. Usage is `usage: {include: true}`, not
   OpenAI's `stream_options`.
+- **Anthropic on OpenRouter thinks only for an explicit `reasoning.max_tokens`.** A bare
+  `{exclude: false}` does nothing and the `:thinking` model suffix is retired. We size the
+  budget ourselves (SillyTavern's ratios, floor 1024, cap 128000 — 21333 when not streaming)
+  rather than sending `effort`, because OpenRouter would derive a budget we cannot see and the
+  request's `max_tokens` must **exceed** it. It is added on top of the reply budget, not carved
+  out, so the reply keeps its length and the rule holds by construction. `temperature`, `top_p`
+  and `top_k` are deleted on that path — Anthropic rejects them while thinking — along with
+  `min_p` / `top_a` / `repetition_penalty`, which it never took.
 - OpenRouter sends `: OPENROUTER PROCESSING` keepalive comments. A parser that treats
   them as malformed frames kills the stream.
 - The server pipes `upstream.body` through untouched and forwards the client's

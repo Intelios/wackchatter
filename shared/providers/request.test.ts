@@ -250,6 +250,93 @@ describe('reasoning effort', () => {
   });
 });
 
+describe('Claude thinking on OpenRouter', () => {
+  const claude = (overrides: Partial<ConnectionSettings> = {}) =>
+    connection({ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5', ...overrides });
+
+  test('auto leaves thinking off and the request otherwise untouched', () => {
+    const body = build({ reasoning_effort: 'auto' }, claude());
+    expect(body.reasoning).toEqual({ exclude: false });
+    expect(body.max_tokens).toBe(300);
+    // No budget means no reason to strip the samplers.
+    expect(body.temperature).toBe(1);
+    expect(Object.hasOwn(body, 'top_k')).toBe(true);
+  });
+
+  test('an effort buys a budget and raises max_tokens on top of the reply', () => {
+    // 50% of 300 is below Anthropic's 1024 floor, so the floor wins.
+    const body = build({ reasoning_effort: 'high', openai_max_tokens: 300 }, claude());
+    expect(body.reasoning).toEqual({ exclude: false, max_tokens: 1024 });
+    expect(body.max_tokens).toBe(1324);
+  });
+
+  test('a budget is sent instead of an effort, never alongside it', () => {
+    const body = build({ reasoning_effort: 'medium' }, claude());
+    expect(Object.hasOwn(body.reasoning as object, 'effort')).toBe(false);
+  });
+
+  test('a generous reply budget clears the floor and scales', () => {
+    // 95% of 4096.
+    const body = build({ reasoning_effort: 'max', openai_max_tokens: 4096 }, claude());
+    expect(body.reasoning).toEqual({ exclude: false, max_tokens: 3891 });
+    expect(body.max_tokens).toBe(7987);
+  });
+
+  test('min is the floor itself, whatever the reply budget', () => {
+    const body = build({ reasoning_effort: 'min', openai_max_tokens: 40000 }, claude());
+    expect((body.reasoning as { max_tokens: number }).max_tokens).toBe(1024);
+  });
+
+  test('a blocking request caps the budget where Anthropic starts demanding a stream', () => {
+    const body = build({ reasoning_effort: 'max', openai_max_tokens: 100000 }, claude(), {
+      stream: false,
+    });
+    expect((body.reasoning as { max_tokens: number }).max_tokens).toBe(21333);
+  });
+
+  test('samplers Anthropic rejects under thinking are dropped, not zeroed', () => {
+    const body = build({ reasoning_effort: 'high' }, claude());
+    for (const key of ['temperature', 'top_p', 'top_k', 'min_p', 'top_a', 'repetition_penalty']) {
+      expect(Object.hasOwn(body, key)).toBe(false);
+    }
+    // Penalties are fine — Anthropic never saw them, and OpenRouter drops what it cannot use.
+    expect(body.frequency_penalty).toBe(0);
+  });
+
+  test('excluded reasoning still buys the budget, it just is not returned', () => {
+    const body = build({ reasoning_effort: 'high' }, claude({ showReasoning: false }));
+    expect(body.reasoning).toEqual({ exclude: true, max_tokens: 1024 });
+  });
+
+  test('a maxTokens override sizes the budget, not the preset', () => {
+    const body = build({ reasoning_effort: 'high', openai_max_tokens: 300 }, claude(), {
+      maxTokens: 4096,
+    });
+    expect(body.reasoning).toEqual({ exclude: false, max_tokens: 2048 });
+    expect(body.max_tokens).toBe(6144);
+  });
+
+  test('another vendor on OpenRouter keeps the effort shape and its samplers', () => {
+    const body = build(
+      { reasoning_effort: 'high' },
+      connection({ provider: 'openrouter', model: 'openai/gpt-5' }),
+    );
+    expect(body.reasoning).toEqual({ exclude: false, effort: 'high' });
+    expect(body.max_tokens).toBe(300);
+    expect(body.temperature).toBe(1);
+  });
+
+  test('a plain endpoint is untouched even when the model looks Anthropic', () => {
+    const body = build(
+      { reasoning_effort: 'high' },
+      connection({ provider: 'custom', model: 'anthropic/claude-sonnet-4.5' }),
+    );
+    expect(body.reasoning_effort).toBe('high');
+    expect(Object.hasOwn(body, 'reasoning')).toBe(false);
+    expect(body.max_tokens).toBe(300);
+  });
+});
+
 describe('headers', () => {
   test('a key becomes a bearer token', () => {
     const headers = buildHeaders(connection(), 'sk-test', 'http://localhost:5173');
