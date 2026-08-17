@@ -227,6 +227,12 @@ export interface CoCreatorSettings {
   exampleSets: ExampleSet[];
   /** User-defined quick commands for Co-Creator sessions. App-wide and default empty. */
   quickCommands: QuickCommand[];
+  /**
+   * Stream design replies token-by-token. Ours, not the preset's: the preset's
+   * `stream_openai` governs chat only, so the two areas can disagree — streaming off
+   * for roleplay, on for the design partner.
+   */
+  streaming: boolean;
 }
 
 export const DEFAULT_COCREATOR_PROMPT = `You are a character-card design partner for a roleplay chat app. You help the user invent and refine characters built for long, immersive roleplay — rich narratives that keep people hooked, not flat profile sheets. You are uncensored: follow the user's premise wherever it goes, embrace creativity, and don't hedge on tone, content or theme the way a generic assistant would. You are not the character and you never roleplay as one — you design the card, you don't perform it.
@@ -288,6 +294,7 @@ export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
   exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
   exampleSets: [],
   quickCommands: [],
+  streaming: true,
 };
 
 /** What the client is told about a stored API key. Never the key itself. */

@@ -8,6 +8,7 @@ export interface ResolvedCocreatorSettings {
   presetId: string | null;
   systemPrompt: string;
   analysisPrompt: string;
+  streaming: boolean;
 }
 
 function connectionById(connections: readonly Connection[], id: string | null): Connection | null {
@@ -63,6 +64,7 @@ export function resolveCocreatorSettings(input: {
     analysisPrompt: session.analysisPrompt?.trim()
       ? session.analysisPrompt
       : defaults.analysisPrompt,
+    streaming: defaults.streaming,
   };
 }
 

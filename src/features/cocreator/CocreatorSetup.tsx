@@ -6,7 +6,7 @@ import {
   DEFAULT_COCREATOR_PROMPT,
 } from '@shared/types/settings.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { SelectField, TextField } from '../../components/Field.tsx';
+import { CheckField, SelectField, TextField } from '../../components/Field.tsx';
 import { Popover } from '../../components/Popover.tsx';
 import { GearIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
@@ -252,6 +252,13 @@ export function CocreatorSetup({
                 ...presets.map((entry) => ({ label: entry.name, value: entry.id })),
               ]}
               onChange={(presetId) => onDefaultsChange({ presetId })}
+              disabled={disabled}
+            />
+            <CheckField
+              label="Stream replies"
+              checked={defaults.streaming}
+              onChange={(streaming) => onDefaultsChange({ streaming })}
+              hint="Co-Creator only. Chat streaming follows the preset's own setting."
               disabled={disabled}
             />
             <PromptEditor

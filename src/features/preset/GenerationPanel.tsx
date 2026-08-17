@@ -304,6 +304,7 @@ export function GenerationPanel({
             onChange={(e) => setField('stream_openai', e.target.checked)}
           />
           <span>Stream responses</span>
+          <span className="wc-hint">Chat only — the Co-Creator has its own toggle.</span>
         </label>
       </Section>
     </div>

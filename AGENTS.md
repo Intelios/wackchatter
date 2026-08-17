@@ -487,6 +487,11 @@ regex keys are the escape hatches.
   overswipe-off-the-end, so the reducer records `resumeSwipeId` and puts the reader back
   where they were when a re-roll produces nothing. Do not "restore parity" with chat by
   adding a destructive regenerate here.
+- **Co-Creator streaming is its own setting, not the preset's.** `stream_openai` on the
+  preset governs main chat only. The Co-Creator reads `streaming` from
+  `AppSettings.coCreator` (default true), resolved through `resolveCocreatorSettings`, so
+  the two areas can disagree — streaming off for roleplay, on for the design partner.
+  A later session-level override follows the same seam.
 - **A full-width header row over three columns.** The chat column is `1fr` so panels
   compress it rather than cover it. Widths are CSS variables on `.shell`, animated with
   one transition; the header row is a **fixed** track so `grid-template-columns` stays the

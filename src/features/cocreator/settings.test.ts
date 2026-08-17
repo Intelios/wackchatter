@@ -37,6 +37,7 @@ describe('resolving Co-Creator settings', () => {
     expect(result.presetId).toBe('design-preset');
     expect(result.systemPrompt).toBe('Default system.');
     expect(result.analysisPrompt).toBe('Default analysis.');
+    expect(result.streaming).toBe(true);
   });
 
   test('explicit null follows the active app selections', () => {
@@ -62,6 +63,25 @@ describe('resolving Co-Creator settings', () => {
         modelOverride: { connectionId: 'design', model: 'session-model' },
       }).connection?.model,
     ).toBe('a');
+  });
+
+  test('streaming follows the Co-Creator defaults even when toggled off', () => {
+    const result = resolveCocreatorSettings({
+      session: {},
+      defaults: {
+        ...DEFAULT_COCREATOR,
+        connectionId: 'design',
+        presetId: 'design-preset',
+        systemPrompt: 'Default system.',
+        analysisPrompt: 'Default analysis.',
+        streaming: false,
+      },
+      connections,
+      activeConnectionId: 'active',
+      presets,
+      activePresetId: 'chat',
+    });
+    expect(result.streaming).toBe(false);
   });
 });
 
