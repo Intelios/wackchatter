@@ -77,7 +77,16 @@ export function useStickToBottom<T extends HTMLElement>(
     return () => observer.disconnect();
   }, [contentRef, scrollToBottom]);
 
-  // Follow scroll container viewport resize (e.g. composer expansion/collapse, window resize, panel movement)
+  /*
+   * Follow the container's own resize, not just its content's.
+   *
+   * The composer is pinned below this scroller and grows with the draft, which shortens
+   * the viewport without changing the content at all — the bottom of the transcript would
+   * slide up behind the taller composer and the message you are replying to would go with
+   * it. Re-pinning on a clientHeight change is what keeps that message on screen while you
+   * type, and gives it back when the composer collapses on send. Window resizes and panels
+   * opening are the same event, so they are covered too.
+   */
   useEffect(() => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;

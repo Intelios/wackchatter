@@ -15,6 +15,18 @@ import './Composer.css';
 const MAX_ROWS = 16;
 
 /**
+ * A second ceiling on the input, as a share of the window.
+ *
+ * The row cap alone is a fixed pixel height, and the composer is pinned below a transcript
+ * that has to shrink to make room for it: sixteen rows on a short window — a laptop with a
+ * browser bar, a phone with the keyboard up — is taller than the whole chat column, and a
+ * flex item that cannot shrink simply overhangs the bottom edge. That is the composer
+ * "slipping off screen". Whichever ceiling is lower wins; past it the textarea scrolls
+ * internally, exactly as it does at sixteen rows.
+ */
+const MAX_VIEWPORT_SHARE = 0.45;
+
+/**
  * The one write path into the composer's private draft — quick commands use it to place
  * their text ready to send. Reading the draft stays impossible, the same bargain the
  * `onSend` callbacks make.
@@ -214,10 +226,14 @@ export function Composer({
       const verticalPadding = paddingTop + paddingBottom;
       const verticalBorders = borderTop + borderBottom;
 
-      const maxHeight =
+      const rowCap =
         (Number.isFinite(lineHeight) ? lineHeight * MAX_ROWS : Number.POSITIVE_INFINITY) +
         verticalPadding +
         verticalBorders;
+      // The visual viewport, where there is one: with a phone keyboard up it is the part
+      // of the window still visible, which is the height the composer actually has to fit.
+      const viewportHeight = globalThis.visualViewport?.height ?? globalThis.innerHeight;
+      const maxHeight = Math.min(rowCap, viewportHeight * MAX_VIEWPORT_SHARE);
 
       const prevScrollTop = element.scrollTop;
       element.style.height = 'auto';
@@ -233,7 +249,6 @@ export function Composer({
         } else {
           element.scrollTop = prevScrollTop;
         }
-        rootRef.current?.scrollIntoView({ block: 'nearest' });
       } else {
         element.scrollTop = prevScrollTop;
       }
@@ -243,7 +258,7 @@ export function Composer({
 
     // Only on a WIDTH change. Observing height would feed back into itself, since resize
     // is what changes the height. Width is what actually invalidates the measurement: a
-    // panel opening or closing, a window resize, and the 0 -> real first layout.
+    // panel opening or closing, and the 0 -> real first layout.
     let lastWidth = element.clientWidth;
     const observer = new ResizeObserver(() => {
       if (element.clientWidth === lastWidth) return;
@@ -251,7 +266,14 @@ export function Composer({
       resize();
     });
     observer.observe(element);
-    return () => observer.disconnect();
+
+    // The viewport ceiling moves with the window, and a height-only resize changes neither
+    // the textarea's width nor its content — so nothing above would re-measure for it.
+    globalThis.addEventListener('resize', resize);
+    return () => {
+      observer.disconnect();
+      globalThis.removeEventListener('resize', resize);
+    };
   }, [text]);
 
   /**
@@ -358,12 +380,7 @@ export function Composer({
             placeholder={placeholder}
             data-shape={rounded ? 'round' : 'neutral'}
             data-settling={settling || undefined}
-            onFocus={() => {
-              setRounded(true);
-              requestAnimationFrame(() => {
-                rootRef.current?.scrollIntoView({ block: 'nearest' });
-              });
-            }}
+            onFocus={() => setRounded(true)}
             // Focus alone would leave the box flat after a send, since sending never took
             // the cursor away — clicking back into it has to count as picking it up again.
             onPointerDown={() => setRounded(true)}
@@ -373,9 +390,6 @@ export function Composer({
               setSlashDismissed(false);
               setSlashIndex(0);
               setRounded(true);
-              requestAnimationFrame(() => {
-                rootRef.current?.scrollIntoView({ block: 'nearest' });
-              });
             }}
             onBlur={() => {
               setSlashDismissed(true);
