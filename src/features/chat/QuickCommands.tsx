@@ -10,7 +10,7 @@ import { useRef, useState } from 'react';
 import { Menu, type MenuEntry } from '../../components/Menu.tsx';
 import { BoltIcon, EditIcon } from '../../layout/icons.tsx';
 import { QuickCommandsPopover } from './QuickCommandsPopover.tsx';
-import { commandHint, commandLabel, usableCommands } from './quickCommands.ts';
+import { commandLabel, usableCommands } from './quickCommands.ts';
 
 export interface QuickCommandsActions {
   insertCommand: (text: string) => void;
@@ -27,8 +27,6 @@ export function buildQuickCommandsMenu(
     key: command.id,
     label: commandLabel(command),
     icon: <BoltIcon />,
-    // The hint repeats the label on unnamed commands, so it only joins a real name.
-    hint: command.name.trim() ? commandHint(command) : undefined,
     onSelect: () => actions.insertCommand(command.text),
   }));
 
