@@ -31,7 +31,7 @@
 .start-screen__recent-title,
 .start-screen__empty,
 .start-screen__toggle,
-.start-screen__studio {
+.start-screen__tool {
   text-shadow: var(--wc-shadow-text-strong);
 }
 
@@ -39,7 +39,7 @@
    separation as a filter. Matches the treatment the top bar's icons already get. The
    message-count icon is deliberately not in this list — it sits inside a chat row, on a
    surface, where a shadow would read as a smudge. */
-.start-screen__studio svg {
+.start-screen__tool svg {
   filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.9));
 }
 
@@ -317,16 +317,26 @@
   color: var(--wc-text-on-image);
 }
 
-/* Two doors into the creator tools, side by side — neither is the primary one. */
-.start-screen__creator-links {
+/*
+ * The doors into the sub-apps — none of them is the primary one. The two character tools
+ * share a row and Stats sits centred beneath, so the row shape says what they are: a pair
+ * that do the same job, and one that does something else.
+ */
+.start-screen__tool-links {
+  display: grid;
+  justify-items: center;
+  gap: var(--wc-space-3);
+  margin-top: var(--wc-space-5);
+}
+
+.start-screen__tool-pair {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--wc-space-5);
-  margin-top: var(--wc-space-5);
 }
 
-.start-screen__studio {
+.start-screen__tool {
   display: inline-flex;
   align-items: center;
   gap: var(--wc-space-2);
@@ -339,15 +349,15 @@
     transform var(--wc-duration-fast) ease;
 }
 
-.start-screen__studio svg {
+.start-screen__tool svg {
   width: var(--wc-icon);
   height: var(--wc-icon);
 }
 
-.start-screen__studio:hover {
+.start-screen__tool:hover {
   color: var(--wc-accent);
 }
 
-.start-screen__studio:active {
+.start-screen__tool:active {
   transform: scale(0.97);
 }

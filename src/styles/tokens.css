@@ -68,6 +68,21 @@
   --wc-dialogue-default: #e18a24;
 
   /*
+   * Categorical series, for charts. The accent leads and the rest is the dialogue-colour
+   * palette, which was already picked to stay legible on these surfaces — a second set
+   * chosen by eye would only be the same job done less carefully. Charts index into these
+   * rather than naming a colour, so a series stays consistent across every chart.
+   */
+  --wc-series-1: #c2ee4a;
+  --wc-series-2: #51a0de;
+  --wc-series-3: #e18a24;
+  --wc-series-4: #a78bfa;
+  --wc-series-5: #2dd4bf;
+  --wc-series-6: #ff8fa3;
+  --wc-series-7: #f7c948;
+  --wc-series-8: #46a758;
+
+  /*
    * Inline code in a message. The one deliberate exception to the achromatic rule above:
    * cards routinely wrap speech in backticks, so a code span carries dialogue as often as
    * it carries code, and a neutral grey slab reads as a rendering fault rather than a
@@ -179,6 +194,18 @@
   --wc-cocreator-session-width: 720px;
   /* The rule marking a card block inside a design reply. */
   --wc-cocreator-block-mark: 3px;
+  --wc-stats-canvas-width: 1080px;
+  --wc-stats-tile-width: 176px;
+  --wc-stats-fact-width: 240px;
+  --wc-stats-hero-size: 44px;
+  --wc-stats-card-avatar: 120px;
+  --wc-stats-bar-height: 10px;
+  --wc-stats-row-avatar: 28px;
+  --wc-stats-donut-size: 200px;
+  --wc-stats-dial-size: 220px;
+  --wc-stats-columns-height: 120px;
+  --wc-stats-stagger: 55ms;
+  --wc-stats-draw: 900ms;
   --wc-letter-spacing: 0.08em;
   --wc-code-line-height: 1.6;
   --wc-glass-blur: 20px;

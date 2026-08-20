@@ -81,6 +81,8 @@ export interface UseChatOptions {
   characterId: string | null;
   character: CardDataV2 | null;
   preset: Preset | null;
+  /** The preset's id, recorded onto each generation. The Preset itself does not carry one. */
+  presetId: string | null;
   /** Every persona. Which one applies is resolved in here — see `persona` below. */
   personas: Persona[];
   /** The app-wide current persona. New chats start with it; loading a chat adopts its own. */
@@ -206,6 +208,7 @@ export function useChat(options: UseChatOptions): UseChat {
     characterId,
     character,
     preset,
+    presetId,
     personas,
     personaId,
     onPersonaSwitch,
@@ -767,6 +770,8 @@ export function useChat(options: UseChatOptions): UseChat {
                   extra: {
                     api: requestConnection.provider,
                     model: final.model ?? requestConnection.model,
+                    connection_id: requestConnection.id,
+                    ...(presetId ? { preset_id: presetId } : {}),
                     ...(choice.reasoning ? { reasoning: choice.reasoning } : {}),
                     token_count: countTokens.countText(choice.content),
                   },
@@ -779,6 +784,14 @@ export function useChat(options: UseChatOptions): UseChat {
           extra: {
             api: requestConnection.provider,
             model: final.model ?? requestConnection.model,
+            connection_id: requestConnection.id,
+            ...(presetId ? { preset_id: presetId } : {}),
+            // Only ever the provider's own number. An estimate here would be missing
+            // whatever world info and injections the request actually carried, and a
+            // wrong prompt count is worse than none.
+            ...(typeof final.usage?.prompt_tokens === 'number'
+              ? { prompt_tokens: final.usage.prompt_tokens }
+              : {}),
             ...(final.reasoning ? { reasoning: final.reasoning } : {}),
             // A real count from the provider beats our estimate when we get one — but
             // reported usage covers every completion in the request, so once there are
@@ -814,6 +827,7 @@ export function useChat(options: UseChatOptions): UseChat {
     [
       character,
       preset,
+      presetId,
       persona,
       connection,
       countTokens,

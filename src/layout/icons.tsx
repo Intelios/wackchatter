@@ -433,6 +433,26 @@ export function CoCreatorIcon({ className }: IconProps) {
 }
 
 /**
+ * Stats — the Studio's card, measured.
+ *
+ * Third of the sub-app set, so it keeps the same card outline as `StudioIcon` and
+ * `CoCreatorIcon`; the bars rising out of it are the only difference, the way the speech
+ * tail is for the Co-Creator.
+ */
+export function StatsIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="3" width="12" height="16" rx="2" />
+      <path d="M6.5 8h4" />
+      <path d="M6.5 11.5h2.5" />
+      <path d="M13 21v-4" />
+      <path d="M17 21v-8" />
+      <path d="M21 21v-5" />
+    </svg>
+  );
+}
+
+/**
  * A star, for the character rating. `filled` paints the whole star so a rating reads at a
  * glance; otherwise it is an outline for the unearned slots.
  */

@@ -1,0 +1,333 @@
+/*
+ * The Stats shell.
+ *
+ * Third of the sub-app set, and deliberately the Studio's skeleton again: what makes this
+ * read as its own area is density and the charts, not a second palette. Structural only —
+ * every colour, space and duration comes from tokens.css.
+ */
+
+@import "./charts/charts.css";
+
+.stats-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--wc-topbar-height) 1fr;
+  height: 100%;
+  overflow: clip;
+}
+
+.stats-shell > .shell__backdrop,
+.stats-shell > .shell__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.stats-shell__bar,
+.stats-shell__body {
+  position: relative;
+  z-index: 1;
+}
+
+.stats-shell__bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: 0 var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
+}
+
+.stats-shell__navigation,
+.stats-shell__title,
+.stats-shell__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.stats-shell__navigation {
+  justify-self: start;
+}
+
+.stats-shell__title {
+  justify-self: center;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.stats-shell__title img {
+  width: var(--wc-avatar-sm);
+  height: var(--wc-avatar-sm);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+}
+
+.stats-shell__actions {
+  justify-self: end;
+}
+
+.stats-shell__body {
+  min-height: 0;
+  /* One scroll container for the whole page — nesting a second is what makes a chart
+     impossible to reach with the wheel. */
+  overflow-y: auto;
+  transform-origin: center 20%;
+  animation: wc-view-body-enter var(--wc-duration-view) var(--wc-ease);
+}
+
+.stats-shell__error {
+  max-width: var(--wc-stats-canvas-width);
+  margin: var(--wc-space-4) auto 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-popup);
+  color: var(--wc-danger);
+  white-space: pre-wrap;
+}
+
+/* The bar only. Blurring the scrolling chart body would recomposite it every frame. */
+.stats-shell[data-glass="true"] .stats-shell__bar {
+  backdrop-filter: blur(var(--wc-glass-blur)) saturate(var(--wc-glass-saturation));
+}
+
+/* ---------------------------------------------------------------- page */
+
+.stats-page {
+  display: grid;
+  gap: var(--wc-space-6);
+  max-width: var(--wc-stats-canvas-width);
+  margin: 0 auto;
+  padding: var(--wc-space-6);
+}
+
+.stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--wc-stats-tile-width), 1fr));
+  gap: var(--wc-space-3);
+}
+
+.stats-section {
+  display: grid;
+  gap: var(--wc-space-4);
+  animation: wc-stats-rise var(--wc-duration-view) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger) * 2);
+}
+
+.stats-section__head h2 {
+  font-size: var(--wc-text-lg);
+}
+
+.stats-section__eyebrow {
+  margin-bottom: var(--wc-space-1);
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.stats-section__body {
+  display: grid;
+  gap: var(--wc-space-4);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.stats-section[data-split] .stats-section__body {
+  /* Even halves rather than `auto`: the donut's legend will happily eat the row given the
+     chance, and squeeze the table beside it until its headers ellipsise. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wc-space-5);
+}
+
+/* ---------------------------------------------------------------- most played */
+
+.stats-hero {
+  display: grid;
+  grid-template-columns: var(--wc-stats-card-avatar) minmax(0, 1fr);
+  gap: var(--wc-space-5);
+  align-items: center;
+  padding: var(--wc-space-2);
+  border-radius: var(--wc-radius);
+  text-align: left;
+  /* Same lift as a Studio card: this is a door into the drill-down, so it should read
+     as one. */
+  transition:
+    transform var(--wc-duration) var(--wc-ease),
+    background var(--wc-duration) var(--wc-ease);
+}
+
+.stats-hero:hover {
+  background: var(--wc-surface-hover);
+  transform: translateY(-2px);
+}
+
+.stats-hero__avatar {
+  width: var(--wc-stats-card-avatar);
+  height: calc(var(--wc-stats-card-avatar) * 1.4);
+  border-radius: var(--wc-radius);
+  object-fit: cover;
+}
+
+.stats-hero__facts {
+  display: grid;
+  gap: var(--wc-space-3);
+  min-width: 0;
+}
+
+.stats-hero__cue {
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.stats-card-hero {
+  display: grid;
+  grid-template-columns: var(--wc-stats-card-avatar) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wc-space-5);
+}
+
+.stats-card-hero__avatar {
+  width: var(--wc-stats-card-avatar);
+  height: calc(var(--wc-stats-card-avatar) * 1.4);
+  border-radius: var(--wc-radius);
+  object-fit: cover;
+}
+
+.stats-card-hero h1 {
+  font-size: var(--wc-text-xl);
+}
+
+/* ---------------------------------------------------------------- facts */
+
+.stat-facts {
+  display: grid;
+  /* Its own width, not the tile's: a fact is a label and a figure side by side, and it
+     needs the room the label wants rather than the room a big number wants. */
+  grid-template-columns: repeat(auto-fit, minmax(var(--wc-stats-fact-width), 1fr));
+  gap: var(--wc-space-2) var(--wc-space-5);
+  margin: 0;
+}
+
+.stat-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+  padding-bottom: var(--wc-space-1);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.stat-facts dt {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+}
+
+.stat-facts dd {
+  margin: 0;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- table */
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--wc-text-sm);
+  font-variant-numeric: tabular-nums;
+  /* Fixed, so a long model id ellipsises instead of pushing the numbers off the edge. */
+  table-layout: fixed;
+}
+
+.stats-table th,
+.stats-table td {
+  overflow: hidden;
+  padding: var(--wc-space-2) var(--wc-space-1);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-table th:first-child,
+.stats-table tbody th {
+  width: 32%;
+  text-align: left;
+}
+
+.stats-table thead th {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.stats-table tbody th {
+  color: var(--wc-text);
+  font-weight: 500;
+}
+
+.stats-table td {
+  color: var(--wc-text-muted);
+}
+
+/* Machine text: a provider id is not prose. */
+.stats-table__mono {
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+}
+
+/* ---------------------------------------------------------------- rhythm */
+
+.stats-rhythm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wc-space-6);
+}
+
+/* Flex rather than fixed tracks: the character page shows the dial alone, and a two-track
+   grid would leave it stranded in the left half of an empty row. */
+.stats-rhythm__weekdays {
+  flex: 1;
+  min-width: 240px;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .stats-shell[data-glass="true"] .stats-shell__bar {
+    backdrop-filter: none;
+  }
+
+  .stats-shell > .shell__backdrop {
+    display: none;
+  }
+
+  .stats-shell > .shell__scrim {
+    background: var(--wc-bg);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stats-shell__bar,
+  .stats-shell__body,
+  .stats-section {
+    animation: none;
+  }
+}

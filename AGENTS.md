@@ -34,6 +34,7 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/secrets.ts API keys. Mode 0600. Never leaves the machine.
   lib/generate.ts The one place that calls a provider.
   lib/lorebooks.ts / personas.ts / cocreator.ts  Standalone books; personas; design sessions.
+  lib/stats.ts   Library statistics, aggregated in SQL. Built per request, never memoised.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant, as a type.
   cocreator/     CardStash — the filed-card model.
@@ -41,11 +42,11 @@ shared/          Pure, no I/O. Imported by both server and client.
   providers/     Request building + SSE parsing.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine.
-  types/         Card, preset, worldinfo, chat, settings, regex, cocreator.
+  types/         Card, preset, worldinfo, chat, settings, regex, cocreator, stats.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
-                 cocreator/.
+                 cocreator/, stats/.
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
                 secrets.json, lorebooks/, personas/, backups/, .wackchatter.
@@ -292,10 +293,14 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 
 ## UI conventions
 
-- **The two creator areas replace the chat shell** — they are not modals or panels. The
-  Studio is manual, the Co-Creator conversational; Finish hands off to the Studio one-way
-  with no path back. Entering/leaving either flushes the relevant save queue first, and a
-  failed flush aborts the transition rather than hiding unsaved work.
+- **The three sub-apps replace the chat shell** — they are not modals or panels, they
+  share one shell skeleton, and all three are reached only from the Start screen. The
+  Studio is manual, the Co-Creator conversational, Stats read-only; Finish hands off from
+  the Co-Creator to the Studio one-way with no path back. Entering any of them flushes the
+  save queue first and a failed flush aborts the transition rather than hiding unsaved
+  work — for Stats that is also what makes the numbers right, since a chat still in the
+  queue is one the server has not been told about. Only the two creator areas register
+  persistence; Stats has nothing of its own to flush on the way out.
 - **In the Co-Creator the model never writes a field** — it proposes in labelled fenced
   blocks and every slot got there via "Use as". Two tested invariants: everything the
   model sees is in the readable transcript (the stash never reaches a prompt), and block
@@ -344,6 +349,28 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 - Error boundaries wrap the root and each shell region (left panel, chat, right panel).
   `lib/crashReport.ts` is pure and tested because it runs in the failure path on values
   that may not be Errors.
+
+**Stats** (`server/lib/stats.ts`, `src/features/stats/`)
+
+- Counting happens in SQL and the client is sent ids and numbers, never display names —
+  those resolve against the lists `App` already holds, so a deleted card falls back to its
+  raw id instead of dropping out of its own history. Nothing is denormalised: there is no
+  stats table, so a figure cannot drift from the transcripts it summarises.
+- **Rerolls exclude `position 0`.** A card's alternate greetings arrive as swipes on the
+  first message, so a naive `swipes − messages` reports rerolls the user never made — on a
+  real library that was 131 against 50 actual. Named test.
+- **The server sends UTC hour buckets and the client folds the calendar.** `send_date` is
+  UTC and so is SQLite's `date()`, so bucketing days server-side files a 23:30 session under
+  tomorrow, and a fixed client offset is wrong across a daylight-saving change. Day
+  stepping is by calendar date, never `+ 86400000`.
+- `extra.token_count` is **completion tokens only**, frequently our own estimate. It is
+  labelled "generated" and **must never be presented as a cost** — there is no prompt-token
+  history to build one from. `extra.api` is a `ProviderId`, not a connection, and old rows
+  carry `'openai'`; render an unrecognised provider verbatim rather than dropping the row.
+- Every chart animation ships its paired `prefers-reduced-motion` block, and the count-up
+  hook checks `matchMedia` itself — a JS animation is not covered by the token overrides.
+  It also completes on a hidden document, so the numbers match the CSS animations beside
+  them rather than stranding at zero.
 
 ## Testing
 

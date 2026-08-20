@@ -26,6 +26,7 @@ import { handleLorebookRoute } from './routes/lorebooks.ts';
 import { handlePersonaRoute } from './routes/personas.ts';
 import { handlePresetRoute } from './routes/presets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
+import { handleStatsRoute } from './routes/stats.ts';
 import { handleVersionRoute } from './routes/version.ts';
 
 const PORT = Number(process.env.WC_PORT ?? 8787);
@@ -71,6 +72,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   chats: handleChatRoute,
   generate: handleGenerateRoute,
   settings: handleSettingsRoute,
+  stats: handleStatsRoute,
   version: handleVersionRoute,
 };
 
