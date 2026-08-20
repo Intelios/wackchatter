@@ -97,9 +97,9 @@ export function Composer({
   const [rounded, setRounded] = useState(false);
   /**
    * The send moment, armed the instant a send is accepted and revoked when one fails. Two
-   * animations read it off the root's `data-settling` — the input's settle wobble and the
-   * field's one-shot light sweep — and the Send/Stop button holds its turn until the flag
-   * retires. Retired on a timer rather than on `animationend` — see the effect below.
+   * animations read it off the root's `data-settling`: the input's settle wobble and the
+   * field's one-shot light sweep. Retired on a timer rather than on `animationend` — see
+   * the effect below.
    */
   const [settling, setSettling] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -337,12 +337,11 @@ export function Composer({
     focusBeforeGenerate.current = document.activeElement;
     // The send moment arms on the click, not on the resolution. For a normal message
     // `onSend` dispatches the generation synchronously before it returns, so this lands in
-    // the SAME render as `busy` — the wobble and the sweep start on the very frame the
-    // generation begins, and the button's turn into Stop waits out the flag rather than
-    // playing on top of them. A failure revokes it: one that comes back synchronously (a
-    // mis-parsed command) is revoked before the armed frame is ever painted, and one that
-    // comes back late has already played — the cost of arming optimistically, and cheaper
-    // than gating the animation on a network round-trip.
+    // the SAME render as `busy` — the wobble, the sweep and the button's turn into Stop all
+    // start on the very frame the generation begins. A failure revokes it: one that comes
+    // back synchronously (a mis-parsed command) is revoked before the armed frame is ever
+    // painted, and one that comes back late has already played — the cost of arming
+    // optimistically, and cheaper than gating the animation on a network round-trip.
     setSettling(true);
     const failure = await onSend(trimmed);
     if (failure) {
@@ -380,10 +379,13 @@ export function Composer({
     action(trimmed);
   }
 
-  // Send and Stop share one persistent button; this is which face it wears. Gated on the
-  // send moment so the turn happens after the sweep rather than on top of it — and so a
-  // double-click on Send cannot act as a Stop for the generation it just started.
-  const showStop = busy && !settling;
+  // Send and Stop share one persistent button; this is which face it wears. Driven by
+  // `busy` alone, so the turn happens on the very frame the generation starts — the same
+  // render the sweep and the wobble land in (see submit). The cost, accepted: a second
+  // click inside the turn acts as a Stop for the generation the first one just started.
+  // Recoverable with the transcript's retry, and better than the button lying about being
+  // Send for the first moments of a generation.
+  const showStop = busy;
 
   return (
     <div
@@ -566,7 +568,7 @@ export function Composer({
 
         {/* One persistent button, two faces: Send turns into Stop with a crossfade in
             place, the surface morphing with it — no slot ever going empty, no remount. The
-            turn waits out the send moment (see `showStop`). */}
+            turn fires on the send frame itself (see `showStop`). */}
         <button
           type="button"
           className={`wc-button composer__button ${

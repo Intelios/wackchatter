@@ -153,33 +153,27 @@
 /*
  * Sending: the same light makes ONE pass, corner to corner, at departure speed.
  *
- * `data-settling` arms in the same render as `data-busy` (see submit in Composer.tsx), so
- * for a normal send both rules apply and the overlap rule below is the one that runs. It
- * lists the SAME keyframes twice — when two animations drive one property, the last one
- * listed wins while both are live — patrol first, then the pass: the pass takes the border
- * for 560ms while the patrol waits out a matching 560ms delay, and the patrol's first leg
- * runs `alternate-reverse` so it picks the light up from the corner the pass has just
- * arrived at and flows back. One continuous story — a fast pass carrying the message out,
- * then the usual pacing — with no jump at the handoff, and the curves meet at the corner:
- * the pass decelerates in on its expo-out, and a reversed in-out leg departs slow.
+ * This rule only ever plays alone — when `busy` has NOT come up, a slash command that ran
+ * locally — and `forwards` holds the light at the exit corner until the flag retires,
+ * rather than letting it snap back to a parked streak at the box's left edge.
  *
- * When `busy` has not come up (a slash command that ran locally), the rule above plays
- * alone, and `forwards` holds the light at the exit corner until the flag retires rather
- * than letting it snap back to a parked streak at the box's left edge.
- *
- * No fill on the pass inside the overlap rule, and this matters: a finished, filled
- * animation keeps overriding the properties it drove for as long as it applies, which
- * would park the light on the corner for the whole generation.
+ * For a normal send the overlap rule below wins, and it is deliberately IDENTICAL to the
+ * busy rule above: the patrol starts on the send frame, and its first leg IS the sweep.
+ * The earlier design ran this fast pass and handed off to a delayed, direction-reversed
+ * patrol — positionally continuous on paper, but retiring the flag 80ms later changed the
+ * surviving animation's delay and direction, and the browser re-derived its phase from
+ * them: the light jumped backwards mid-box. Identical props here mean there is no handoff
+ * and nothing the flag's retirement can change — the seam cannot exist.
  */
 .composer[data-settling] .composer__field::after {
   opacity: 0.95;
   animation: wc-composer-scan 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Byte-for-byte the busy rule, on purpose — see above. */
 .composer[data-busy][data-settling] .composer__field::after {
-  animation:
-    wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) 560ms infinite alternate-reverse,
-    wc-composer-scan 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.95;
+  animation: wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 }
 
 /*
@@ -354,20 +348,27 @@
   --wc-composer-ry: var(--wc-radius);
   transform-origin: center;
   /*
-   * The lag between the two radii IS the deform, so it has to be wide enough to read: the
-   * horizontal snaps in ~260ms and overshoots its target, while the vertical takes well
-   * over twice as long on an expo-out curve. Through the middle of the flight the corners
-   * peak at about a 1.5:1 ellipse — visibly stretched sideways — before easing back to the
-   * 1.15:1 they rest at. Closer durations do interpolate, but they read as a box whose
-   * corners simply got rounder, which is not the effect.
+   * The lag between the two radii IS the deform: the horizontal arrives in ~320ms while
+   * the vertical takes 500ms on the same family of decel curve, so through the middle of
+   * the flight the corners sit as a visibly side-stretched ellipse before easing back to
+   * the 1.15:1 they rest at. Closer durations interpolate but read as a box whose corners
+   * simply got rounder, which is not the effect.
    *
-   * The vertical's long tail costs nothing perceptually: an expo-out has spent most of its
-   * distance by 200ms and only creeps the last pixel after that.
+   * Neither clock overshoots, and that is a retune rather than an accident: the horizontal
+   * originally carried a spring that bounced the corners past the pill and back, which
+   * read as a wobble rather than a morph — the stretch from the lag alone carries the
+   * deform. The vertical is also shorter than it was (620ms), whose long tail read as
+   * drag: a second, slower motion continuing after the horizontal had finished.
    */
   transition:
     border-color var(--wc-duration-fast) ease,
-    --wc-composer-rx 260ms cubic-bezier(0.34, 1.7, 0.64, 1),
-    --wc-composer-ry 620ms cubic-bezier(0.16, 1, 0.3, 1);
+    /* The focus bloom. Rides the layout duration and curve rather than its own constants,
+       which also makes it reduced-motion-safe by construction: the token collapses to 0ms,
+       so the glow snaps in one step and needs no media block of its own. */
+    box-shadow
+    var(--wc-duration) var(--wc-ease),
+    --wc-composer-rx 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    --wc-composer-ry 500ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /*
@@ -551,8 +552,11 @@
  * `visibility` swaps only once the fade has finished (the delayed zero-second transition),
  * so the hidden face never flashes mid-fade and never reaches a screen reader.
  *
- * No keyframes and no reduced-motion block of its own: the crossfade rides
- * `--wc-duration-fast`, which reduced motion zeroes into an instant swap.
+ * The layout clock is `--wc-duration`, slower than the surface's fast morph on purpose:
+ * with the turn driven straight off `busy` the whole swap plays in one beat with the sweep
+ * and the wobble, and a 120ms crossfade inside that beat was invisible — the surface leads,
+ * the content follows at the spring's pace (the turn rule below). No reduced-motion block
+ * of its own: the token zeroes into an instant swap.
  */
 .composer__button-face {
   grid-area: 1 / 1;
@@ -560,8 +564,8 @@
   align-items: center;
   gap: var(--wc-space-2);
   transition:
-    opacity var(--wc-duration-fast) ease,
-    transform var(--wc-duration-fast) ease,
+    opacity var(--wc-duration) ease,
+    transform var(--wc-duration) ease,
     visibility 0s;
 }
 
@@ -570,15 +574,34 @@
   transform: translateY(-2px);
   visibility: hidden;
   transition:
-    opacity var(--wc-duration-fast) ease,
-    transform var(--wc-duration-fast) ease,
-    visibility 0s var(--wc-duration-fast);
+    opacity var(--wc-duration) ease,
+    transform var(--wc-duration) ease,
+    visibility 0s var(--wc-duration);
+}
+
+/*
+ * The turn. Gaining the danger class is what the Send→Stop flip looks like in the cascade,
+ * and a rule that newly matches replays its animation — so the wake's spring fires at the
+ * flip itself: the turn reads as the button arriving at its Stop face, not as a crossfade
+ * quietly slipping past under the surface morph. (The gated version got this for free when
+ * Stop's arrival flipped the button disabled→enabled; driving the turn straight off `busy`
+ * removed that flip, and with it the visible half of the animation.)
+ *
+ * The same keyframes and name as the wake rule are deliberate: an animation whose computed
+ * name does not change does not restart, so the quiet return — the generation ends, this
+ * class drops while the button may still be enabled — hands back to the wake rule without
+ * replaying anything. Also plays on a composer that mounts mid-generation, where it is an
+ * arrival.
+ */
+.composer .wc-button--danger {
+  animation: wc-send-wake 340ms cubic-bezier(0.34, 1.7, 0.64, 1);
 }
 
 /* The wake keeps its dim, loses its spring: the button simply is where it belongs, and the
-   crossfade collapses to an instant swap (--wc-duration-fast zeroes under reduced motion). */
+   crossfade collapses to an instant swap (--wc-duration zeroes under reduced motion). */
 @media (prefers-reduced-motion: reduce) {
-  .composer .composer__button:not(:disabled) {
+  .composer .composer__button:not(:disabled),
+  .composer .wc-button--danger {
     animation: none;
   }
   .composer .composer__button:disabled,
