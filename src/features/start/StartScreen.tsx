@@ -224,16 +224,28 @@ export function StartScreen({
          */}
         <div className="start-screen__tool-links">
           <div className="start-screen__tool-pair">
-            <button type="button" className="start-screen__tool" onClick={onOpenStudio}>
+            <button
+              type="button"
+              className="wc-button start-screen__tool"
+              onClick={onOpenStudio}
+            >
               <StudioIcon />
               Character Creator Studio
             </button>
-            <button type="button" className="start-screen__tool" onClick={onOpenCoCreator}>
+            <button
+              type="button"
+              className="wc-button start-screen__tool"
+              onClick={onOpenCoCreator}
+            >
               <CoCreatorIcon />
               Character Co-Creator
             </button>
           </div>
-          <button type="button" className="start-screen__tool" onClick={onOpenStats}>
+          <button
+            type="button"
+            className="wc-button start-screen__tool"
+            onClick={onOpenStats}
+          >
             <StatsIcon />
             Stats
           </button>

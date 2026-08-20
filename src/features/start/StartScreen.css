@@ -30,17 +30,8 @@
 .start-screen__version,
 .start-screen__recent-title,
 .start-screen__empty,
-.start-screen__toggle,
-.start-screen__tool {
+.start-screen__toggle {
   text-shadow: var(--wc-shadow-text-strong);
-}
-
-/* text-shadow does nothing for an SVG stroke, so the one icon out here needs the same
-   separation as a filter. Matches the treatment the top bar's icons already get. The
-   message-count icon is deliberately not in this list — it sits inside a chat row, on a
-   surface, where a shadow would read as a smudge. */
-.start-screen__tool svg {
-  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.9));
 }
 
 .start-screen__title {
@@ -325,7 +316,7 @@
 .start-screen__tool-links {
   display: grid;
   justify-items: center;
-  gap: var(--wc-space-3);
+  gap: var(--wc-space-2);
   margin-top: var(--wc-space-5);
 }
 
@@ -333,31 +324,28 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--wc-space-5);
+  gap: var(--wc-space-2);
 }
 
 .start-screen__tool {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wc-space-2);
-  color: var(--wc-text-on-image-muted);
-  font-size: var(--wc-text-sm);
-  text-decoration: underline;
-  text-underline-offset: var(--wc-space-1);
+  color: var(--wc-text-muted);
+  transform: translateY(0);
   transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
     color var(--wc-duration-fast) ease,
-    transform var(--wc-duration-fast) ease;
-}
-
-.start-screen__tool svg {
-  width: var(--wc-icon);
-  height: var(--wc-icon);
+    box-shadow var(--wc-duration-fast) var(--wc-ease),
+    transform var(--wc-duration-fast) var(--wc-ease);
 }
 
 .start-screen__tool:hover {
+  background: var(--wc-surface-hover);
+  border-color: var(--wc-accent);
   color: var(--wc-accent);
+  box-shadow: 0 0 12px var(--wc-accent-subtle);
+  transform: translateY(-2px);
 }
 
 .start-screen__tool:active {
-  transform: scale(0.97);
+  transform: translateY(0) scale(0.97);
 }
