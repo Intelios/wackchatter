@@ -7,17 +7,27 @@
  * chat's own state still exists: a transcript records who you were when you wrote it.
  */
 
+import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { DialogueColorOverride, DialogueColorSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
-import { EditIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
+import {
+  BookIcon,
+  EditIcon,
+  GridIcon,
+  MenuIcon,
+  PlusIcon,
+  SearchIcon,
+  TrashIcon,
+} from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
+import { matchesPersonaQuery, orderPersonas } from './personaRoster.ts';
 import './PersonaPanel.css';
 
 const SAVE_DELAY = 500;
@@ -41,6 +51,13 @@ interface PersonaPanelProps {
   books: LorebookSummary[];
   /** The app-wide current persona. */
   activeId: string | null;
+  /** Most recently switched to, newest first — the roster's default grouping. */
+  recentIds: readonly string[];
+  /** Rows or faces. Persisted, because it is a way of working rather than a mood. */
+  density: 'list' | 'gallery';
+  onDensityChange: (density: 'list' | 'gallery') => void;
+  /** For the description's token count — a persona rides in every prompt. */
+  countTokens: TokenCounter;
   /** Set the current persona — and the open chat's, when there is one. */
   onSelect: (id: string | null) => void;
   onChanged: () => void;
@@ -56,6 +73,10 @@ export function PersonaPanel({
   personas,
   books,
   activeId,
+  recentIds,
+  density,
+  onDensityChange,
+  countTokens,
   onSelect,
   onChanged,
   registerPersistence,
@@ -69,6 +90,16 @@ export function PersonaPanel({
   const [draft, setDraft] = useState<Persona | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [query, setQuery] = useState('');
+  /**
+   * Set when a persona is created, so the editor can put the caret in the Name field.
+   *
+   * Every new persona arrives called "You", and three of those under three blank tiles is
+   * exactly the case a list is least able to tell apart. Focusing the field makes naming
+   * the first thing that happens rather than the thing you meant to come back to.
+   */
+  const focusNameOnOpen = useRef(false);
+  const nameRef = useRef<HTMLInputElement>(null);
   const draftAvatarUrl = draft?.avatar
     ? personaApi.avatarUrl(draft.id, avatarVersions[draft.id] ?? draft.avatar)
     : null;
@@ -149,6 +180,16 @@ export function PersonaPanel({
     queued.current = {};
   }, [editing, personas, queue]);
 
+  // Naming is the first thing to do with a persona that arrived called "You". Runs only
+  // for a create, so opening an existing persona does not steal the caret from the reader.
+  useLayoutEffect(() => {
+    if (!draft || !focusNameOnOpen.current) return;
+    focusNameOnOpen.current = false;
+    const field = nameRef.current;
+    field?.focus({ preventScroll: true });
+    field?.select();
+  }, [draft]);
+
   // Flush every pending write on unmount, or the last edit before closing the panel is lost.
   useEffect(() => {
     return () => {
@@ -180,6 +221,7 @@ export function PersonaPanel({
   async function handleCreate() {
     try {
       const created = await personaApi.create('You');
+      focusNameOnOpen.current = true;
       onChanged();
       await selectEditor(created.id);
     } catch (err) {
@@ -213,6 +255,147 @@ export function PersonaPanel({
     }
   }
 
+  /*
+   * A search flattens the grouping, the same way `buildCharacterTree` drops folder rows
+   * while filtering: with most of the library hidden, "Recent" and "All personas" become
+   * two headings over one short list and stop carrying information.
+   */
+  /*
+   * What a collapsed section is holding, shown on its own header.
+   *
+   * Both sections default closed, so without this the form is short but silent — you cannot
+   * tell a persona injected at depth 4 from one at the prompt marker without opening two
+   * disclosures on every persona you look at.
+   */
+  const placementSummary = draft
+    ? (POSITION_OPTIONS.find((option) => option.value === (draft.position ?? 'inPrompt'))?.label ??
+      'In the prompt')
+    : null;
+  const lorebookSummary = draft?.lorebookId
+    ? (books.find((book) => book.id === draft.lorebookId)?.name ?? 'Missing book')
+    : 'None';
+  const descriptionTokens = draft ? countTokens.countText(draft.description) : 0;
+
+  const searching = query.trim().length > 0;
+  const matches = personas.filter((persona) => matchesPersonaQuery(persona, query));
+  const { recent, rest } = searching
+    ? { recent: [] as Persona[], rest: matches }
+    : orderPersonas(matches, recentIds);
+  const grouped = recent.length > 0 && rest.length > 0;
+
+  function avatarUrlFor(persona: Persona): string | null {
+    return persona.avatar
+      ? personaApi.avatarUrl(persona.id, avatarVersions[persona.id] ?? persona.avatar)
+      : null;
+  }
+
+  /** The badges that say what a persona will do to the prompt, without opening it. */
+  function marksFor(persona: Persona) {
+    const missingBook = Boolean(
+      persona.lorebookId && !books.some((book) => book.id === persona.lorebookId),
+    );
+    return (
+      <>
+        {persona.id === activeId ? <span className="persona-row__you">You</span> : null}
+        {persona.lorebookId ? (
+          <span
+            className="persona-row__mark"
+            data-missing={missingBook || undefined}
+            title={
+              missingBook
+                ? `Linked lorebook “${persona.lorebookId}” is missing.`
+                : 'Has a persona lorebook'
+            }
+          >
+            <BookIcon />
+          </span>
+        ) : null}
+        {persona.position === 'atDepth' ? (
+          <span className="persona-row__mark" title={`Injected at depth ${persona.depth ?? 2}`}>
+            D{persona.depth ?? 2}
+          </span>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderRow(persona: Persona) {
+    return (
+      // A container rather than one big button: the row has two distinct actions, and a
+      // button inside a button is invalid.
+      <div
+        key={persona.id}
+        className="persona-row"
+        data-active={activeId === persona.id || undefined}
+      >
+        <button
+          type="button"
+          className="persona-row__pick"
+          onClick={() => onSelect(persona.id)}
+          title={`Write as ${persona.name}`}
+        >
+          <span className="persona-row__face">
+            {persona.avatar ? (
+              <img src={avatarUrlFor(persona) ?? ''} alt="" loading="lazy" />
+            ) : (
+              <span aria-hidden="true">{persona.name.slice(0, 1).toUpperCase()}</span>
+            )}
+          </span>
+          <span className="persona-row__text">
+            <span className="persona-row__name">{persona.name}</span>
+            <span className="persona-row__desc">
+              {persona.description.trim() || 'No description'}
+            </span>
+          </span>
+          <span className="persona-row__marks">{marksFor(persona)}</span>
+        </button>
+
+        <button
+          type="button"
+          className="persona-row__edit"
+          onClick={() => void selectEditor(persona.id)}
+          title={`Edit ${persona.name}`}
+          aria-label={`Edit ${persona.name}`}
+        >
+          <EditIcon />
+        </button>
+      </div>
+    );
+  }
+
+  function renderCell(persona: Persona) {
+    return (
+      <div className="persona-cell" data-active={activeId === persona.id || undefined}>
+        <button
+          type="button"
+          className="persona-cell__pick"
+          onClick={() => onSelect(persona.id)}
+          title={`Write as ${persona.name}`}
+        >
+          <span className="persona-cell__face">
+            {persona.avatar ? (
+              <img src={avatarUrlFor(persona) ?? ''} alt="" loading="lazy" />
+            ) : (
+              <span className="persona-cell__initial" aria-hidden="true">
+                {persona.name.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+          </span>
+          <span className="persona-cell__name">{persona.name}</span>
+        </button>
+        <button
+          type="button"
+          className="persona-cell__edit"
+          onClick={() => void selectEditor(persona.id)}
+          title={`Edit ${persona.name}`}
+          aria-label={`Edit ${persona.name}`}
+        >
+          <EditIcon />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="persona-panel">
       {error ? (
@@ -240,15 +423,74 @@ export function PersonaPanel({
             >
               ← All personas
             </button>
+            <span className="persona-editor__spacer" />
+            {/* Up here rather than at the foot of a long scroll — a two-click confirm in
+                place, per the no-modals rule. */}
+            <button
+              type="button"
+              className="wc-button wc-button--ghost wc-button--danger"
+              onClick={() => (confirmDelete ? void handleDelete(draft.id) : setConfirmDelete(true))}
+              onBlur={() => setConfirmDelete(false)}
+              title={confirmDelete ? 'Click again to delete' : 'Delete persona'}
+            >
+              <TrashIcon />
+              {confirmDelete ? 'Click again' : null}
+            </button>
           </div>
 
           <div className="persona-editor__fields">
-            <TextField
-              label="Name"
-              value={draft.name}
-              onChange={(name) => patch({ name })}
-              hint="What {{user}} expands to, and the label on your messages."
-            />
+            {/*
+             * The face, at a size where a crop decision is judgeable.
+             *
+             * This URL was computed and thrown away for the editor's whole life — it only
+             * ever seeded the dialogue-colour sampler — so replacing an avatar gave you no
+             * feedback but a swatch quietly changing hue.
+             */}
+            <div className="persona-editor__identity">
+              <label className="persona-editor__portrait">
+                {draftAvatarUrl ? (
+                  <img src={draftAvatarUrl} alt="" />
+                ) : (
+                  <span className="persona-editor__initial" aria-hidden="true">
+                    {draft.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="persona-editor__portrait-action">
+                  {draft.avatar ? 'Replace' : 'Upload'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleAvatar(draft.id, file);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+
+              <div className="persona-editor__identity-fields">
+                <TextField
+                  inputRef={nameRef}
+                  label="Name"
+                  value={draft.name}
+                  onChange={(name) => patch({ name })}
+                  hint="What {{user}} expands to, and the label on your messages."
+                />
+                {activeId === draft.id ? (
+                  <span className="persona-editor__current">Currently writing as this persona</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="wc-button persona-editor__use"
+                    onClick={() => onSelect(draft.id)}
+                  >
+                    Use as me
+                  </button>
+                )}
+              </div>
+            </div>
 
             <TextField
               label="Description"
@@ -259,21 +501,10 @@ export function PersonaPanel({
               rows={6}
               placeholder="Who you are in the story."
               hint="Available as {{persona}} wherever it is positioned."
+              // A persona enters every single request, so its cost is worth showing — the
+              // same argument the Prompt Manager's per-prompt counts already won.
+              meta={`${descriptionTokens} tokens`}
             />
-
-            <label className="persona-editor__avatar wc-button">
-              {draft.avatar ? 'Replace avatar' : 'Upload avatar'}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                hidden
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleAvatar(draft.id, file);
-                  event.target.value = '';
-                }}
-              />
-            </label>
 
             <DialogueColorField
               value={draftDialogueColor}
@@ -282,7 +513,7 @@ export function PersonaPanel({
               onChange={(value) => onDialogueColorChange(draft.id, value)}
             />
 
-            <Section title="Placement">
+            <Section title="Placement" badge={placementSummary}>
               <SelectField<'inPrompt' | 'topAuthorNote' | 'bottomAuthorNote' | 'atDepth' | 'none'>
                 label="Where the description goes"
                 value={draft.position ?? 'inPrompt'}
@@ -310,7 +541,7 @@ export function PersonaPanel({
               ) : null}
             </Section>
 
-            <Section title="Lorebook">
+            <Section title="Lorebook" badge={lorebookSummary}>
               <SelectField<string>
                 label="Persona lorebook"
                 value={draft.lorebookId ?? ''}
@@ -327,20 +558,6 @@ export function PersonaPanel({
                 </p>
               ) : null}
             </Section>
-
-            <div className="persona-editor__footer">
-              <button
-                type="button"
-                className="wc-button wc-button--ghost wc-button--danger"
-                onClick={() =>
-                  confirmDelete ? void handleDelete(draft.id) : setConfirmDelete(true)
-                }
-                onBlur={() => setConfirmDelete(false)}
-              >
-                <TrashIcon />
-                {confirmDelete ? 'Click again to delete' : 'Delete persona'}
-              </button>
-            </div>
           </div>
         </div>
       ) : (
@@ -351,52 +568,53 @@ export function PersonaPanel({
               <span>Create one to say who you are in the chat.</span>
             </div>
           ) : (
-            <ul className="persona-grid">
-              {personas.map((persona) => (
-                <li
-                  key={persona.id}
-                  className="persona-card"
-                  data-active={activeId === persona.id || undefined}
+            <>
+              <div className="persona-roster__tools">
+                <label className="persona-roster__search">
+                  <SearchIcon />
+                  <input
+                    type="search"
+                    className="persona-roster__query"
+                    value={query}
+                    placeholder={`Search ${personas.length} personas…`}
+                    aria-label="Search personas"
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost persona-roster__density"
+                  onClick={() => onDensityChange(density === 'list' ? 'gallery' : 'list')}
+                  title={density === 'list' ? 'Show faces' : 'Show rows'}
+                  aria-label={density === 'list' ? 'Show faces' : 'Show rows'}
+                  aria-pressed={density === 'gallery'}
                 >
-                  {/* A container rather than one big button: the card needs two distinct
-                      actions, and a button inside a button is invalid. */}
-                  <button
-                    type="button"
-                    className="persona-card__pick"
-                    onClick={() => onSelect(persona.id)}
-                    title="Use this persona"
-                  >
-                    <span className="persona-card__image">
-                      {persona.avatar ? (
-                        <img
-                          src={personaApi.avatarUrl(
-                            persona.id,
-                            avatarVersions[persona.id] ?? persona.avatar,
-                          )}
-                          alt=""
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="persona-card__initial" aria-hidden="true">
-                          {persona.name.slice(0, 1).toUpperCase()}
-                        </span>
-                      )}
-                    </span>
-                    <span className="persona-card__name">{persona.name}</span>
-                  </button>
+                  {density === 'list' ? <GridIcon /> : <MenuIcon />}
+                </button>
+              </div>
 
-                  <button
-                    type="button"
-                    className="persona-card__edit"
-                    onClick={() => void selectEditor(persona.id)}
-                    title={`Edit ${persona.name}`}
-                    aria-label={`Edit ${persona.name}`}
-                  >
-                    <EditIcon />
-                  </button>
-                </li>
-              ))}
-            </ul>
+              {matches.length === 0 ? (
+                <div className="wc-empty">
+                  <span>No persona matches “{query.trim()}”.</span>
+                </div>
+              ) : density === 'gallery' ? (
+                <ul className="persona-gallery">
+                  {[...recent, ...rest].map((persona) => (
+                    <li key={persona.id}>{renderCell(persona)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="persona-roster">
+                  {/* The headings only earn their place when they separate two groups. With
+                      a small library every persona is recent, and "Recent" over the whole
+                      list is a label that distinguishes nothing. */}
+                  {grouped ? <p className="persona-roster__group">Recent</p> : null}
+                  {recent.map(renderRow)}
+                  {grouped ? <p className="persona-roster__group">All personas</p> : null}
+                  {rest.map(renderRow)}
+                </div>
+              )}
+            </>
           )}
 
           <div className="persona-panel__footer">

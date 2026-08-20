@@ -9,22 +9,9 @@ import {
   useState,
 } from 'react';
 import { GuidedSwipeIcon, SendIcon, StopIcon, WandIcon } from '../../layout/icons.tsx';
+import { composerMaxHeight, rowCap } from './composerGrowth.ts';
 import { type SlashCommandHelp, slashCompletion } from './slashCommands.ts';
 import './Composer.css';
-
-const MAX_ROWS = 16;
-
-/**
- * A second ceiling on the input, as a share of the window.
- *
- * The row cap alone is a fixed pixel height, and the composer is pinned below a transcript
- * that has to shrink to make room for it: sixteen rows on a short window — a laptop with a
- * browser bar, a phone with the keyboard up — is taller than the whole chat column, and a
- * flex item that cannot shrink simply overhangs the bottom edge. That is the composer
- * "slipping off screen". Whichever ceiling is lower wins; past it the textarea scrolls
- * internally, exactly as it does at sixteen rows.
- */
-const MAX_VIEWPORT_SHARE = 0.45;
 
 /**
  * The one write path into the composer's private draft — quick commands use it to place
@@ -62,10 +49,23 @@ interface ComposerProps {
   disabled: boolean;
   placeholder: string;
   /**
-   * Rendered before the input. A slot rather than a concrete menu so the composer stays
-   * ignorant of the chat hook.
+   * Who you are writing as, at the head of the tray. A slot for the same reason `leading`
+   * is one: the composer owns a draft, and knows nothing about personas.
+   */
+  identity?: ReactNode;
+  /**
+   * Rendered at the start of the tray. A slot rather than a concrete menu so the composer
+   * stays ignorant of the chat hook.
    */
   leading?: ReactNode;
+  /**
+   * Rendered at the head of the tray's right-hand cluster, before the draft actions.
+   *
+   * That side is "what happens to this draft", which is why the persistent-guides popover
+   * belongs here rather than beside the menus: it and the wand are the same idea, one
+   * standing and one for this turn, and they used to sit on opposite sides of the field.
+   */
+  trailing?: ReactNode;
   ref?: Ref<ComposerHandle>;
 }
 
@@ -78,7 +78,9 @@ export function Composer({
   busy,
   disabled,
   placeholder,
+  identity,
   leading,
+  trailing,
   ref,
 }: ComposerProps) {
   const [text, setText] = useState('');
@@ -97,6 +99,7 @@ export function Composer({
   const [settling, setSettling] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const trayRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
@@ -203,6 +206,23 @@ export function Composer({
     const element = textarea.current;
     if (!element) return;
 
+    /**
+     * Everything in the composer that is not the input: the tray, plus the gap above it.
+     *
+     * Measured rather than named as a constant, because it is a sum of tokens — one
+     * `--wc-control` row and the column's own gap — and a hardcoded number would drift
+     * silently the first time either moved. This is the value the viewport ceiling is
+     * charged for; see `composerMaxHeight`.
+     */
+    const measureTrayBlock = (): number => {
+      const tray = trayRef.current;
+      const root = rootRef.current;
+      if (!tray || !root) return 0;
+      const trayHeight = tray.offsetHeight;
+      if (!trayHeight) return 0;
+      return trayHeight + (Number.parseFloat(getComputedStyle(root).rowGap) || 0);
+    };
+
     const resize = () => {
       // Empty means exactly one row, and that needs no measuring — dropping the inline
       // height falls back to the `rows={1}` height the stylesheet gives it.
@@ -218,7 +238,7 @@ export function Composer({
       }
 
       const style = getComputedStyle(element);
-      const lineHeight = Number.parseFloat(style.lineHeight) || 23.25;
+      const lineHeight = Number.parseFloat(style.lineHeight);
       const paddingTop = Number.parseFloat(style.paddingTop) || 0;
       const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
       const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
@@ -226,14 +246,21 @@ export function Composer({
       const verticalPadding = paddingTop + paddingBottom;
       const verticalBorders = borderTop + borderBottom;
 
-      const rowCap =
-        (Number.isFinite(lineHeight) ? lineHeight * MAX_ROWS : Number.POSITIVE_INFINITY) +
-        verticalPadding +
-        verticalBorders;
+      // One row, as the stylesheet defines it: `min-height` on the input IS
+      // `--wc-composer-row`, so the floor comes from the same token everything else in the
+      // composer is sized against rather than from a number retyped here.
+      const oneRow =
+        Number.parseFloat(style.minHeight) || lineHeight + verticalPadding + verticalBorders || 0;
+
       // The visual viewport, where there is one: with a phone keyboard up it is the part
       // of the window still visible, which is the height the composer actually has to fit.
       const viewportHeight = globalThis.visualViewport?.height ?? globalThis.innerHeight;
-      const maxHeight = Math.min(rowCap, viewportHeight * MAX_VIEWPORT_SHARE);
+      const maxHeight = composerMaxHeight({
+        rowCap: rowCap({ lineHeight, verticalPadding, verticalBorders }),
+        viewportHeight,
+        trayBlock: measureTrayBlock(),
+        rowHeight: oneRow,
+      });
 
       const prevScrollTop = element.scrollTop;
       element.style.height = 'auto';
@@ -267,11 +294,29 @@ export function Composer({
     });
     observer.observe(element);
 
+    /*
+     * The tray's HEIGHT, which the input's ceiling is charged for.
+     *
+     * Safe to observe where the input's own height is not: the tray is sized by its
+     * controls, never by the textarea, so this cannot feed back the way observing the
+     * input's height would. It fires when the tray wraps to two lines in a narrow column,
+     * or when a control is added to it.
+     */
+    let lastTrayHeight = trayRef.current?.offsetHeight ?? 0;
+    const trayObserver = new ResizeObserver(() => {
+      const height = trayRef.current?.offsetHeight ?? 0;
+      if (height === lastTrayHeight) return;
+      lastTrayHeight = height;
+      resize();
+    });
+    if (trayRef.current) trayObserver.observe(trayRef.current);
+
     // The viewport ceiling moves with the window, and a height-only resize changes neither
     // the textarea's width nor its content — so nothing above would re-measure for it.
     globalThis.addEventListener('resize', resize);
     return () => {
       observer.disconnect();
+      trayObserver.disconnect();
       globalThis.removeEventListener('resize', resize);
     };
   }, [text]);
@@ -327,120 +372,135 @@ export function Composer({
         </div>
       ) : null}
 
-      <div className="composer__row">
-        {leading}
+      <div className="composer__field">
+        {slashOpen ? (
+          <div
+            ref={listboxRef}
+            className="composer__slash"
+            role="listbox"
+            aria-label="Slash commands"
+          >
+            {suggestions.map((command, index) => {
+              const active = index === activeIndex;
+              return (
+                <button
+                  type="button"
+                  key={command.name}
+                  id={`${listboxId}-${command.name}`}
+                  role="option"
+                  aria-selected={active}
+                  data-slash-active={active || undefined}
+                  className={`composer__slash-item${active ? ' composer__slash-item--active' : ''}`}
+                  tabIndex={-1}
+                  onMouseDown={(event) => {
+                    // Keep the textarea focused so the draft keeps receiving input — the
+                    // ordinary combobox trick, without which a click would blur us shut.
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    if (completing) completeCommand(command);
+                  }}
+                >
+                  <span className="composer__slash-name">/{command.name}</span>
+                  <span className="composer__slash-desc">{command.description}</span>
+                  <span className="composer__slash-usage">{command.usage}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
-        <div className="composer__field">
-          {slashOpen ? (
-            <div
-              ref={listboxRef}
-              className="composer__slash"
-              role="listbox"
-              aria-label="Slash commands"
-            >
-              {suggestions.map((command, index) => {
-                const active = index === activeIndex;
-                return (
-                  <button
-                    type="button"
-                    key={command.name}
-                    id={`${listboxId}-${command.name}`}
-                    role="option"
-                    aria-selected={active}
-                    data-slash-active={active || undefined}
-                    className={`composer__slash-item${
-                      active ? ' composer__slash-item--active' : ''
-                    }`}
-                    tabIndex={-1}
-                    onMouseDown={(event) => {
-                      // Keep the textarea focused so the draft keeps receiving input — the
-                      // ordinary combobox trick, without which a click would blur us shut.
-                      event.preventDefault();
-                    }}
-                    onClick={() => {
-                      if (completing) completeCommand(command);
-                    }}
-                  >
-                    <span className="composer__slash-name">/{command.name}</span>
-                    <span className="composer__slash-desc">{command.description}</span>
-                    <span className="composer__slash-usage">{command.usage}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-
-          <textarea
-            ref={textarea}
-            className="composer__input"
-            value={text}
-            rows={1}
-            spellCheck={true}
-            disabled={disabled || busy}
-            placeholder={placeholder}
-            data-shape={rounded ? 'round' : 'neutral'}
-            data-settling={settling || undefined}
-            onFocus={() => setRounded(true)}
-            // Focus alone would leave the box flat after a send, since sending never took
-            // the cursor away — clicking back into it has to count as picking it up again.
-            onPointerDown={() => setRounded(true)}
-            onChange={(event) => {
-              setText(event.target.value);
-              setError(null);
-              setSlashDismissed(false);
-              setSlashIndex(0);
-              setRounded(true);
-            }}
-            onBlur={() => {
-              setSlashDismissed(true);
-              setRounded(false);
-            }}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={slashOpen}
-            aria-controls={slashOpen ? listboxId : undefined}
-            aria-activedescendant={
-              activeIndex >= 0 && suggestions[activeIndex]
-                ? `${listboxId}-${suggestions[activeIndex].name}`
-                : undefined
+        <textarea
+          ref={textarea}
+          className="composer__input"
+          value={text}
+          rows={1}
+          spellCheck={true}
+          disabled={disabled || busy}
+          placeholder={placeholder}
+          data-shape={rounded ? 'round' : 'neutral'}
+          data-settling={settling || undefined}
+          onFocus={() => setRounded(true)}
+          // Focus alone would leave the box flat after a send, since sending never took
+          // the cursor away — clicking back into it has to count as picking it up again.
+          onPointerDown={() => setRounded(true)}
+          onChange={(event) => {
+            setText(event.target.value);
+            setError(null);
+            setSlashDismissed(false);
+            setSlashIndex(0);
+            setRounded(true);
+          }}
+          onBlur={() => {
+            setSlashDismissed(true);
+            setRounded(false);
+          }}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={slashOpen}
+          aria-controls={slashOpen ? listboxId : undefined}
+          aria-activedescendant={
+            activeIndex >= 0 && suggestions[activeIndex]
+              ? `${listboxId}-${suggestions[activeIndex].name}`
+              : undefined
+          }
+          onKeyDown={(event) => {
+            // Enter sends; Shift+Enter is a newline. While the command name is still
+            // being typed, Enter completes it instead — running `/h` because you were
+            // about to pick `/hide` is how a keystroke becomes the wrong command.
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              if (completing && suggestions[activeIndex]) {
+                completeCommand(suggestions[activeIndex]);
+              } else {
+                void submit();
+              }
+              return;
             }
-            onKeyDown={(event) => {
-              // Enter sends; Shift+Enter is a newline. While the command name is still
-              // being typed, Enter completes it instead — running `/h` because you were
-              // about to pick `/hide` is how a keystroke becomes the wrong command.
-              if (event.key === 'Enter' && !event.shiftKey) {
+            if (completing) {
+              if (event.key === 'ArrowDown') {
                 event.preventDefault();
-                if (completing && suggestions[activeIndex]) {
-                  completeCommand(suggestions[activeIndex]);
-                } else {
-                  void submit();
-                }
+                setSlashIndex((index) => (index + 1) % suggestions.length);
                 return;
               }
-              if (completing) {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  setSlashIndex((index) => (index + 1) % suggestions.length);
-                  return;
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  setSlashIndex((index) => (index - 1 + suggestions.length) % suggestions.length);
-                  return;
-                }
-                if (event.key === 'Tab' && suggestions[activeIndex]) {
-                  event.preventDefault();
-                  completeCommand(suggestions[activeIndex]);
-                  return;
-                }
-              }
-              if (slashOpen && event.key === 'Escape') {
+              if (event.key === 'ArrowUp') {
                 event.preventDefault();
-                setSlashDismissed(true);
+                setSlashIndex((index) => (index - 1 + suggestions.length) % suggestions.length);
+                return;
               }
-            }}
-          />
-        </div>
+              if (event.key === 'Tab' && suggestions[activeIndex]) {
+                event.preventDefault();
+                completeCommand(suggestions[activeIndex]);
+                return;
+              }
+            }
+            if (slashOpen && event.key === 'Escape') {
+              event.preventDefault();
+              setSlashDismissed(true);
+            }
+          }}
+        />
+      </div>
+
+      {/*
+       * The tray.
+       *
+       * Below the field rather than either side of it, which is what gives the input the
+       * column's full width. It is also the composer's FIXED end: the dock is
+       * `flex-shrink: 0` at the bottom of the chat column, so the composer grows upward and
+       * whatever sits at its bottom holds a constant screen position however tall the draft
+       * gets. Nothing here moves while you type.
+       *
+       * Left is who you are and what you can open; right is what happens to this draft.
+       */}
+      <div className="composer__tray" ref={trayRef}>
+        {identity}
+        {identity && leading ? <span className="composer__tray-rule" aria-hidden="true" /> : null}
+        {leading}
+
+        <span className="composer__tray-spacer" />
+
+        {trailing}
 
         {/* Hidden mid-generation rather than disabled: Send has already become Stop, and two
             dead buttons beside it is noise where the row should read as one action. */}

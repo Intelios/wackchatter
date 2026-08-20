@@ -1,0 +1,257 @@
+/*
+ * The composer tray's identity control and its switcher.
+ *
+ * A pill rather than another square icon button: the tray's other controls are actions you
+ * can take, and this is a statement of who you are. Distinguishing the two by shape is what
+ * stops the tray reading as seven interchangeable buttons.
+ */
+
+.persona-chip {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.persona-chip__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  height: var(--wc-control);
+  max-width: 200px;
+  padding: 0 var(--wc-space-2) 0 3px;
+  border: 1px solid var(--wc-border);
+  /* The pill. Full-round against the tray's `--wc-radius-sm` squares. */
+  border-radius: 999px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease;
+}
+
+.persona-chip__trigger:hover {
+  border-color: var(--wc-border-strong);
+  background: var(--wc-surface-hover);
+}
+
+.persona-chip__trigger[aria-expanded="true"] {
+  border-color: var(--wc-accent);
+}
+
+/* No persona is a real state, not an empty one — it says so in words rather than leaving a
+   hole where a face should be. Quieter than a set persona, since it is the absence. */
+.persona-chip__trigger[data-empty] {
+  color: var(--wc-text-muted);
+  font-weight: 500;
+}
+
+.persona-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.persona-chip__chevron {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  /* The icon points right; the popup opens upward. */
+  transform: rotate(-90deg);
+}
+
+/* --- The face ----------------------------------------------------------- */
+
+.persona-chip__face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  overflow: hidden;
+  /* Matches the transcript's avatars in shape, at a smaller size: the same person should
+     not be a square in one place and a circle in another. */
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.persona-chip__face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.persona-chip__face[data-empty] {
+  border-style: dashed;
+  background: none;
+  color: var(--wc-text-faint);
+}
+
+.persona-chip__face[data-empty] svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+/* --- The popup ---------------------------------------------------------- */
+
+.persona-chip__popup {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.persona-chip__search {
+  position: relative;
+  padding: var(--wc-space-2);
+  border-bottom: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+
+.persona-chip__search-icon {
+  position: absolute;
+  left: calc(var(--wc-space-2) + var(--wc-space-2));
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  pointer-events: none;
+}
+
+.persona-chip__input {
+  width: 100%;
+  height: var(--wc-control);
+  padding: 0 var(--wc-space-2) 0 calc(var(--wc-space-4) + var(--wc-space-3));
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+}
+
+.persona-chip__input::placeholder {
+  color: var(--wc-text-faint);
+}
+
+.persona-chip__input:focus {
+  outline: none;
+  border-color: var(--wc-border-strong);
+}
+
+/* The search input's own clear affordance duplicates Escape and steals a tab stop. */
+.persona-chip__input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.persona-chip__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--wc-space-1);
+  max-height: min(50vh, var(--wc-scroll-cap));
+  overflow-y: auto;
+}
+
+.persona-chip__group {
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-2) var(--wc-space-1);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+  color: var(--wc-text-faint);
+}
+
+.persona-chip__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  text-align: left;
+  cursor: default;
+}
+
+/*
+ * One highlight, driven by the cursor, which the pointer moves as well as the arrow keys.
+ * A separate `:hover` style would let two rows look selected at once — the moused one and
+ * the keyed one — and only one of them is what Enter would pick.
+ */
+.persona-chip__row[data-cursor] {
+  background: var(--wc-surface-hover);
+}
+
+.persona-chip__row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.persona-chip__row[data-current] .persona-chip__row-name {
+  font-weight: 600;
+}
+
+.persona-chip__you {
+  flex-shrink: 0;
+  padding: 0 var(--wc-space-2);
+  border: 1px solid var(--wc-accent);
+  border-radius: 999px;
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.persona-chip__empty {
+  margin: 0;
+  padding: var(--wc-space-4) var(--wc-space-3);
+  text-align: center;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.persona-chip__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-1) var(--wc-space-1) var(--wc-space-1) var(--wc-space-3);
+  border-top: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+
+.persona-chip__keys {
+  flex: 1;
+  min-width: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.persona-chip__keys kbd {
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+}
+
+.persona-chip__manage {
+  flex-shrink: 0;
+  font-size: var(--wc-text-xs);
+}

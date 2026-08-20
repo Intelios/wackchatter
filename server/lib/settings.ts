@@ -35,6 +35,7 @@ import {
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
+  MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
@@ -431,6 +432,32 @@ function normalizeHiddenTags(value: unknown): string[] {
 }
 
 /**
+ * Coerce the recently-used persona list: strings only, deduplicated, newest first, capped.
+ *
+ * Normalised rather than carried wholesale like `collapsedCharacterFolders`, for two
+ * reasons. The cap has to be enforced somewhere the client cannot skip, since the list is
+ * appended to on every switch and nothing else prunes it. And a malformed body — `null`, or
+ * a list of objects — must not reach the client, where this array is mapped over to build
+ * the switcher. Unlike `quickCommands` there is nothing to protect from loss: the list is a
+ * convenience, and the worst an empty one costs is a search.
+ */
+function normalizeRecentPersonaIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== 'string') continue;
+    const id = candidate.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= MAX_RECENT_PERSONAS) break;
+  }
+  return ids;
+}
+
+/**
  * Coerce a stored quick-command list. Entries without a usable id are dropped — the id is
  * what edits and deletes address, and a duplicate id would let one command shadow another.
  */
@@ -515,6 +542,10 @@ export function getSettings(): AppSettings {
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
     hiddenTags: normalizeHiddenTags(stored.hiddenTags),
     quickCommands: normalizeQuickCommands(stored.quickCommands),
+    recentPersonaIds: normalizeRecentPersonaIds(stored.recentPersonaIds),
+    // Pinned to the two legal values, the same shape as `characterListSort` above: anything
+    // else is a stale or hand-edited file, and rows are the safe default.
+    personaListDensity: stored.personaListDensity === 'gallery' ? 'gallery' : 'list',
     regexScripts: normalizeRegexScripts(stored.regexScripts),
   };
 
@@ -594,6 +625,11 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     quickCommands: Array.isArray(patch.quickCommands)
       ? normalizeQuickCommands(patch.quickCommands)
       : current.quickCommands,
+    // Normalised on the way in as well as on read, so the cap is enforced where the client
+    // cannot skip it — this list is appended to on every persona switch.
+    recentPersonaIds: Array.isArray(patch.recentPersonaIds)
+      ? normalizeRecentPersonaIds(patch.recentPersonaIds)
+      : current.recentPersonaIds,
     // Same treatment, same reason: `{"regexScripts": null}` from a stale tab must not
     // wipe scripts the user wrote by hand.
     regexScripts: Array.isArray(patch.regexScripts)

@@ -260,6 +260,17 @@ byte-identically. The quirks are load-bearing and each has a named test.
   `AppSettings.personaId` and the open chat's `ChatMetadata.persona`; loading a chat
   adopts its recorded persona (`adoptedPersona` in `chatInit.ts`). Settings follow the
   chat, never the other way — a transcript records who you were when you wrote it.
+- **Names are free to collide**, since the id is the identity. Nothing may resolve a
+  persona by name without handling ambiguity: `matchPersonaByName` (`personaRoster.ts`)
+  returns exact → prefix → substring and stops at the first rung with *any* match, so two
+  personas called "Wren" is an error naming both, never a guess. `/persona` reports it and
+  keeps the draft — a wrong guess would be stamped onto every message sent afterwards.
+- `AppSettings.recentPersonaIds` orders both the composer's switcher and the panel's
+  roster, newest first, capped at `MAX_RECENT_PERSONAS`. The cap is enforced in
+  `server/lib/settings.ts` on read *and* on patch, because the list is appended to on every
+  switch and nothing else prunes it. It is convenience only — `orderPersonas` drops ids it
+  cannot resolve — but `cascadePersonaDelete` still removes a deleted persona's slot, or a
+  dead id would starve a live persona out of the capped list.
 
 ### Deliberate divergences from SillyTavern
 
@@ -323,6 +334,16 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   makes a failed flush surface). Bar buttons are toggle buttons (`aria-pressed`), not
   tabs. The chat column is `1fr`; the header row is a fixed grid track so
   `grid-template-columns` stays the only animated property.
+- **The composer is a field with a tray under it**, not a row of controls around a field.
+  The field keeps the full measure; everything else — persona chip, menus, guided actions,
+  Send — sits in a `--wc-control`-height tray beneath. Two consequences. The tray is the
+  composer's *fixed* end (the dock is `flex-shrink: 0`, so the field grows upward and the
+  tray never moves while you type), and the tray's height comes out of the input's growth
+  budget: `MAX_VIEWPORT_SHARE` is a ceiling for the whole composer, so `composerGrowth.ts`
+  subtracts a *measured* `trayBlock` rather than a constant. Charging the share to the
+  input alone lets the composer exceed it by exactly the tray's height.
+  `--wc-composer-row` no longer aligns anything to the input's baseline — it is the input's
+  `min-height` and, through that, the one-row floor the clamp refuses to go below.
 - **Presets save explicitly, characters autosave.** Editing a preset raises a Save/Revert
   bar and locks switching/rename/import until resolved; Revert re-reads the file, the
   only authority on what the preset was. The preset draft lives above the left panel's

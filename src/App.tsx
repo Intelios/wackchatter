@@ -18,6 +18,7 @@ import {
   DEFAULT_GUIDANCE,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
+  MAX_RECENT_PERSONAS,
   type SummarySettings,
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -34,6 +35,7 @@ import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
+import { withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
 import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
 import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
@@ -890,12 +892,23 @@ export function App() {
     setView('app');
   }, []);
 
+  // Mirrors what `cascadePersonaDelete` has already done on the server, so the open tab
+  // does not keep showing a colour and a recent slot for a persona that is gone.
   const handlePersonaDeleted = useCallback((id: string) => {
     setSettings((current) => {
-      if (!current || !Object.hasOwn(current.dialogueColors.personas, id)) return current;
+      if (!current) return current;
+      const hasColor = Object.hasOwn(current.dialogueColors.personas, id);
+      const recentPersonaIds = current.recentPersonaIds.filter((entry) => entry !== id);
+      const hasRecent = recentPersonaIds.length !== current.recentPersonaIds.length;
+      if (!hasColor && !hasRecent) return current;
+
       const personas = { ...current.dialogueColors.personas };
       delete personas[id];
-      return { ...current, dialogueColors: { ...current.dialogueColors, personas } };
+      return {
+        ...current,
+        dialogueColors: { ...current.dialogueColors, personas },
+        recentPersonaIds,
+      };
     });
     setPersonaAvatarVersions((current) => {
       if (!Object.hasOwn(current, id)) return current;
@@ -907,12 +920,22 @@ export function App() {
 
   // One current persona: picking it sets the app-wide selection and, with a chat open,
   // switches this chat to it too. The two never drift.
+  //
+  // The pick is also what feeds the recently-used list, which is the only thing giving the
+  // switcher and the roster an order worth scrolling. `withRecentPersona` returns the same
+  // reference when nothing would move, so re-picking the persona you are already using
+  // writes no settings at all.
   const handleSelectPersona = useCallback(
     (id: string | null) => {
-      void patchSettings({ personaId: id });
+      const recent = withRecentPersona(settings?.recentPersonaIds ?? [], id, MAX_RECENT_PERSONAS);
+      void patchSettings(
+        recent === (settings?.recentPersonaIds ?? [])
+          ? { personaId: id }
+          : { personaId: id, recentPersonaIds: [...recent] },
+      );
       if (chat.state.chatId) chat.setPersona(id);
     },
-    [chat, patchSettings],
+    [chat, patchSettings, settings?.recentPersonaIds],
   );
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
@@ -1155,6 +1178,12 @@ export function App() {
                   personas={personas}
                   books={books}
                   activeId={settings?.personaId ?? null}
+                  recentIds={settings?.recentPersonaIds ?? []}
+                  density={settings?.personaListDensity ?? 'list'}
+                  onDensityChange={(personaListDensity) =>
+                    void patchSettings({ personaListDensity })
+                  }
+                  countTokens={countTokens}
                   onSelect={handleSelectPersona}
                   onChanged={refreshPersonas}
                   registerPersistence={(controls) => {
@@ -1193,6 +1222,9 @@ export function App() {
             avatar={active.avatar}
             characterAvatarVersion={characterAvatarVersions[active.avatar]}
             personaAvatarVersions={personaAvatarVersions}
+            personas={personas}
+            recentPersonaIds={settings?.recentPersonaIds ?? []}
+            onSelectPersona={handleSelectPersona}
             creatorNotes={character?.creator_notes ?? ''}
             // From the card rather than the message's swipe count: re-rolling the opening
             // message appends swipes the creator never wrote, and counting those would slide

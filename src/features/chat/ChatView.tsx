@@ -24,6 +24,8 @@ import {
 import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
+import { PersonaChip } from '../persona/PersonaChip.tsx';
+import { matchPersonaByName } from '../persona/personaRoster.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
 import { CardReader, type CardReaderInit } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
@@ -53,6 +55,12 @@ interface ChatViewProps {
   characterAvatarVersion?: number;
   /** Cache-busting versions per persona id — a row's speaker is not always the chat's. */
   personaAvatarVersions?: Readonly<Record<string, number>>;
+  /** Every persona, for the composer's switcher and for resolving `/persona <name>`. */
+  personas: Persona[];
+  /** Most recently switched to, newest first. Orders the switcher. */
+  recentPersonaIds: readonly string[];
+  /** Sets the app-wide persona and this chat's, together. */
+  onSelectPersona: (id: string | null) => void;
   /**
    * The card's `creator_notes` as stored, offered on the greeting. Empty shows nothing.
    * Macros are resolved here, on the display path, not by the caller.
@@ -101,6 +109,9 @@ export function ChatView({
   avatar,
   characterAvatarVersion,
   personaAvatarVersions,
+  personas,
+  recentPersonaIds,
+  onSelectPersona,
   creatorNotes,
   greetingCount,
   card,
@@ -449,6 +460,34 @@ export function ChatView({
           openCardReader({ query: command.query });
           return null;
         }
+        /*
+         * Like `/card`, this reads rather than mutates the transcript, so it needs no open
+         * chat and no messages. Unlike `/card` it can fail: the name has to resolve against
+         * the live library, and a wrong guess would be recorded onto every message sent
+         * afterwards. So an unmatched or ambiguous name is an error that keeps the draft.
+         */
+        case 'persona': {
+          if (!command.query) {
+            onOpenPanel('persona');
+            return null;
+          }
+          if (command.query.toLowerCase() === 'none') {
+            onSelectPersona(null);
+            return null;
+          }
+          const match = matchPersonaByName(personas, command.query);
+          if (match.ok) {
+            onSelectPersona(match.persona.id);
+            return null;
+          }
+          if (match.reason === 'ambiguous') {
+            const names = match.candidates.map((persona) => `"${persona.name}"`).join(', ');
+            return `"${command.query}" matches ${match.candidates.length} personas — ${names}. Use the composer's persona chip to pick one.`;
+          }
+          return personas.length === 0
+            ? 'There are no personas yet. Create one from the persona panel.'
+            : `No persona matches "${command.query}".`;
+        }
         case 'reload': {
           if (!state.chatId) return 'No chat is open to reload.';
           if (generationBlocked) {
@@ -465,7 +504,17 @@ export function ChatView({
         }
       }
     },
-    [state.chatId, state.messages, generationBlocked, chat, jumpTo, openCardReader],
+    [
+      state.chatId,
+      state.messages,
+      generationBlocked,
+      chat,
+      jumpTo,
+      openCardReader,
+      onOpenPanel,
+      onSelectPersona,
+      personas,
+    ],
   );
 
   /**
@@ -823,6 +872,19 @@ export function ChatView({
           onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
           busy={generationBlocked}
           disabled={!ready || loadBlocksChat}
+          // Who you are writing as. `chat.persona` rather than the raw setting, because a
+          // loaded chat adopts its own recorded persona — the chip has to show the one that
+          // will actually be stamped onto the next message.
+          identity={
+            <PersonaChip
+              personas={personas}
+              active={chat.persona}
+              recentIds={recentPersonaIds}
+              avatarVersions={personaAvatarVersions ?? {}}
+              onSelect={onSelectPersona}
+              onManage={() => onOpenPanel('persona')}
+            />
+          }
           // Deliberately not gated on `ready`: closing or starting a chat has to work
           // before a connection is configured.
           leading={
@@ -839,14 +901,19 @@ export function ChatView({
                 onInsertCommand={(text) => composerRef.current?.insert(text)}
                 onQuickCommandsChange={onQuickCommandsChange}
               />
-              <GuidesPopover
-                guides={guides}
-                onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
-                guidance={guidance}
-                onGuidanceChange={onGuidanceChange}
-                disabled={!state.chatId}
-              />
             </>
+          }
+          // Persistent guides sits with the draft actions, not with the menus: it and the
+          // wand are one idea — a standing instruction and a per-turn one — and they used
+          // to sit on opposite sides of the field with the whole input between them.
+          trailing={
+            <GuidesPopover
+              guides={guides}
+              onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
+              guidance={guidance}
+              onGuidanceChange={onGuidanceChange}
+              disabled={!state.chatId}
+            />
           }
           placeholder={
             loadBlocksChat

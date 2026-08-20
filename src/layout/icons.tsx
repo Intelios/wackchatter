@@ -466,3 +466,20 @@ export function LayersIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * A four-cell grid — the persona panel's density toggle, paired with `MenuIcon` for rows.
+ *
+ * Squares rather than the portrait tiles the old persona grid used: the gallery crops
+ * avatars 1:1, and the icon should say what you are switching to.
+ */
+export function GridIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}

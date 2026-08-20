@@ -22,7 +22,13 @@ export type SlashCommand =
   | { type: 'rename'; title: string }
   | { type: 'reload' }
   /** Opens the card reader. An empty query just opens it. */
-  | { type: 'card'; query: string };
+  | { type: 'card'; query: string }
+  /**
+   * Switches who you are writing as. An empty query opens the panel; `none` clears the
+   * persona. Resolving the name against the library is the executor's job — this module
+   * only recognises.
+   */
+  | { type: 'persona'; query: string };
 
 export type SlashParseResult = { ok: true; command: SlashCommand } | { ok: false; error: string };
 
@@ -67,6 +73,11 @@ export const SLASH_COMMANDS: readonly SlashCommandHelp[] = [
     name: 'card',
     usage: '/card or /card <text to find>',
     description: "Read this character's card, optionally jumping to what you searched for.",
+  },
+  {
+    name: 'persona',
+    usage: '/persona <name>, /persona none, or /persona',
+    description: 'Switch who you are writing as. On its own, opens the persona panel.',
   },
 ];
 
@@ -173,6 +184,17 @@ export function parseSlashCommand(input: string): SlashParseResult | null {
      */
     case 'card':
       return { ok: true, command: { type: 'card', query: arg } };
+    /*
+     * Optional argument for the same reason as `/card`, and verbatim for the same reason as
+     * `/rename`: a persona name is prose — "Tamsin Vale" is one name, not two tokens.
+     *
+     * Whether the name resolves is decided by the executor against the live library, which
+     * is where the personas are. A name matching nothing, or matching two personas equally
+     * well, is an error there — never a silent switch, because the persona is recorded onto
+     * every message you then send.
+     */
+    case 'persona':
+      return { ok: true, command: { type: 'persona', query: arg } };
     default:
       return { ok: false, error: `Unknown command "/${firstWord}".` };
   }

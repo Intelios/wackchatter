@@ -9,19 +9,53 @@
   /*
    * One row of the textarea: its line box, its vertical padding, its two borders.
    *
-   * Everything in the row is sized to this rather than to a fixed control height, so the
-   * three tops line up on an empty composer. They are bottom-aligned, so any mismatch
-   * lands entirely at the top — a flat 42px against the textarea's 47 read as the buttons
-   * sitting low in the row. Deriving it from the same tokens the textarea uses is what
-   * stops the two drifting apart again the next time the type scale moves.
+   * It used to size the buttons too, so their tops would line up with the input's on an
+   * empty composer. Nothing sits on that baseline any more — the controls moved to the tray
+   * below the field — so this now has exactly two jobs: it is the input's `min-height`, and
+   * through that it is the one-row FLOOR the growth clamp refuses to compute below
+   * (`composerGrowth.ts` reads it back off `min-height` rather than restating the sum).
+   *
+   * Still derived from the same tokens the textarea is set in, so the two cannot drift the
+   * next time the type scale moves.
    */
   --wc-composer-row: calc(var(--wc-text-base) * 1.55 + 20px + 2px);
 }
 
-.composer__row {
+/*
+ * The tray: everything that is not the input, under the input.
+ *
+ * Beneath rather than either side, which is what gives the field the column's full width —
+ * it was carrying six controls in one row and keeping about 57% of the measure for text.
+ *
+ * It is also the composer's fixed end. `.chat-view__dock` is `flex-shrink: 0` at the bottom
+ * of a column flex, so the composer grows UPWARD into the transcript and whatever sits at
+ * its bottom holds a constant screen position however tall the draft gets. That is why the
+ * tray cannot jitter while you type, and why the growth clamp has to charge for it: see the
+ * `trayBlock` note in composerGrowth.ts.
+ *
+ * Controls here are `--wc-control`, not `--wc-composer-row`. A second tier at the input's
+ * own height reads as a second toolbar; at the smaller control size it reads as a caption
+ * to the field, which is what it is.
+ */
+.composer__tray {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--wc-space-2);
+  flex-wrap: wrap;
+}
+
+/* Splits "who you are" from "what you can open" — the tray's left half holds both. */
+.composer__tray-rule {
+  width: 1px;
+  align-self: stretch;
+  margin-block: var(--wc-space-1);
+  background: var(--wc-border);
+  flex-shrink: 0;
+}
+
+.composer__tray-spacer {
+  flex: 1;
+  min-width: 0;
 }
 
 /*
@@ -29,9 +63,10 @@
  * anchor to the input's exact edges with no measuring: the field is the flex item that
  * used to be the textarea, and the input fills it.
  */
+/* Full width now, as the column's own child — no `flex: 1`, which in a column would grow it
+   vertically rather than horizontally. */
 .composer__field {
   position: relative;
-  flex: 1;
   min-width: 0;
   display: flex;
 }
@@ -387,21 +422,19 @@
 }
 
 .composer__button {
-  height: var(--wc-composer-row);
+  height: var(--wc-control);
   flex-shrink: 0;
 }
 
 /*
- * Matches the send button's height so the menu trigger sits on the textarea's baseline —
- * .composer aligns its children to flex-end.
+ * Tray controls.
  *
- * Given a surface and a border rather than left as a ghost icon, because this button is
- * what anchors the row's left edge. The composer already spans the transcript's measure
- * exactly: this button's left edge and Send's right edge land on the bubble's two edges.
- * But a faint glyph over a background image does not read as content, so the row appeared
- * to start 50px in — at the textarea — while still ending flush on the right. The visual
- * mass then sat 25px right of the bubbles, and the bubbles read as hanging off to the
- * left. Nothing was off centre; the two halves just had nothing to line up against.
+ * Given a surface and a border rather than left as ghost icons, for the reason the leading
+ * button always had one: the composer spans the transcript's measure exactly, so the tray's
+ * outer edges land on the bubble's two edges — but a faint glyph over a background image
+ * does not read as content, and without a surface the tray appears to start somewhere
+ * inside its own box. The mass has to reach the edges the bubbles do, or the transcript
+ * reads as hanging off to one side.
  */
 /*
  * `.composer .composer__icon` rather than `.composer__icon`: the buttons also carry
@@ -411,13 +444,14 @@
  */
 .composer .popover__trigger,
 .composer .composer__icon {
-  height: var(--wc-composer-row);
-  width: var(--wc-composer-row);
+  height: var(--wc-control);
+  width: var(--wc-control);
   padding: 0;
   border: 1px solid var(--wc-border);
-  border-radius: var(--wc-radius);
+  border-radius: var(--wc-radius-sm);
   background: var(--wc-surface);
   color: var(--wc-text-muted);
+  flex-shrink: 0;
   transition:
     border-color var(--wc-duration-fast) ease,
     color var(--wc-duration-fast) ease,

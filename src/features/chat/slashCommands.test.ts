@@ -169,6 +169,52 @@ describe('/card', () => {
   });
 });
 
+describe('/persona', () => {
+  /**
+   * Optional argument, like `/card`. Bare means "show me the personas"; with a name it
+   * switches. Both halves stand alone, so neither is an error.
+   */
+  test('opens the panel with no argument', () => {
+    expect(parseSlashCommand('/persona')).toEqual({
+      ok: true,
+      command: { type: 'persona', query: '' },
+    });
+  });
+
+  test('takes a name verbatim, spaces and all', () => {
+    expect(parseSlashCommand('/persona Tamsin Vale')).toEqual({
+      ok: true,
+      command: { type: 'persona', query: 'Tamsin Vale' },
+    });
+  });
+
+  test('passes "none" through for the executor to read as a clear', () => {
+    expect(parseSlashCommand('/persona none')).toEqual({
+      ok: true,
+      command: { type: 'persona', query: 'none' },
+    });
+  });
+
+  /*
+   * Recognition and resolution are separate on purpose. This module has no library to
+   * check a name against, so an unknown name parses fine and fails in the executor — which
+   * is what lets the error name the candidates it actually found.
+   */
+  test('a name that matches nothing still parses — resolution is the executor’s job', () => {
+    expect(parseSlashCommand('/persona nobody at all')).toEqual({
+      ok: true,
+      command: { type: 'persona', query: 'nobody at all' },
+    });
+  });
+
+  test('surrounding whitespace is trimmed', () => {
+    expect(parseSlashCommand('  /persona   Kestrel   ')).toEqual({
+      ok: true,
+      command: { type: 'persona', query: 'Kestrel' },
+    });
+  });
+});
+
 describe('slashCompletion', () => {
   test('a plain message is not a command', () => {
     expect(slashCompletion('hello')).toBeNull();
@@ -185,6 +231,7 @@ describe('slashCompletion', () => {
       'rename',
       'reload',
       'card',
+      'persona',
     ]);
   });
 
@@ -196,6 +243,7 @@ describe('slashCompletion', () => {
     expect(slashCompletion('/re')?.suggestions.map((c) => c.name)).toEqual(['rename', 'reload']);
     expect(slashCompletion('/rel')?.suggestions.map((c) => c.name)).toEqual(['reload']);
     expect(slashCompletion('/c')?.suggestions.map((c) => c.name)).toEqual(['card']);
+    expect(slashCompletion('/p')?.suggestions.map((c) => c.name)).toEqual(['persona']);
     expect(slashCompletion('/h')?.completing).toBe(true);
   });
 
@@ -220,7 +268,7 @@ describe('slashCompletion', () => {
 
   test('the registry covers every command the parser recognises', () => {
     const names = new Set(SLASH_COMMANDS.map((command) => command.name));
-    for (const input of ['/hide', '/unhide', '/jump', '/rename', '/reload', '/card']) {
+    for (const input of ['/hide', '/unhide', '/jump', '/rename', '/reload', '/card', '/persona']) {
       expect(names.has(input.slice(1))).toBe(true);
     }
   });

@@ -113,15 +113,28 @@ export function cascadeCharacterDelete(avatar: string): void {
   }
 }
 
-/** A persona is gone: remove its local-only dialogue colour preference. */
+/**
+ * A persona is gone: drop the settings that only ever referred to it.
+ *
+ * Its dialogue colour, and its slot in the recently-used list. Neither is load-bearing —
+ * `orderPersonas` already ignores an id it cannot resolve — but a dead id would sit in the
+ * recent list forever, and the list is capped, so it would starve a live persona of a slot.
+ *
+ * Chats are deliberately NOT cascaded: a transcript keeps the orphaned id and resolves it
+ * as no persona, so restoring the persona later restores the record too.
+ */
 export function cascadePersonaDelete(personaId: string): Rollback {
   const current = getSettings();
   const updated = removePersonaDialogueColor(current, personaId);
-  if (!updated) return () => {};
+  const recent = current.recentPersonaIds.filter((id) => id !== personaId);
+  const recentChanged = recent.length !== current.recentPersonaIds.length;
+  if (!updated && !recentChanged) return () => {};
 
-  saveSettings({ dialogueColors: updated.dialogueColors });
+  if (updated) saveSettings({ dialogueColors: updated.dialogueColors });
+  if (recentChanged) saveSettings({ recentPersonaIds: recent });
   return () => {
-    saveSettings({ dialogueColors: current.dialogueColors });
+    if (updated) saveSettings({ dialogueColors: current.dialogueColors });
+    if (recentChanged) saveSettings({ recentPersonaIds: current.recentPersonaIds });
   };
 }
 
