@@ -290,6 +290,9 @@
   background: var(--wc-surface);
   border: 1px solid var(--wc-border);
   color: var(--wc-text);
+  /* The insertion point is the one piece of the field that is pure accent while
+     composing — a per-keystroke reminder that the box is live, for free. */
+  caret-color: var(--wc-accent);
   font-family: inherit;
   font-size: var(--wc-text-base);
   line-height: 1.55;
@@ -318,6 +321,11 @@
    */
   transition:
     border-color var(--wc-duration-fast) ease,
+    /* The focus bloom. Rides the layout duration and curve rather than its own constants,
+       which also makes it reduced-motion-safe by construction: the token collapses to 0ms,
+       so the glow snaps in one step and needs no media block of its own. */
+    box-shadow
+    var(--wc-duration) var(--wc-ease),
     --wc-composer-rx 260ms cubic-bezier(0.34, 1.7, 0.64, 1),
     --wc-composer-ry 620ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -411,9 +419,36 @@
   border-color: var(--wc-border-strong);
 }
 
+/*
+ * The focus bloom.
+ *
+ * Three layers, the same crisp-core-plus-falloff split the busy streak is built on: a 1px
+ * ring doubling the lime border into an edge that reads as charged, a tight corona hugging
+ * the box, and a wide halo spilling past it. One 24px layer alone washes out to a faint
+ * tint over a glass background — the tight layer is what makes the field read as lit
+ * rather than as tinted. Picking the field up turns it on, rather than recolouring a
+ * border.
+ *
+ * A box-shadow follows the element's border-radius, including the morph's animated
+ * `--wc-composer-rx / -ry` pair, so the bloom deforms with the corners for free.
+ *
+ * No reduced-motion pair of its own: the bloom is a state, not a motion, and its
+ * transition rides `--wc-duration` (see the base rule). The textarea is disabled while
+ * busy, so `:focus` cannot match and the streak keeps the border to itself.
+ */
 .composer__input:focus {
   border-color: var(--wc-accent);
   outline: none;
+  box-shadow:
+    0 0 0 1px var(--wc-accent),
+    0 0 10px var(--wc-accent-glow),
+    0 0 28px var(--wc-accent-glow);
+}
+
+/* Selection inside the field, in the accent's voice. The text keeps its own colour — the
+   tint stays dark enough at 0.3 that --wc-text reads on it. */
+.composer__input::selection {
+  background: var(--wc-accent-selection);
 }
 
 .composer__input:disabled {
