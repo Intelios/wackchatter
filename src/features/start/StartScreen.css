@@ -86,11 +86,23 @@
   border-radius: var(--wc-radius);
   border: 1px solid var(--wc-border);
   background: var(--wc-surface);
-  transition: background var(--wc-duration-fast) ease;
+  transform: translateY(0);
+  transition:
+    transform var(--wc-duration-fast) var(--wc-ease),
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    box-shadow var(--wc-duration-fast) var(--wc-ease);
 }
 
 .start-screen__chat:hover {
   background: var(--wc-surface-hover);
+  border-color: var(--wc-border-strong);
+  box-shadow: var(--wc-shadow);
+  transform: translateY(-2px);
+}
+
+.start-screen__chat:active {
+  transform: translateY(0) scale(0.995);
 }
 
 .start-screen__chat-open {
