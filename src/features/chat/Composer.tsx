@@ -95,7 +95,12 @@ export function Composer({
    * rounds it: focus, a click, a keystroke.
    */
   const [rounded, setRounded] = useState(false);
-  /** Runs the one-shot settle keyframes, which override the shape transition while they play. */
+  /**
+   * The send moment, armed the instant a send is accepted and revoked when one fails. Two
+   * animations read it off the root's `data-settling` — the input's settle wobble and the
+   * field's one-shot light sweep — and the Send/Stop button holds its turn until the flag
+   * retires. Retired on a timer rather than on `animationend` — see the effect below.
+   */
   const [settling, setSettling] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -128,12 +133,12 @@ export function Composer({
    * Retire the settle animation on a timer rather than on `animationend`.
    *
    * The event is the obvious hook and the wrong one: under reduced motion the animation is
-   * `none`, so it never fires and the flag sticks forever. A timer past the animation's
-   * length is right in both worlds.
+   * `none`, so it never fires and the flag sticks forever. A timer past the longer of the
+   * two animations (the sweep, at 560ms) is right in both worlds.
    */
   useEffect(() => {
     if (!settling) return;
-    const timer = setTimeout(() => setSettling(false), 520);
+    const timer = setTimeout(() => setSettling(false), 640);
     return () => clearTimeout(timer);
   }, [settling]);
 
@@ -330,9 +335,19 @@ export function Composer({
     if (!trimmed || busy || disabled) return;
     // The textarea is about to be disabled, which drops focus with nowhere to hand it to.
     focusBeforeGenerate.current = document.activeElement;
+    // The send moment arms on the click, not on the resolution. For a normal message
+    // `onSend` dispatches the generation synchronously before it returns, so this lands in
+    // the SAME render as `busy` — the wobble and the sweep start on the very frame the
+    // generation begins, and the button's turn into Stop waits out the flag rather than
+    // playing on top of them. A failure revokes it: one that comes back synchronously (a
+    // mis-parsed command) is revoked before the armed frame is ever painted, and one that
+    // comes back late has already played — the cost of arming optimistically, and cheaper
+    // than gating the animation on a network round-trip.
+    setSettling(true);
     const failure = await onSend(trimmed);
     if (failure) {
       setError(failure);
+      setSettling(false);
       // No generation ran, so nothing disabled the input — the snapshot must not leak
       // into a later busy cycle it had nothing to do with.
       focusBeforeGenerate.current = null;
@@ -340,9 +355,10 @@ export function Composer({
     }
     setError(null);
     // Sent: let the shape relax. A failure returns above without this, since the draft is
-    // still yours to work on and the box should still look like it.
+    // still yours to work on and the box should still look like it — the settling pin in
+    // Composer.css holds the box neutral while the moment plays, and lifting the flag lets
+    // the shape state decide again.
     setRounded(false);
-    setSettling(true);
     // Only clear what was sent: while a slow command (reload) was still running the user
     // may have started typing the next message, and that draft is theirs to keep.
     setText((current) => (current.trim() === trimmed ? '' : current));
@@ -364,8 +380,18 @@ export function Composer({
     action(trimmed);
   }
 
+  // Send and Stop share one persistent button; this is which face it wears. Gated on the
+  // send moment so the turn happens after the sweep rather than on top of it — and so a
+  // double-click on Send cannot act as a Stop for the generation it just started.
+  const showStop = busy && !settling;
+
   return (
-    <div className="composer" ref={rootRef} data-busy={busy || undefined}>
+    <div
+      className="composer"
+      ref={rootRef}
+      data-busy={busy || undefined}
+      data-settling={settling || undefined}
+    >
       {error ? (
         <div className="composer__error" role="alert">
           {error}
@@ -419,7 +445,6 @@ export function Composer({
           disabled={disabled || busy}
           placeholder={placeholder}
           data-shape={rounded ? 'round' : 'neutral'}
-          data-settling={settling || undefined}
           onFocus={() => setRounded(true)}
           // Focus alone would leave the box flat after a send, since sending never took
           // the cursor away — clicking back into it has to count as picking it up again.
@@ -539,28 +564,27 @@ export function Composer({
           </button>
         ) : null}
 
-        {busy ? (
-          <button
-            type="button"
-            className="wc-button wc-button--danger composer__button"
-            onClick={onStop}
-            title="Stop generating"
-          >
-            <StopIcon />
-            Stop
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="wc-button wc-button--primary composer__button"
-            onClick={() => void submit()}
-            disabled={disabled || !text.trim()}
-            title="Send (Enter)"
-          >
+        {/* One persistent button, two faces: Send turns into Stop with a crossfade in
+            place, the surface morphing with it — no slot ever going empty, no remount. The
+            turn waits out the send moment (see `showStop`). */}
+        <button
+          type="button"
+          className={`wc-button composer__button ${
+            showStop ? 'wc-button--danger' : 'wc-button--primary'
+          }`}
+          onClick={showStop ? onStop : () => void submit()}
+          disabled={disabled || (!showStop && !text.trim())}
+          title={showStop ? 'Stop generating' : 'Send (Enter)'}
+        >
+          <span className="composer__button-face" data-hidden={showStop || undefined}>
             <SendIcon />
             Send
-          </button>
-        )}
+          </span>
+          <span className="composer__button-face" data-hidden={!showStop || undefined}>
+            <StopIcon />
+            Stop
+          </span>
+        </button>
       </div>
     </div>
   );

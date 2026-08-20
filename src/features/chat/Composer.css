@@ -72,7 +72,7 @@
 }
 
 /*
- * Generating: a lime light running along the composer's border, bouncing edge to edge.
+ * The light ring, unlit.
  *
  * On the field rather than the textarea, because a textarea has no pseudo-elements to
  * hang it on. The field is exactly the input's box — the input is its only in-flow child
@@ -80,10 +80,14 @@
  *
  * The streak is this element's own background rather than a child, which is what keeps it
  * clipped: a background cannot escape its element's border-radius, so the line follows the
- * rounded corners instead of overhanging them. That is also why the shape below is pinned
- * to neutral while busy — the two radii have to agree, and only the input's animate.
+ * rounded corners instead of overhanging them. That is also why the input's shape is pinned
+ * to neutral while the light is on (see the busy/settling pin below) — the two radii have
+ * to agree, and only the input's animate.
+ *
+ * Two states light it: the busy patrol below, and the one-shot send sweep under
+ * `data-settling`. Unlit, at opacity 0 with no animation, it costs nothing.
  */
-.composer[data-busy] .composer__field::after {
+.composer__field::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -124,16 +128,58 @@
    * behaves like a light travelling along the border rather than a decal sliding over it.
    */
   mix-blend-mode: screen;
-  /* Higher than the filled version ran at: a 2px ring is a fraction of the area a
-     full-height streak covered, and needs the intensity back to read at all. */
+  opacity: 0;
+}
+
+/*
+ * Generating: the light patrols the border, bouncing edge to edge.
+ *
+ * The Stop button already says a generation is running, so the patrol carries no
+ * information of its own — it is the room still working while the reply streams.
+ *
+ * 0.95 because a 2px ring is a fraction of the area the old full-height streak covered and
+ * needs the intensity back to read at all.
+ *
+ * `alternate` is the bounce: one pass out, one pass back, 1.1s each way. The eased curve
+ * is what sells the turnaround — linear would reverse on a dime and read as a machine
+ * scanning, where easing lets the streak decelerate into the edge and pull away again.
+ * Symmetric on purpose, since `alternate` runs the curve backwards on the return leg.
+ */
+.composer[data-busy] .composer__field::after {
   opacity: 0.95;
-  /*
-   * `alternate` is the bounce: one pass out, one pass back, 1.1s each way. The eased curve
-   * is what sells the turnaround — linear would reverse on a dime and read as a machine
-   * scanning, where easing lets the streak decelerate into the edge and pull away again.
-   * Symmetric on purpose, since `alternate` runs the curve backwards on the return leg.
-   */
   animation: wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+/*
+ * Sending: the same light makes ONE pass, corner to corner, at departure speed.
+ *
+ * `data-settling` arms in the same render as `data-busy` (see submit in Composer.tsx), so
+ * for a normal send both rules apply and the overlap rule below is the one that runs. It
+ * lists the SAME keyframes twice — when two animations drive one property, the last one
+ * listed wins while both are live — patrol first, then the pass: the pass takes the border
+ * for 560ms while the patrol waits out a matching 560ms delay, and the patrol's first leg
+ * runs `alternate-reverse` so it picks the light up from the corner the pass has just
+ * arrived at and flows back. One continuous story — a fast pass carrying the message out,
+ * then the usual pacing — with no jump at the handoff, and the curves meet at the corner:
+ * the pass decelerates in on its expo-out, and a reversed in-out leg departs slow.
+ *
+ * When `busy` has not come up (a slash command that ran locally), the rule above plays
+ * alone, and `forwards` holds the light at the exit corner until the flag retires rather
+ * than letting it snap back to a parked streak at the box's left edge.
+ *
+ * No fill on the pass inside the overlap rule, and this matters: a finished, filled
+ * animation keeps overriding the properties it drove for as long as it applies, which
+ * would park the light on the corner for the whole generation.
+ */
+.composer[data-settling] .composer__field::after {
+  opacity: 0.95;
+  animation: wc-composer-scan 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.composer[data-busy][data-settling] .composer__field::after {
+  animation:
+    wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) 560ms infinite alternate-reverse,
+    wc-composer-scan 560ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /*
@@ -161,10 +207,12 @@
   }
 }
 
-/* The Stop button already says a generation is running, so losing the streak costs no
-   information — and a lime bar parked mid-box would read as a defect. */
+/* Neither light runs under reduced motion — the patrol is decoration and a zero-duration
+   pass is motion without meaning. The Stop button already says a generation is running, so
+   losing both costs no information. */
 @media (prefers-reduced-motion: reduce) {
-  .composer[data-busy] .composer__field::after {
+  .composer[data-busy] .composer__field::after,
+  .composer[data-settling] .composer__field::after {
     display: none;
   }
 }
@@ -290,9 +338,6 @@
   background: var(--wc-surface);
   border: 1px solid var(--wc-border);
   color: var(--wc-text);
-  /* The insertion point is the one piece of the field that is pure accent while
-     composing — a per-keystroke reminder that the box is live, for free. */
-  caret-color: var(--wc-accent);
   font-family: inherit;
   font-size: var(--wc-text-base);
   line-height: 1.55;
@@ -321,11 +366,6 @@
    */
   transition:
     border-color var(--wc-duration-fast) ease,
-    /* The focus bloom. Rides the layout duration and curve rather than its own constants,
-       which also makes it reduced-motion-safe by construction: the token collapses to 0ms,
-       so the glow snaps in one step and needs no media block of its own. */
-    box-shadow
-    var(--wc-duration) var(--wc-ease),
     --wc-composer-rx 260ms cubic-bezier(0.34, 1.7, 0.64, 1),
     --wc-composer-ry 620ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -349,13 +389,18 @@
 }
 
 /*
- * A generation started elsewhere — a summary, a re-roll from the transcript — can turn
- * `busy` on while the cursor is still sitting in a rounded box. Relaxing the shape from
- * here, rather than trusting the blur that disabling the textarea fires, keeps the streak's
- * clip and the input's corners in agreement whatever the browser does about that blur. It
- * rides the normal transition, so it eases down rather than snapping.
+ * The shape pins to neutral for as long as the light is on the border. `busy`: a generation
+ * started elsewhere — a summary, a re-roll from the transcript — can land while the cursor
+ * is still sitting in a rounded box. `settling`: the send moment, whose wobble keyframes
+ * END at neutral — without the pin, the cascade would snap the box back to whatever
+ * `data-shape` still claims the moment the wobble lifts, and a revoked send would leave it
+ * there. Relaxing from here rather than trusting the blur that disabling the textarea
+ * fires keeps the streak's clip and the input's corners in agreement whatever the browser
+ * does about that blur. It rides the normal transition, so it eases down rather than
+ * snapping — and a revoked send morphs the box back to its round shape the same way.
  */
-.composer[data-busy] .composer__input {
+.composer[data-busy] .composer__input,
+.composer[data-settling] .composer__input {
   --wc-composer-rx: var(--wc-radius);
   --wc-composer-ry: var(--wc-radius);
 }
@@ -373,7 +418,7 @@
  * of every segment, so the shape flows through its extremes and the keyframe values carry
  * the motion.
  */
-.composer__input[data-settling] {
+.composer[data-settling] .composer__input {
   animation: wc-composer-settle 460ms cubic-bezier(0.45, 0, 0.55, 1);
 }
 
@@ -407,7 +452,7 @@
 @media (prefers-reduced-motion: reduce) {
   .composer__input,
   .composer__input[data-shape="round"],
-  .composer__input[data-settling] {
+  .composer[data-settling] .composer__input {
     --wc-composer-rx: var(--wc-radius);
     --wc-composer-ry: var(--wc-radius);
     transition: border-color var(--wc-duration-fast) ease;
@@ -419,36 +464,9 @@
   border-color: var(--wc-border-strong);
 }
 
-/*
- * The focus bloom.
- *
- * Three layers, the same crisp-core-plus-falloff split the busy streak is built on: a 1px
- * ring doubling the lime border into an edge that reads as charged, a tight corona hugging
- * the box, and a wide halo spilling past it. One 24px layer alone washes out to a faint
- * tint over a glass background — the tight layer is what makes the field read as lit
- * rather than as tinted. Picking the field up turns it on, rather than recolouring a
- * border.
- *
- * A box-shadow follows the element's border-radius, including the morph's animated
- * `--wc-composer-rx / -ry` pair, so the bloom deforms with the corners for free.
- *
- * No reduced-motion pair of its own: the bloom is a state, not a motion, and its
- * transition rides `--wc-duration` (see the base rule). The textarea is disabled while
- * busy, so `:focus` cannot match and the streak keeps the border to itself.
- */
 .composer__input:focus {
   border-color: var(--wc-accent);
   outline: none;
-  box-shadow:
-    0 0 0 1px var(--wc-accent),
-    0 0 10px var(--wc-accent-glow),
-    0 0 28px var(--wc-accent-glow);
-}
-
-/* Selection inside the field, in the accent's voice. The text keeps its own colour — the
-   tint stays dark enough at 0.3 that --wc-text reads on it. */
-.composer__input::selection {
-  background: var(--wc-accent-selection);
 }
 
 .composer__input:disabled {
@@ -456,9 +474,121 @@
   cursor: not-allowed;
 }
 
-.composer__button {
+/*
+ * The tray's one button. Send and Stop share it (see the faces below), so it is a grid
+ * stacking both in a single cell: the button is always as wide as the wider label, and its
+ * width never changes across the turn.
+ *
+ * `align-content: center` is load-bearing, not redundant with `place-items`. The single
+ * auto row sizes to the faces (~19.5px), which is TALLER than the content box the padding
+ * leaves (12px of a 30px control) — and `align-content: normal` resolves to stretch, which
+ * falls back to START when the free space is negative. The oversized row would pin to the
+ * top of the content box and the face would overflow toward the bottom edge: the label
+ * riding low, the button reading as clipped. Centering the row is what restores the flex
+ * behaviour this button had when its text was a bare flex item — flex centers an oversized
+ * line box directly, grid needs both levels told.
+ */
+.composer .composer__button {
   height: var(--wc-control);
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+}
+
+/*
+ * The wake-up.
+ *
+ * An empty draft holds Send dimmed, and the first character lands with a spring: the
+ * `wc-send-wake` animation on the ENABLED rule plays the moment that rule newly matches —
+ * the disabled→enabled flip is what arms it — easing from 0.92 up past 1 on the same
+ * overshoot curve the morph's horizontal radius uses.
+ *
+ * The spring is deliberately a moment rather than a posture: an earlier version held the
+ * disabled button at scale(0.92), which left it permanently smaller than the `--wc-control`
+ * controls beside it — pulled in at the bottom edge, reading as clipped against the tray
+ * row. At rest the button is always full size and in line; only the wake moves.
+ *
+ * The press overrides the duration because a finger must not wait out a spring — the
+ * spring is for state changes, not for pointing. `color` rides both lists so the label
+ * morphs with the surface when the button turns.
+ */
+.composer .composer__button:disabled {
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease;
+}
+
+.composer .composer__button:not(:disabled) {
+  animation: wc-send-wake 340ms cubic-bezier(0.34, 1.7, 0.64, 1);
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
+}
+
+.composer .composer__button:active:not(:disabled) {
+  transition-duration: var(--wc-duration-fast);
+}
+
+@keyframes wc-send-wake {
+  from {
+    transform: scale(0.92);
+  }
+}
+
+/*
+ * The two faces, crossfading in place — how Send turns into Stop.
+ *
+ * Stacked in one grid cell, so the button never empties and never changes width: the
+ * control you pressed becomes the control that stops it, with the surface colour morphing
+ * underneath (the class swap rides the wake-up transitions above). The outgoing face lifts
+ * two pixels on its way out — a whisper of the direction the message went — and
+ * `visibility` swaps only once the fade has finished (the delayed zero-second transition),
+ * so the hidden face never flashes mid-fade and never reaches a screen reader.
+ *
+ * No keyframes and no reduced-motion block of its own: the crossfade rides
+ * `--wc-duration-fast`, which reduced motion zeroes into an instant swap.
+ */
+.composer__button-face {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease,
+    visibility 0s;
+}
+
+.composer__button-face[data-hidden] {
+  opacity: 0;
+  transform: translateY(-2px);
+  visibility: hidden;
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease,
+    visibility 0s var(--wc-duration-fast);
+}
+
+/* The wake keeps its dim, loses its spring: the button simply is where it belongs, and the
+   crossfade collapses to an instant swap (--wc-duration-fast zeroes under reduced motion). */
+@media (prefers-reduced-motion: reduce) {
+  .composer .composer__button:not(:disabled) {
+    animation: none;
+  }
+  .composer .composer__button:disabled,
+  .composer .composer__button:not(:disabled) {
+    transition:
+      background var(--wc-duration-fast) ease,
+      border-color var(--wc-duration-fast) ease,
+      color var(--wc-duration-fast) ease,
+      opacity var(--wc-duration-fast) ease;
+  }
 }
 
 /*
