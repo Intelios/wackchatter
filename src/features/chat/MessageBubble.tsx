@@ -253,7 +253,16 @@ export const MessageBubble = memo(function MessageBubble({
               </span>
             ) : null}
             {message.is_system ? (
-              <span className="message__badge" title="Hidden from the prompt, shown here">
+              // The badge names what hid it, because "why is this greyed out?" is
+              // otherwise unanswerable once a memory and a manual /hide are both in play.
+              <span
+                className="message__badge"
+                title={
+                  message.hiddenBy
+                    ? 'Hidden by a memory. Deleting or revealing that memory brings it back.'
+                    : 'Hidden from the prompt by hand, shown here'
+                }
+              >
                 hidden
               </span>
             ) : null}

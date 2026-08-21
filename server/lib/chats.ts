@@ -36,6 +36,7 @@ interface MessageRow {
   name: string;
   is_user: number;
   is_system: number;
+  hidden_by: string | null;
   /** Null: speaker not recorded (legacy). Empty string: explicitly no persona. */
   persona_id: string | null;
   swipe_id: number;
@@ -114,6 +115,7 @@ function rowToMessage(row: MessageRow): ChatMessage {
       name: row.name,
       is_user: row.is_user === 1,
       is_system: row.is_system === 1,
+      hiddenBy: row.hidden_by ?? undefined,
       // The column's NULL means "not recorded"; normalizeState maps the empty string
       // to the explicit no-persona, so the row's three states land intact.
       persona_id: row.persona_id ?? undefined,
@@ -157,8 +159,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     deleteMessages: database.query('DELETE FROM messages WHERE chat_id = ?'),
     insertMessage: database.query(
       `INSERT INTO messages
-         (chat_id, id, position, name, is_user, is_system, persona_id, swipe_id, swipes, swipe_info)
-       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $personaId, $swipeId, $swipes, $swipeInfo)`,
+         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, swipe_id, swipes, swipe_info)
+       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $swipeId, $swipes, $swipeInfo)`,
     ),
   };
 
@@ -193,6 +195,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
         $name: state.name,
         $isUser: state.is_user ? 1 : 0,
         $isSystem: state.is_system ? 1 : 0,
+        $hiddenBy: state.hiddenBy ?? null,
         // NULL is reserved for "speaker not recorded"; the explicit no-persona stores
         // as an empty string so a legacy row and a persona-less message stay distinct.
         $personaId: state.persona_id === undefined ? null : (state.persona_id ?? ''),

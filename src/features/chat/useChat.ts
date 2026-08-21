@@ -7,6 +7,18 @@
  */
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import {
+  buildExtractionMessages,
+  memoryBacklog,
+  memoryMessages,
+  parseMemoryResponse,
+} from '@shared/memory/extract.ts';
+import {
+  coveredMessageIds,
+  draftsToMemories,
+  hideableMessageIds,
+} from '@shared/memory/memories.ts';
+import type { MemoryRecall } from '@shared/memory/source.ts';
 import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/assemble.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
@@ -22,6 +34,7 @@ import type {
   ChatSaveSnapshot,
   ChatSummary,
   MacroVariableMap,
+  Memory,
   Persona,
 } from '@shared/types/chat.ts';
 import {
@@ -30,7 +43,13 @@ import {
   type Preset,
 } from '@shared/types/preset.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
-import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
+import type {
+  GuidanceSettings,
+  MemoryMode,
+  MemorySettings,
+  SummarySettings,
+} from '@shared/types/settings.ts';
+import { DEFAULT_MEMORY } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
@@ -44,7 +63,7 @@ import {
   useState,
 } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
-import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { memoryRecallForChat, worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
   packClassicSummaryChunk,
   resolveSummaryPrompt,
@@ -107,6 +126,12 @@ export interface UseChatOptions {
   summaryConnection?: Connection | null;
   summarySettings?: SummarySettings;
   summaryCountTokens?: TokenCounter;
+  /** Which story-memory feature reaches the model on every generation. */
+  memoryMode?: MemoryMode;
+  memorySettings?: MemorySettings;
+  /** Resolved memory connection and preset. See `MemorySettings` for why a preset. */
+  memoryConnection?: Connection | null;
+  memoryPreset?: Preset | null;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
@@ -155,6 +180,28 @@ export interface UseChat {
   cancelSummary(): void;
   editSummary(text: string): void;
 
+  memoryStatus: SummaryRunStatus;
+  /** Transcript turns no memory covers yet. */
+  memoryPending: number;
+  /**
+   * Write memories for everything past the watermark.
+   *
+   * Takes only the fields a panel can hold unsaved; every other setting, and in
+   * particular `autoHide`, is read live so it cannot be overridden by a stale render.
+   */
+  extractMemories(draft?: Partial<UnsavedMemoryDraft>): Promise<void>;
+  cancelMemoryRun(): void;
+  /** Replace the whole list. Edits, reorders and pins all land through here. */
+  setMemories(memories: Memory[]): void;
+  /** Remove one memory and give back whatever it was hiding. */
+  deleteMemory(id: string): void;
+  /** Hide or reveal exactly the messages one memory covers, honouring the verbatim tail. */
+  setMemoryHidden(id: string, hidden: boolean): void;
+  /** How many of a memory's messages are currently hidden by it. */
+  memoryHiddenCount(id: string): number;
+  /** What memory recall did on the last generation, for the inspector. */
+  memoryRecall: MemoryRecall | null;
+
   editMessage(id: string, text: string): void;
   /** Rewrite or clear the thinking block of the selected swipe, leaving the reply alone. */
   editReasoning(id: string, reasoning: string): void;
@@ -196,6 +243,17 @@ export interface UseChat {
   worldInfo: ActivationResult | null;
 }
 
+/**
+ * The parts of `MemorySettings` a panel may still be holding uncommitted.
+ *
+ * Deliberately just the free-text prompt: it commits on blur, so pressing Extract
+ * straight after typing should use what is on screen. Nothing that changes what the run
+ * does to the transcript belongs here.
+ */
+export interface UnsavedMemoryDraft {
+  extractPrompt: string;
+}
+
 export interface SummaryRunStatus {
   running: boolean;
   processed: number;
@@ -222,6 +280,10 @@ export function useChat(options: UseChatOptions): UseChat {
     summaryConnection,
     summarySettings,
     summaryCountTokens,
+    memoryMode = 'classic',
+    memorySettings,
+    memoryConnection,
+    memoryPreset,
     globalVariables,
     regexScripts,
     onGlobalVariablesChange,
@@ -242,10 +304,19 @@ export function useChat(options: UseChatOptions): UseChat {
     error: null,
   });
 
+  const [memoryStatus, setMemoryStatus] = useState<SummaryRunStatus>({
+    running: false,
+    processed: 0,
+    total: 0,
+    error: null,
+  });
+  const [memoryRecall, setMemoryRecall] = useState<MemoryRecall | null>(null);
+
   const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
   const abortRef = useRef<AbortController | null>(null);
   const summaryAbortRef = useRef<AbortController | null>(null);
   const summaryChatIdRef = useRef<string | null>(null);
+  const memoryAbortRef = useRef<AbortController | null>(null);
 
   // The generation body reads state after dispatching into it, so the closure's copy is
   // always stale. A ref is the simplest correct answer.
@@ -635,6 +706,22 @@ export function useChat(options: UseChatOptions): UseChat {
         });
         setWorldInfo(lore);
 
+        // Recall runs over the same post-fold transcript, so a memory keyed on a word in
+        // the message just typed fires for the reply it triggered rather than the next one.
+        const recall =
+          memoryMode === 'memories'
+            ? memoryRecallForChat({
+                memories: started.metadata.memories,
+                messages: chatMessages,
+                settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
+                budget: memoryConfigRef.current.budgetTokens,
+                preset,
+                chatId: started.chatId,
+                countTokens,
+              })
+            : null;
+        setMemoryRecall(recall);
+
         const assembled = assemblePrompt({
           preset,
           character,
@@ -644,6 +731,9 @@ export function useChat(options: UseChatOptions): UseChat {
           worldInfoBefore: lore?.before,
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
+          memoryMode,
+          memoryText: recall?.text,
+          memorySettings: memoryConfigRef.current,
           scenarioOverride:
             typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
           authorNote: started.metadata.authorNote,
@@ -838,6 +928,7 @@ export function useChat(options: UseChatOptions): UseChat {
       worldInfoSettings,
       guidanceSettings,
       summarySettings,
+      memoryMode,
       globalVariables,
       regexScripts,
       onGlobalVariablesChange,
@@ -1388,6 +1479,283 @@ export function useChat(options: UseChatOptions): UseChat {
     [character, preset, persona, state, globalVariables],
   );
 
+  // --- Memory ----------------------------------------------------------------
+
+  /**
+   * How many already-written memories are shown to the extractor as context.
+   *
+   * Enough to keep names and facts flowing forward, few enough that the extractor does not
+   * start mining them instead of the transcript it was given.
+   */
+  const MEMORY_CHAIN_DEPTH = 4;
+
+  const memoryConfig = useMemo<MemorySettings>(
+    () => ({ ...DEFAULT_MEMORY, ...memorySettings }),
+    [memorySettings],
+  );
+  const memoryConfigRef = useRef(memoryConfig);
+  memoryConfigRef.current = memoryConfig;
+
+  const memoryPending = useMemo(
+    () => memoryBacklog(memoryMessages(messages), state.metadata.memoryWatermark).length,
+    [messages, state.metadata.memoryWatermark],
+  );
+
+  const cancelMemoryRun = useCallback(() => {
+    memoryAbortRef.current?.abort();
+  }, []);
+
+  const setMemories = useCallback((memories: Memory[]) => {
+    dispatch({ type: 'chat/metadata', patch: { memories } });
+  }, []);
+
+  const setMemoryHidden = useCallback((id: string, hidden: boolean) => {
+    const current = stateRef.current;
+    const memory = current.metadata.memories?.find((entry) => entry.id === id);
+    if (!memory) return;
+    // Hiding respects the verbatim tail; revealing does not, or a memory that reached into
+    // the tail could never give back everything it took.
+    const ids = hidden
+      ? hideableMessageIds(memory, current.messages, memoryConfigRef.current.verbatimTail)
+      : coveredMessageIds(memory, current.messages);
+    if (!ids.length) return;
+    dispatch({ type: 'message/setHidden', ids, hidden, memoryId: id });
+  }, []);
+
+  const memoryHiddenCount = useCallback(
+    (id: string) => state.messages.filter((message) => message.hiddenBy === id).length,
+    [state.messages],
+  );
+
+  const deleteMemory = useCallback(
+    (id: string) => {
+      const current = stateRef.current;
+      const memories = current.metadata.memories ?? [];
+      if (!memories.some((memory) => memory.id === id)) return;
+      // Reveal first, while the memory still exists to be resolved against.
+      setMemoryHidden(id, false);
+      dispatch({
+        type: 'chat/metadata',
+        patch: { memories: memories.filter((memory) => memory.id !== id) },
+      });
+    },
+    [setMemoryHidden],
+  );
+
+  /**
+   * Write memories for everything past the watermark, one window at a time.
+   *
+   * Shaped like `summarize` and for the same reasons — one abort controller, a status the
+   * panel can render, and a durable checkpoint after every paid request so a run that dies
+   * at window seven keeps windows one to six. It differs in the request it builds: no
+   * `assemblePrompt`, so no preset prompts, no jailbreak and nothing to write "ignore
+   * previous instructions" around.
+   */
+  const extractMemories = useCallback(
+    async (settingsOverride?: Partial<UnsavedMemoryDraft>) => {
+      if (memoryAbortRef.current) return;
+      const current = stateRef.current;
+      const extractionPreset = memoryPreset ?? preset;
+      if (!current.chatId || current.status !== 'idle' || !character || !extractionPreset) return;
+      if (!memoryConnection?.baseUrl || !memoryConnection.model) {
+        setMemoryStatus({
+          running: false,
+          processed: 0,
+          total: 0,
+          error: 'The selected memory connection needs an endpoint and model.',
+        });
+        return;
+      }
+
+      /*
+       * Saved settings win over anything the caller passed.
+       *
+       * The panel can only legitimately override what is not saved yet — the prompt
+       * being typed. Letting it pass a whole settings object made `autoHide`, the one
+       * destructive switch in the feature, depend on a snapshot taken when the panel
+       * last rendered. Any gap between switching it off and pressing Extract — an
+       * in-flight save, a failed one, a second window — and the run would hide messages
+       * the user had just told it not to. A destructive default has to be read live.
+       */
+      const config: MemorySettings = { ...memoryConfigRef.current, ...settingsOverride };
+      const rawMessages = toChatMessages(current);
+      if (rawMessages[0] && !rawMessages[0].is_user) {
+        rawMessages[0] = {
+          ...rawMessages[0],
+          mes: resolveGreetingMacros(rawMessages[0].mes, {
+            character,
+            preset: extractionPreset,
+            persona,
+            messages: rawMessages,
+            metadata: current.metadata,
+            globalVariables,
+            seed: current.chatId,
+          }),
+        };
+      }
+
+      const backlog = memoryBacklog(memoryMessages(rawMessages), current.metadata.memoryWatermark);
+      if (!backlog.length) {
+        setMemoryStatus({
+          running: false,
+          processed: 0,
+          total: 0,
+          error: 'No new chat messages need remembering.',
+        });
+        return;
+      }
+
+      const resolve = (text: string): string =>
+        resolveGreetingMacros(text, {
+          character,
+          preset: extractionPreset,
+          persona,
+          messages: rawMessages,
+          metadata: current.metadata,
+          globalVariables,
+          seed: current.chatId!,
+        });
+
+      const profile = {
+        name: character.name,
+        description: resolve(character.description),
+        personality: resolve(character.personality),
+        scenario: resolve(
+          typeof current.metadata.scenario === 'string'
+            ? current.metadata.scenario
+            : character.scenario,
+        ),
+      };
+      const personaProfile = persona
+        ? { name: persona.name, description: resolve(persona.description) }
+        : null;
+
+      const controller = new AbortController();
+      memoryAbortRef.current = controller;
+      let processed = 0;
+      let remaining = backlog;
+      setMemoryStatus({ running: true, processed: 0, total: backlog.length, error: null });
+
+      try {
+        while (remaining.length > 0) {
+          const chunk = remaining.slice(0, config.windowSize);
+          const isFinalWindow = remaining.length <= config.windowSize;
+
+          const apiMessages = buildExtractionMessages({
+            extractPrompt: config.extractPrompt,
+            character: profile,
+            persona: personaProfile,
+            priorMemories: (stateRef.current.metadata.memories ?? []).slice(-MEMORY_CHAIN_DEPTH),
+            window: chunk,
+          });
+
+          const body = buildRequestBody({
+            messages: apiMessages,
+            preset: extractionPreset,
+            connection: memoryConnection,
+            stream: false,
+            maxTokens: config.maxMemoryTokens,
+          });
+          const result = await streamGenerate(
+            body,
+            controller.signal,
+            { onTick: () => {} },
+            '',
+            memoryConnection.id,
+          );
+          if (controller.signal.aborted || stateRef.current.chatId !== current.chatId) return;
+
+          const parsed = parseMemoryResponse(result.content, chunk);
+          if (parsed.error) throw new Error(parsed.error);
+          const written = draftsToMemories(parsed.memories, { model: memoryConnection.model });
+
+          // Nothing complete in the newest window means the scene is still unfolding. Stop
+          // rather than advance, so the run picks it up whole next time.
+          if (!written.length && isFinalWindow) break;
+
+          // A window the model read and found nothing complete in still advances, or the
+          // run would ask the same question forever.
+          const boundary = written.at(-1)?.range?.endId ?? chunk.at(-1)!.id;
+          const consumed = remaining.findIndex((message) => message.id === boundary) + 1;
+          if (consumed <= 0) break;
+
+          const actions: ChatAction[] = [
+            {
+              type: 'chat/metadata',
+              patch: {
+                memories: [...(stateRef.current.metadata.memories ?? []), ...written],
+                memoryWatermark: boundary,
+              },
+            },
+          ];
+          if (config.autoHide) {
+            for (const memory of written) {
+              const ids = hideableMessageIds(
+                memory,
+                stateRef.current.messages,
+                config.verbatimTail,
+              );
+              if (ids.length) {
+                actions.push({ type: 'message/setHidden', ids, hidden: true, memoryId: memory.id });
+              }
+            }
+          }
+
+          // Fold from the freshest state, so chat activity during the request survives
+          // rather than being overwritten by the copy captured before it.
+          let nextState = stateRef.current;
+          for (const action of actions) {
+            nextState = chatReducer(nextState, action);
+            dispatch(action);
+          }
+          stateRef.current = nextState;
+
+          const snapshot = captureSnapshot(nextState);
+          if (snapshot) {
+            persistence.schedule(snapshot);
+            await persistence.flush(snapshot.chatId);
+          }
+
+          processed += consumed;
+          remaining = remaining.slice(consumed);
+          setMemoryStatus({
+            running: remaining.length > 0,
+            processed,
+            total: backlog.length,
+            error: null,
+          });
+        }
+        setMemoryStatus({ running: false, processed, total: backlog.length, error: null });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setMemoryStatus({
+            running: false,
+            processed,
+            total: backlog.length,
+            error: (error as Error).message,
+          });
+        }
+      } finally {
+        if (memoryAbortRef.current === controller) memoryAbortRef.current = null;
+        if (controller.signal.aborted) {
+          setMemoryStatus({ running: false, processed, total: backlog.length, error: null });
+        }
+        void refreshChats();
+      }
+    },
+    [
+      character,
+      preset,
+      memoryPreset,
+      memoryConnection,
+      persona,
+      globalVariables,
+      captureSnapshot,
+      persistence,
+      refreshChats,
+    ],
+  );
+
   return {
     state,
     messages,
@@ -1410,6 +1778,16 @@ export function useChat(options: UseChatOptions): UseChat {
     summarize,
     cancelSummary,
     editSummary,
+
+    memoryStatus,
+    memoryPending,
+    extractMemories,
+    cancelMemoryRun,
+    setMemories,
+    deleteMemory,
+    setMemoryHidden,
+    memoryHiddenCount,
+    memoryRecall,
     editMessage,
     editReasoning,
     deleteMessage,

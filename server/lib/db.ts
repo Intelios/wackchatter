@@ -10,7 +10,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { detectCloudProvider } from './location.ts';
 import { PATHS } from './paths.ts';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS messages (
   name       TEXT    NOT NULL,
   is_user    INTEGER NOT NULL,
   is_system  INTEGER NOT NULL,
+  -- Which memory hid this message, or NULL when a person did. Only meaningful alongside
+  -- is_system; it is what lets deleting a memory reveal its own messages without also
+  -- undoing an overlapping manual /hide.
+  hidden_by  TEXT,
   swipe_id   INTEGER NOT NULL DEFAULT 0,
   swipes     TEXT    NOT NULL,
   swipe_info TEXT    NOT NULL,
@@ -107,6 +111,13 @@ export function createSchema(database: Database): void {
   const messageColumns = database.query<{ name: string }, []>('PRAGMA table_info(messages)').all();
   if (!messageColumns.some((column) => column.name === 'persona_id')) {
     database.exec('ALTER TABLE messages ADD COLUMN persona_id TEXT');
+  }
+
+  // The memory that hid a message. NULL covers both "hidden by a person" and every row
+  // written before memories existed, which are the same thing as far as ownership goes:
+  // no memory may reveal them.
+  if (!messageColumns.some((column) => column.name === 'hidden_by')) {
+    database.exec('ALTER TABLE messages ADD COLUMN hidden_by TEXT');
   }
 
   database

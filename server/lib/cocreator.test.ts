@@ -385,7 +385,7 @@ describe('repairing stored JSON', () => {
 });
 
 describe('migration', () => {
-  test('a v3 database gains both tables and is stamped 4', () => {
+  test('a v3 database gains both tables and is stamped with the current version', () => {
     const legacy = new Database(':memory:');
     legacy.exec(`
       CREATE TABLE chats (
@@ -417,7 +417,7 @@ describe('migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('4');
+    ).toBe('5');
   });
 
   test('createSchema is idempotent — running it twice keeps the sessions', () => {

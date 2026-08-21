@@ -16,9 +16,12 @@ import {
   DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
+  DEFAULT_MEMORY,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
   MAX_RECENT_PERSONAS,
+  type MemoryMode,
+  type MemorySettings,
   type SummarySettings,
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -34,6 +37,7 @@ import { usePromptPreview } from './features/chat/usePromptPreview.ts';
 import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
+import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
@@ -42,7 +46,6 @@ import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
 import { StatsShell } from './features/stats/StatsShell.tsx';
 import { StudioShell } from './features/studio/StudioShell.tsx';
-import { SummaryPanel } from './features/summary/SummaryPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
 import {
@@ -302,6 +305,47 @@ export function App() {
     settings?.tokenizerEncoding,
   );
 
+  const memoryMode: MemoryMode = settings?.memoryMode ?? 'classic';
+  const memorySettings: MemorySettings = settings?.memory ?? DEFAULT_MEMORY;
+  const memoryConnection = memorySettings.connectionId
+    ? (settings?.connections.find((entry) => entry.id === memorySettings.connectionId) ??
+      connection)
+    : connection;
+
+  /*
+   * The memory extractor's preset, which is a different thing from the summariser's
+   * absence of one. Only its samplers are read — `buildRequestBody` never looks at
+   * `prompts` — so this is "the user's temperature without the user's jailbreak", and an
+   * RP preset's high temperature is exactly what makes an extractor drift off its output
+   * contract. Null, or the active id, means the already-loaded active preset.
+   */
+  const [memoryPresetFile, setMemoryPresetFile] = useState<{ id: string; value: Preset } | null>(
+    null,
+  );
+  useEffect(() => {
+    const id = memorySettings.presetId;
+    if (!id || id === presetId) return;
+    let cancelled = false;
+    void presetApi
+      .get(id)
+      .then((value) => {
+        if (!cancelled) setMemoryPresetFile({ id, value });
+      })
+      .catch(() => {
+        if (!cancelled) setMemoryPresetFile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [memorySettings.presetId, presetId]);
+
+  const memoryPreset =
+    !memorySettings.presetId || memorySettings.presetId === presetId
+      ? preset
+      : memoryPresetFile && memoryPresetFile.id === memorySettings.presetId
+        ? memoryPresetFile.value
+        : null;
+
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
@@ -519,6 +563,10 @@ export function App() {
     summaryConnection,
     summarySettings,
     summaryCountTokens,
+    memoryMode,
+    memorySettings,
+    memoryConnection,
+    memoryPreset,
     globalVariables: settings?.variables ?? {},
     regexScripts,
     onGlobalVariablesChange: commitGlobalVariables,
@@ -545,6 +593,8 @@ export function App() {
           chatMetadata: chat.state.metadata,
           guidanceSettings,
           summarySettings,
+          memoryMode,
+          memorySettings,
           globalVariables: settings?.variables ?? {},
           regexScripts,
         }
@@ -1081,6 +1131,7 @@ export function App() {
             // The last generation's result when there is one, else the live preview — so the
             // report answers "why didn't it fire?" before you send, too.
             worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
+            memoryRecall={chat.memoryRecall ?? preview?.memoryRecall ?? null}
             inspection={chat.inspection}
           />
         </ErrorBoundary>
@@ -1161,15 +1212,24 @@ export function App() {
               ) : null}
 
               {rightPanel === 'summary' ? (
-                <SummaryPanel
+                <MemoryPanel
                   chat={chat}
-                  settings={summarySettings}
+                  mode={memoryMode}
+                  onModeChange={(nextMode) => void patchSettings({ memoryMode: nextMode })}
+                  settings={memorySettings}
+                  onSettingsChange={(patch) =>
+                    void patchSettings({ memory: { ...memorySettings, ...patch } })
+                  }
+                  summarySettings={summarySettings}
+                  onSummarySettingsChange={(patch) =>
+                    void patchSettings({ summary: { ...summarySettings, ...patch } })
+                  }
                   connections={settings?.connections ?? []}
                   activeConnection={connection}
                   summaryConnection={summaryConnection}
-                  onSettingsChange={(patch) =>
-                    void patchSettings({ summary: { ...summarySettings, ...patch } })
-                  }
+                  memoryConnection={memoryConnection}
+                  presets={presets}
+                  activePresetId={presetId}
                 />
               ) : null}
 

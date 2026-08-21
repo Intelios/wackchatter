@@ -26,6 +26,7 @@ import {
   toChatMessage,
   userMessage,
 } from '@shared/chat/message.ts';
+import { markMemoriesStale } from '@shared/memory/memories.ts';
 import type { ContextOverflow } from '@shared/prompt/assemble.ts';
 import type { ChatCompletionBody } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
@@ -131,7 +132,18 @@ export type ChatAction =
   | { type: 'message/reasoningEdited'; id: string; reasoning: string }
   | { type: 'message/deleted'; id: string }
   | { type: 'message/toggleHidden'; id: string }
-  | { type: 'message/setHidden'; ids: string[]; hidden: boolean }
+  | {
+      type: 'message/setHidden';
+      ids: string[];
+      hidden: boolean;
+      /**
+       * The memory acting, when a memory is acting. Hiding stamps it; unhiding with it
+       * set touches only messages that memory stamped, so deleting a memory cannot
+       * reveal a range somebody hid by hand. Absent means a person is acting, and a
+       * person may unhide anything.
+       */
+      memoryId?: string;
+    }
   | { type: 'swipe/select'; id: string; index: number }
   | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
   | { type: 'gen/inspected'; inspection: PromptInspection }
@@ -249,6 +261,24 @@ function settle(
   }
 }
 
+/**
+ * Flag memories covering a message that is about to change or disappear.
+ *
+ * Returns the existing metadata object unchanged when nothing matched, so the identity
+ * check downstream still sees an untouched metadata and a message edit in a chat with no
+ * memories costs exactly what it did before.
+ */
+function withStaleMemories(
+  state: ChatState,
+  messageId: string,
+  reason: 'edited' | 'deleted',
+): ChatMetadata {
+  const memories = state.metadata.memories;
+  if (!memories?.length) return state.metadata;
+  const next = markMemoriesStale(memories, state.messages, messageId, reason);
+  return next ? { ...state.metadata, memories: next } : state.metadata;
+}
+
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     // A missing persona key only exists on chats created before snapshots. Snapshot the
@@ -330,6 +360,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: replaceMessage(state.messages, action.id, (message) =>
           setText(message, action.text),
         ),
+        metadata: withStaleMemories(state, action.id, 'edited'),
         revision: state.revision + 1,
       };
 
@@ -350,17 +381,23 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'message/deleted':
       return {
         ...state,
+        // Marked from the transcript that still contains the message: containment is
+        // resolved by position, so after the filter there would be nothing left to resolve.
+        metadata: withStaleMemories(state, action.id, 'deleted'),
         messages: state.messages.filter((message) => message.id !== action.id),
         revision: state.revision + 1,
       };
 
     case 'message/toggleHidden':
+      // A person toggling by hand takes ownership either way: revealing clears the stamp,
+      // and hiding again makes it a manual hide that no memory may later undo.
       return {
         ...state,
-        messages: replaceMessage(state.messages, action.id, (message) => ({
-          ...message,
-          is_system: !message.is_system,
-        })),
+        messages: replaceMessage(state.messages, action.id, (message) => {
+          const next = { ...message, is_system: !message.is_system };
+          delete next.hiddenBy;
+          return next;
+        }),
         revision: state.revision + 1,
       };
 
@@ -371,9 +408,23 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const target = new Set(action.ids);
       let changed = false;
       const messages = state.messages.map((message) => {
-        if (!target.has(message.id) || message.is_system === action.hidden) return message;
+        if (!target.has(message.id)) return message;
+
+        // Ownership, enforced here rather than at the call site: a memory may only reveal
+        // what it hid. Without this rule, deleting a memory whose range overlapped a
+        // manual `/hide` would silently undo the manual one too.
+        if (!action.hidden && action.memoryId && message.hiddenBy !== action.memoryId) {
+          return message;
+        }
+        if (message.is_system === action.hidden && message.hiddenBy === action.memoryId) {
+          return message;
+        }
+
         changed = true;
-        return { ...message, is_system: action.hidden };
+        const next = { ...message, is_system: action.hidden };
+        if (action.hidden && action.memoryId) next.hiddenBy = action.memoryId;
+        else delete next.hiddenBy;
+        return next;
       });
       if (!changed) return state;
       return { ...state, messages, revision: state.revision + 1 };

@@ -25,6 +25,8 @@ export interface MessageState {
   is_user: boolean;
   /** Hidden from the prompt, still shown in the transcript. */
   is_system: boolean;
+  /** Which memory hid it, when a memory did. See `ChatMessage.hiddenBy`. */
+  hiddenBy?: string;
   /**
    * User messages only: the persona this message was sent as. Null means no persona;
    * missing means a legacy message from before speakers were recorded. Like `name`, it
@@ -88,6 +90,8 @@ export function toChatMessage(message: MessageState): ChatMessage {
     swipe_info: message.swipe_info.map((entry) => ({ ...entry })),
   };
 
+  if (message.hiddenBy !== undefined) result.hiddenBy = message.hiddenBy;
+
   // Null is a real value — "sent with no persona" — so the key cannot be dropped by a
   // truthiness check; only a missing (legacy) speaker omits it.
   if (message.persona_id !== undefined) result.persona_id = message.persona_id;
@@ -105,6 +109,7 @@ export interface LooseMessageState {
   name: string;
   is_user?: unknown;
   is_system?: unknown;
+  hiddenBy?: unknown;
   persona_id?: unknown;
   swipes?: unknown;
   swipe_id?: unknown;
@@ -150,6 +155,12 @@ export function normalizeState(input: LooseMessageState): MessageState {
     swipe_id,
     swipe_info,
   };
+
+  // Only meaningful alongside is_system; a stamp on a visible message is stale bookkeeping
+  // from an unhide that raced a reload, and dropping it costs nothing.
+  if (typeof input.hiddenBy === 'string' && input.hiddenBy && state.is_system) {
+    state.hiddenBy = input.hiddenBy;
+  }
 
   // Three states: a persona id, an explicit null ("sent with no persona"), and missing
   // (legacy, from before speakers were recorded). Anything else — an empty string from

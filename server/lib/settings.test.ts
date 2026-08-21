@@ -9,6 +9,7 @@ import {
   DEFAULT_CONNECTION_ID,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
+  DEFAULT_MEMORY,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
   MAX_RECENT_PERSONAS,
@@ -185,6 +186,66 @@ describe('mergeSettings', () => {
       summary: { ...DEFAULT_SUMMARY, connectionId: 'deleted' },
     };
     expect(mergeSettings(current, { streamingFps: 60 }).summary.connectionId).toBeNull();
+  });
+
+  test('the memory mode defaults to the summary, so an upgrade changes nothing', () => {
+    expect(base().memoryMode).toBe('classic');
+    expect(mergeSettings(base(), { memoryMode: 'nonsense' as never }).memoryMode).toBe('classic');
+    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('memories');
+  });
+
+  test('omitting the memory mode leaves it untouched', () => {
+    const current = mergeSettings(base(), { memoryMode: 'memories' });
+    expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('memories');
+  });
+
+  test('memory preferences merge field-wise and clamp every numeric field', () => {
+    // Each of these costs money or context when wrong: a 5000-message window sends the
+    // whole chat in one request, and a budget larger than the context starves the
+    // transcript to make room for memories about it.
+    const selected = mergeSettings(base(), {
+      memory: {
+        windowSize: 5000,
+        maxMemoryTokens: 1,
+        verbatimTail: -10,
+        budgetTokens: 999_999,
+        depth: -4,
+        role: 'narrator',
+      } as never,
+    });
+
+    expect(selected.memory.windowSize).toBe(200);
+    expect(selected.memory.maxMemoryTokens).toBe(100);
+    expect(selected.memory.verbatimTail).toBe(0);
+    expect(selected.memory.budgetTokens).toBe(32000);
+    expect(selected.memory.depth).toBe(0);
+    expect(selected.memory.role).toBe(DEFAULT_MEMORY.role);
+    expect(selected.memory.extractPrompt).toBe(DEFAULT_MEMORY.extractPrompt);
+  });
+
+  test('auto-hide stays off unless it is explicitly turned on', () => {
+    expect(base().memory.autoHide).toBe(false);
+    expect(mergeSettings(base(), { memory: { autoHide: 'yes' } as never }).memory.autoHide).toBe(
+      false,
+    );
+    expect(mergeSettings(base(), { memory: { autoHide: true } as never }).memory.autoHide).toBe(
+      true,
+    );
+  });
+
+  test('an emptied extraction prompt falls back rather than shipping a blank system turn', () => {
+    expect(
+      mergeSettings(base(), { memory: { extractPrompt: '   ' } as never }).memory.extractPrompt,
+    ).toBe(DEFAULT_MEMORY.extractPrompt);
+  });
+
+  test('a missing memory connection falls back to following the active chat connection', () => {
+    const current = {
+      ...base(),
+      connections: [connection('a', 'A')],
+      memory: { ...DEFAULT_MEMORY, connectionId: 'deleted' },
+    };
+    expect(mergeSettings(current, { streamingFps: 60 }).memory.connectionId).toBeNull();
   });
 
   test('dialogue colours default on and a partial patch keeps both override maps', () => {

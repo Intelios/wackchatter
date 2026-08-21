@@ -24,6 +24,8 @@ import type {
   DialogueColorOverride,
   DialogueColorSettings,
   GuidanceSettings,
+  MemoryMode,
+  MemorySettings,
   QuickCommand,
   SummarySettings,
 } from '../../shared/types/settings.ts';
@@ -33,6 +35,7 @@ import {
   DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
+  DEFAULT_MEMORY,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
   MAX_RECENT_PERSONAS,
@@ -291,6 +294,61 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
   };
 }
 
+const MEMORY_MODES: MemoryMode[] = ['classic', 'memories', 'off'];
+
+/** Coerce the memory feature selector. Anything unrecognised falls back to the summary. */
+function normalizeMemoryMode(value: unknown): MemoryMode {
+  return MEMORY_MODES.includes(value as MemoryMode) ? (value as MemoryMode) : 'classic';
+}
+
+/**
+ * Coerce memory preferences and revalidate their optional connection reference.
+ *
+ * The numeric fields are clamped rather than merely type-checked. Every one of them costs
+ * money or context when it is wrong: a `windowSize` of 5000 sends the whole chat in one
+ * request, and a `budgetTokens` larger than the context makes assembly drop the transcript
+ * to make room for memories about it.
+ */
+function normalizeMemory(value: unknown, connections: Connection[]): MemorySettings {
+  const stored = isRecord(value) ? value : {};
+  const connectionId =
+    typeof stored.connectionId === 'string' &&
+    connections.some((connection) => connection.id === stored.connectionId)
+      ? stored.connectionId
+      : null;
+
+  const clamped = (
+    key: 'windowSize' | 'maxMemoryTokens' | 'verbatimTail' | 'budgetTokens' | 'depth',
+    min: number,
+    max: number,
+  ): number => {
+    const candidate = stored[key];
+    return typeof candidate === 'number' && Number.isFinite(candidate)
+      ? Math.min(max, Math.max(min, Math.floor(candidate)))
+      : DEFAULT_MEMORY[key];
+  };
+
+  return {
+    connectionId,
+    presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
+    extractPrompt:
+      typeof stored.extractPrompt === 'string' && stored.extractPrompt.trim()
+        ? stored.extractPrompt
+        : DEFAULT_MEMORY.extractPrompt,
+    windowSize: clamped('windowSize', 5, 200),
+    maxMemoryTokens: clamped('maxMemoryTokens', 100, 4000),
+    autoHide: typeof stored.autoHide === 'boolean' ? stored.autoHide : DEFAULT_MEMORY.autoHide,
+    verbatimTail: clamped('verbatimTail', 0, 200),
+    budgetTokens: clamped('budgetTokens', 0, 32000),
+    template: typeof stored.template === 'string' ? stored.template : DEFAULT_MEMORY.template,
+    position: SUMMARY_POSITIONS.includes(stored.position as SummarySettings['position'])
+      ? (stored.position as SummarySettings['position'])
+      : DEFAULT_MEMORY.position,
+    depth: clamped('depth', 0, 999),
+    role: normalizeRole(stored.role, DEFAULT_MEMORY.role),
+  };
+}
+
 /**
  * Coerce a stored example-set list.
  *
@@ -536,6 +594,8 @@ export function getSettings(): AppSettings {
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
     summary: normalizeSummary(stored.summary, connections),
+    memoryMode: normalizeMemoryMode(stored.memoryMode),
+    memory: normalizeMemory(stored.memory, connections),
     coCreator: normalizeCoCreator(stored.coCreator, connections),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
@@ -584,6 +644,11 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     summary: patch.summary
       ? normalizeSummary({ ...current.summary, ...patch.summary }, current.connections)
       : normalizeSummary(current.summary, current.connections),
+    memoryMode:
+      patch.memoryMode === undefined ? current.memoryMode : normalizeMemoryMode(patch.memoryMode),
+    memory: patch.memory
+      ? normalizeMemory({ ...current.memory, ...patch.memory }, current.connections)
+      : normalizeMemory(current.memory, current.connections),
     coCreator: patch.coCreator
       ? normalizeCoCreator(
           {
@@ -799,6 +864,7 @@ export function deleteConnectionEntry(id: string): AppSettings | null {
     connections: dropped.connections,
     connectionId: dropped.connectionId,
     summary: normalizeSummary(current.summary, dropped.connections),
+    memory: normalizeMemory(current.memory, dropped.connections),
     coCreator: normalizeCoCreator(current.coCreator, dropped.connections),
   });
 }

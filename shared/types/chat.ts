@@ -60,6 +60,18 @@ export interface ChatMessage {
    */
   is_system: boolean;
   /**
+   * Which memory hid this message. Absent means a person hid it by hand.
+   *
+   * Sits beside `is_system` rather than in `MessageExtra` because hiding is a property of
+   * the message, and `extra` belongs to the selected swipe — parked there, swiping would
+   * change what is recorded as having hidden the turn.
+   *
+   * Provenance, not a second hide flag. `is_system` is one boolean, so without this a
+   * memory covering messages 40–90 could not be deleted without also unhiding a manual
+   * `/hide 0-50` that happened to overlap it.
+   */
+  hiddenBy?: string;
+  /**
    * User messages only: the persona this message was sent as, recorded at send time so a
    * later persona switch cannot re-face the transcript. Null means it was sent with no
    * persona; missing means a legacy message from before speakers were recorded.
@@ -94,9 +106,80 @@ export interface ChatMetadata {
   guides?: PersistentGuide[];
   /** Editable rolling story memory and the last transcript message it covers. */
   summary?: StorySummary;
+  /**
+   * Discrete recalled memories — the alternative to `summary`, never a companion to it.
+   * Which of the two reaches the model is `AppSettings.memoryMode`; assembly injects one
+   * or neither, so a chat can carry both without them ever being sent together.
+   */
+  memories?: Memory[];
+  /**
+   * Last transcript message covered by a memory. The Memory counterpart of
+   * `StorySummary.checkpointMessageId`, and absent for the same reason: nothing extracted
+   * yet, so the backlog starts at the top.
+   */
+  memoryWatermark?: string;
   /** Provenance recorded when this chat was created as a branch of another chat. */
   branchedFrom?: BranchOrigin;
   [key: string]: unknown;
+}
+
+/**
+ * One recalled moment: a titled scene, a short narrative description, and the transcript
+ * range it was written from.
+ *
+ * Lives in `ChatMetadata` rather than in `data/lorebooks`, which is what makes branching
+ * correct by construction — a branch snapshots metadata, so a memory written after the
+ * branch point cannot leak backwards into the parent, and the branch keeps everything
+ * that was true when it split.
+ *
+ * `range` is by message id, never by index. Indices shift under delete, branch and swipe;
+ * the whole reason the extractor is never shown a global index is that it must not be able
+ * to name a message that has since moved.
+ */
+export interface Memory {
+  id: string;
+  /** Short scene name, e.g. "First Meeting". Shown as the card heading. */
+  title: string;
+  /** Two to four sentences, all-seeing narrator voice. */
+  text: string;
+  /**
+   * Recall triggers. Become `WorldInfoEntry.key`, so the activation engine matches them
+   * exactly as it matches a lorebook entry's keys — including `/pattern/flags` literals.
+   */
+  keywords: string[];
+  /**
+   * At most a couple of verbatim lines from the covered range.
+   *
+   * Memories that keep some real dialogue stop characters drifting into flat
+   * narrator-summary voice, which is the standard complaint about rolling summaries.
+   */
+  quotes?: string[];
+  /**
+   * The transcript span this was written from, inclusive at both ends.
+   *
+   * Absent on a hand-written memory, which need not describe any span at all — a fact
+   * somebody wants the model to hold is still a memory. Nothing derived from a range
+   * (hiding, staleness, the watermark) applies to one without it.
+   */
+  range?: { startId: string; endId: string };
+  /** Always in the prompt. Becomes `WorldInfoEntry.constant`. */
+  pinned: boolean;
+  /** Excluded from injection entirely, without being deleted. */
+  enabled: boolean;
+  source: 'generated' | 'manual';
+  /** Set on any user edit. Extraction never overwrites an edited memory. */
+  edited: boolean;
+  generatedAt: number;
+  /** Model that wrote it, for the same reason `MessageExtra.model` exists. */
+  model?: string;
+  /**
+   * Set when a covered message was edited or deleted after `generatedAt`.
+   *
+   * Surfaced as a badge and never auto-corrected: a memory quietly describing text that no
+   * longer exists is the failure every comparable extension documents, and silently
+   * rewriting someone's edited memory would be a worse one.
+   */
+  stale?: 'edited' | 'deleted';
 }
 
 export interface BranchOrigin {

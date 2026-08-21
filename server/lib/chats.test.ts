@@ -385,7 +385,7 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('4');
+    ).toBe('5');
   });
 
   test('adds persona_id to a v2 database without losing its messages', () => {
@@ -418,7 +418,53 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('4');
+    ).toBe('5');
+  });
+
+  test('adds hidden_by to a v4 database, leaving existing hides owned by nobody', () => {
+    const legacy = new Database(':memory:');
+    legacy.exec(`
+      CREATE TABLE chats (
+        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
+        created INTEGER NOT NULL, modified INTEGER NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE messages (
+        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
+        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, persona_id TEXT,
+        swipe_id INTEGER NOT NULL DEFAULT 0,
+        swipes TEXT NOT NULL, swipe_info TEXT NOT NULL, PRIMARY KEY (chat_id, id)
+      ) WITHOUT ROWID;
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta VALUES ('schema_version', '4');
+      INSERT INTO chats VALUES ('legacy', 'a.png', 'Old chat', 1, 2, 5, '{}');
+      INSERT INTO messages VALUES ('legacy', 'm1', 0, 'User', 1, 1, NULL, 0, '["hidden"]', '[{"send_date":""}]');
+    `);
+
+    createSchema(legacy);
+    const migrated = createChatStore(legacy, { backupDir: null }).getChat('legacy');
+
+    // A message hidden before memories existed stays hidden and stays unowned, so no
+    // memory can ever reveal it.
+    expect(migrated?.messages[0]?.is_system).toBe(true);
+    expect(migrated?.messages[0]?.hiddenBy).toBeUndefined();
+  });
+
+  test('the memory that hid a message survives a save and reload', () => {
+    // The unit tests all stop at the reducer. This is the boundary they cannot see across,
+    // and the column behind it is the whole reason provenance works at all.
+    const chat = store.createChat({ characterId: 'a.png', title: 'Provenance' });
+    store.replaceChat(chat.id, {
+      revision: chat.revision + 1,
+      messages: [
+        message({ id: 'm1', is_system: true, hiddenBy: 'mem-1', mes: 'covered' }),
+        message({ id: 'm2', is_system: true, mes: 'manual' }),
+      ],
+    });
+
+    const reloaded = store.getChat(chat.id);
+    expect(reloaded?.messages[0]?.hiddenBy).toBe('mem-1');
+    expect(reloaded?.messages[1]?.hiddenBy).toBeUndefined();
   });
 });
 

@@ -1,14 +1,20 @@
+import type { MemoryRecall } from '@shared/memory/source.ts';
 import { type AssembleResult, assemblePrompt } from '@shared/prompt/assemble.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
-import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
+import type {
+  GuidanceSettings,
+  MemoryMode,
+  MemorySettings,
+  SummarySettings,
+} from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useEffect, useState } from 'react';
-import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { memoryRecallForChat, worldInfoForChat } from '../lore/worldInfoForChat.ts';
 
 const DEBOUNCE_MS = 200;
 
@@ -29,6 +35,8 @@ export interface PromptPreviewInput {
    */
   guidanceSettings?: GuidanceSettings;
   summarySettings?: SummarySettings;
+  memoryMode?: MemoryMode;
+  memorySettings?: MemorySettings;
   globalVariables?: MacroVariableMap;
   /**
    * User regex scripts. Required, not optional-in-spirit: the counts this hook produces
@@ -41,6 +49,8 @@ export interface PromptPreviewInput {
 export type PromptPreview = AssembleResult & {
   /** What World Info would do, for the Lore tab and the inspector. */
   worldInfo: ActivationResult | null;
+  /** What memory recall would do. Kept alongside so the inspector is not blank before a send. */
+  memoryRecall: MemoryRecall | null;
 };
 
 /**
@@ -70,6 +80,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const chatMetadata = input?.chatMetadata;
   const guidanceSettings = input?.guidanceSettings;
   const summarySettings = input?.summarySettings;
+  const memoryMode = input?.memoryMode ?? 'classic';
+  const memorySettings = input?.memorySettings;
   const globalVariables = input?.globalVariables;
   const regexScripts = input?.regexScripts;
 
@@ -93,6 +105,21 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
               })
             : null;
 
+        // The same recall the send performs, seeded identically, so the Prompt Manager's
+        // memory line is the cost the next generation actually pays.
+        const recall =
+          memoryMode === 'memories' && worldInfoSettings && memorySettings
+            ? memoryRecallForChat({
+                memories: chatMetadata?.memories,
+                messages,
+                settings: worldInfoSettings,
+                budget: memorySettings.budgetTokens,
+                preset,
+                chatId,
+                countTokens,
+              })
+            : null;
+
         const assembled = assemblePrompt({
           preset,
           character,
@@ -101,6 +128,9 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           worldInfoBefore: lore?.before,
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
+          memoryMode,
+          memoryText: recall?.text,
+          memorySettings,
           scenarioOverride:
             typeof chatMetadata?.scenario === 'string' ? chatMetadata.scenario : undefined,
           authorNote: chatMetadata?.authorNote,
@@ -114,7 +144,7 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           regexScripts,
         });
 
-        setResult({ ...assembled, worldInfo: lore });
+        setResult({ ...assembled, worldInfo: lore, memoryRecall: recall });
       } catch {
         // A preset mid-edit can be momentarily invalid; the counts simply stall.
         setResult(null);
@@ -134,6 +164,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     chatMetadata,
     guidanceSettings,
     summarySettings,
+    memoryMode,
+    memorySettings,
     globalVariables,
     regexScripts,
   ]);

@@ -990,3 +990,140 @@ describe('the invariant holds across a long mixed session', () => {
     expect(currentText(last(state))).toBe('Final answer.');
   });
 });
+
+describe('memory hide provenance', () => {
+  function threeMessages(): ChatState {
+    return run(initialChatState, {
+      type: 'chat/loaded',
+      chat: chat([
+        { id: 'm0', name: 'S', is_user: false, is_system: false, mes: 'a', send_date: '1' },
+        { id: 'u1', name: 'J', is_user: true, is_system: false, mes: 'b', send_date: '2' },
+        { id: 'm2', name: 'S', is_user: false, is_system: false, mes: 'c', send_date: '3' },
+      ]),
+    });
+  }
+
+  test('hiding on behalf of a memory stamps the messages it hid', () => {
+    const state = run(threeMessages(), {
+      type: 'message/setHidden',
+      ids: ['m0', 'u1'],
+      hidden: true,
+      memoryId: 'mem-1',
+    });
+    expect(state.messages.map((m) => m.hiddenBy)).toEqual(['mem-1', 'mem-1', undefined]);
+  });
+
+  test('a memory unhiding only reveals what it stamped', () => {
+    // The manual hide on m2 must survive the memory being deleted, which is the whole
+    // reason the stamp exists.
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0', 'u1'], hidden: true, memoryId: 'mem-1' },
+      { type: 'message/setHidden', ids: ['m2'], hidden: true },
+      { type: 'message/setHidden', ids: ['m0', 'u1', 'm2'], hidden: false, memoryId: 'mem-1' },
+    );
+    expect(state.messages.map((m) => m.is_system)).toEqual([false, false, true]);
+  });
+
+  test('one memory cannot reveal what another hid', () => {
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
+      { type: 'message/setHidden', ids: ['m0'], hidden: false, memoryId: 'mem-2' },
+    );
+    expect(state.messages[0]!.is_system).toBe(true);
+    expect(state.messages[0]!.hiddenBy).toBe('mem-1');
+  });
+
+  test('a person may unhide anything, memory-hidden or not', () => {
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
+      { type: 'message/setHidden', ids: ['m0'], hidden: false },
+    );
+    expect(state.messages[0]!.is_system).toBe(false);
+    expect(state.messages[0]!.hiddenBy).toBeUndefined();
+  });
+
+  test('toggling by hand takes ownership away from the memory', () => {
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
+      { type: 'message/toggleHidden', id: 'm0' },
+      { type: 'message/toggleHidden', id: 'm0' },
+    );
+    expect(state.messages[0]!.is_system).toBe(true);
+    expect(state.messages[0]!.hiddenBy).toBeUndefined();
+  });
+
+  test('re-hiding an already memory-hidden range stays a no-op', () => {
+    const once = run(threeMessages(), {
+      type: 'message/setHidden',
+      ids: ['m0'],
+      hidden: true,
+      memoryId: 'mem-1',
+    });
+    expect(
+      chatReducer(once, {
+        type: 'message/setHidden',
+        ids: ['m0'],
+        hidden: true,
+        memoryId: 'mem-1',
+      }),
+    ).toBe(once);
+  });
+});
+
+describe('memory staleness', () => {
+  function withMemory(): ChatState {
+    const state = run(initialChatState, {
+      type: 'chat/loaded',
+      chat: chat([
+        { id: 'm0', name: 'S', is_user: false, is_system: false, mes: 'a', send_date: '1' },
+        { id: 'u1', name: 'J', is_user: true, is_system: false, mes: 'b', send_date: '2' },
+        { id: 'm2', name: 'S', is_user: false, is_system: false, mes: 'c', send_date: '3' },
+      ]),
+    });
+    return chatReducer(state, {
+      type: 'chat/metadata',
+      patch: {
+        memories: [
+          {
+            id: 'mem-1',
+            title: 'First Meeting',
+            text: 'They met.',
+            keywords: [],
+            range: { startId: 'm0', endId: 'u1' },
+            pinned: false,
+            enabled: true,
+            source: 'generated',
+            edited: false,
+            generatedAt: 0,
+          },
+        ],
+      },
+    });
+  }
+
+  test('editing a covered message marks its memory stale', () => {
+    const state = chatReducer(withMemory(), { type: 'message/edited', id: 'u1', text: 'new' });
+    expect(state.metadata.memories?.[0]?.stale).toBe('edited');
+  });
+
+  test('deleting a covered message marks its memory stale', () => {
+    const state = chatReducer(withMemory(), { type: 'message/deleted', id: 'm0' });
+    expect(state.metadata.memories?.[0]?.stale).toBe('deleted');
+  });
+
+  test('editing a message outside every range leaves the metadata object identical', () => {
+    const before = withMemory();
+    const state = chatReducer(before, { type: 'message/edited', id: 'm2', text: 'new' });
+    expect(state.metadata).toBe(before.metadata);
+  });
+
+  test('a chat with no memories is untouched', () => {
+    const before = loaded();
+    const state = chatReducer(before, { type: 'message/edited', id: 'm0', text: 'new' });
+    expect(state.metadata).toBe(before.metadata);
+  });
+});
