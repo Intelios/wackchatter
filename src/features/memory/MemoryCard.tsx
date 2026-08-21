@@ -32,6 +32,7 @@ export function MemoryCard({
   const [open, setOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState(memory.title);
   const [textDraft, setTextDraft] = useState(memory.text);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => setTitleDraft(memory.title), [memory.title]);
   useEffect(() => setTextDraft(memory.text), [memory.text]);
@@ -90,12 +91,31 @@ export function MemoryCard({
           {hiddenCount > 0 ? <EyeIcon /> : <EyeOffIcon />}
         </button>
 
+        {/* Two-click confirm in place: destructive, but never a blocking dialog. */}
         <button
           type="button"
           className="memory-card__action memory-card__action--danger"
-          onClick={onDelete}
+          data-confirming={confirmDelete || undefined}
+          onClick={() => {
+            if (confirmDelete) {
+              onDelete();
+              setConfirmDelete(false);
+            } else {
+              setConfirmDelete(true);
+            }
+          }}
+          onBlur={() => setConfirmDelete(false)}
           disabled={disabled}
-          title="Delete this memory and show any messages it hid"
+          title={
+            confirmDelete
+              ? 'Click again to delete'
+              : 'Delete this memory and show any messages it hid'
+          }
+          aria-label={
+            confirmDelete
+              ? 'Click again to delete'
+              : 'Delete this memory and show any messages it hid'
+          }
         >
           <TrashIcon />
         </button>

@@ -177,8 +177,10 @@
   color: var(--wc-accent);
 }
 
-.memory-card__action--danger:hover:not(:disabled) {
+.memory-card__action--danger:hover:not(:disabled),
+.memory-card__action--danger[data-confirming] {
   color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
 }
 
 .memory-card__preview {
