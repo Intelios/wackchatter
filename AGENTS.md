@@ -34,6 +34,7 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/secrets.ts API keys. Mode 0600. Never leaves the machine.
   lib/generate.ts The one place that calls a provider.
   lib/lorebooks.ts / personas.ts / cocreator.ts  Standalone books; personas; design sessions.
+  lib/stats.ts   Library statistics, aggregated in SQL. Built per request, never memoised.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant, as a type.
   cocreator/     CardStash — the filed-card model.
@@ -41,11 +42,11 @@ shared/          Pure, no I/O. Imported by both server and client.
   providers/     Request building + SSE parsing.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine.
-  types/         Card, preset, worldinfo, chat, settings, regex, cocreator.
+  types/         Card, preset, worldinfo, chat, settings, regex, cocreator, stats.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
-                 cocreator/.
+                 cocreator/, stats/.
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
                 secrets.json, lorebooks/, personas/, backups/, .wackchatter.
@@ -259,6 +260,17 @@ byte-identically. The quirks are load-bearing and each has a named test.
   `AppSettings.personaId` and the open chat's `ChatMetadata.persona`; loading a chat
   adopts its recorded persona (`adoptedPersona` in `chatInit.ts`). Settings follow the
   chat, never the other way — a transcript records who you were when you wrote it.
+- **Names are free to collide**, since the id is the identity. Nothing may resolve a
+  persona by name without handling ambiguity: `matchPersonaByName` (`personaRoster.ts`)
+  returns exact → prefix → substring and stops at the first rung with *any* match, so two
+  personas called "Wren" is an error naming both, never a guess. `/persona` reports it and
+  keeps the draft — a wrong guess would be stamped onto every message sent afterwards.
+- `AppSettings.recentPersonaIds` orders both the composer's switcher and the panel's
+  roster, newest first, capped at `MAX_RECENT_PERSONAS`. The cap is enforced in
+  `server/lib/settings.ts` on read *and* on patch, because the list is appended to on every
+  switch and nothing else prunes it. It is convenience only — `orderPersonas` drops ids it
+  cannot resolve — but `cascadePersonaDelete` still removes a deleted persona's slot, or a
+  dead id would starve a live persona out of the capped list.
 
 ### Deliberate divergences from SillyTavern
 
@@ -292,10 +304,14 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 
 ## UI conventions
 
-- **The two creator areas replace the chat shell** — they are not modals or panels. The
-  Studio is manual, the Co-Creator conversational; Finish hands off to the Studio one-way
-  with no path back. Entering/leaving either flushes the relevant save queue first, and a
-  failed flush aborts the transition rather than hiding unsaved work.
+- **The three sub-apps replace the chat shell** — they are not modals or panels, they
+  share one shell skeleton, and all three are reached only from the Start screen. The
+  Studio is manual, the Co-Creator conversational, Stats read-only; Finish hands off from
+  the Co-Creator to the Studio one-way with no path back. Entering any of them flushes the
+  save queue first and a failed flush aborts the transition rather than hiding unsaved
+  work — for Stats that is also what makes the numbers right, since a chat still in the
+  queue is one the server has not been told about. Only the two creator areas register
+  persistence; Stats has nothing of its own to flush on the way out.
 - **In the Co-Creator the model never writes a field** — it proposes in labelled fenced
   blocks and every slot got there via "Use as". Two tested invariants: everything the
   model sees is in the readable transcript (the stash never reaches a prompt), and block
@@ -318,6 +334,16 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   makes a failed flush surface). Bar buttons are toggle buttons (`aria-pressed`), not
   tabs. The chat column is `1fr`; the header row is a fixed grid track so
   `grid-template-columns` stays the only animated property.
+- **The composer is a field with a tray under it**, not a row of controls around a field.
+  The field keeps the full measure; everything else — persona chip, menus, guided actions,
+  Send — sits in a `--wc-control`-height tray beneath. Two consequences. The tray is the
+  composer's *fixed* end (the dock is `flex-shrink: 0`, so the field grows upward and the
+  tray never moves while you type), and the tray's height comes out of the input's growth
+  budget: `MAX_VIEWPORT_SHARE` is a ceiling for the whole composer, so `composerGrowth.ts`
+  subtracts a *measured* `trayBlock` rather than a constant. Charging the share to the
+  input alone lets the composer exceed it by exactly the tray's height.
+  `--wc-composer-row` no longer aligns anything to the input's baseline — it is the input's
+  `min-height` and, through that, the one-row floor the clamp refuses to go below.
 - **Presets save explicitly, characters autosave.** Editing a preset raises a Save/Revert
   bar and locks switching/rename/import until resolved; Revert re-reads the file, the
   only authority on what the preset was. The preset draft lives above the left panel's
@@ -344,6 +370,28 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 - Error boundaries wrap the root and each shell region (left panel, chat, right panel).
   `lib/crashReport.ts` is pure and tested because it runs in the failure path on values
   that may not be Errors.
+
+**Stats** (`server/lib/stats.ts`, `src/features/stats/`)
+
+- Counting happens in SQL and the client is sent ids and numbers, never display names —
+  those resolve against the lists `App` already holds, so a deleted card falls back to its
+  raw id instead of dropping out of its own history. Nothing is denormalised: there is no
+  stats table, so a figure cannot drift from the transcripts it summarises.
+- **Rerolls exclude `position 0`.** A card's alternate greetings arrive as swipes on the
+  first message, so a naive `swipes − messages` reports rerolls the user never made — on a
+  real library that was 131 against 50 actual. Named test.
+- **The server sends UTC hour buckets and the client folds the calendar.** `send_date` is
+  UTC and so is SQLite's `date()`, so bucketing days server-side files a 23:30 session under
+  tomorrow, and a fixed client offset is wrong across a daylight-saving change. Day
+  stepping is by calendar date, never `+ 86400000`.
+- `extra.token_count` is **completion tokens only**, frequently our own estimate. It is
+  labelled "generated" and **must never be presented as a cost** — there is no prompt-token
+  history to build one from. `extra.api` is a `ProviderId`, not a connection, and old rows
+  carry `'openai'`; render an unrecognised provider verbatim rather than dropping the row.
+- Every chart animation ships its paired `prefers-reduced-motion` block, and the count-up
+  hook checks `matchMedia` itself — a JS animation is not covered by the token overrides.
+  It also completes on a hidden document, so the numbers match the CSS animations beside
+  them rather than stranding at zero.
 
 ## Testing
 

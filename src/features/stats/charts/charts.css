@@ -1,0 +1,499 @@
+/*
+ * Chart primitives.
+ *
+ * Structural only — every colour, space and duration comes from tokens.css. Series colours
+ * arrive as `--wc-series`, set by the component from the `--wc-series-N` tokens, so a chart
+ * never names a colour.
+ *
+ * Everything here animates on mount and then stops. Each animation ships its paired
+ * reduced-motion block at the bottom of the file: a zeroed duration still flashes its
+ * `from` frame, so `animation: none` is the only thing that actually turns one off.
+ */
+
+/* ---------------------------------------------------------------- stat tile */
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  animation: wc-stats-rise var(--wc-duration-view) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.stat-tile__label {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.stat-tile__value {
+  color: var(--wc-text);
+  font-size: var(--wc-text-xl);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.stat-tile__hint {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.stat-tile[data-hero] {
+  background: var(--wc-surface-raised);
+  border-color: var(--wc-border-strong);
+}
+
+.stat-tile[data-hero] .stat-tile__value {
+  font-size: var(--wc-stats-hero-size);
+  /*
+   * The shimmer. A slow sweep of accent across the number, clipped to the glyphs — the one
+   * piece of continuous motion on the screen, reserved for the figure the section is about.
+   * `background-clip: text` needs a transparent fill, so the accent colour underneath is
+   * what actually shows through.
+   */
+  background: linear-gradient(
+    100deg,
+    var(--wc-accent) 0%,
+    var(--wc-accent) 40%,
+    var(--wc-text) 50%,
+    var(--wc-accent) 60%,
+    var(--wc-accent) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: wc-stats-shimmer 6s var(--wc-ease) infinite;
+}
+
+/* ---------------------------------------------------------------- bar rows */
+
+.bar-rows {
+  display: grid;
+  gap: var(--wc-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar-rows__row {
+  min-width: 0;
+  border-radius: var(--wc-radius-sm);
+}
+
+.bar-rows__open,
+.bar-rows__static {
+  display: grid;
+  grid-template-columns: var(--wc-stats-row-avatar) minmax(0, 20ch) 1fr auto;
+  align-items: center;
+  gap: var(--wc-space-3);
+  width: 100%;
+  padding: var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  text-align: left;
+}
+
+.bar-rows__open {
+  transition: background var(--wc-duration-fast) ease;
+}
+
+.bar-rows__open:hover {
+  background: var(--wc-surface-hover);
+}
+
+.bar-rows__avatar {
+  width: var(--wc-stats-row-avatar);
+  height: var(--wc-stats-row-avatar);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+}
+
+.bar-rows__swatch {
+  width: var(--wc-space-2);
+  height: var(--wc-space-2);
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--wc-series, var(--wc-accent));
+}
+
+.bar-rows__label {
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-rows__track {
+  overflow: hidden;
+  height: var(--wc-stats-bar-height);
+  border-radius: 999px;
+  background: var(--wc-border);
+}
+
+.bar-rows__fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--wc-series, var(--wc-accent));
+  transform: scaleX(var(--share, 0));
+  transform-origin: left center;
+  /*
+   * A hair past the target and back. On a ranked list the overshoot is what makes the bars
+   * read as being placed rather than drawn — and it costs nothing, since transform on a
+   * fixed-width element reflows nothing around it.
+   */
+  animation: wc-stats-grow var(--wc-stats-draw) cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.bar-rows__value {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+  min-width: 5ch;
+  text-align: right;
+}
+
+/* ---------------------------------------------------------------- donut */
+
+.donut {
+  display: grid;
+  grid-template-columns: var(--wc-stats-donut-size) 1fr;
+  align-items: center;
+  gap: var(--wc-space-5);
+}
+
+.donut__ring {
+  position: relative;
+  width: var(--wc-stats-donut-size);
+  height: var(--wc-stats-donut-size);
+}
+
+.donut__ring svg {
+  width: 100%;
+  height: 100%;
+  /* Twelve o'clock start, so the largest slice begins where the eye does. */
+  transform: rotate(-90deg);
+}
+
+.donut__track,
+.donut__segment {
+  fill: none;
+  stroke-width: 12;
+}
+
+.donut__track {
+  stroke: var(--wc-border);
+}
+
+.donut__segment {
+  stroke: var(--wc-series, var(--wc-accent));
+  stroke-dasharray: var(--dash) var(--gap);
+  stroke-dashoffset: var(--offset);
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    stroke-width var(--wc-duration-fast) ease;
+  animation: wc-stats-sweep var(--wc-stats-draw) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.donut__segment[data-active] {
+  stroke-width: 16;
+}
+
+.donut__segment[data-dimmed] {
+  opacity: 0.35;
+}
+
+.donut__centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wc-space-1);
+  pointer-events: none;
+  text-align: center;
+}
+
+.donut__centre strong {
+  color: var(--wc-text);
+  font-size: var(--wc-text-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.donut__centre span {
+  max-width: 70%;
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut__legend {
+  display: grid;
+  gap: var(--wc-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.donut__legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  font-size: var(--wc-text-sm);
+  transition: background var(--wc-duration-fast) ease;
+  animation: wc-stats-rise var(--wc-duration) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.donut__legend li[data-active] {
+  background: var(--wc-surface-hover);
+}
+
+.donut__swatch {
+  width: var(--wc-space-2);
+  height: var(--wc-space-2);
+  border-radius: 50%;
+  background: var(--wc-series, var(--wc-accent));
+}
+
+.donut__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut__detail {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- columns */
+
+.columns {
+  display: grid;
+  gap: var(--wc-space-2);
+}
+
+.columns__readout {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  min-height: var(--wc-space-5);
+}
+
+.columns__readout strong {
+  color: var(--wc-accent);
+  font-size: var(--wc-text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.columns__readout span {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+}
+
+.columns__plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: var(--wc-stats-columns-height);
+}
+
+.columns__column {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  min-width: 0;
+  height: 100%;
+}
+
+.columns__bar {
+  width: 100%;
+  height: var(--h, 0%);
+  /* A day with nothing still gets a baseline, so the axis reads as continuous. */
+  min-height: 1px;
+  border-radius: var(--wc-radius-sm) var(--wc-radius-sm) 0 0;
+  background: var(--wc-accent);
+  transform-origin: bottom center;
+  transition: background var(--wc-duration-fast) ease;
+  animation: wc-stats-rise-column var(--wc-stats-draw) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 12ms);
+}
+
+.columns__column[data-empty] .columns__bar {
+  background: var(--wc-border);
+}
+
+.columns__column[data-active] .columns__bar {
+  background: var(--wc-accent-hover);
+}
+
+.columns__axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+/* ---------------------------------------------------------------- hour dial */
+
+.dial {
+  position: relative;
+  width: var(--wc-stats-dial-size);
+  height: var(--wc-stats-dial-size);
+  margin: 0 auto;
+}
+
+.dial svg {
+  width: 100%;
+  height: 100%;
+}
+
+.dial__ring {
+  fill: none;
+  stroke: var(--wc-border);
+  stroke-width: 1;
+}
+
+.dial__hit {
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+
+.dial__spoke {
+  stroke: var(--wc-accent);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  opacity: 0.75;
+  pointer-events: none;
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    stroke var(--wc-duration-fast) ease;
+  stroke-dasharray: 1;
+  animation: wc-stats-draw-line var(--wc-stats-draw) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.dial__spoke[data-active],
+.dial__spoke-group[data-active] .dial__spoke {
+  stroke: var(--wc-accent-hover);
+  opacity: 1;
+}
+
+.dial__tick {
+  fill: var(--wc-text-faint);
+  font-size: 9px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.dial__centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dial__centre strong {
+  color: var(--wc-text);
+  font-size: var(--wc-text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.dial__centre span {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- keyframes */
+
+@keyframes wc-stats-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wc-space-3));
+  }
+}
+
+@keyframes wc-stats-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes wc-stats-rise-column {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes wc-stats-sweep {
+  from {
+    stroke-dasharray: 0 calc(var(--dash) + var(--gap));
+  }
+}
+
+@keyframes wc-stats-draw-line {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes wc-stats-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+/*
+ * Every animation above, off. A 0ms animation still paints its `from` frame for one tick,
+ * which on this screen would mean bars at zero and a hero number that never fills in.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .stat-tile,
+  .bar-rows__fill,
+  .donut__segment,
+  .donut__legend li,
+  .columns__bar,
+  .dial__spoke {
+    animation: none;
+  }
+
+  .stat-tile[data-hero] .stat-tile__value {
+    animation: none;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: var(--wc-accent);
+  }
+
+  .dial__spoke {
+    stroke-dasharray: none;
+  }
+}

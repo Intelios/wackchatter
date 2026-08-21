@@ -1,7 +1,13 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { CoCreatorIcon, MessagesIcon, StudioIcon, TrashIcon } from '../../layout/icons.tsx';
+import {
+  CoCreatorIcon,
+  MessagesIcon,
+  StatsIcon,
+  StudioIcon,
+  TrashIcon,
+} from '../../layout/icons.tsx';
 import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
 import './StartScreen.css';
 
@@ -14,6 +20,7 @@ interface StartScreenProps {
   onDeleteChat: (chatId: string) => Promise<void>;
   onOpenStudio: () => void;
   onOpenCoCreator: () => void;
+  onOpenStats: () => void;
 }
 
 interface RecentChat extends ChatSummary {
@@ -51,6 +58,7 @@ export function StartScreen({
   onDeleteChat,
   onOpenStudio,
   onOpenCoCreator,
+  onOpenStats,
 }: StartScreenProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [recent, setRecent] = useState<ChatSummary[] | null>(null);
@@ -209,14 +217,29 @@ export function StartScreen({
           </div>
         )}
 
-        <div className="start-screen__creator-links">
-          <button type="button" className="start-screen__studio" onClick={onOpenStudio}>
-            <StudioIcon />
-            Character Creator Studio
-          </button>
-          <button type="button" className="start-screen__studio" onClick={onOpenCoCreator}>
-            <CoCreatorIcon />
-            Character Co-Creator
+        {/*
+         * Named for the row, not its first occupant: Stats is not a creator tool. The
+         * pair is wrapped rather than left to wrap on its own, because the grouping is
+         * the point — the two character tools are siblings and Stats sits under them.
+         */}
+        <div className="start-screen__tool-links">
+          <div className="start-screen__tool-pair">
+            <button type="button" className="wc-button start-screen__tool" onClick={onOpenStudio}>
+              <StudioIcon />
+              Character Creator Studio
+            </button>
+            <button
+              type="button"
+              className="wc-button start-screen__tool"
+              onClick={onOpenCoCreator}
+            >
+              <CoCreatorIcon />
+              Character Co-Creator
+            </button>
+          </div>
+          <button type="button" className="wc-button start-screen__tool" onClick={onOpenStats}>
+            <StatsIcon />
+            Stats
           </button>
         </div>
       </div>

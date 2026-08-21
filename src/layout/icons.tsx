@@ -403,31 +403,37 @@ export function BoltIcon({ className }: IconProps) {
   );
 }
 
-/** Character Creator Studio — a card with a drafting pencil. */
+/** Character Creator Studio — an artist palette for manual card crafting. */
 export function StudioIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">
-      <rect x="4" y="3" width="13" height="18" rx="2" />
-      <path d="M8 8h5" />
-      <path d="M8 12h3" />
-      <path d="m15 16 5.5-5.5 1.5 1.5-5.5 5.5-2.5.8Z" />
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.12 0-.92.75-1.67 1.67-1.67h1.99c3.05 0 5.56-2.5 5.56-5.55C21.97 6 17.46 2 12 2Z" />
+      <circle cx="7.5" cy="10.5" r="1" fill="currentColor" />
+      <circle cx="12" cy="7.5" r="1" fill="currentColor" />
+      <circle cx="16.5" cy="10.5" r="1" fill="currentColor" />
+      <circle cx="9" cy="15.5" r="1" fill="currentColor" />
     </svg>
   );
 }
 
-/**
- * Character Co-Creator — the Studio's card, in conversation.
- *
- * Deliberately shares `StudioIcon`'s card outline: the two are siblings, and the speech tail
- * is the whole difference between building a card by hand and talking one out.
- */
+/** Character Co-Creator — a dialogue bubble with a creation sparkle for conversational design. */
 export function CoCreatorIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">
-      <rect x="3" y="3" width="12" height="16" rx="2" />
-      <path d="M6.5 8h5" />
-      <path d="M6.5 11.5h3" />
-      <path d="M12 13h8a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4l-3 2.5V19a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z" />
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+      <path d="M12 7.5c0 1.8-1.2 3-3 3 1.8 0 3 1.2 3 3 0-1.8 1.2-3 3-3-1.8 0-3-1.2-3-3Z" />
+    </svg>
+  );
+}
+
+/** Stats — a column chart with axes for library analytics. */
+export function StatsIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-4" />
     </svg>
   );
 }
@@ -457,6 +463,23 @@ export function LayersIcon({ className }: IconProps) {
       <path d="m12 2 10 5-10 5-10-5Z" />
       <path d="m2 12 10 5 10-5" />
       <path d="m2 17 10 5 10-5" />
+    </svg>
+  );
+}
+
+/**
+ * A four-cell grid — the persona panel's density toggle, paired with `MenuIcon` for rows.
+ *
+ * Squares rather than the portrait tiles the old persona grid used: the gallery crops
+ * avatars 1:1, and the icon should say what you are switching to.
+ */
+export function GridIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   );
 }

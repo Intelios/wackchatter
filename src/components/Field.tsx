@@ -1,5 +1,5 @@
 import { joinKeys, splitKeys } from '@shared/worldinfo/keys.ts';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { type Ref, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ExpandIcon } from '../layout/icons.tsx';
 import { FullscreenText } from './FullscreenText.tsx';
 import './Field.css';
@@ -27,6 +27,11 @@ interface TextFieldProps {
    */
   onCommit?: () => void;
   disabled?: boolean;
+  /**
+   * The single-line input, for a caller that needs to drive focus into it — creating a
+   * persona puts the caret in its Name field. Ignored when `multiline` is set.
+   */
+  inputRef?: Ref<HTMLInputElement>;
 }
 
 export function TextField({
@@ -42,6 +47,7 @@ export function TextField({
   disabled,
   expandable,
   autoGrow,
+  inputRef,
 }: TextFieldProps) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
@@ -96,6 +102,7 @@ export function TextField({
       ) : (
         <input
           id={id}
+          ref={inputRef}
           className="wc-input"
           type="text"
           value={value}

@@ -395,7 +395,13 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
           created: now,
           modified: now,
           revision: 0,
-          metadata: JSON.stringify(source.metadata),
+          metadata: JSON.stringify({
+            ...source.metadata,
+            branchedFrom: {
+              chatId: source.id,
+              messageId: afterMessageId,
+            },
+          }),
         },
         // Fresh ids: the copies are independent messages from here on.
         source.messages.slice(0, cut + 1).map((message) => ({

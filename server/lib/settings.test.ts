@@ -11,6 +11,7 @@ import {
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
+  MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
@@ -225,6 +226,32 @@ describe('mergeSettings', () => {
     });
     expect(current.quickCommands).toEqual([{ id: 'a', name: 'Ending', text: 'Write an ending.' }]);
     expect(mergeSettings(current, { quickCommands: [] }).quickCommands).toEqual([]);
+  });
+
+  test('recent personas deduplicate, keep their order, and cap', () => {
+    const many = Array.from({ length: MAX_RECENT_PERSONAS + 4 }, (_, i) => `p${i}`);
+    const next = mergeSettings(base(), { recentPersonaIds: [...many, 'p0'] });
+
+    expect(next.recentPersonaIds).toEqual(many.slice(0, MAX_RECENT_PERSONAS));
+    expect(next.recentPersonaIds).toHaveLength(MAX_RECENT_PERSONAS);
+  });
+
+  test('malformed recent-persona entries are dropped rather than reaching the client', () => {
+    // The list is mapped over to build the composer's switcher, so a non-string entry is a
+    // render crash rather than a bad row.
+    const next = mergeSettings(base(), {
+      recentPersonaIds: [' a ', '', 42, null, { id: 'b' }, 'c'] as never,
+    });
+    expect(next.recentPersonaIds).toEqual(['a', 'c']);
+  });
+
+  test('a malformed recent-persona patch leaves the list alone', () => {
+    const current = mergeSettings(base(), { recentPersonaIds: ['a', 'b'] });
+    for (const patch of [{ recentPersonaIds: null }, { recentPersonaIds: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).recentPersonaIds).toEqual(['a', 'b']);
+    }
+    // An explicit empty list is still a legitimate clear.
+    expect(mergeSettings(current, { recentPersonaIds: [] }).recentPersonaIds).toEqual([]);
   });
 
   test('hidden tags trim and deduplicate case-insensitively', () => {
@@ -908,5 +935,49 @@ describe('reassignGlobalLorebooks', () => {
     expect(
       reassignGlobalLorebooks({ ...base(), globalLorebooks: 'nope' }, 'old', 'new'),
     ).toBeNull();
+  });
+});
+
+describe('getSettings on disk', () => {
+  afterEach(() => {
+    setDataDir(DEFAULT_DATA_DIR);
+    resetSettingsCache();
+  });
+
+  test('recentPersonaIds is deduplicated, trimmed, and capped at MAX_RECENT_PERSONAS on read', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      const many = Array.from({ length: MAX_RECENT_PERSONAS + 4 }, (_, i) => `p${i}`);
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({
+          recentPersonaIds: ['  p0  ', ...many, 'p0', '', 42, null, { id: 'bad' }],
+        }),
+      );
+
+      const settings = getSettings();
+      expect(settings.recentPersonaIds).toEqual(many.slice(0, MAX_RECENT_PERSONAS));
+      expect(settings.recentPersonaIds).toHaveLength(MAX_RECENT_PERSONAS);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a missing or non-array recentPersonaIds on disk defaults to an empty list', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({ recentPersonaIds: 'not-an-array' }),
+      );
+
+      expect(getSettings().recentPersonaIds).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

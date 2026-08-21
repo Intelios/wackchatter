@@ -31,6 +31,24 @@ export interface AppSettings {
    * one — the chat wins, because a transcript records who you were when you wrote it.
    */
   personaId: string | null;
+  /**
+   * Personas most recently switched to, newest first, capped at `MAX_RECENT_PERSONAS`.
+   *
+   * Convenience only: it orders the composer's switcher and the panel's roster so the two
+   * or three personas someone is actually using this week are reachable without a search.
+   * Nothing keys on it, losing it costs a few clicks, and an entry for a deleted persona is
+   * inert — `orderPersonas` drops ids it cannot resolve. A flat array, so `mergeSettings`'
+   * spread carries it and no field-wise branch is needed.
+   */
+  recentPersonaIds: string[];
+  /**
+   * How the persona panel lists the library: dense rows, or a grid of faces.
+   *
+   * Rows fit about fifteen personas where the grid fits six, which is why they are the
+   * default — but a library browsed by face rather than by name is a real way to work, so
+   * the grid stays one click away rather than being removed.
+   */
+  personaListDensity: 'list' | 'gallery';
   /** SillyTavern-compatible variables shared by every chat. */
   variables: MacroVariableMap;
   /** Global World Info scan settings. ST stores these per-app too, not per-book. */
@@ -136,6 +154,15 @@ export type CharacterRating = 1 | 2 | 3 | 4 | 5;
 
 export const CHARACTER_RATING_MIN = 1 as const;
 export const CHARACTER_RATING_MAX = 5 as const;
+
+/**
+ * How many entries `AppSettings.recentPersonaIds` keeps.
+ *
+ * A cap rather than an unbounded log: the list is pushed to on every switch, and nothing
+ * ever prunes it otherwise. Enforced on the server so a stale tab cannot grow the file, and
+ * imported by the client so the two agree on one number.
+ */
+export const MAX_RECENT_PERSONAS = 8 as const;
 
 /**
  * Guided Generations settings.
@@ -329,6 +356,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   connectionId: DEFAULT_CONNECTION_ID,
   streamingFps: 30,
   personaId: null,
+  recentPersonaIds: [],
+  personaListDensity: 'list',
   variables: {},
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',

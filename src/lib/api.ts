@@ -40,6 +40,7 @@ import type {
 } from '@shared/types/location.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
+import type { CharacterStats, StatsOverview } from '@shared/types/stats.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
 
 export class ApiError extends Error {
@@ -700,4 +701,13 @@ export interface VersionInfo {
 
 export const versionApi = {
   get: () => request<VersionInfo>('/version'),
+};
+
+export const statsApi = {
+  /** The whole library. Aggregated server-side — see server/lib/stats.ts. */
+  overview: () => request<StatsOverview>('/stats'),
+
+  /** One card. A card with no chats answers with zeros rather than a 404. */
+  character: (avatar: string) =>
+    request<CharacterStats>(`/stats/characters/${encodeURIComponent(avatar)}`),
 };

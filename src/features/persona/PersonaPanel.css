@@ -16,9 +16,287 @@
   flex-shrink: 0;
 }
 
-/* --- Card grid ---------------------------------------------------------- */
+/* --- Roster ------------------------------------------------------------- */
 
-.persona-grid {
+/*
+ * Rows, not portrait tiles.
+ *
+ * The old grid was two columns of 3:4 crops — 282px per row of two, so about six personas
+ * on a 900px window, with no way to search and nothing to scroll toward. A 48px row carries
+ * the face, the name, the first line of the description and the badges that say what the
+ * persona does to the prompt, and fits fifteen in the same space.
+ */
+
+.persona-roster__tools {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  background: var(--wc-surface);
+  border-bottom: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+
+.persona-roster__search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.persona-roster__search svg {
+  position: absolute;
+  left: var(--wc-space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  pointer-events: none;
+}
+
+.persona-roster__query {
+  width: 100%;
+  height: var(--wc-control);
+  padding: 0 var(--wc-space-2) 0 calc(var(--wc-space-4) + var(--wc-space-3));
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+}
+
+.persona-roster__query::placeholder {
+  color: var(--wc-text-faint);
+}
+
+.persona-roster__query:focus {
+  outline: none;
+  border-color: var(--wc-border-strong);
+}
+
+/* Duplicates Escape and steals a tab stop. */
+.persona-roster__query::-webkit-search-cancel-button {
+  display: none;
+}
+
+.persona-roster__density {
+  flex-shrink: 0;
+  width: var(--wc-control);
+  height: var(--wc-control);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.persona-roster {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wc-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.persona-roster__group {
+  margin: 0;
+  padding: var(--wc-space-3) var(--wc-space-2) var(--wc-space-1);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+  color: var(--wc-text-faint);
+}
+
+.persona-roster__group:first-child {
+  padding-top: var(--wc-space-1);
+}
+
+/* --- A row -------------------------------------------------------------- */
+
+.persona-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--wc-radius-sm);
+}
+
+.persona-row__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  text-align: left;
+  border: 1px solid transparent;
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease;
+}
+
+.persona-row__pick:hover {
+  background: var(--wc-surface-hover);
+}
+
+/*
+ * The active row, said three ways: an accent rail, a tinted ground and a "You" chip.
+ *
+ * The old grid marked it with a 1px border and a 1px shadow on a portrait, which is easy to
+ * miss — and this is the single state the whole panel exists to communicate.
+ */
+.persona-row[data-active] .persona-row__pick {
+  background: var(--wc-accent-subtle);
+  border-color: var(--wc-accent-border);
+}
+
+.persona-row[data-active]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--wc-space-2);
+  bottom: var(--wc-space-2);
+  width: 2px;
+  border-radius: 2px;
+  background: var(--wc-accent);
+}
+
+.persona-row__face {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wc-avatar-sm);
+  height: var(--wc-avatar-sm);
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--wc-radius);
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.persona-row__face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.persona-row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.persona-row__name {
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Answers "which Wren is this?" without opening anything. */
+.persona-row__desc {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.persona-row__marks {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  flex-shrink: 0;
+}
+
+.persona-row__you {
+  padding: 0 var(--wc-space-2);
+  border: 1px solid var(--wc-accent);
+  border-radius: 999px;
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.persona-row__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.persona-row__mark svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* A book that was renamed away is visible from the list, rather than only once you open
+   the persona it broke. */
+.persona-row__mark[data-missing] {
+  border-color: var(--wc-warning);
+  color: var(--wc-warning);
+}
+
+/*
+ * Revealed on hover so the roster stays quiet at rest — but laid out in the flow, not over
+ * the row. Positioned absolutely it landed squarely on top of the "You" chip, hiding the
+ * one badge the panel most needs to show. As a flex item its space is reserved whether it
+ * is visible or not, so nothing collides and nothing shifts on hover.
+ */
+.persona-row__edit {
+  flex-shrink: 0;
+  margin-right: var(--wc-space-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wc-space-1);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text);
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.persona-row:hover .persona-row__edit,
+.persona-row__edit:focus-visible {
+  opacity: 1;
+}
+
+.persona-row__edit svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  display: block;
+}
+
+/* --- Gallery density ---------------------------------------------------- */
+
+/*
+ * The same list as faces. 1:1 rather than the old 3:4, because a square is how the avatar
+ * is cropped everywhere else in the app — and it fits a third more per screen.
+ */
+.persona-gallery {
   list-style: none;
   margin: 0;
   flex: 1;
@@ -26,17 +304,17 @@
   overflow-y: auto;
   padding: var(--wc-space-3);
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: var(--wc-space-3);
   align-content: start;
 }
 
-.persona-card {
+.persona-cell {
   position: relative;
   min-width: 0;
 }
 
-.persona-card__pick {
+.persona-cell__pick {
   display: flex;
   flex-direction: column;
   gap: var(--wc-space-2);
@@ -45,15 +323,10 @@
   text-align: center;
 }
 
-.persona-card__pick:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.persona-card__image {
+.persona-cell__face {
   position: relative;
   display: block;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 1;
   border-radius: var(--wc-radius);
   overflow: hidden;
   background: var(--wc-surface-raised);
@@ -61,23 +334,23 @@
   transition: border-color var(--wc-duration-fast) ease;
 }
 
-.persona-card__image img {
+.persona-cell__face img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.persona-card:hover .persona-card__image {
+.persona-cell:hover .persona-cell__face {
   border-color: var(--wc-border-strong);
 }
 
-.persona-card[data-active] .persona-card__image {
+.persona-cell[data-active] .persona-cell__face {
   border-color: var(--wc-accent);
   box-shadow: 0 0 0 1px var(--wc-accent);
 }
 
-.persona-card__initial {
+.persona-cell__initial {
   position: absolute;
   inset: 0;
   display: flex;
@@ -88,20 +361,23 @@
   color: var(--wc-text-muted);
 }
 
-.persona-card__name {
+.persona-cell__name {
   display: block;
-  font-size: var(--wc-text-sm);
+  font-size: var(--wc-text-xs);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Revealed on hover so the grid stays quiet at rest. */
-.persona-card__edit {
+.persona-cell[data-active] .persona-cell__name {
+  color: var(--wc-accent);
+}
+
+.persona-cell__edit {
   position: absolute;
-  top: var(--wc-space-2);
-  right: var(--wc-space-2);
+  top: var(--wc-space-1);
+  right: var(--wc-space-1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -113,14 +389,14 @@
   transition: opacity var(--wc-duration-fast) ease;
 }
 
-.persona-card:hover .persona-card__edit,
-.persona-card__edit:focus-visible {
+.persona-cell:hover .persona-cell__edit,
+.persona-cell__edit:focus-visible {
   opacity: 1;
 }
 
-.persona-card__edit svg {
-  width: var(--wc-icon);
-  height: var(--wc-icon);
+.persona-cell__edit svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
   display: block;
 }
 
@@ -166,15 +442,101 @@
   padding: var(--wc-space-3);
 }
 
-/* The file input inside is hidden; the label is the button. */
-.persona-editor__avatar {
-  align-self: flex-start;
-  cursor: pointer;
+.persona-editor__spacer {
+  flex: 1;
 }
 
-.persona-editor__footer {
+/* --- The identity block ------------------------------------------------- */
+
+/*
+ * The face and the name, together, at the top.
+ *
+ * The editor computed this avatar URL for its whole life and never rendered it — it only
+ * ever seeded the dialogue-colour sampler — so "Replace avatar" sat above a swatch derived
+ * from a picture you could not see.
+ */
+.persona-editor__identity {
   display: flex;
-  justify-content: flex-end;
-  padding-top: var(--wc-space-2);
-  border-top: 1px solid var(--wc-border);
+  gap: var(--wc-space-3);
+  align-items: flex-start;
+}
+
+/* The file input inside is hidden; the label is the control. */
+.persona-editor__portrait {
+  position: relative;
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border-radius: var(--wc-radius);
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+  cursor: pointer;
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.persona-editor__portrait:hover {
+  border-color: var(--wc-border-strong);
+}
+
+.persona-editor__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.persona-editor__initial {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--wc-text-xl);
+  font-weight: 600;
+  color: var(--wc-text-muted);
+}
+
+.persona-editor__portrait-action {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  background: var(--wc-scrim);
+  color: var(--wc-text);
+  font-size: var(--wc-text-xs);
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.persona-editor__portrait:hover .persona-editor__portrait-action,
+.persona-editor__portrait:focus-within .persona-editor__portrait-action {
+  opacity: 1;
+}
+
+.persona-editor__identity-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.persona-editor__use {
+  align-self: flex-start;
+}
+
+.persona-editor__current {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 0 var(--wc-space-2);
+  border: 1px solid var(--wc-accent);
+  border-radius: 999px;
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
 }

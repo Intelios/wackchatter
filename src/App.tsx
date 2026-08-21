@@ -18,6 +18,7 @@ import {
   DEFAULT_GUIDANCE,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
+  MAX_RECENT_PERSONAS,
   type SummarySettings,
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -34,10 +35,12 @@ import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
+import { withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
 import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
 import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
+import { StatsShell } from './features/stats/StatsShell.tsx';
 import { StudioShell } from './features/studio/StudioShell.tsx';
 import { SummaryPanel } from './features/summary/SummaryPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
@@ -61,7 +64,7 @@ import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
-  const [view, setView] = useState<'app' | 'studio' | 'cocreator'>('app');
+  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats'>('app');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
@@ -502,6 +505,7 @@ export function App() {
     characterId: selected,
     character,
     preset,
+    presetId,
     personas,
     personaId: settings?.personaId ?? null,
     onPersonaSwitch: (id) => void patchSettings({ personaId: id }),
@@ -865,12 +869,46 @@ export function App() {
     void refresh();
   }, [refresh]);
 
+  /**
+   * Stats replaces the chat shell like its two siblings, so pending work lands first for
+   * the same reason — except here it is also what makes the numbers right: a chat still
+   * sitting in the save queue is a chat the server has not been told about yet.
+   */
+  const enterStats = useCallback(async () => {
+    try {
+      chat.abort();
+      chat.cancelSummary();
+      await chat.flushSaves();
+      await flushRightPanel();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setView('stats');
+  }, [chat, flushRightPanel]);
+
+  /** Read-only throughout, so there is nothing of its own to flush on the way out. */
+  const exitStats = useCallback(() => {
+    setView('app');
+  }, []);
+
+  // Mirrors what `cascadePersonaDelete` has already done on the server, so the open tab
+  // does not keep showing a colour and a recent slot for a persona that is gone.
   const handlePersonaDeleted = useCallback((id: string) => {
     setSettings((current) => {
-      if (!current || !Object.hasOwn(current.dialogueColors.personas, id)) return current;
+      if (!current) return current;
+      const hasColor = Object.hasOwn(current.dialogueColors.personas, id);
+      const recentPersonaIds = current.recentPersonaIds.filter((entry) => entry !== id);
+      const hasRecent = recentPersonaIds.length !== current.recentPersonaIds.length;
+      if (!hasColor && !hasRecent) return current;
+
       const personas = { ...current.dialogueColors.personas };
       delete personas[id];
-      return { ...current, dialogueColors: { ...current.dialogueColors, personas } };
+      return {
+        ...current,
+        dialogueColors: { ...current.dialogueColors, personas },
+        recentPersonaIds,
+      };
     });
     setPersonaAvatarVersions((current) => {
       if (!Object.hasOwn(current, id)) return current;
@@ -882,12 +920,22 @@ export function App() {
 
   // One current persona: picking it sets the app-wide selection and, with a chat open,
   // switches this chat to it too. The two never drift.
+  //
+  // The pick is also what feeds the recently-used list, which is the only thing giving the
+  // switcher and the roster an order worth scrolling. `withRecentPersona` returns the same
+  // reference when nothing would move, so re-picking the persona you are already using
+  // writes no settings at all.
   const handleSelectPersona = useCallback(
     (id: string | null) => {
-      void patchSettings({ personaId: id });
+      const recent = withRecentPersona(settings?.recentPersonaIds ?? [], id, MAX_RECENT_PERSONAS);
+      void patchSettings(
+        recent === (settings?.recentPersonaIds ?? [])
+          ? { personaId: id }
+          : { personaId: id, recentPersonaIds: [...recent] },
+      );
       if (chat.state.chatId) chat.setPersona(id);
     },
-    [chat, patchSettings],
+    [chat, patchSettings, settings?.recentPersonaIds],
   );
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
@@ -914,6 +962,7 @@ export function App() {
   const documentTitle = useMemo(() => {
     if (view === 'studio') return 'Character Creator Studio';
     if (view === 'cocreator') return 'Character Co-Creator';
+    if (view === 'stats') return 'Stats';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
   }, [view, active, chat.state.title]);
@@ -923,6 +972,20 @@ export function App() {
   }, [documentTitle]);
 
   const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
+
+  if (view === 'stats') {
+    return (
+      <StatsShell
+        characters={characters}
+        personas={personas}
+        backgroundUrl={resolveBackgroundUrl(settings?.background)}
+        backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+        backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+        glass={settings?.glass !== false}
+        onExit={exitStats}
+      />
+    );
+  }
 
   if (view === 'cocreator') {
     return (
@@ -1115,6 +1178,12 @@ export function App() {
                   personas={personas}
                   books={books}
                   activeId={settings?.personaId ?? null}
+                  recentIds={settings?.recentPersonaIds ?? []}
+                  density={settings?.personaListDensity ?? 'list'}
+                  onDensityChange={(personaListDensity) =>
+                    void patchSettings({ personaListDensity })
+                  }
+                  countTokens={countTokens}
                   onSelect={handleSelectPersona}
                   onChanged={refreshPersonas}
                   registerPersistence={(controls) => {
@@ -1153,6 +1222,9 @@ export function App() {
             avatar={active.avatar}
             characterAvatarVersion={characterAvatarVersions[active.avatar]}
             personaAvatarVersions={personaAvatarVersions}
+            personas={personas}
+            recentPersonaIds={settings?.recentPersonaIds ?? []}
+            onSelectPersona={handleSelectPersona}
             creatorNotes={character?.creator_notes ?? ''}
             // From the card rather than the message's swipe count: re-rolling the opening
             // message appends swipes the creator never wrote, and counting those would slide
@@ -1182,6 +1254,7 @@ export function App() {
             onDeleteChat={handleDeleteChat}
             onOpenStudio={() => void enterStudio()}
             onOpenCoCreator={() => void enterCoCreator()}
+            onOpenStats={() => void enterStats()}
           />
         )}
       </ErrorBoundary>

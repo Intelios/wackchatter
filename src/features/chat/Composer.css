@@ -9,19 +9,53 @@
   /*
    * One row of the textarea: its line box, its vertical padding, its two borders.
    *
-   * Everything in the row is sized to this rather than to a fixed control height, so the
-   * three tops line up on an empty composer. They are bottom-aligned, so any mismatch
-   * lands entirely at the top — a flat 42px against the textarea's 47 read as the buttons
-   * sitting low in the row. Deriving it from the same tokens the textarea uses is what
-   * stops the two drifting apart again the next time the type scale moves.
+   * It used to size the buttons too, so their tops would line up with the input's on an
+   * empty composer. Nothing sits on that baseline any more — the controls moved to the tray
+   * below the field — so this now has exactly two jobs: it is the input's `min-height`, and
+   * through that it is the one-row FLOOR the growth clamp refuses to compute below
+   * (`composerGrowth.ts` reads it back off `min-height` rather than restating the sum).
+   *
+   * Still derived from the same tokens the textarea is set in, so the two cannot drift the
+   * next time the type scale moves.
    */
   --wc-composer-row: calc(var(--wc-text-base) * 1.55 + 20px + 2px);
 }
 
-.composer__row {
+/*
+ * The tray: everything that is not the input, under the input.
+ *
+ * Beneath rather than either side, which is what gives the field the column's full width —
+ * it was carrying six controls in one row and keeping about 57% of the measure for text.
+ *
+ * It is also the composer's fixed end. `.chat-view__dock` is `flex-shrink: 0` at the bottom
+ * of a column flex, so the composer grows UPWARD into the transcript and whatever sits at
+ * its bottom holds a constant screen position however tall the draft gets. That is why the
+ * tray cannot jitter while you type, and why the growth clamp has to charge for it: see the
+ * `trayBlock` note in composerGrowth.ts.
+ *
+ * Controls here are `--wc-control`, not `--wc-composer-row`. A second tier at the input's
+ * own height reads as a second toolbar; at the smaller control size it reads as a caption
+ * to the field, which is what it is.
+ */
+.composer__tray {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--wc-space-2);
+  flex-wrap: wrap;
+}
+
+/* Splits "who you are" from "what you can open" — the tray's left half holds both. */
+.composer__tray-rule {
+  width: 1px;
+  align-self: stretch;
+  margin-block: var(--wc-space-1);
+  background: var(--wc-border);
+  flex-shrink: 0;
+}
+
+.composer__tray-spacer {
+  flex: 1;
+  min-width: 0;
 }
 
 /*
@@ -29,15 +63,16 @@
  * anchor to the input's exact edges with no measuring: the field is the flex item that
  * used to be the textarea, and the input fills it.
  */
+/* Full width now, as the column's own child — no `flex: 1`, which in a column would grow it
+   vertically rather than horizontally. */
 .composer__field {
   position: relative;
-  flex: 1;
   min-width: 0;
   display: flex;
 }
 
 /*
- * Generating: a lime light running along the composer's border, bouncing edge to edge.
+ * The light ring, unlit.
  *
  * On the field rather than the textarea, because a textarea has no pseudo-elements to
  * hang it on. The field is exactly the input's box — the input is its only in-flow child
@@ -45,10 +80,14 @@
  *
  * The streak is this element's own background rather than a child, which is what keeps it
  * clipped: a background cannot escape its element's border-radius, so the line follows the
- * rounded corners instead of overhanging them. That is also why the shape below is pinned
- * to neutral while busy — the two radii have to agree, and only the input's animate.
+ * rounded corners instead of overhanging them. That is also why the input's shape is pinned
+ * to neutral while the light is on (see the busy/settling pin below) — the two radii have
+ * to agree, and only the input's animate.
+ *
+ * Two states light it: the busy patrol below, and the one-shot send sweep under
+ * `data-settling`. Unlit, at opacity 0 with no animation, it costs nothing.
  */
-.composer[data-busy] .composer__field::after {
+.composer__field::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -89,15 +128,51 @@
    * behaves like a light travelling along the border rather than a decal sliding over it.
    */
   mix-blend-mode: screen;
-  /* Higher than the filled version ran at: a 2px ring is a fraction of the area a
-     full-height streak covered, and needs the intensity back to read at all. */
+  opacity: 0;
+}
+
+/*
+ * Generating: the light patrols the border, bouncing edge to edge.
+ *
+ * The Stop button already says a generation is running, so the patrol carries no
+ * information of its own — it is the room still working while the reply streams.
+ *
+ * 0.95 because a 2px ring is a fraction of the area the old full-height streak covered and
+ * needs the intensity back to read at all.
+ *
+ * `alternate` is the bounce: one pass out, one pass back, 1.1s each way. The eased curve
+ * is what sells the turnaround — linear would reverse on a dime and read as a machine
+ * scanning, where easing lets the streak decelerate into the edge and pull away again.
+ * Symmetric on purpose, since `alternate` runs the curve backwards on the return leg.
+ */
+.composer[data-busy] .composer__field::after {
   opacity: 0.95;
-  /*
-   * `alternate` is the bounce: one pass out, one pass back, 1.1s each way. The eased curve
-   * is what sells the turnaround — linear would reverse on a dime and read as a machine
-   * scanning, where easing lets the streak decelerate into the edge and pull away again.
-   * Symmetric on purpose, since `alternate` runs the curve backwards on the return leg.
-   */
+  animation: wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+/*
+ * Sending: the same light makes ONE pass, corner to corner, at departure speed.
+ *
+ * This rule only ever plays alone — when `busy` has NOT come up, a slash command that ran
+ * locally — and `forwards` holds the light at the exit corner until the flag retires,
+ * rather than letting it snap back to a parked streak at the box's left edge.
+ *
+ * For a normal send the overlap rule below wins, and it is deliberately IDENTICAL to the
+ * busy rule above: the patrol starts on the send frame, and its first leg IS the sweep.
+ * The earlier design ran this fast pass and handed off to a delayed, direction-reversed
+ * patrol — positionally continuous on paper, but retiring the flag 80ms later changed the
+ * surviving animation's delay and direction, and the browser re-derived its phase from
+ * them: the light jumped backwards mid-box. Identical props here mean there is no handoff
+ * and nothing the flag's retirement can change — the seam cannot exist.
+ */
+.composer[data-settling] .composer__field::after {
+  opacity: 0.95;
+  animation: wc-composer-scan 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Byte-for-byte the busy rule, on purpose — see above. */
+.composer[data-busy][data-settling] .composer__field::after {
+  opacity: 0.95;
   animation: wc-composer-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 }
 
@@ -126,10 +201,12 @@
   }
 }
 
-/* The Stop button already says a generation is running, so losing the streak costs no
-   information — and a lime bar parked mid-box would read as a defect. */
+/* Neither light runs under reduced motion — the patrol is decoration and a zero-duration
+   pass is motion without meaning. The Stop button already says a generation is running, so
+   losing both costs no information. */
 @media (prefers-reduced-motion: reduce) {
-  .composer[data-busy] .composer__field::after {
+  .composer[data-busy] .composer__field::after,
+  .composer[data-settling] .composer__field::after {
     display: none;
   }
 }
@@ -255,6 +332,9 @@
   background: var(--wc-surface);
   border: 1px solid var(--wc-border);
   color: var(--wc-text);
+  /* The insertion point is the one piece of the field that is pure accent while
+     composing — a per-keystroke reminder that the box is live, for free. */
+  caret-color: var(--wc-accent);
   font-family: inherit;
   font-size: var(--wc-text-base);
   line-height: 1.55;
@@ -271,20 +351,27 @@
   --wc-composer-ry: var(--wc-radius);
   transform-origin: center;
   /*
-   * The lag between the two radii IS the deform, so it has to be wide enough to read: the
-   * horizontal snaps in ~260ms and overshoots its target, while the vertical takes well
-   * over twice as long on an expo-out curve. Through the middle of the flight the corners
-   * peak at about a 1.5:1 ellipse — visibly stretched sideways — before easing back to the
-   * 1.15:1 they rest at. Closer durations do interpolate, but they read as a box whose
-   * corners simply got rounder, which is not the effect.
+   * The lag between the two radii IS the deform: the horizontal arrives in ~320ms while
+   * the vertical takes 500ms on the same family of decel curve, so through the middle of
+   * the flight the corners sit as a visibly side-stretched ellipse before easing back to
+   * the 1.15:1 they rest at. Closer durations interpolate but read as a box whose corners
+   * simply got rounder, which is not the effect.
    *
-   * The vertical's long tail costs nothing perceptually: an expo-out has spent most of its
-   * distance by 200ms and only creeps the last pixel after that.
+   * Neither clock overshoots, and that is a retune rather than an accident: the horizontal
+   * originally carried a spring that bounced the corners past the pill and back, which
+   * read as a wobble rather than a morph — the stretch from the lag alone carries the
+   * deform. The vertical is also shorter than it was (620ms), whose long tail read as
+   * drag: a second, slower motion continuing after the horizontal had finished.
    */
   transition:
     border-color var(--wc-duration-fast) ease,
-    --wc-composer-rx 260ms cubic-bezier(0.34, 1.7, 0.64, 1),
-    --wc-composer-ry 620ms cubic-bezier(0.16, 1, 0.3, 1);
+    /* The focus bloom. Rides the layout duration and curve rather than its own constants,
+       which also makes it reduced-motion-safe by construction: the token collapses to 0ms,
+       so the glow snaps in one step and needs no media block of its own. */
+    box-shadow
+    var(--wc-duration) var(--wc-ease),
+    --wc-composer-rx 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    --wc-composer-ry 500ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /*
@@ -306,13 +393,18 @@
 }
 
 /*
- * A generation started elsewhere — a summary, a re-roll from the transcript — can turn
- * `busy` on while the cursor is still sitting in a rounded box. Relaxing the shape from
- * here, rather than trusting the blur that disabling the textarea fires, keeps the streak's
- * clip and the input's corners in agreement whatever the browser does about that blur. It
- * rides the normal transition, so it eases down rather than snapping.
+ * The shape pins to neutral for as long as the light is on the border. `busy`: a generation
+ * started elsewhere — a summary, a re-roll from the transcript — can land while the cursor
+ * is still sitting in a rounded box. `settling`: the send moment, whose wobble keyframes
+ * END at neutral — without the pin, the cascade would snap the box back to whatever
+ * `data-shape` still claims the moment the wobble lifts, and a revoked send would leave it
+ * there. Relaxing from here rather than trusting the blur that disabling the textarea
+ * fires keeps the streak's clip and the input's corners in agreement whatever the browser
+ * does about that blur. It rides the normal transition, so it eases down rather than
+ * snapping — and a revoked send morphs the box back to its round shape the same way.
  */
-.composer[data-busy] .composer__input {
+.composer[data-busy] .composer__input,
+.composer[data-settling] .composer__input {
   --wc-composer-rx: var(--wc-radius);
   --wc-composer-ry: var(--wc-radius);
 }
@@ -330,7 +422,7 @@
  * of every segment, so the shape flows through its extremes and the keyframe values carry
  * the motion.
  */
-.composer__input[data-settling] {
+.composer[data-settling] .composer__input {
   animation: wc-composer-settle 460ms cubic-bezier(0.45, 0, 0.55, 1);
 }
 
@@ -364,7 +456,7 @@
 @media (prefers-reduced-motion: reduce) {
   .composer__input,
   .composer__input[data-shape="round"],
-  .composer__input[data-settling] {
+  .composer[data-settling] .composer__input {
     --wc-composer-rx: var(--wc-radius);
     --wc-composer-ry: var(--wc-radius);
     transition: border-color var(--wc-duration-fast) ease;
@@ -376,9 +468,36 @@
   border-color: var(--wc-border-strong);
 }
 
+/*
+ * The focus bloom.
+ *
+ * Three layers, the same crisp-core-plus-falloff split the busy streak is built on: a 1px
+ * ring doubling the lime border into an edge that reads as charged, a tight corona hugging
+ * the box, and a wide halo spilling past it. One 24px layer alone washes out to a faint
+ * tint over a glass background — the tight layer is what makes the field read as lit
+ * rather than as tinted. Picking the field up turns it on, rather than recolouring a
+ * border.
+ *
+ * A box-shadow follows the element's border-radius, including the morph's animated
+ * `--wc-composer-rx / -ry` pair, so the bloom deforms with the corners for free.
+ *
+ * No reduced-motion pair of its own: the bloom is a state, not a motion, and its
+ * transition rides `--wc-duration` (see the base rule). The textarea is disabled while
+ * busy, so `:focus` cannot match and the streak keeps the border to itself.
+ */
 .composer__input:focus {
   border-color: var(--wc-accent);
   outline: none;
+  box-shadow:
+    0 0 0 1px var(--wc-accent),
+    0 0 10px var(--wc-accent-glow),
+    0 0 28px var(--wc-accent-glow);
+}
+
+/* Selection inside the field, in the accent's voice. The text keeps its own colour — the
+   tint stays dark enough at 0.3 that --wc-text reads on it. */
+.composer__input::selection {
+  background: var(--wc-accent-selection);
 }
 
 .composer__input:disabled {
@@ -386,22 +505,154 @@
   cursor: not-allowed;
 }
 
-.composer__button {
-  height: var(--wc-composer-row);
+/*
+ * The tray's one button. Send and Stop share it (see the faces below), so it is a grid
+ * stacking both in a single cell: the button is always as wide as the wider label, and its
+ * width never changes across the turn.
+ *
+ * `align-content: center` is load-bearing, not redundant with `place-items`. The single
+ * auto row sizes to the faces (~19.5px), which is TALLER than the content box the padding
+ * leaves (12px of a 30px control) — and `align-content: normal` resolves to stretch, which
+ * falls back to START when the free space is negative. The oversized row would pin to the
+ * top of the content box and the face would overflow toward the bottom edge: the label
+ * riding low, the button reading as clipped. Centering the row is what restores the flex
+ * behaviour this button had when its text was a bare flex item — flex centers an oversized
+ * line box directly, grid needs both levels told.
+ */
+.composer .composer__button {
+  height: var(--wc-control);
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
 }
 
 /*
- * Matches the send button's height so the menu trigger sits on the textarea's baseline —
- * .composer aligns its children to flex-end.
+ * The wake-up.
  *
- * Given a surface and a border rather than left as a ghost icon, because this button is
- * what anchors the row's left edge. The composer already spans the transcript's measure
- * exactly: this button's left edge and Send's right edge land on the bubble's two edges.
- * But a faint glyph over a background image does not read as content, so the row appeared
- * to start 50px in — at the textarea — while still ending flush on the right. The visual
- * mass then sat 25px right of the bubbles, and the bubbles read as hanging off to the
- * left. Nothing was off centre; the two halves just had nothing to line up against.
+ * An empty draft holds Send dimmed, and the first character lands with a spring: the
+ * `wc-send-wake` animation on the ENABLED rule plays the moment that rule newly matches —
+ * the disabled→enabled flip is what arms it — easing from 0.92 up past 1 on the same
+ * overshoot curve the morph's horizontal radius uses.
+ *
+ * The spring is deliberately a moment rather than a posture: an earlier version held the
+ * disabled button at scale(0.92), which left it permanently smaller than the `--wc-control`
+ * controls beside it — pulled in at the bottom edge, reading as clipped against the tray
+ * row. At rest the button is always full size and in line; only the wake moves.
+ *
+ * The press overrides the duration because a finger must not wait out a spring — the
+ * spring is for state changes, not for pointing. `color` rides both lists so the label
+ * morphs with the surface when the button turns.
+ */
+.composer .composer__button:disabled {
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease;
+}
+
+.composer .composer__button:not(:disabled) {
+  animation: wc-send-wake 340ms cubic-bezier(0.34, 1.7, 0.64, 1);
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
+}
+
+.composer .composer__button:active:not(:disabled) {
+  transition-duration: var(--wc-duration-fast);
+}
+
+@keyframes wc-send-wake {
+  from {
+    transform: scale(0.92);
+  }
+}
+
+/*
+ * The two faces, crossfading in place — how Send turns into Stop.
+ *
+ * Stacked in one grid cell, so the button never empties and never changes width: the
+ * control you pressed becomes the control that stops it, with the surface colour morphing
+ * underneath (the class swap rides the wake-up transitions above). The outgoing face lifts
+ * two pixels on its way out — a whisper of the direction the message went — and
+ * `visibility` swaps only once the fade has finished (the delayed zero-second transition),
+ * so the hidden face never flashes mid-fade and never reaches a screen reader.
+ *
+ * The layout clock is `--wc-duration`, slower than the surface's fast morph on purpose:
+ * with the turn driven straight off `busy` the whole swap plays in one beat with the sweep
+ * and the wobble, and a 120ms crossfade inside that beat was invisible — the surface leads,
+ * the content follows at the spring's pace (the turn rule below). No reduced-motion block
+ * of its own: the token zeroes into an instant swap.
+ */
+.composer__button-face {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  transition:
+    opacity var(--wc-duration) ease,
+    transform var(--wc-duration) ease,
+    visibility 0s;
+}
+
+.composer__button-face[data-hidden] {
+  opacity: 0;
+  transform: translateY(-2px);
+  visibility: hidden;
+  transition:
+    opacity var(--wc-duration) ease,
+    transform var(--wc-duration) ease,
+    visibility 0s var(--wc-duration);
+}
+
+/*
+ * The turn. Gaining the danger class is what the Send→Stop flip looks like in the cascade,
+ * and a rule that newly matches replays its animation — so the wake's spring fires at the
+ * flip itself: the turn reads as the button arriving at its Stop face, not as a crossfade
+ * quietly slipping past under the surface morph. (The gated version got this for free when
+ * Stop's arrival flipped the button disabled→enabled; driving the turn straight off `busy`
+ * removed that flip, and with it the visible half of the animation.)
+ *
+ * The same keyframes and name as the wake rule are deliberate: an animation whose computed
+ * name does not change does not restart, so the quiet return — the generation ends, this
+ * class drops while the button may still be enabled — hands back to the wake rule without
+ * replaying anything. Also plays on a composer that mounts mid-generation, where it is an
+ * arrival.
+ */
+.composer .wc-button--danger {
+  animation: wc-send-wake 340ms cubic-bezier(0.34, 1.7, 0.64, 1);
+}
+
+/* The wake keeps its dim, loses its spring: the button simply is where it belongs, and the
+   crossfade collapses to an instant swap (--wc-duration zeroes under reduced motion). */
+@media (prefers-reduced-motion: reduce) {
+  .composer .composer__button:not(:disabled),
+  .composer .wc-button--danger {
+    animation: none;
+  }
+  .composer .composer__button:disabled,
+  .composer .composer__button:not(:disabled) {
+    transition:
+      background var(--wc-duration-fast) ease,
+      border-color var(--wc-duration-fast) ease,
+      color var(--wc-duration-fast) ease,
+      opacity var(--wc-duration-fast) ease;
+  }
+}
+
+/*
+ * Tray controls.
+ *
+ * Given a surface and a border rather than left as ghost icons, for the reason the leading
+ * button always had one: the composer spans the transcript's measure exactly, so the tray's
+ * outer edges land on the bubble's two edges — but a faint glyph over a background image
+ * does not read as content, and without a surface the tray appears to start somewhere
+ * inside its own box. The mass has to reach the edges the bubbles do, or the transcript
+ * reads as hanging off to one side.
  */
 /*
  * `.composer .composer__icon` rather than `.composer__icon`: the buttons also carry
@@ -411,13 +662,14 @@
  */
 .composer .popover__trigger,
 .composer .composer__icon {
-  height: var(--wc-composer-row);
-  width: var(--wc-composer-row);
+  height: var(--wc-control);
+  width: var(--wc-control);
   padding: 0;
   border: 1px solid var(--wc-border);
-  border-radius: var(--wc-radius);
+  border-radius: var(--wc-radius-sm);
   background: var(--wc-surface);
   color: var(--wc-text-muted);
+  flex-shrink: 0;
   transition:
     border-color var(--wc-duration-fast) ease,
     color var(--wc-duration-fast) ease,

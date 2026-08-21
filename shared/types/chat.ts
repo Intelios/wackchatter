@@ -14,10 +14,33 @@ export interface SwipeInfo {
 }
 
 export interface MessageExtra {
-  /** Provider id used to generate this message. */
+  /**
+   * Provider id used to generate this message. A ProviderId, never a connection name —
+   * see `connection_id` for which endpoint it actually was.
+   */
   api?: string;
   model?: string;
+  /**
+   * Completion tokens. Reported usage when the provider gives it, our own estimate
+   * otherwise, and never the prompt side — so this is what was written, not what was paid.
+   */
   token_count?: number;
+  /**
+   * Which saved connection generated this. Recorded from 2026-08 onwards; missing on
+   * everything older, which is why the stats screen says "not recorded" rather than
+   * attributing those to whatever connection happens to be selected now.
+   */
+  connection_id?: string;
+  /**
+   * Which preset was in force. Recorded per swipe rather than per chat, since a preset can
+   * be switched mid-conversation and the swipe is the thing it actually shaped.
+   */
+  preset_id?: string;
+  /**
+   * Prompt tokens, only ever as reported by the provider. Deliberately never estimated:
+   * a local count would miss whatever world info and injections the request really carried.
+   */
+  prompt_tokens?: number;
   /** Reasoning / thinking text, shown collapsed. */
   reasoning?: string;
   /** Set when generation was interrupted. */
@@ -71,7 +94,14 @@ export interface ChatMetadata {
   guides?: PersistentGuide[];
   /** Editable rolling story memory and the last transcript message it covers. */
   summary?: StorySummary;
+  /** Provenance recorded when this chat was created as a branch of another chat. */
+  branchedFrom?: BranchOrigin;
   [key: string]: unknown;
+}
+
+export interface BranchOrigin {
+  chatId: string;
+  messageId: string;
 }
 
 export interface StorySummary {

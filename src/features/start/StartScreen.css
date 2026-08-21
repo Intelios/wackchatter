@@ -30,17 +30,8 @@
 .start-screen__version,
 .start-screen__recent-title,
 .start-screen__empty,
-.start-screen__toggle,
-.start-screen__studio {
+.start-screen__toggle {
   text-shadow: var(--wc-shadow-text-strong);
-}
-
-/* text-shadow does nothing for an SVG stroke, so the one icon out here needs the same
-   separation as a filter. Matches the treatment the top bar's icons already get. The
-   message-count icon is deliberately not in this list — it sits inside a chat row, on a
-   surface, where a shadow would read as a smudge. */
-.start-screen__studio svg {
-  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.9));
 }
 
 .start-screen__title {
@@ -95,11 +86,23 @@
   border-radius: var(--wc-radius);
   border: 1px solid var(--wc-border);
   background: var(--wc-surface);
-  transition: background var(--wc-duration-fast) ease;
+  transform: translateY(0);
+  transition:
+    transform var(--wc-duration-fast) var(--wc-ease),
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    box-shadow var(--wc-duration-fast) var(--wc-ease);
 }
 
 .start-screen__chat:hover {
   background: var(--wc-surface-hover);
+  border-color: var(--wc-border-strong);
+  box-shadow: var(--wc-shadow);
+  transform: translateY(-2px);
+}
+
+.start-screen__chat:active {
+  transform: translateY(0) scale(0.995);
 }
 
 .start-screen__chat-open {
@@ -317,37 +320,44 @@
   color: var(--wc-text-on-image);
 }
 
-/* Two doors into the creator tools, side by side — neither is the primary one. */
-.start-screen__creator-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--wc-space-5);
+/*
+ * The doors into the sub-apps — none of them is the primary one. The two character tools
+ * share a row and Stats sits centred beneath, so the row shape says what they are: a pair
+ * that do the same job, and one that does something else.
+ */
+.start-screen__tool-links {
+  display: grid;
+  justify-items: center;
+  gap: var(--wc-space-2);
   margin-top: var(--wc-space-5);
 }
 
-.start-screen__studio {
-  display: inline-flex;
-  align-items: center;
+.start-screen__tool-pair {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: var(--wc-space-2);
-  color: var(--wc-text-on-image-muted);
-  font-size: var(--wc-text-sm);
-  text-decoration: underline;
-  text-underline-offset: var(--wc-space-1);
+}
+
+.start-screen__tool {
+  color: var(--wc-text-muted);
+  transform: translateY(0);
   transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
     color var(--wc-duration-fast) ease,
-    transform var(--wc-duration-fast) ease;
+    box-shadow var(--wc-duration-fast) var(--wc-ease),
+    transform var(--wc-duration-fast) var(--wc-ease);
 }
 
-.start-screen__studio svg {
-  width: var(--wc-icon);
-  height: var(--wc-icon);
-}
-
-.start-screen__studio:hover {
+.start-screen__tool:hover {
+  background: var(--wc-surface-hover);
+  border-color: var(--wc-accent);
   color: var(--wc-accent);
+  box-shadow: 0 0 12px var(--wc-accent-subtle);
+  transform: translateY(-2px);
 }
 
-.start-screen__studio:active {
-  transform: scale(0.97);
+.start-screen__tool:active {
+  transform: translateY(0) scale(0.97);
 }
