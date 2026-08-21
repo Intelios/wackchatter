@@ -317,6 +317,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const summaryAbortRef = useRef<AbortController | null>(null);
   const summaryChatIdRef = useRef<string | null>(null);
   const memoryAbortRef = useRef<AbortController | null>(null);
+  const memoryChatIdRef = useRef<string | null>(null);
 
   // The generation body reads state after dispatching into it, so the closure's copy is
   // always stale. A ref is the simplest correct answer.
@@ -631,7 +632,7 @@ export function useChat(options: UseChatOptions): UseChat {
   const generate = useCallback(
     async (mode: GenMode, base?: ChatState, guidance?: string) => {
       const current = base ?? stateRef.current;
-      if (current.status !== 'idle' || summaryAbortRef.current) return;
+      if (current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) return;
       if (!character || !preset || !connection) return;
 
       // Settings can change while the prompt is being assembled or global variables are
@@ -938,7 +939,14 @@ export function useChat(options: UseChatOptions): UseChat {
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || stateRef.current.status !== 'idle' || summaryAbortRef.current) return;
+      if (
+        !trimmed ||
+        stateRef.current.status !== 'idle' ||
+        summaryAbortRef.current ||
+        memoryAbortRef.current
+      ) {
+        return;
+      }
 
       const userAction: ChatAction = {
         // The name becomes message.name, which names_behavior can put into the prompt
@@ -1027,9 +1035,13 @@ export function useChat(options: UseChatOptions): UseChat {
     summaryAbortRef.current?.abort();
   }, []);
 
+  const cancelMemoryRun = useCallback(() => {
+    memoryAbortRef.current?.abort();
+  }, []);
+
   const summarize = useCallback(
     async (settingsOverride?: SummarySettings) => {
-      if (summaryAbortRef.current) return;
+      if (summaryAbortRef.current || memoryAbortRef.current) return;
       const current = stateRef.current;
       if (
         !current.chatId ||
@@ -1309,7 +1321,11 @@ export function useChat(options: UseChatOptions): UseChat {
     if (summaryChatIdRef.current && summaryChatIdRef.current !== state.chatId) {
       summaryAbortRef.current?.abort();
     }
+    if (memoryChatIdRef.current && memoryChatIdRef.current !== state.chatId) {
+      memoryAbortRef.current?.abort();
+    }
     setSummaryStatus({ running: false, processed: 0, total: 0, error: null });
+    setMemoryStatus({ running: false, processed: 0, total: 0, error: null });
   }, [state.chatId]);
 
   // --- Transcript edits ------------------------------------------------------
@@ -1341,6 +1357,7 @@ export function useChat(options: UseChatOptions): UseChat {
       userChatAction.current += 1;
       abort();
       cancelSummary();
+      cancelMemoryRun();
       try {
         await flushSaves();
       } catch {
@@ -1349,7 +1366,7 @@ export function useChat(options: UseChatOptions): UseChat {
       const chat = await chatApi.get(chatId);
       loadChat(chat);
     },
-    [abort, cancelSummary, flushSaves, loadChat],
+    [abort, cancelMemoryRun, cancelSummary, flushSaves, loadChat],
   );
 
   // Guards against overlapping `/reload`s — each fetch is pointless once a newer one has
@@ -1382,6 +1399,7 @@ export function useChat(options: UseChatOptions): UseChat {
     userChatAction.current += 1;
     abort();
     cancelSummary();
+    cancelMemoryRun();
     try {
       await flushSaves();
     } catch {
@@ -1395,7 +1413,16 @@ export function useChat(options: UseChatOptions): UseChat {
     loadChat(chat);
     dispatch({ type: 'chat/greeting', id: crypto.randomUUID(), card: character });
     await refreshChats();
-  }, [abort, cancelSummary, characterId, character, flushSaves, loadChat, refreshChats]);
+  }, [
+    abort,
+    cancelMemoryRun,
+    cancelSummary,
+    characterId,
+    character,
+    flushSaves,
+    loadChat,
+    refreshChats,
+  ]);
 
   const renameChat = useCallback((title: string) => {
     dispatch({ type: 'chat/renamed', title });
@@ -1411,6 +1438,7 @@ export function useChat(options: UseChatOptions): UseChat {
       userChatAction.current += 1;
       if (stateRef.current.chatId === chatId) abort();
       cancelSummary();
+      cancelMemoryRun();
       try {
         await flushSaves();
       } catch {
@@ -1420,7 +1448,7 @@ export function useChat(options: UseChatOptions): UseChat {
       if (stateRef.current.chatId === chatId) dispatch({ type: 'chat/closed' });
       await refreshChats();
     },
-    [abort, cancelSummary, flushSaves, refreshChats],
+    [abort, cancelMemoryRun, cancelSummary, flushSaves, refreshChats],
   );
 
   const branchFrom = useCallback(
@@ -1429,6 +1457,7 @@ export function useChat(options: UseChatOptions): UseChat {
       userChatAction.current += 1;
       abort();
       cancelSummary();
+      cancelMemoryRun();
       try {
         await flushSaves();
       } catch {
@@ -1438,7 +1467,7 @@ export function useChat(options: UseChatOptions): UseChat {
       loadChat(branch);
       await refreshChats();
     },
-    [abort, cancelSummary, flushSaves, loadChat, refreshChats],
+    [abort, cancelMemoryRun, cancelSummary, flushSaves, loadChat, refreshChats],
   );
 
   const renderGreeting = useCallback(
@@ -1501,10 +1530,6 @@ export function useChat(options: UseChatOptions): UseChat {
     [messages, state.metadata.memoryWatermark],
   );
 
-  const cancelMemoryRun = useCallback(() => {
-    memoryAbortRef.current?.abort();
-  }, []);
-
   const setMemories = useCallback((memories: Memory[]) => {
     dispatch({ type: 'chat/metadata', patch: { memories } });
   }, []);
@@ -1553,7 +1578,7 @@ export function useChat(options: UseChatOptions): UseChat {
    */
   const extractMemories = useCallback(
     async (settingsOverride?: Partial<UnsavedMemoryDraft>) => {
-      if (memoryAbortRef.current) return;
+      if (memoryAbortRef.current || summaryAbortRef.current) return;
       const current = stateRef.current;
       const extractionPreset = memoryPreset ?? preset;
       if (!current.chatId || current.status !== 'idle' || !character || !extractionPreset) return;
@@ -1632,6 +1657,7 @@ export function useChat(options: UseChatOptions): UseChat {
 
       const controller = new AbortController();
       memoryAbortRef.current = controller;
+      memoryChatIdRef.current = current.chatId;
       let processed = 0;
       let remaining = backlog;
       setMemoryStatus({ running: true, processed: 0, total: backlog.length, error: null });
@@ -1737,6 +1763,7 @@ export function useChat(options: UseChatOptions): UseChat {
         }
       } finally {
         if (memoryAbortRef.current === controller) memoryAbortRef.current = null;
+        if (memoryChatIdRef.current === current.chatId) memoryChatIdRef.current = null;
         if (controller.signal.aborted) {
           setMemoryStatus({ running: false, processed, total: backlog.length, error: null });
         }
@@ -1762,7 +1789,8 @@ export function useChat(options: UseChatOptions): UseChat {
     stream,
     inspection: state.inspections[0] ?? null,
     busy: state.status !== 'idle',
-    generationBlocked: state.status !== 'idle' || summaryStatus.running,
+    generationBlocked:
+      state.status !== 'idle' || summaryStatus.running || memoryStatus.running,
     saving,
     saveError,
     loadError,

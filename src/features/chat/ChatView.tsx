@@ -743,6 +743,7 @@ export function ChatView({
                 isLast: message.id === lastId,
                 busy,
                 summaryRunning: chat.summaryStatus.running,
+                memoryRunning: chat.memoryStatus.running,
                 displayText: displayTexts.get(message.id)?.text,
                 displayReasoning: displayTexts.get(message.id)?.reasoning,
                 // Row 0 only: the notes explain which greeting you are looking at, and
@@ -869,7 +870,13 @@ export function ChatView({
             void chat.guidedSwipe(text);
           }}
           guidedSwipeDisabledReason={guidedSwipeDisabledReason}
-          onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
+          onStop={
+            chat.summaryStatus.running
+              ? chat.cancelSummary
+              : chat.memoryStatus.running
+                ? chat.cancelMemoryRun
+                : chat.abort
+          }
           busy={generationBlocked}
           disabled={!ready || loadBlocksChat}
           // Who you are writing as. `chat.persona` rather than the raw setting, because a

@@ -610,6 +610,7 @@ export function App() {
       if (avatar !== selected || editing || options?.chatId !== undefined) {
         chat.abort();
         chat.cancelSummary();
+        chat.cancelMemoryRun();
         try {
           await chat.flushSaves();
         } catch {
@@ -653,6 +654,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch {
@@ -779,6 +781,8 @@ export function App() {
       const previousAvatar = selected;
       try {
         chat.abort();
+        chat.cancelSummary();
+        chat.cancelMemoryRun();
         await chat.flushSaves();
       } catch {
         // The rename already landed; a failed chat flush is surfaced by the app shell and
@@ -821,6 +825,8 @@ export function App() {
 
   const handleDeleted = useCallback(() => {
     chat.abort();
+    chat.cancelSummary();
+    chat.cancelMemoryRun();
     const deleted = selected;
     if (deleted) {
       setSettings((current) => {
@@ -853,6 +859,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -883,6 +890,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -928,6 +936,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
