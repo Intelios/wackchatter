@@ -937,3 +937,47 @@ describe('reassignGlobalLorebooks', () => {
     ).toBeNull();
   });
 });
+
+describe('getSettings on disk', () => {
+  afterEach(() => {
+    setDataDir(DEFAULT_DATA_DIR);
+    resetSettingsCache();
+  });
+
+  test('recentPersonaIds is deduplicated, trimmed, and capped at MAX_RECENT_PERSONAS on read', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      const many = Array.from({ length: MAX_RECENT_PERSONAS + 4 }, (_, i) => `p${i}`);
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({
+          recentPersonaIds: ['  p0  ', ...many, 'p0', '', 42, null, { id: 'bad' }],
+        }),
+      );
+
+      const settings = getSettings();
+      expect(settings.recentPersonaIds).toEqual(many.slice(0, MAX_RECENT_PERSONAS));
+      expect(settings.recentPersonaIds).toHaveLength(MAX_RECENT_PERSONAS);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a missing or non-array recentPersonaIds on disk defaults to an empty list', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({ recentPersonaIds: 'not-an-array' }),
+      );
+
+      expect(getSettings().recentPersonaIds).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
