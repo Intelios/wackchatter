@@ -30,7 +30,11 @@ import { getDb } from './db.ts';
 import { PATHS } from './paths.ts';
 
 /**
- * One row per swipe, with the JSON reached exactly once.
+ * One row per generated reply swipe, with the JSON reached exactly once.
+ *
+ * User messages and opening greetings at position 0 are excluded: greetings carry no model
+ * or token count, and a card's alternate greetings arrive as swipes on position 0 — including
+ * them would inflate swipe totals above the model ring and deflate the reasoning rate.
  *
  * `$character` is null for the whole library. Comparing a bound parameter against null in
  * the WHERE clause keeps one statement serving both the overview and a single card, rather
@@ -49,7 +53,11 @@ const SWIPES = `
       json_extract(s.value, '$.gen_started')      AS genStarted,
       json_extract(s.value, '$.gen_finished')     AS genFinished
     FROM messages m, json_each(m.swipe_info) s, chats c
-    WHERE c.id = m.chat_id AND ($character IS NULL OR c.character_id = $character)
+    WHERE c.id = m.chat_id
+      AND m.is_user = 0
+      AND m.is_system = 0
+      AND m.position > 0
+      AND ($character IS NULL OR c.character_id = $character)
   )`;
 
 /** Milliseconds between two ISO timestamps, as SQLite sees them. */
@@ -65,7 +73,10 @@ const SELECTED_SENT = `json_extract(m.swipe_info, '$[' || m.swipe_id || '].send_
 const CHAT_TOKENS = `
   (SELECT COALESCE(SUM(COALESCE(json_extract(s.value, '$.extra.token_count'), 0)), 0)
      FROM messages m, json_each(m.swipe_info) s
-    WHERE m.chat_id = c.id)`;
+    WHERE m.chat_id = c.id
+      AND m.is_user = 0
+      AND m.is_system = 0
+      AND m.position > 0)`;
 
 const CHAT_MESSAGES = '(SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id)';
 

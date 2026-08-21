@@ -117,15 +117,19 @@ describe('rerolls', () => {
     expect(habits.eligibleReplies).toBe(2);
   });
 
-  test('the naive swipes-minus-messages count would disagree', () => {
+  test('opening greetings are excluded from swipe totals', () => {
     chats.createChat({
       characterId: 'Seraphina.png',
       messages: [reply(['greeting a', 'greeting b', 'greeting c']), userMessage('hi')],
     });
 
-    const { totals, habits } = stats.overview();
+    const { totals, habits, models } = stats.overview();
 
-    expect(totals.swipes - totals.messages).toBe(2);
+    // Opening greetings carry no model and were never generated, so totals.swipes stays zero
+    // rather than contradicting the empty models ring.
+    expect(totals.swipes).toBe(0);
+    expect(totals.tokens).toBe(0);
+    expect(models).toEqual([]);
     expect(habits.rerolls).toBe(0);
   });
 });
@@ -137,6 +141,7 @@ describe('models', () => {
     chats.createChat({
       characterId: 'Seraphina.png',
       messages: [
+        userMessage('hi'),
         reply(['a'], [swipe({ extra: { api: 'openai', model: 'gpt-4o', token_count: 10 } })]),
       ],
     });
@@ -151,6 +156,7 @@ describe('models', () => {
     chats.createChat({
       characterId: 'Seraphina.png',
       messages: [
+        userMessage('hi'),
         reply(
           ['timed', 'untimed'],
           [
@@ -179,6 +185,7 @@ describe('models', () => {
     chats.createChat({
       characterId: 'Seraphina.png',
       messages: [
+        userMessage('hi'),
         reply(
           ['a'],
           [
@@ -195,6 +202,47 @@ describe('models', () => {
     const [model] = stats.overview().models;
     expect(model?.avgLatencyMs).toBeNull();
     expect(model?.tokensPerSecond).toBeNull();
+  });
+
+  test('sum of model swipes matches totals.swipes on multi-greeting chats', () => {
+    // Multi-greeting card + 1 rerolled reply (2 swipes) + 1 single reply with reasoning (1 swipe)
+    chats.createChat({
+      characterId: 'Seraphina.png',
+      messages: [
+        reply(['greeting a', 'greeting b', 'greeting c', 'greeting d']),
+        userMessage('hello'),
+        reply(
+          ['take one', 'take two'],
+          [
+            swipe({ extra: { api: 'custom', model: 'glm-5.2', token_count: 50 } }),
+            swipe({ extra: { api: 'custom', model: 'glm-5.2', token_count: 60 } }),
+          ],
+        ),
+        userMessage('tell me more'),
+        reply(
+          ['thinking take'],
+          [
+            swipe({
+              extra: {
+                api: 'openrouter',
+                model: 'claude-3-7-sonnet',
+                token_count: 100,
+                reasoning: 'thought...',
+              },
+            }),
+          ],
+        ),
+      ],
+    });
+
+    const overview = stats.overview();
+    const modelSwipesSum = overview.models.reduce((sum, m) => sum + m.swipes, 0);
+
+    expect(overview.totals.swipes).toBe(3);
+    expect(modelSwipesSum).toBe(overview.totals.swipes);
+    expect(overview.habits.reasoningSwipes).toBe(1);
+    // Reasoning rate denominator is totals.swipes (3), not deflated by the 4 greeting swipes or 2 user messages
+    expect(overview.habits.reasoningSwipes / overview.totals.swipes).toBeCloseTo(1 / 3);
   });
 });
 
