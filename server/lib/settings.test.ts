@@ -223,6 +223,31 @@ describe('mergeSettings', () => {
     expect(selected.memory.extractPrompt).toBe(DEFAULT_MEMORY.extractPrompt);
   });
 
+  test('the auto-extract interval is off by default and only off at exactly zero', () => {
+    // A missing or malformed value must never arm a feature that spends money on its own.
+    expect(base().memory.autoInterval).toBe(0);
+    expect(
+      mergeSettings(base(), { memory: { autoInterval: 'often' } as never }).memory.autoInterval,
+    ).toBe(0);
+    expect(
+      mergeSettings(base(), { memory: { autoInterval: 0 } as never }).memory.autoInterval,
+    ).toBe(0);
+  });
+
+  test('the auto-extract interval clamps to a sane positive range and floors', () => {
+    // A typo of 1 would run a paid extraction after every message; nobody wants thousands.
+    const selected = mergeSettings(base(), {
+      memory: { autoInterval: 75.9 } as never,
+    });
+    expect(selected.memory.autoInterval).toBe(75);
+    expect(
+      mergeSettings(selected, { memory: { autoInterval: 5 } as never }).memory.autoInterval,
+    ).toBe(10);
+    expect(
+      mergeSettings(selected, { memory: { autoInterval: 5000 } as never }).memory.autoInterval,
+    ).toBe(2000);
+  });
+
   test('auto-hide stays off unless it is explicitly turned on', () => {
     expect(base().memory.autoHide).toBe(false);
     expect(mergeSettings(base(), { memory: { autoHide: 'yes' } as never }).memory.autoHide).toBe(

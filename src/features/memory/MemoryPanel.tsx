@@ -230,6 +230,9 @@ function MemoriesBody({
         ) : memoryPending > 0 ? (
           <span className="memory-panel__progress" role="status">
             {memoryPending} message{memoryPending === 1 ? '' : 's'} not yet remembered.
+            {mode === 'memories' && settings.autoInterval > 0
+              ? ` Auto-extracts at ${settings.autoInterval}.`
+              : ''}
           </span>
         ) : null}
 
@@ -308,6 +311,16 @@ function MemoriesBody({
           onChange={(windowSize) => onSettingsChange({ windowSize })}
           hint="How much transcript the model reads at once. Larger passes see whole scenes; smaller ones cost less per request."
           disabled={running}
+        />
+        <NumberField
+          label="Auto-extract every"
+          value={settings.autoInterval}
+          min={0}
+          max={2000}
+          step={10}
+          onChange={(autoInterval) => onSettingsChange({ autoInterval })}
+          hint="Runs extraction automatically once this many messages are waiting, after a reply settles. 0 turns it off. Only runs while the mode is Memories."
+          disabled={running || mode !== 'memories'}
         />
         <NumberField
           label="Reply budget (tokens)"

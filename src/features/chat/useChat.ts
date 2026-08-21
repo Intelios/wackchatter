@@ -14,6 +14,7 @@ import {
   parseMemoryResponse,
 } from '@shared/memory/extract.ts';
 import {
+  autoExtractDue,
   coveredMessageIds,
   draftsToMemories,
   hideableMessageIds,
@@ -318,6 +319,10 @@ export function useChat(options: UseChatOptions): UseChat {
   const summaryChatIdRef = useRef<string | null>(null);
   const memoryAbortRef = useRef<AbortController | null>(null);
   const memoryChatIdRef = useRef<string | null>(null);
+  // The chat whose reply just settled, arming the auto-extraction check. Set at gen/finished
+  // and consumed by the effect below — a ref rather than a direct call because extractMemories
+  // reads stateRef, which only catches up with the dispatch at the next render.
+  const autoExtractArmRef = useRef<string | null>(null);
 
   // The generation body reads state after dispatching into it, so the closure's copy is
   // always stale. A ref is the simplest correct answer.
@@ -893,6 +898,10 @@ export function useChat(options: UseChatOptions): UseChat {
           },
           alternates,
         });
+        // Arm, don't fire: the dispatch has not reached stateRef yet, so an extraction
+        // started here would still see this generation as streaming and bail. The effect
+        // below consumes the arm on the settle render.
+        autoExtractArmRef.current = started.chatId;
       } catch (error) {
         if (ownsGeneration()) endStream();
         // Whatever arrived before the failure is kept, as SillyTavern does.
@@ -1783,14 +1792,33 @@ export function useChat(options: UseChatOptions): UseChat {
     ],
   );
 
+  /**
+   * Auto-extraction: one check per settled reply, never per state change.
+   *
+   * The arm is set at `gen/finished` and only for the chat that generated, so opening a chat
+   * with a large unextracted backlog never starts a paid run by itself — the backlog catches
+   * up after the next reply in that chat. The interval is read from the config ref, so a
+   * settings change made mid-generation is honoured at the settle. A run that was cancelled
+   * or died leaves the backlog past the threshold; the next settle simply tries again.
+   */
+  useEffect(() => {
+    const armed = autoExtractArmRef.current;
+    if (!armed) return;
+    // Consume before anything can bail, so one arm means at most one run.
+    autoExtractArmRef.current = null;
+    if (armed !== state.chatId || state.status !== 'idle') return;
+    if (!autoExtractDue(memoryMode, memoryConfigRef.current.autoInterval, memoryPending)) return;
+    if (memoryAbortRef.current || summaryAbortRef.current) return;
+    void extractMemories();
+  }, [state, memoryMode, memoryPending, extractMemories]);
+
   return {
     state,
     messages,
     stream,
     inspection: state.inspections[0] ?? null,
     busy: state.status !== 'idle',
-    generationBlocked:
-      state.status !== 'idle' || summaryStatus.running || memoryStatus.running,
+    generationBlocked: state.status !== 'idle' || summaryStatus.running || memoryStatus.running,
     saving,
     saveError,
     loadError,

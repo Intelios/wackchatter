@@ -328,6 +328,16 @@ function normalizeMemory(value: unknown, connections: Connection[]): MemorySetti
       : DEFAULT_MEMORY[key];
   };
 
+  // Unlike the others, 0 is a legal value — it is the off switch. Anything positive is
+  // clamped rather than defaulted, and the floor keeps a typo of 1 from starting a paid
+  // run after every single message.
+  const autoInterval = (() => {
+    const candidate = stored.autoInterval;
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return 0;
+    const floored = Math.floor(candidate);
+    return floored <= 0 ? 0 : Math.min(2000, Math.max(10, floored));
+  })();
+
   return {
     connectionId,
     presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
@@ -336,6 +346,7 @@ function normalizeMemory(value: unknown, connections: Connection[]): MemorySetti
         ? stored.extractPrompt
         : DEFAULT_MEMORY.extractPrompt,
     windowSize: clamped('windowSize', 5, 200),
+    autoInterval,
     maxMemoryTokens: clamped('maxMemoryTokens', 100, 4000),
     autoHide: typeof stored.autoHide === 'boolean' ? stored.autoHide : DEFAULT_MEMORY.autoHide,
     verbatimTail: clamped('verbatimTail', 0, 200),

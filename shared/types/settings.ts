@@ -269,6 +269,12 @@ export interface MemorySettings extends StoryMemoryPlacement {
   extractPrompt: string;
   /** Transcript messages handed to one extraction call. */
   windowSize: number;
+  /**
+   * Extract automatically once this many eligible messages sit unextracted, checked after
+   * a reply settles. 0 disables it — no run should ever cost money the user did not ask
+   * for by chatting.
+   */
+  autoInterval: number;
   /** Reply budget for one extraction call. Several memories have to fit in it. */
   maxMemoryTokens: number;
   /**
@@ -301,6 +307,7 @@ export const DEFAULT_MEMORY: Readonly<MemorySettings> = {
   presetId: null,
   extractPrompt: DEFAULT_MEMORY_PROMPT,
   windowSize: 40,
+  autoInterval: 0,
   maxMemoryTokens: 700,
   autoHide: false,
   verbatimTail: 20,

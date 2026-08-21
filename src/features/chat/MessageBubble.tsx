@@ -429,8 +429,7 @@ export const MessageBubble = memo(function MessageBubble({
                   className="wc-button wc-button--ghost message__action"
                   onClick={() => onSwipe(1)}
                   disabled={
-                    busy ||
-                    ((summaryRunning || memoryRunning) && message.swipe_id === swipes - 1)
+                    busy || ((summaryRunning || memoryRunning) && message.swipe_id === swipes - 1)
                   }
                   aria-label="Next alternative, or generate one"
                   title={

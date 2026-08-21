@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { ChatMessage, Memory } from '../types/chat.ts';
 import type { DraftMemory } from './extract.ts';
 import {
+  autoExtractDue,
   coveredMessageIds,
   draftsToMemories,
   hideableMessageIds,
@@ -118,6 +119,26 @@ describe('nextWatermark', () => {
 
   test('a window that produced nothing does not advance past unrecorded material', () => {
     expect(nextWatermark([], 'a')).toBe('a');
+  });
+});
+
+describe('autoExtractDue', () => {
+  test('fires once the backlog reaches the interval', () => {
+    expect(autoExtractDue('memories', 50, 50)).toBe(true);
+    expect(autoExtractDue('memories', 50, 51)).toBe(true);
+  });
+
+  test('a backlog below the interval waits', () => {
+    expect(autoExtractDue('memories', 50, 49)).toBe(false);
+  });
+
+  test('an interval of 0 is the off switch, whatever is waiting', () => {
+    expect(autoExtractDue('memories', 0, 500)).toBe(false);
+  });
+
+  test('only the memories mode auto-spends', () => {
+    expect(autoExtractDue('classic', 50, 500)).toBe(false);
+    expect(autoExtractDue('off', 50, 500)).toBe(false);
   });
 });
 

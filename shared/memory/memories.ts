@@ -8,6 +8,7 @@
  */
 
 import type { Memory } from '../types/chat.ts';
+import type { MemoryMode } from '../types/settings.ts';
 import type { DraftMemory } from './extract.ts';
 
 /**
@@ -122,4 +123,17 @@ export function markMemoriesStale(
  */
 export function nextWatermark(written: Memory[], current?: string): string | undefined {
   return written.at(-1)?.range?.endId ?? current;
+}
+
+/**
+ * Whether an automatic extraction run should start. `pending` is the eligible backlog —
+ * messages past the watermark that memory extraction could read, the same count the panel
+ * shows as "not yet remembered".
+ *
+ * Only the `memories` mode auto-spends: in `classic` the setting is not even visible, and
+ * in `off` the user has deliberately paused the feature. An interval of 0 disables it
+ * outright, so the default never fires a request the user did not ask for.
+ */
+export function autoExtractDue(mode: MemoryMode, interval: number, pending: number): boolean {
+  return mode === 'memories' && interval > 0 && pending >= interval;
 }
