@@ -373,11 +373,19 @@
   stroke-width: 1;
 }
 
+.dial__hit {
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+
 .dial__spoke {
   stroke: var(--wc-accent);
   stroke-width: 3.5;
   stroke-linecap: round;
   opacity: 0.75;
+  pointer-events: none;
   transition:
     opacity var(--wc-duration-fast) ease,
     stroke var(--wc-duration-fast) ease;
@@ -386,7 +394,8 @@
   animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
 }
 
-.dial__spoke[data-active] {
+.dial__spoke[data-active],
+.dial__spoke-group[data-active] .dial__spoke {
   stroke: var(--wc-accent-hover);
   opacity: 1;
 }

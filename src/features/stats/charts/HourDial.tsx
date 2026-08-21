@@ -43,25 +43,30 @@ export function HourDial({ hours }: HourDialProps) {
         <circle className="dial__ring" cx={CENTRE} cy={CENTRE} r={INNER} />
         {hours.map((value, index) => {
           const line = spoke(CENTRE, CENTRE, INNER + 2, OUTER, index, value, max);
+          const hit = spoke(CENTRE, CENTRE, INNER + 2, OUTER, index, 1, 1);
           return (
             // biome-ignore lint/a11y/noStaticElementInteractions: The hover readout is an enhancement, not the only path in: every column, slice and spoke already carries its figure as text for assistive tech. Making them focusable would add dozens of tab stops to reach what is announced anyway.
-            <line
+            <g
               key={hourLabel(index)}
-              className="dial__spoke"
-              // Normalises every spoke to length 1, so one dash-offset keyframe draws
-              // them all regardless of how long each actually is.
-              pathLength={1}
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
+              className="dial__spoke-group"
               data-active={reading === index || undefined}
-              style={{ '--i': index } as CSSProperties}
               onMouseEnter={() => setActive(index)}
               onMouseLeave={() => setActive(null)}
             >
+              <line className="dial__hit" x1={hit.x1} y1={hit.y1} x2={hit.x2} y2={hit.y2} />
+              <line
+                className="dial__spoke"
+                // Normalises every spoke to length 1, so one dash-offset keyframe draws
+                // them all regardless of how long each actually is.
+                pathLength={1}
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+                style={{ '--i': index } as CSSProperties}
+              />
               <title>{`${hourLabel(index)}: ${count(value)}`}</title>
-            </line>
+            </g>
           );
         })}
         {/* Quarter marks, so the ring can be read as a clock rather than a ring. */}
