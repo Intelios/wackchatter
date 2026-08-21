@@ -154,7 +154,7 @@
  */
 .persona-row[data-active] .persona-row__pick {
   background: var(--wc-accent-subtle);
-  border-color: rgb(194 238 74 / 0.35);
+  border-color: var(--wc-accent-border);
 }
 
 .persona-row[data-active]::before {

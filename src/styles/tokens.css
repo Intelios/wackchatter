@@ -63,6 +63,8 @@
   --wc-accent-hover: #d0f664;
   --wc-accent-text: #12140a;
   --wc-accent-subtle: rgba(194, 238, 74, 0.12);
+  /* Border on a tinted active container, softer than solid accent. */
+  --wc-accent-border: rgb(194 238 74 / 0.35);
   /*
    * The composer's focus bloom: the halo that spills past a picked-up field. A step above
    * --wc-accent-subtle, whose 0.12 disappears into a 24px blur over the dark surfaces.
