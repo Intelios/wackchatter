@@ -5,7 +5,7 @@ import type {
   StatsOverview as Overview,
 } from '@shared/types/stats.ts';
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon, RefreshIcon } from '../../layout/icons.tsx';
 import { characterApi, statsApi } from '../../lib/api.ts';
@@ -41,38 +41,56 @@ export function StatsShell({
   const [card, setCard] = useState<CardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSeq = useRef(0);
 
   const loadOverview = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
-      setOverview(await statsApi.overview());
+      const data = await statsApi.overview();
+      if (requestSeq.current !== seq) return;
+      setOverview(data);
     } catch (err) {
+      if (requestSeq.current !== seq) return;
       setError((err as Error).message);
     } finally {
-      setLoading(false);
+      if (requestSeq.current === seq) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void loadOverview();
+    return () => {
+      requestSeq.current += 1;
+    };
   }, [loadOverview]);
 
   const openCharacter = useCallback(async (avatar: string) => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
-      setCard(await statsApi.character(avatar));
+      const data = await statsApi.character(avatar);
+      if (requestSeq.current !== seq) return;
+      setCard(data);
     } catch (err) {
+      if (requestSeq.current !== seq) return;
       setError((err as Error).message);
     } finally {
-      setLoading(false);
+      if (requestSeq.current === seq) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const backToOverview = useCallback(() => {
+    requestSeq.current += 1;
     setCard(null);
     setError(null);
+    setLoading(false);
   }, []);
 
   const cardName = card
