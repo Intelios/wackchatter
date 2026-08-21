@@ -282,7 +282,8 @@ export function createStatsStore(database: Database, options: StatsStoreOptions 
 
     branches: database.query<{ branches: number }, { $character: string | null }>(`
       SELECT COUNT(*) AS branches FROM chats c
-      WHERE c.title LIKE '% (branch)' AND ($character IS NULL OR c.character_id = $character)`),
+      WHERE json_extract(c.metadata, '$.branchedFrom') IS NOT NULL
+        AND ($character IS NULL OR c.character_id = $character)`),
 
     chatList: database.query<ChatEntry, { $character: string | null; $limit: number }>(`
       SELECT c.id, c.title, c.created, c.modified,

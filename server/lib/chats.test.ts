@@ -627,4 +627,21 @@ describe('branching', () => {
     expect(store.branchChat('nope', 'x')).toBeNull();
     expect(store.branchChat(created.id, 'not-a-message')).toBeNull();
   });
+
+  test('a branch records its provenance in metadata', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      title: 'Original',
+      metadata: { scenario: 'custom scenario' },
+      messages: [message({ mes: '1' }), message({ mes: '2' })],
+    });
+    const branchPoint = store.getChat(created.id)!.messages[0]!.id;
+    const branch = store.branchChat(created.id, branchPoint)!;
+
+    expect(branch.metadata.scenario).toBe('custom scenario');
+    expect(branch.metadata.branchedFrom).toEqual({
+      chatId: created.id,
+      messageId: branchPoint,
+    });
+  });
 });

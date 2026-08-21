@@ -94,7 +94,14 @@ export interface ChatMetadata {
   guides?: PersistentGuide[];
   /** Editable rolling story memory and the last transcript message it covers. */
   summary?: StorySummary;
+  /** Provenance recorded when this chat was created as a branch of another chat. */
+  branchedFrom?: BranchOrigin;
   [key: string]: unknown;
+}
+
+export interface BranchOrigin {
+  chatId: string;
+  messageId: string;
 }
 
 export interface StorySummary {

@@ -324,3 +324,53 @@ describe('activeMs', () => {
     ).toBe(120_000);
   });
 });
+
+describe('branchedChats', () => {
+  test('counts branched chats by metadata provenance rather than title convention', () => {
+    const original = chats.createChat({
+      characterId: 'Seraphina.png',
+      title: 'Original',
+      messages: [userMessage('hi'), reply(['hello'])],
+    });
+
+    const msgId = chats.getChat(original.id)!.messages[0]!.id;
+    const branch = chats.branchChat(original.id, msgId)!;
+
+    expect(stats.overview().habits.branchedChats).toBe(1);
+
+    // Renaming the branched chat to remove " (branch)" does not drop it from the count
+    chats.updateChatMeta(branch.id, { revision: branch.revision + 1, title: 'A New Timeline' });
+    expect(stats.overview().habits.branchedChats).toBe(1);
+
+    // Creating a non-branch chat with " (branch)" in the title does NOT count as a branch
+    chats.createChat({
+      characterId: 'Seraphina.png',
+      title: 'Fake (branch)',
+      messages: [userMessage('hey')],
+    });
+    expect(stats.overview().habits.branchedChats).toBe(1);
+
+    // Character-scoped stats correctly attribute branches
+    const seraphina = stats.forCharacter('Seraphina.png');
+    expect(seraphina.habits.branchedChats).toBe(1);
+
+    const mika = stats.forCharacter('Mika.png');
+    expect(mika.habits.branchedChats).toBe(0);
+  });
+
+  test('a branch of a branch also counts as a branched chat', () => {
+    const root = chats.createChat({
+      characterId: 'Seraphina.png',
+      title: 'Root',
+      messages: [userMessage('first'), reply(['reply 1']), userMessage('second')],
+    });
+
+    const msg1 = chats.getChat(root.id)!.messages[0]!.id;
+    const branch1 = chats.branchChat(root.id, msg1)!;
+
+    const branch1Msg = branch1.messages[0]!.id;
+    chats.branchChat(branch1.id, branch1Msg);
+
+    expect(stats.overview().habits.branchedChats).toBe(2);
+  });
+});
