@@ -128,9 +128,11 @@ export interface ChatMetadata {
  * range it was written from.
  *
  * Lives in `ChatMetadata` rather than in `data/lorebooks`, which is what makes branching
- * correct by construction — a branch snapshots metadata, so a memory written after the
- * branch point cannot leak backwards into the parent, and the branch keeps everything
- * that was true when it split.
+ * safe against backwards leaks — a branch snapshots metadata, so a memory written after
+ * the branch point cannot leak into the parent. The forward direction is not free,
+ * though: `branchChat` copies messages with fresh ids, so `remapBranchMetadata`
+ * (shared/chat/branch.ts) rewrites every range onto the branch's own ids, clamps ranges
+ * that straddle the fork, and drops memories written from transcript past it.
  *
  * `range` is by message id, never by index. Indices shift under delete, branch and swipe;
  * the whole reason the extractor is never shown a global index is that it must not be able

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Chat, ChatMessage } from '../../shared/types/chat.ts';
+import { coveredMessageIds } from '../../shared/memory/memories.ts';
+import type { Chat, ChatMessage, Memory } from '../../shared/types/chat.ts';
 import { type ChatSaveResult, type ChatStore, createChatStore } from './chats.ts';
 import { createSchema } from './db.ts';
 
@@ -29,6 +30,21 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
     is_system: false,
     mes: 'Hello.',
     send_date: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function memory(overrides: Partial<Memory> = {}): Memory {
+  return {
+    id: crypto.randomUUID(),
+    title: 'A scene',
+    text: 'Something happened.',
+    keywords: ['key'],
+    pinned: false,
+    enabled: true,
+    source: 'generated',
+    edited: false,
+    generatedAt: 0,
     ...overrides,
   };
 }
@@ -688,6 +704,109 @@ describe('branching', () => {
     expect(branch.metadata.branchedFrom).toEqual({
       chatId: created.id,
       messageId: branchPoint,
+    });
+  });
+
+  test('a branch remaps memory ranges and the watermark onto its own message ids', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      metadata: {
+        memories: [memory({ id: 'mem-1', range: { startId: 'm0', endId: 'm1' } })],
+        memoryWatermark: 'm1',
+      },
+      messages: [
+        // The stamp a hide left behind, copied with the message it belongs to.
+        message({ id: 'm0', mes: '1', is_system: true, hiddenBy: 'mem-1' }),
+        message({ id: 'm1', mes: '2' }),
+        message({ id: 'm2', mes: '3' }),
+      ],
+    });
+
+    const branch = store.branchChat(created.id, 'm1')!;
+    const b0 = branch.messages[0]!;
+    const b1 = branch.messages[1]!;
+    const stored = branch.metadata.memories![0]!;
+
+    // The range resolves against the branch's transcript, so revealing and deleting
+    // the memory work — and the copied stamp names a memory that can account for it.
+    expect(stored.range).toEqual({ startId: b0.id, endId: b1.id });
+    expect(coveredMessageIds(stored, branch.messages)).toEqual([b0.id, b1.id]);
+    expect(b0.hiddenBy).toBe('mem-1');
+    expect(branch.metadata.memoryWatermark).toBe(b1.id);
+  });
+
+  test('memories of transcript past the branch point are not carried into the branch', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      metadata: {
+        memories: [
+          memory({ range: { startId: 'm0', endId: 'm1' } }),
+          memory({ range: { startId: 'm2', endId: 'm3' } }),
+        ],
+      },
+      messages: [
+        message({ id: 'm0', mes: '1' }),
+        message({ id: 'm1', mes: '2' }),
+        message({ id: 'm2', mes: '3' }),
+        message({ id: 'm3', mes: '4' }),
+      ],
+    });
+
+    const branch = store.branchChat(created.id, 'm1')!;
+
+    expect(branch.metadata.memories).toHaveLength(1);
+    expect(branch.metadata.memories![0]!.range?.endId).toBe(branch.messages[1]!.id);
+  });
+
+  test('a memory straddling the branch point clamps to it and is flagged stale', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      metadata: { memories: [memory({ range: { startId: 'm0', endId: 'm2' } })] },
+      messages: [
+        message({ id: 'm0', mes: '1' }),
+        message({ id: 'm1', mes: '2' }),
+        message({ id: 'm2', mes: '3' }),
+      ],
+    });
+
+    const branch = store.branchChat(created.id, 'm1')!;
+    const stored = branch.metadata.memories![0]!;
+
+    expect(stored.range).toEqual({
+      startId: branch.messages[0]!.id,
+      endId: branch.messages[1]!.id,
+    });
+    expect(stored.stale).toBe('deleted');
+  });
+
+  test('a watermark past the branch point becomes the branch point', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      metadata: { memoryWatermark: 'm2' },
+      messages: [
+        message({ id: 'm0', mes: '1' }),
+        message({ id: 'm1', mes: '2' }),
+        message({ id: 'm2', mes: '3' }),
+      ],
+    });
+
+    const branch = store.branchChat(created.id, 'm1')!;
+
+    expect(branch.metadata.memoryWatermark).toBe(branch.messages[1]!.id);
+  });
+
+  test('a summary checkpoint inside the branch remaps onto the copied messages', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      metadata: { summary: { text: 'So far.', checkpointMessageId: 'm0' } },
+      messages: [message({ id: 'm0', mes: '1' }), message({ id: 'm1', mes: '2' })],
+    });
+
+    const branch = store.branchChat(created.id, 'm1')!;
+
+    expect(branch.metadata.summary).toEqual({
+      text: 'So far.',
+      checkpointMessageId: branch.messages[0]!.id,
     });
   });
 });

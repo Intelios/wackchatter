@@ -8,6 +8,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
+import { remapBranchMetadata } from '../../shared/chat/branch.ts';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
 import type {
   Chat,
@@ -390,6 +391,17 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       const now = Date.now();
       const branchId = crypto.randomUUID();
 
+      // Fresh ids: the copies are independent messages from here on. Every metadata
+      // reference to a message id (memory ranges, the memory watermark, the summary
+      // checkpoint) is remapped onto them, or the branch would carry ranges that can
+      // never resolve against its own transcript.
+      const idMap = new Map<string, string>();
+      const copied = source.messages.slice(0, cut + 1).map((message) => {
+        const id = crypto.randomUUID();
+        idMap.set(message.id, id);
+        return { ...message, id };
+      });
+
       insertWithMessages(
         {
           id: branchId,
@@ -399,18 +411,14 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
           modified: now,
           revision: 0,
           metadata: JSON.stringify({
-            ...source.metadata,
+            ...remapBranchMetadata(source.metadata, source.messages, idMap),
             branchedFrom: {
               chatId: source.id,
               messageId: afterMessageId,
             },
           }),
         },
-        // Fresh ids: the copies are independent messages from here on.
-        source.messages.slice(0, cut + 1).map((message) => ({
-          ...message,
-          id: crypto.randomUUID(),
-        })),
+        copied,
       );
 
       return readChat(branchId);
