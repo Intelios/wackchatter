@@ -35,6 +35,7 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/generate.ts The one place that calls a provider.
   lib/lorebooks.ts / personas.ts / cocreator.ts  Standalone books; personas; design sessions.
   lib/stats.ts   Library statistics, aggregated in SQL. Built per request, never memoised.
+  lib/arena.ts   Blind benchmark rounds. Write-once rows; no ratings table, by design.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant, as a type.
   cocreator/     CardStash — the filed-card model.
@@ -42,11 +43,11 @@ shared/          Pure, no I/O. Imported by both server and client.
   providers/     Request building + SSE parsing.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine.
-  types/         Card, preset, worldinfo, chat, settings, regex, cocreator, stats.
+  types/         Card, preset, worldinfo, chat, settings, regex, cocreator, stats, arena.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
-                 cocreator/, stats/.
+                 cocreator/, stats/, arena/.
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
                 secrets.json, lorebooks/, personas/, backups/, .wackchatter.
@@ -162,9 +163,9 @@ byte-identically. The quirks are load-bearing and each has a named test.
   replacement drops the message from packing. Macro expansion is injected, not imported
   (keeps `shared/regex/` a leaf): the prompt path passes assembly's runtime so
   `{{setvar}}` in a replacement really writes; the display path gets a disposable one.
-- All three `assemblePrompt` callers must pass the same list (useChat generate, useChat
-  summarise, usePromptPreview) — miss one and token counts and the inspector silently
-  disagree with what shipped.
+- All four `assemblePrompt` callers must pass the same list (useChat generate, useChat
+  summarise, usePromptPreview, useArenaRun) — miss one and token counts and the inspector
+  silently disagree with what shipped.
 - Not wired: `SLASH_COMMAND` / `WORLD_INFO` placements, character-embedded
   `regex_scripts`, mid-stream application. Never enable `rehype-raw` in `Markdown.tsx` —
   model HTML must stay escaped text.
@@ -304,14 +305,15 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 
 ## UI conventions
 
-- **The three sub-apps replace the chat shell** — they are not modals or panels, they
-  share one shell skeleton, and all three are reached only from the Start screen. The
-  Studio is manual, the Co-Creator conversational, Stats read-only; Finish hands off from
-  the Co-Creator to the Studio one-way with no path back. Entering any of them flushes the
-  save queue first and a failed flush aborts the transition rather than hiding unsaved
-  work — for Stats that is also what makes the numbers right, since a chat still in the
-  queue is one the server has not been told about. Only the two creator areas register
-  persistence; Stats has nothing of its own to flush on the way out.
+- **The four sub-apps replace the chat shell** — they are not modals or panels, they
+  share one shell skeleton, and all four are reached only from the Start screen. The
+  Studio is manual, the Co-Creator conversational, Stats read-only, the Arena a test bench;
+  Finish hands off from the Co-Creator to the Studio one-way with no path back. Entering
+  any of them flushes the save queue first and a failed flush aborts the transition rather
+  than hiding unsaved work — for Stats that is also what makes the numbers right, since a
+  chat still in the queue is one the server has not been told about. Only the two creator
+  areas register persistence; Stats and the Arena have nothing of their own to flush on the
+  way out.
 - **In the Co-Creator the model never writes a field** — it proposes in labelled fenced
   blocks and every slot got there via "Use as". Two tested invariants: everything the
   model sees is in the readable transcript (the stash never reaches a prompt), and block
@@ -400,6 +402,45 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   hook checks `matchMedia` itself — a JS animation is not covered by the token overrides.
   It also completes on a hidden document, so the numbers match the CSS animations beside
   them rather than stranding at zero.
+
+**Model Arena** (`server/lib/arena.ts`, `src/features/arena/`)
+
+- **Assemble once, send N times.** `useArenaRun.start` calls `assemblePrompt` a single time
+  per run and every column gets the same `messages` array; only `buildRequestBody` runs per
+  contender. This is the fairness invariant the whole sub-app rests on — identical history
+  packing, identical World Info draws, identical `{{random}}`/`{{pick}}` rolls. Bodies still
+  differ in provider-specific samplers, which is unavoidable and correct. A per-column
+  re-roll re-sends the run's *cached* messages for the same reason.
+- **No ratings table.** Rounds are stored write-once and the leaderboard is replayed from
+  them in `created` order on every render, so a rating cannot drift from the history behind
+  it and `K_FACTOR` can change without invalidating anything. Same rule as Stats. `bad`
+  ("neither is usable") is recorded but moves **no** ratings — it is not a draw, and scoring
+  it as one would drag a strong rating toward a weak one on evidence containing no
+  comparison. Named tests.
+- Ratings under `PROVISIONAL_ROUNDS` rank **below** established ones however high the number
+  goes; sorting on rating alone would let a lucky two-round entrant read as a verdict.
+- `replay` returns the table AND a per-round series for the chart from **one** walk. Two
+  walks would be two implementations of the same Elo loop, free to drift — the exact thing
+  the no-ratings-table rule exists to prevent. Every series covers every round, backfilled
+  at `START_RATING` for a contender that joined late, so the lines can be read against one
+  another. A `bad` round still takes a slot on the axis and moves nothing.
+- **Only blind rounds are scored.** The open Arena writes nothing — a comparison where you
+  knew which one was which is not evidence.
+- **The blind is a real blind.** While masked, nothing identifying reaches the DOM: no name,
+  model, provider, reasoning text or timings, and by default no streaming either, because
+  token cadence identifies a model as surely as a label. `hold` withholds a *settled* reply
+  too, or the first column to finish would reveal itself by finishing.
+- Deleting a contender never cascades into rounds. An id the pool can no longer resolve
+  falls back to the model string recorded on the round — the Stats rule, and the reason
+  `RoundSide` stores the model and provider as facts rather than display names.
+- Pairing is **least-played**, not uniform: uniform draws re-decide settled matchups while
+  two entrants never meet, so a leaderboard stays provisional long after the rounds were
+  paid for. Side assignment is a per-round coin flip, or position bias binds to one
+  contender for the whole history.
+- A run waits for `useLorebooks().pending` to clear. The chat never needed that flag — a
+  human is typing — but a blind round generates with nobody in the loop, and one that ran
+  before the card's linked book arrived would benchmark against lore a real chat would have
+  supplied.
 
 ## Testing
 

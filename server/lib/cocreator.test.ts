@@ -10,7 +10,7 @@ import {
   normalizeExamples,
   normalizeSessionSettings,
 } from './cocreator.ts';
-import { createSchema } from './db.ts';
+import { createSchema, SCHEMA_VERSION } from './db.ts';
 
 let store: CocreatorStore;
 let database: Database;
@@ -483,7 +483,7 @@ describe('migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('5');
+    ).toBe(String(SCHEMA_VERSION));
   });
 
   test('createSchema is idempotent — running it twice keeps the sessions', () => {

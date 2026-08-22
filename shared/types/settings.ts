@@ -8,6 +8,8 @@
 
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
+import type { ArenaSettings } from './arena.ts';
+import { DEFAULT_ARENA } from './arena.ts';
 import type { MacroVariableMap } from './chat.ts';
 import type { ExampleFields, ExampleSet } from './cocreator.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from './cocreator.ts';
@@ -82,6 +84,12 @@ export interface AppSettings {
   /** Discrete memories: extraction source, prompt, hiding and injection preferences. */
   memory: MemorySettings;
   coCreator: CoCreatorSettings;
+  /**
+   * Model Arena: the contender pool, the blind draw's card and probe pools, and how a
+   * round is set up. Ratings are not here — they are replayed from the recorded rounds,
+   * so there is no stored number that could disagree with the history behind it.
+   */
+  arena: ArenaSettings;
   /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
   dialogueColors: DialogueColorSettings;
   /**
@@ -469,6 +477,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ...DEFAULT_COCREATOR,
     exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
     exampleSets: [],
+  },
+  arena: {
+    ...DEFAULT_ARENA,
+    // Fresh arrays, or every install would share one — the same reason coCreator spreads
+    // its own above.
+    contenders: [],
+    cardPool: [],
+    probes: [],
   },
   dialogueColors: {
     enabled: DEFAULT_DIALOGUE_COLORS.enabled,

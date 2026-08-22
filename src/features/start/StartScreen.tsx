@@ -2,6 +2,7 @@ import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ArenaIcon,
   CoCreatorIcon,
   MessagesIcon,
   StatsIcon,
@@ -21,6 +22,7 @@ interface StartScreenProps {
   onOpenStudio: () => void;
   onOpenCoCreator: () => void;
   onOpenStats: () => void;
+  onOpenArena: () => void;
 }
 
 interface RecentChat extends ChatSummary {
@@ -59,6 +61,7 @@ export function StartScreen({
   onOpenStudio,
   onOpenCoCreator,
   onOpenStats,
+  onOpenArena,
 }: StartScreenProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [recent, setRecent] = useState<ChatSummary[] | null>(null);
@@ -218,9 +221,9 @@ export function StartScreen({
         )}
 
         {/*
-         * Named for the row, not its first occupant: Stats is not a creator tool. The
-         * pair is wrapped rather than left to wrap on its own, because the grouping is
-         * the point — the two character tools are siblings and Stats sits under them.
+         * Two pairs, and the grouping is the point rather than the wrapping: the top row
+         * makes characters, the bottom row measures things. The rows are explicit so the
+         * shape survives a narrow window instead of reflowing into an arbitrary four.
          */}
         <div className="start-screen__tool-links">
           <div className="start-screen__tool-pair">
@@ -237,10 +240,16 @@ export function StartScreen({
               Character Co-Creator
             </button>
           </div>
-          <button type="button" className="wc-button start-screen__tool" onClick={onOpenStats}>
-            <StatsIcon />
-            Stats
-          </button>
+          <div className="start-screen__tool-pair">
+            <button type="button" className="wc-button start-screen__tool" onClick={onOpenArena}>
+              <ArenaIcon />
+              Model Arena
+            </button>
+            <button type="button" className="wc-button start-screen__tool" onClick={onOpenStats}>
+              <StatsIcon />
+              Stats
+            </button>
+          </div>
         </div>
       </div>
     </div>

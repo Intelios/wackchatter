@@ -466,6 +466,108 @@ describe('mergeSettings', () => {
   });
 });
 
+describe('arena settings', () => {
+  test('a partial arena patch keeps every untouched field', () => {
+    const current = mergeSettings(base(), {
+      arena: {
+        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'or', model: 'a/b', enabled: true }],
+        probes: [{ id: 'p', text: 'Say something.' }],
+      } as never,
+    });
+
+    const next = mergeSettings(current, { arena: { columns: 3 } as never });
+
+    expect(next.arena.columns).toBe(3);
+    expect(next.arena.contenders).toHaveLength(1);
+    expect(next.arena.probes).toEqual([{ id: 'p', text: 'Say something.' }]);
+  });
+
+  test('a stale tab cannot wipe the pool with a null array', () => {
+    // The whole reason the three arrays are guarded on Array.isArray inside the branch:
+    // normalizeArena turns a non-array into an empty one, and a wiped contender pool takes
+    // the leaderboard's labels with it.
+    const current = mergeSettings(base(), {
+      arena: {
+        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'or', model: 'a/b', enabled: true }],
+        cardPool: ['Seraphina.png'],
+        probes: [{ id: 'p', text: 'Say something.' }],
+      } as never,
+    });
+
+    for (const patch of [
+      { arena: { contenders: null, cardPool: null, probes: null } },
+      { arena: { contenders: 'nope', cardPool: 'nope', probes: 'nope' } },
+      { arena: {} },
+    ]) {
+      const next = mergeSettings(current, patch as never);
+      expect(next.arena.contenders).toEqual(current.arena.contenders);
+      expect(next.arena.cardPool).toEqual(current.arena.cardPool);
+      expect(next.arena.probes).toEqual(current.arena.probes);
+    }
+  });
+
+  test('an explicitly empty pool is emptying it on purpose, and stays empty', () => {
+    const current = mergeSettings(base(), {
+      arena: { contenders: [{ id: 'k', name: '', connectionId: 'or', model: '', enabled: true }] },
+    } as never);
+
+    expect(mergeSettings(current, { arena: { contenders: [] } } as never).arena.contenders).toEqual(
+      [],
+    );
+  });
+
+  test('contenders without a usable id are dropped, duplicates keep the first', () => {
+    const next = mergeSettings(base(), {
+      arena: {
+        contenders: [
+          { name: 'no id' },
+          { id: '  ', name: 'blank id' },
+          { id: 'k', name: 'first' },
+          { id: 'k', name: 'second' },
+        ],
+      },
+    } as never);
+
+    expect(next.arena.contenders).toEqual([
+      { id: 'k', name: 'first', connectionId: '', model: '', enabled: true },
+    ]);
+  });
+
+  test('a contender pointing at a deleted connection is kept, not dropped', () => {
+    // It is unusable, not invalid — and recorded rounds still name it. Dropping it here
+    // would rewrite the leaderboard's labels the moment someone tidied their connections.
+    const next = mergeSettings(base(), {
+      arena: {
+        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'deleted-long-ago', model: 'a/b' }],
+      },
+    } as never);
+
+    expect(next.arena.contenders[0]?.connectionId).toBe('deleted-long-ago');
+  });
+
+  test('columns are clamped rather than rejected', () => {
+    expect(mergeSettings(base(), { arena: { columns: 9 } } as never).arena.columns).toBe(4);
+    expect(mergeSettings(base(), { arena: { columns: 1 } } as never).arena.columns).toBe(2);
+    expect(mergeSettings(base(), { arena: { columns: 'x' } } as never).arena.columns).toBe(2);
+  });
+
+  test('the card pool deduplicates and drops blanks', () => {
+    const next = mergeSettings(base(), {
+      arena: { cardPool: ['a.png', 'a.png', '  ', 'b.png'] },
+    } as never);
+
+    expect(next.arena.cardPool).toEqual(['a.png', 'b.png']);
+  });
+
+  test('holdBlindUntilComplete is on unless explicitly turned off', () => {
+    expect(mergeSettings(base(), { arena: {} } as never).arena.holdBlindUntilComplete).toBe(true);
+    expect(
+      mergeSettings(base(), { arena: { holdBlindUntilComplete: false } } as never).arena
+        .holdBlindUntilComplete,
+    ).toBe(false);
+  });
+});
+
 describe('co-creator settings', () => {
   test('a partial coCreator patch keeps every untouched field', () => {
     // The bug a shallow spread would cause: picking a model in the Co-Creator silently

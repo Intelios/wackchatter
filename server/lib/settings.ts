@@ -15,6 +15,8 @@ import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
 import { normalizeRegexScript } from '../../shared/regex/io.ts';
+import type { ArenaProbe, ArenaSettings, Contender } from '../../shared/types/arena.ts';
+import { ARENA_MAX_COLUMNS, ARENA_MIN_COLUMNS, DEFAULT_ARENA } from '../../shared/types/arena.ts';
 import type { ExampleFields, ExampleSet } from '../../shared/types/cocreator.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from '../../shared/types/cocreator.ts';
 import type { RegexScript } from '../../shared/types/regex.ts';
@@ -451,6 +453,85 @@ function normalizeDialogueColorMap(value: unknown): Record<string, DialogueColor
   return Object.fromEntries(entries);
 }
 
+/**
+ * Coerce the contender pool, on the same terms as quick commands: an entry with no usable
+ * id is dropped, because the id is what edits, deletes and — crucially — recorded rounds
+ * address.
+ *
+ * A contender whose connection has since been deleted is deliberately KEPT. It is unusable,
+ * not invalid, and its rounds still name it; dropping it here would quietly rewrite the
+ * leaderboard's labels the moment someone tidied their connection list. The panel shows it
+ * disabled with a reason instead.
+ */
+function normalizeContenders(value: unknown): Contender[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const contenders: Contender[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    contenders.push({
+      id,
+      name: typeof entry.name === 'string' ? entry.name : '',
+      connectionId: typeof entry.connectionId === 'string' ? entry.connectionId : '',
+      model: typeof entry.model === 'string' ? entry.model : '',
+      // Opt-out rather than opt-in: a contender you took the trouble to add is one you
+      // meant to benchmark.
+      enabled: entry.enabled !== false,
+    });
+  }
+  return contenders;
+}
+
+function normalizeProbes(value: unknown): ArenaProbe[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const probes: ArenaProbe[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    probes.push({ id, text: typeof entry.text === 'string' ? entry.text : '' });
+  }
+  return probes;
+}
+
+/** Card filenames. Deduplicated; empty entries dropped. An empty pool means every card. */
+function normalizeCardPool(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry.trim()) seen.add(entry.trim());
+  }
+  return [...seen];
+}
+
+function normalizeArena(value: unknown): ArenaSettings {
+  if (!isRecord(value)) {
+    return { ...DEFAULT_ARENA, contenders: [], cardPool: [], probes: [] };
+  }
+
+  const columns = Number(value.columns);
+  return {
+    contenders: normalizeContenders(value.contenders),
+    cardPool: normalizeCardPool(value.cardPool),
+    probes: normalizeProbes(value.probes),
+    presetId: typeof value.presetId === 'string' && value.presetId ? value.presetId : null,
+    personaId: typeof value.personaId === 'string' && value.personaId ? value.personaId : null,
+    // Clamped rather than rejected: a hand-edited 9 is a preference expressed badly, and
+    // four columns is the answer closest to what it asked for.
+    columns: Number.isFinite(columns)
+      ? Math.min(ARENA_MAX_COLUMNS, Math.max(ARENA_MIN_COLUMNS, Math.round(columns)))
+      : DEFAULT_ARENA.columns,
+    holdBlindUntilComplete: value.holdBlindUntilComplete !== false,
+  };
+}
+
 function normalizeDialogueColors(value: unknown): DialogueColorSettings {
   const stored = isRecord(value) ? value : {};
   return {
@@ -608,6 +689,7 @@ export function getSettings(): AppSettings {
     memoryMode: normalizeMemoryMode(stored.memoryMode),
     memory: normalizeMemory(stored.memory, connections),
     coCreator: normalizeCoCreator(stored.coCreator, connections),
+    arena: normalizeArena(stored.arena),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
@@ -682,6 +764,23 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
           current.connections,
         )
       : normalizeCoCreator(current.coCreator, current.connections),
+    // Field-wise like coCreator, and for the same reason — but note the three array
+    // sub-fields are guarded on `Array.isArray` rather than merely spread: `normalizeArena`
+    // turns a non-array into an empty one, so `{"arena": {"contenders": null}}` from a
+    // stale tab would otherwise wipe a pool whose ratings history it cannot restore.
+    arena: patch.arena
+      ? normalizeArena({
+          ...current.arena,
+          ...patch.arena,
+          contenders: Array.isArray(patch.arena.contenders)
+            ? patch.arena.contenders
+            : current.arena.contenders,
+          cardPool: Array.isArray(patch.arena.cardPool)
+            ? patch.arena.cardPool
+            : current.arena.cardPool,
+          probes: Array.isArray(patch.arena.probes) ? patch.arena.probes : current.arena.probes,
+        })
+      : current.arena,
     dialogueColors: patch.dialogueColors
       ? normalizeDialogueColors({
           ...current.dialogueColors,

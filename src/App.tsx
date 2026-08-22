@@ -1,6 +1,8 @@
 import { greetingTexts } from '@shared/chat/message.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
+import type { ArenaSettings } from '@shared/types/arena.ts';
+import { DEFAULT_ARENA } from '@shared/types/arena.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { ChatBackupSummary, Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
@@ -28,6 +30,7 @@ import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { ArenaShell } from './features/arena/ArenaShell.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatContext } from './features/chat/ChatContext.tsx';
@@ -67,7 +70,7 @@ import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
-  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats'>('app');
+  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
@@ -375,6 +378,7 @@ export function App() {
         : null;
 
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
+  const arenaSettings: ArenaSettings = settings?.arena ?? DEFAULT_ARENA;
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
@@ -979,6 +983,30 @@ export function App() {
     setView('app');
   }, []);
 
+  /** The fourth of the set, on the same terms: it suspends the chat, so pending work lands. */
+  const enterArena = useCallback(async () => {
+    try {
+      chat.abort();
+      chat.cancelSummary();
+      chat.cancelMemoryRun();
+      await chat.flushSaves();
+      await flushRightPanel();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setView('arena');
+  }, [chat, flushRightPanel]);
+
+  /*
+   * Nothing of its own to flush either. The run log is session work, and a blind verdict is
+   * written the moment it is cast — so unlike the two creator areas there is no queue that
+   * could still be holding something on the way out.
+   */
+  const exitArena = useCallback(() => {
+    setView('app');
+  }, []);
+
   // Mirrors what `cascadePersonaDelete` has already done on the server, so the open tab
   // does not keep showing a colour and a recent slot for a persona that is gone.
   const handlePersonaDeleted = useCallback((id: string) => {
@@ -1050,6 +1078,7 @@ export function App() {
     if (view === 'studio') return 'Character Creator Studio';
     if (view === 'cocreator') return 'Character Co-Creator';
     if (view === 'stats') return 'Stats';
+    if (view === 'arena') return 'Model Arena';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
   }, [view, active, chat.state.title]);
@@ -1059,6 +1088,33 @@ export function App() {
   }, [documentTitle]);
 
   const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
+
+  if (view === 'arena') {
+    return (
+      <ArenaShell
+        settings={arenaSettings}
+        onSettingsChange={(patch) => void patchSettings({ arena: { ...arenaSettings, ...patch } })}
+        connections={settings?.connections ?? []}
+        presets={presets}
+        activePresetId={presetId}
+        activePreset={preset}
+        characters={characters}
+        personas={personas}
+        books={books}
+        globalLorebookIds={globalBookIds}
+        worldInfoSettings={worldInfoSettings}
+        globalVariables={settings?.variables ?? {}}
+        regexScripts={regexScripts}
+        tokenizerEncoding={settings?.tokenizerEncoding}
+        streamingFps={Number(settings?.streamingFps ?? 30)}
+        backgroundUrl={resolveBackgroundUrl(settings?.background)}
+        backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+        backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+        glass={settings?.glass !== false}
+        onExit={exitArena}
+      />
+    );
+  }
 
   if (view === 'stats') {
     return (
@@ -1353,6 +1409,7 @@ export function App() {
             onOpenStudio={() => void enterStudio()}
             onOpenCoCreator={() => void enterCoCreator()}
             onOpenStats={() => void enterStats()}
+            onOpenArena={() => void enterArena()}
           />
         )}
       </ErrorBoundary>

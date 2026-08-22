@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { coveredMessageIds } from '../../shared/memory/memories.ts';
 import type { Chat, ChatMessage, Memory } from '../../shared/types/chat.ts';
 import { type ChatSaveResult, type ChatStore, createChatStore } from './chats.ts';
-import { createSchema } from './db.ts';
+import { createSchema, SCHEMA_VERSION } from './db.ts';
 
 let store: ChatStore;
 let database: Database;
@@ -401,7 +401,7 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('5');
+    ).toBe(String(SCHEMA_VERSION));
   });
 
   test('adds persona_id to a v2 database without losing its messages', () => {
@@ -434,7 +434,7 @@ describe('schema migration', () => {
       legacy
         .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
         .get('schema_version')?.value,
-    ).toBe('5');
+    ).toBe(String(SCHEMA_VERSION));
   });
 
   test('adds hidden_by to a v4 database, leaving existing hides owned by nobody', () => {

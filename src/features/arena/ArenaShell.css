@@ -1,0 +1,776 @@
+/*
+ * The Model Arena shell.
+ *
+ * Fourth of the sub-app set, and the Studio's skeleton again on purpose — a bar over one
+ * scrolling body. Structural only: every colour, space, radius and duration comes from
+ * tokens.css.
+ *
+ * The one layout idea worth stating: a comparison is columns of equal width, never columns
+ * sized to their content. Letting a long reply widen its own column would make "which one
+ * wrote more" a visual property of the layout, and length is exactly the thing a reader is
+ * already too willing to mistake for quality.
+ */
+
+.arena-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--wc-topbar-height) 1fr;
+  height: 100%;
+  overflow: clip;
+}
+
+.arena-shell > .shell__backdrop,
+.arena-shell > .shell__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.arena-shell__bar,
+.arena-shell__body {
+  position: relative;
+  z-index: 1;
+}
+
+.arena-shell__bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: 0 var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
+}
+
+.arena-shell__navigation {
+  justify-self: start;
+}
+
+.arena-shell__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  justify-self: end;
+}
+
+.arena-shell__busy {
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.arena-shell__modes {
+  display: flex;
+  gap: var(--wc-space-1);
+  justify-self: center;
+}
+
+.arena-shell__mode {
+  padding: var(--wc-space-1) var(--wc-space-3);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--wc-duration-fast) var(--wc-ease),
+    color var(--wc-duration-fast) var(--wc-ease);
+}
+
+.arena-shell__mode:hover {
+  background: var(--wc-surface-hover);
+  color: var(--wc-text);
+}
+
+.arena-shell__mode[aria-selected="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent-text);
+}
+
+.arena-shell__body {
+  min-height: 0;
+  /* One scroll container for the whole area — a nested one is what makes a run log
+     impossible to reach with the wheel. */
+  overflow-y: auto;
+  transform-origin: center 20%;
+  animation: wc-view-body-enter var(--wc-duration-view) var(--wc-ease);
+}
+
+.arena-shell[data-glass="true"] .arena-shell__bar {
+  backdrop-filter: blur(var(--wc-glass-blur)) saturate(var(--wc-glass-saturation));
+}
+
+.arena-error {
+  max-width: var(--wc-arena-canvas-width);
+  margin: var(--wc-space-4) auto 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-popup);
+  color: var(--wc-danger);
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------- bench */
+
+.arena-bench,
+.arena-blind,
+.arena-board,
+.arena-pool {
+  display: grid;
+  gap: var(--wc-space-5);
+  max-width: var(--wc-arena-canvas-width);
+  margin: 0 auto;
+  padding: var(--wc-space-5);
+  align-content: start;
+}
+
+.arena-setup {
+  display: grid;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-setup__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--wc-space-2) var(--wc-space-3);
+}
+
+.arena-setup__row .wc-label {
+  margin: 0;
+}
+
+.arena-setup__columns {
+  width: calc(var(--wc-control) * 2);
+}
+
+/* The pickers sit on the same track count as the columns they choose, so the dropdown for
+   column three is above column three rather than merely near it. */
+.arena-setup__picks,
+.arena-run__columns {
+  display: grid;
+  grid-template-columns: repeat(var(--wc-arena-columns, 2), minmax(0, 1fr));
+  gap: var(--wc-space-3);
+}
+
+.arena-setup__probes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+.arena-probe-chip {
+  max-width: var(--wc-arena-column-min);
+  overflow: hidden;
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-setup__send {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--wc-space-3);
+}
+
+.arena-setup__probe {
+  resize: vertical;
+}
+
+/* ---------------------------------------------------------------- run log */
+
+.arena-log {
+  display: grid;
+  gap: var(--wc-space-4);
+}
+
+.arena-run {
+  display: grid;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  animation: wc-arena-run-enter var(--wc-duration) var(--wc-ease) backwards;
+}
+
+.arena-run__head,
+.arena-blind__scene {
+  display: grid;
+  grid-template-columns: var(--wc-arena-avatar) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-3);
+}
+
+.arena-blind__scene {
+  grid-template-columns: var(--wc-arena-avatar) minmax(0, 1fr);
+}
+
+.arena-run__avatar {
+  width: var(--wc-arena-avatar);
+  height: var(--wc-arena-avatar);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+}
+
+.arena-run__scene {
+  min-width: 0;
+}
+
+.arena-run__character {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.arena-run__probe {
+  margin: 0;
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-run__actions {
+  display: flex;
+  gap: var(--wc-space-2);
+}
+
+/* ---------------------------------------------------------------- column */
+
+.arena-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.arena-column[data-status="failed"] {
+  border-color: var(--wc-danger);
+}
+
+.arena-column__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.arena-column__identity {
+  display: grid;
+  min-width: 0;
+}
+
+.arena-column__name {
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-column__model {
+  overflow: hidden;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Big enough to be the column's name while it has none. */
+.arena-column__mask {
+  display: grid;
+  place-items: center;
+  width: var(--wc-arena-mask);
+  height: var(--wc-arena-mask);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent-text);
+  font-size: var(--wc-text-base);
+  font-weight: 700;
+}
+
+.arena-column__body {
+  min-height: var(--wc-arena-column-height);
+  max-height: calc(var(--wc-arena-column-height) * 2);
+  overflow-y: auto;
+  padding: var(--wc-space-3);
+}
+
+.arena-column__text {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+}
+
+.arena-column__text > :first-child {
+  margin-top: 0;
+}
+
+.arena-column__waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
+}
+
+.arena-column__pulse {
+  width: var(--wc-space-2);
+  height: var(--wc-space-2);
+  border-radius: 50%;
+  background: var(--wc-accent);
+  animation: wc-arena-pulse 1.2s var(--wc-ease) infinite;
+}
+
+.arena-column__empty,
+.arena-column__note {
+  margin: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
+}
+
+.arena-column__error {
+  margin: var(--wc-space-2) 0 0;
+  color: var(--wc-danger);
+  font-size: var(--wc-text-sm);
+  white-space: pre-wrap;
+}
+
+.arena-column__metrics {
+  padding: var(--wc-space-1) var(--wc-space-3);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- blind */
+
+.arena-blind__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-4);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-blind__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+}
+
+.arena-blind__count {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-vote {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-vote__reveal {
+  margin: 0;
+  color: var(--wc-text);
+  font-size: var(--wc-text-base);
+}
+
+/* ---------------------------------------------------------------- board */
+
+/*
+ * The board and every standalone message get the same surface the other panels have.
+ *
+ * Not decoration: over a photographic background a bare table is unreadable, and the
+ * scrim alone is sized for chrome rather than for eight columns of tabular numbers. Same
+ * reasoning the shell's scrim exists for.
+ */
+.arena-board__head,
+.arena-board__table,
+.arena-board > .wc-hint,
+.arena-board > .wc-empty,
+.arena-bench > .arena-log > .wc-empty,
+.arena-blind > .wc-empty {
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-board__table {
+  /* The border-radius has nothing to clip without this, so the first row's own border
+     would cut across the rounded corner. */
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.arena-board__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--wc-space-4);
+}
+
+.arena-board__head h2 {
+  font-size: var(--wc-text-lg);
+}
+
+.arena-board__filter {
+  display: grid;
+  gap: var(--wc-space-1);
+}
+
+.arena-board__table th:first-child,
+.arena-board__table tbody th {
+  width: 22%;
+}
+
+.arena-board__table tr[data-provisional="true"] th,
+.arena-board__table tr[data-provisional="true"] td {
+  color: var(--wc-text-faint);
+}
+
+.arena-board__provisional {
+  margin-left: var(--wc-space-1);
+  color: var(--wc-warning);
+  font-weight: 700;
+  cursor: help;
+}
+
+/* ---------------------------------------------------------------- rating chart */
+
+.rating-chart {
+  display: grid;
+  gap: var(--wc-space-3);
+  margin: 0;
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.rating-chart__caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+}
+
+.rating-chart__title {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.rating-chart__reading {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Uniform scaling, so a climb has the same slope at every window width. `height: auto`
+ * with no aspect override is what keeps the viewBox honest — see the note in RatingChart.
+ */
+.rating-chart__plot {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Where everyone started. Dashed and faint: a reference, not a series. */
+.rating-chart__baseline {
+  stroke: var(--wc-border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.rating-chart__crosshair {
+  stroke: var(--wc-text-faint);
+  stroke-width: 1;
+}
+
+.rating-chart__line {
+  fill: none;
+  stroke: var(--wc-series);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /*
+   * Drawn on mount, left to right — the direction the axis reads. The dash length is a
+   * generous over-estimate of any real line, since the exact path length is not knowable
+   * without measuring the DOM and an over-long dash simply starts the sweep off-screen.
+   */
+  stroke-dasharray: 4000;
+  stroke-dashoffset: 4000;
+  animation: wc-rating-draw var(--wc-stats-draw) var(--wc-ease) forwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.rating-chart__dot {
+  fill: var(--wc-series);
+  stroke: var(--wc-surface);
+  stroke-width: 1.5;
+}
+
+/*
+ * Flex, not a track grid.
+ *
+ * Equal-width tracks stretched each key across a third of the chart and stranded its
+ * number an inch from its name — three keys that read as six unrelated fragments. A key is
+ * one atom: swatch, name, rating, swing, held together and wrapping as a unit.
+ */
+.rating-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2) var(--wc-space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rating-chart__key {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  font-size: var(--wc-text-sm);
+}
+
+.rating-chart__swatch {
+  width: var(--wc-space-2);
+  height: var(--wc-space-2);
+  border-radius: 2px;
+  background: var(--wc-series);
+  /* Baseline-aligned text would drop a bare square to the very bottom of the line. */
+  transform: translateY(-1px);
+}
+
+.rating-chart__name {
+  max-width: var(--wc-stats-fact-width);
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rating-chart__value {
+  color: var(--wc-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.rating-chart__delta {
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.rating-chart__delta[data-sign="up"] {
+  color: var(--wc-success);
+}
+
+.rating-chart__delta[data-sign="down"] {
+  color: var(--wc-danger);
+}
+
+.rating-chart__delta[data-sign="flat"] {
+  color: var(--wc-text-faint);
+}
+
+.rating-chart__provisional {
+  color: var(--wc-warning);
+  font-weight: 700;
+  cursor: help;
+}
+
+@keyframes wc-rating-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- pool */
+
+.arena-pool__section {
+  display: grid;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-pool__section h2 {
+  font-size: var(--wc-text-lg);
+}
+
+.arena-pool__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-3);
+}
+
+.arena-pool__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wc-space-3);
+}
+
+.arena-pool__row .wc-label {
+  margin: 0;
+}
+
+.arena-pool__check,
+.arena-cards__item,
+.arena-contender__enabled {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+}
+
+.arena-pool__empty {
+  display: grid;
+  gap: var(--wc-space-3);
+}
+
+.arena-pool__suggestions {
+  display: grid;
+  gap: var(--wc-space-2);
+}
+
+.arena-pool__suggestions .wc-button {
+  justify-content: flex-start;
+  font-size: var(--wc-text-sm);
+  text-align: left;
+}
+
+.arena-contender {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.arena-contender[data-unavailable="true"] {
+  border-color: var(--wc-warning);
+}
+
+.arena-contender__model {
+  min-width: 0;
+}
+
+.arena-contender__reason,
+.arena-contender__resolved {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--wc-text-xs);
+}
+
+.arena-contender__reason {
+  color: var(--wc-warning);
+}
+
+.arena-contender__resolved {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+}
+
+.arena-probe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--wc-space-2);
+}
+
+.arena-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--wc-arena-column-min), 1fr));
+  gap: var(--wc-space-1) var(--wc-space-3);
+  max-height: var(--wc-arena-column-height);
+  overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------- motion */
+
+@keyframes wc-arena-run-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes wc-arena-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .arena-shell[data-glass="true"] .arena-shell__bar {
+    backdrop-filter: none;
+  }
+
+  .arena-shell > .shell__backdrop {
+    display: none;
+  }
+
+  .arena-shell > .shell__scrim {
+    background: var(--wc-bg);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena-shell__bar,
+  .arena-shell__body,
+  .arena-run {
+    animation: none;
+  }
+
+  .arena-column__pulse {
+    animation: none;
+  }
+
+  /* `animation: none` rather than a zeroed duration: a zeroed one still paints its `from`
+     frame, which here is a line that is not drawn at all. */
+  .rating-chart__line {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

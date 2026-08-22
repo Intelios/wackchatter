@@ -216,6 +216,13 @@
   --wc-stats-columns-height: 120px;
   --wc-stats-stagger: 55ms;
   --wc-stats-draw: 900ms;
+  --wc-arena-canvas-width: 1240px;
+  /* A column narrower than this stops being readable prose and starts being a ticker
+     tape, which is the one thing a side-by-side comparison must not do. */
+  --wc-arena-column-min: 280px;
+  --wc-arena-column-height: 420px;
+  --wc-arena-avatar: 40px;
+  --wc-arena-mask: 28px;
   --wc-letter-spacing: 0.08em;
   --wc-code-line-height: 1.6;
   --wc-glass-blur: 20px;
