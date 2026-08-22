@@ -873,7 +873,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         content: resolvedAuthorNoteDepth,
       });
     }
-    if (summaryDepthTokens > 0) tokenCounts.summary = summaryDepthTokens;
+    if (summaryDepthTokens > 0) tokenCounts[storyIdentifier] = summaryDepthTokens;
     // Their own keys rather than folded into worldInfoDepth, which is already the sum over
     // every grouped injection. Extending that over-count would make both numbers useless.
     if (guideTokens > 0) tokenCounts.guides = guideTokens;
@@ -885,7 +885,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     }
     mandatoryIdentifiers.push('worldInfoDepth');
     if (resolvedAuthorNoteDepth) mandatoryIdentifiers.push('authorNote');
-    if (summaryDepthTokens > 0) mandatoryIdentifiers.push('summary');
+    if (summaryDepthTokens > 0) mandatoryIdentifiers.push(storyIdentifier);
     if (guideTokens > 0) mandatoryIdentifiers.push('guides');
     if (resolvedGuidance) mandatoryIdentifiers.push('guidance');
   }

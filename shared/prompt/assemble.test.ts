@@ -1896,6 +1896,8 @@ describe('the story-memory slot', () => {
       memorySettings: { position: 'atDepth', depth: 0, role: 'system' },
     });
     expect(result.messages.at(-1)?.content).toContain('The Cellar');
+    expect(result.tokenCounts.memories).toBeGreaterThan(0);
+    expect(result.tokenCounts.summary).toBeUndefined();
   });
 
   test('memories mode with nothing recalled injects nothing', () => {
