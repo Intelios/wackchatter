@@ -323,7 +323,7 @@ function MemoriesBody({
           max={2000}
           step={10}
           onChange={(autoInterval) => onSettingsChange({ autoInterval })}
-          hint="Runs extraction automatically once this many messages are waiting, after a reply settles. 0 turns it off. Only runs while the mode is Memories."
+          hint="Runs extraction automatically once this many messages are waiting, after a reply settles. 0 turns it off (minimum 10 when enabled). Only runs while the mode is Memories."
           disabled={running || mode !== 'memories'}
         />
         <NumberField
