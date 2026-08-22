@@ -279,11 +279,6 @@ export interface ChatSummary {
   messageCount: number;
   /** Preview text from the last message. */
   lastMessage: string;
-  /**
-   * Branch provenance — enough to build the branch family from the list alone, without
-   * fetching every chat in full. Absent on a chat that was never branched off another.
-   */
-  branchedFrom?: BranchOrigin;
 }
 
 /** A deleted chat waiting in the trash bin (data/backups), still restorable. */

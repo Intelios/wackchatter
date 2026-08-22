@@ -6,7 +6,6 @@ import { buildChatMenu, type ChatMenuActions, type ChatMenuState } from './ChatM
 /** A transcript ending on the character's turn — the ordinary case, everything available. */
 const healthy: ChatMenuState = {
   busy: false,
-  chatId: 'c1',
   messageCount: 4,
   lastMessageId: 'm4',
   lastIsUser: false,
@@ -25,7 +24,6 @@ function spies() {
     exportChat: () => calls.push('exportChat'),
     importChat: () => calls.push('importChat'),
     openCard: () => calls.push('openCard'),
-    openBranchTree: () => calls.push('openBranchTree'),
   };
   return { calls, panels, actions };
 }
@@ -53,11 +51,11 @@ const JUMPS = ['Chat context…', 'Lore…', 'Persona…'];
 /**
  * Everything that stays available whatever the chat is doing.
  *
- * The card and the timeline are in here rather than in JUMPS because they open an overlay
- * rather than a panel, but they share the jumps' one important property: they only ever
- * read, so nothing about a chat's state can make them unsafe.
+ * The card is in here rather than in JUMPS because it opens an overlay rather than a panel,
+ * but it shares their one important property: it only ever reads, so nothing about a chat's
+ * state can make it unsafe.
  */
-const ALWAYS_OPEN = ['Character card…', 'Branch timeline…', ...JUMPS];
+const ALWAYS_OPEN = ['Character card…', ...JUMPS];
 
 describe('buildChatMenu', () => {
   test('offers every tool on a healthy transcript', () => {
@@ -185,9 +183,6 @@ describe('buildChatMenu', () => {
 
     item(entries, 'Character card…').onSelect();
     expect(calls[calls.length - 1]).toBe('openCard');
-
-    item(entries, 'Branch timeline…').onSelect();
-    expect(calls[calls.length - 1]).toBe('openBranchTree');
   });
 
   /*
@@ -204,17 +199,6 @@ describe('buildChatMenu', () => {
     ]) {
       expect(item(build(state), 'Character card…').disabled).toBeFalsy();
     }
-  });
-
-  test('the branch timeline needs an open chat but nothing else', () => {
-    // Even an empty transcript has a timeline — one node and an invitation to branch.
-    expect(
-      item(build({ messageCount: 0, lastMessageId: null }), 'Branch timeline…').disabled,
-    ).toBeFalsy();
-
-    const entry = item(build({ chatId: null }), 'Branch timeline…');
-    expect(entry.disabled).toBe(true);
-    expect(entry.disabledReason).toBe('No chat is open.');
   });
 
   test('Export chat is disabled mid-generation, since the reply is not saved yet', () => {

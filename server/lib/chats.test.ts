@@ -287,41 +287,6 @@ describe('listing', () => {
 
     expect(store.listRecent(100).length).toBe(2);
   });
-
-  test('summaries carry branch provenance without fetching whole chats', () => {
-    const created = store.createChat({
-      characterId: 'a.png',
-      title: 'Original',
-      messages: [message({ mes: '1' }), message({ mes: '2' })],
-    });
-    const branchPoint = store.getChat(created.id)!.messages[0]!.id;
-    const branch = store.branchChat(created.id, branchPoint)!;
-    store.createChat({ characterId: 'a.png', title: 'unrelated' });
-
-    const summaries = store.listChats('a.png');
-    // The branch timeline is built from the list alone; without the link on the summary
-    // it would need one full-chat fetch per chat just to discover the family's edges.
-    expect(summaries.find((c) => c.id === branch.id)?.branchedFrom).toEqual({
-      chatId: created.id,
-      messageId: branchPoint,
-    });
-    expect(summaries.find((c) => c.id === created.id)?.branchedFrom).toBeUndefined();
-  });
-
-  test('the unfiltered list and listRecent carry provenance too', () => {
-    const created = store.createChat({
-      characterId: 'a.png',
-      messages: [message({ mes: '1' })],
-    });
-    const branch = store.branchChat(created.id, created.messages[0]!.id)!;
-
-    expect(store.listChats().find((c) => c.id === branch.id)?.branchedFrom?.chatId).toBe(
-      created.id,
-    );
-    expect(store.listRecent(10).find((c) => c.id === branch.id)?.branchedFrom?.chatId).toBe(
-      created.id,
-    );
-  });
 });
 
 describe('replacing', () => {
