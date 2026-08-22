@@ -23,6 +23,8 @@ export interface DesignMessageProps {
   message: MessageState;
   /** The last turn, and an assistant one: the only message that can be re-rolled. */
   canReroll: boolean;
+  /** The last turn, and a user one: a reply is still owed after it. */
+  canRetry: boolean;
   streaming: boolean;
   stream: StreamStore;
   busy: boolean;
@@ -36,6 +38,7 @@ export interface DesignMessageProps {
   ) => void;
   onSelectSwipe: (id: string, index: number) => void;
   onReroll: () => void;
+  onRetry: () => void;
   onEdit: (id: string, text: string) => void;
   onDelete: (id: string) => void;
 }
@@ -66,6 +69,7 @@ function selectionWithin(root: HTMLElement | null): string {
 export const DesignMessage = memo(function DesignMessage({
   message,
   canReroll,
+  canRetry,
   streaming,
   stream,
   busy,
@@ -74,6 +78,7 @@ export const DesignMessage = memo(function DesignMessage({
   onUse,
   onSelectSwipe,
   onReroll,
+  onRetry,
   onEdit,
   onDelete,
 }: DesignMessageProps) {
@@ -232,6 +237,27 @@ export const DesignMessage = memo(function DesignMessage({
           )}
         </div>
       )}
+
+      {/*
+       * A trailing user turn is owed a reply — its generation failed or was aborted empty,
+       * or the reply was deleted afterwards. Retry is the way back in, and like chat it is
+       * never hover-hidden: it must be findable exactly when things went wrong.
+       */}
+      {message.is_user && canRetry && !streaming && !editing ? (
+        <footer className="design-message__footer">
+          <button
+            type="button"
+            className="wc-button wc-button--ghost design-message__retry"
+            onClick={onRetry}
+            disabled={busy}
+            title={busy ? 'Generating a reply' : 'Generate a reply to this message'}
+            aria-label="Retry"
+          >
+            <RefreshIcon />
+            Retry
+          </button>
+        </footer>
+      ) : null}
 
       {!message.is_user && !streaming && !editing ? (
         <footer className="design-message__footer">

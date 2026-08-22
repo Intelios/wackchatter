@@ -380,6 +380,20 @@
   font-size: var(--wc-text-sm);
 }
 
+/* Chat's retry affordance, on the design transcript: accent-coloured so a turn that is
+ * still owed a reply reads as open, not finished. */
+.design-message__retry {
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1) var(--wc-space-2);
+  margin-right: auto;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-accent);
+}
+
+.design-message__retry:hover:not(:disabled) {
+  background: var(--wc-accent-subtle);
+}
+
 /* --- Editor (mirrors MessageBubble.css) ----------------------------------- */
 
 .design-message__editor {

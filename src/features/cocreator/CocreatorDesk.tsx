@@ -314,6 +314,7 @@ export function CocreatorDesk({
                     key={message.id}
                     message={message}
                     canReroll={index === lastIndex && !message.is_user}
+                    canRetry={index === lastIndex && message.is_user}
                     streaming={state.streamingId === message.id && state.status !== 'idle'}
                     stream={design.stream}
                     busy={busy}
@@ -334,6 +335,7 @@ export function CocreatorDesk({
                       design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
                     }
                     onReroll={() => void design.reroll()}
+                    onRetry={() => void design.retry()}
                     onEdit={(id, text) => design.dispatch({ type: 'message/edited', id, text })}
                     onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
                   />
