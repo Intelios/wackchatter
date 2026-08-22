@@ -48,6 +48,9 @@ src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
                  cocreator/, stats/, arena/.
+                 arena/ splits its rules out as pure modules: elo.ts (replay + verdict
+                 preview), matchups.ts (head to head), series.ts (corner colour),
+                 runStats.ts (which column won each measure), pairing.ts, chart.ts.
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
                 secrets.json, lorebooks/, personas/, backups/, .wackchatter.
@@ -441,6 +444,53 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   human is typing — but a blind round generates with nobody in the loop, and one that ran
   before the card's linked book arrived would benchmark against lore a real chat would have
   supplied.
+- **Corner colour is resolved per view, not stored** (`series.ts`). A contender's *preferred*
+  `--wc-series-N` comes from its position in the pool, so dragging the roster is a real edit
+  and a stable one with nothing persisted. But there are eight tokens and no limit on
+  contenders, so `viewSeries` resolves against the entrants actually in a given view: two
+  things visible at once can never wear the same colour. Past eight it repeats, which is why
+  every swatch in the UI is accompanied by a name. A masked column carries **no** colour —
+  a lime stripe against a blue one is a label in another alphabet.
+- **A comparison never nests a scroll.** Two independently-scrolling boxes side by side lose
+  their alignment the moment either moves. In the Arena the columns grow and the page
+  scrolls; in the Benchmark the duel is one scroller holding both panes, so a single gesture
+  moves them together and the docked vote bar cannot leave the viewport. A genuinely enormous
+  reply folds (measured, not guessed from a character count) rather than growing a scrollbar.
+- **Replies are set at the transcript's size and weight** (`--wc-text-base`/500), not the
+  UI's. This screen exists to have prose read and judged on it, and it was previously asking
+  for that two steps down the scale from where the same prose renders in a chat. Column type
+  steps down only as the column count goes up; four-up is labelled a scanning view because at
+  ~38 characters a line it is one whatever the size.
+- **Figures are compared at the precision they are displayed at** (`runStats.ts`). The tape
+  prints seconds to one decimal, so 118ms and 143ms both read "0.1s" — marking one of those
+  as the winner puts a lime `0.1s` beside a plain `0.1s`, which reads as a rendering fault.
+  Same rule `recordPoints` already follows for rating deltas. Length is never given a winner:
+  a longer reply is longer, not better. Pinned by tests.
+- **Length is stated, not smuggled.** Columns stay equal width — a long reply must not widen
+  its own column — but the bar says the length out loud, from character counts rather than
+  `completionTokens`, which is frequently our own estimate and missing entirely for a
+  provider that reports no usage.
+- The reveal's rating deltas come from `previewVerdict`, which appends the round to the
+  history and calls the same `replay` — never a local `K_FACTOR * (score - expected)`, which
+  would be a fourth-decimal disagreement with the leaderboard waiting to happen.
+- `headToHead` (`matchups.ts`) counts from the same rounds on every render, for the same
+  reason the ratings do. `bad` is counted but excluded from every record, matching
+  `replayRatings`: folding it into a win rate would invent a comparison the user declined.
+- The card picker is capped, searchable and pins the selection to the top, with lazy avatars
+  and the app's `hiddenTags` honoured. A dev library is six cards; a real one is hundreds,
+  and an unbounded avatar grid is worse than the checkbox wall it replaced.
+- The cue composer highlights macros with the mirror trick (`CueField.tsx`): a highlighted
+  copy painted under a transparent-glyph textarea. Every metric that affects wrapping is set
+  once on `.arena-cue__text` and inherited by both layers — a padding change on one and not
+  the other slides the highlight out of register, silently.
+- The card is chosen from the medallion itself (`CharacterPicker.tsx`), not from a field
+  beside it — it is the venue, so it is the trigger. Composed from `Popover` via
+  `renderTrigger` like `ModelCombobox`, per "Popover is the only popup mechanism", with a
+  face grid, roving focus whose row step is read off the grid's own computed
+  `grid-template-columns`, and a search field that appears only once the library is too big
+  to scan. Focus lands on the staged card on open, in a **layout effect** rather than a
+  `requestAnimationFrame` — a frame callback does not fire while the window is backgrounded,
+  which strands focus on `<body>`.
 
 ## Testing
 

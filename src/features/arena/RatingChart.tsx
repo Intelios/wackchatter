@@ -8,13 +8,20 @@
  * Every value here comes from the same replay that produced the table, so the last point on
  * a line is the number in its row by construction — there is no second calculation that
  * could disagree.
+ *
+ * Under the plot is the axis made legible: one tick per round, coloured by what you decided.
+ * It is the only place the shape of a sitting is visible — a run of one-sided verdicts, a
+ * patch of ties, the round where you rejected both — and because every round stores the full
+ * text of both replies, a tick can open the round it stands for.
  */
 
+import type { ArenaRound } from '@shared/types/arena.ts';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { useCallback, useState } from 'react';
 import { indexAt, plotLine, plotX, plotY, ratingBounds } from './chart.ts';
 import type { LeaderboardRow, RatingSeries } from './elo.ts';
 import { START_RATING } from './elo.ts';
+import { colourOf } from './series.ts';
 
 /**
  * The drawing surface, in viewBox units.
@@ -25,16 +32,29 @@ import { START_RATING } from './elo.ts';
  * on a chart about how fast a rating moved is the one distortion that actually misleads.
  */
 const WIDTH = 720;
-const HEIGHT = 180;
+const HEIGHT = 200;
 
 interface RatingChartProps {
   series: readonly RatingSeries[];
   rows: readonly LeaderboardRow[];
+  /** The rounds behind the axis, oldest first — the same order the series were built in. */
+  ordered: readonly ArenaRound[];
+  /** Corner colours, resolved for this view. */
+  colours: ReadonlyMap<string, string>;
   /** Resolves a contender id to what the user calls it. */
   nameOf: (contenderId: string, model: string) => string;
+  /** Open the round a tick stands for. */
+  onOpenRound: (round: ArenaRound) => void;
 }
 
-export function RatingChart({ series, rows, nameOf }: RatingChartProps) {
+export function RatingChart({
+  series,
+  rows,
+  ordered,
+  colours,
+  nameOf,
+  onOpenRound,
+}: RatingChartProps) {
   const [active, setActive] = useState<number | null>(null);
 
   const count = series[0]?.points.length ?? 0;
@@ -62,7 +82,9 @@ export function RatingChart({ series, rows, nameOf }: RatingChartProps) {
           Rating over {count - 1} {count - 1 === 1 ? 'round' : 'rounds'}
         </span>
         <span className="rating-chart__reading">
-          {active === null ? 'Hover to read a round' : `After round ${reading}`}
+          {active === null
+            ? 'Hover to read a round · click a tick to open it'
+            : `After round ${reading}`}
         </span>
       </figcaption>
 
@@ -104,7 +126,10 @@ export function RatingChart({ series, rows, nameOf }: RatingChartProps) {
         ) : null}
 
         {series.map((entry, index) => (
-          <g key={entry.contenderId} style={{ '--wc-series': seriesColor(index) } as CSSProperties}>
+          <g
+            key={entry.contenderId}
+            style={{ '--wc-series': colourOf(colours, entry.contenderId) } as CSSProperties}
+          >
             <polyline
               className="rating-chart__line"
               points={plotLine(entry.points, bounds, WIDTH, HEIGHT)}
@@ -124,15 +149,40 @@ export function RatingChart({ series, rows, nameOf }: RatingChartProps) {
         ))}
       </svg>
 
+      {/*
+       * One tick per round. Buttons rather than decoration, because each one opens something
+       * — and a keyboard user gets the same access to the history as a pointer does.
+       */}
+      <ol className="rating-scrub" aria-label="Every recorded round, by verdict">
+        {ordered.map((round, index) => (
+          <li key={round.id} className="rating-scrub__slot">
+            <button
+              type="button"
+              className="rating-scrub__tick"
+              data-verdict={round.verdict}
+              data-current={reading === index + 1}
+              onMouseEnter={() => setActive(index + 1)}
+              onFocus={() => setActive(index + 1)}
+              onClick={() => onOpenRound(round)}
+              title={`Round ${index + 1} — ${verdictWord(round.verdict)}. Open it.`}
+            >
+              <span className="wc-visually-hidden">
+                Round {index + 1}, {verdictWord(round.verdict)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+
       <ul className="rating-chart__legend">
-        {series.map((entry, index) => {
+        {series.map((entry) => {
           const point = entry.points[reading];
           const row = rows.find((item) => item.contenderId === entry.contenderId);
           return (
             <li
               key={entry.contenderId}
               className="rating-chart__key"
-              style={{ '--wc-series': seriesColor(index) } as CSSProperties}
+              style={{ '--wc-series': colourOf(colours, entry.contenderId) } as CSSProperties}
             >
               <span className="rating-chart__swatch" aria-hidden="true" />
               <span className="rating-chart__name">{nameOf(entry.contenderId, entry.model)}</span>
@@ -155,9 +205,11 @@ export function RatingChart({ series, rows, nameOf }: RatingChartProps) {
   );
 }
 
-/** Cycles through the eight series tokens, so a ninth contender repeats rather than vanishes. */
-function seriesColor(index: number): string {
-  return `var(--wc-series-${(index % 8) + 1})`;
+function verdictWord(verdict: ArenaRound['verdict']): string {
+  if (verdict === 'left') return 'A won';
+  if (verdict === 'right') return 'B won';
+  if (verdict === 'tie') return 'a tie';
+  return 'both rejected';
 }
 
 function signOf(delta: number): 'up' | 'down' | 'flat' {

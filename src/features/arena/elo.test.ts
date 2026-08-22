@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { ArenaRound, Contender, Verdict } from '@shared/types/arena.ts';
-import { K_FACTOR, PROVISIONAL_ROUNDS, replay, replayRatings, START_RATING } from './elo.ts';
+import {
+  K_FACTOR,
+  PROVISIONAL_ROUNDS,
+  previewVerdict,
+  replay,
+  replayRatings,
+  START_RATING,
+} from './elo.ts';
 
 let clock = 0;
 
@@ -288,5 +295,66 @@ describe('replay history', () => {
   test('replayRatings still answers exactly what replay does', () => {
     const history = [round('a', 'b', 'left'), round('a', 'b', 'tie')];
     expect(replayRatings(history)).toEqual(replay(history).rows);
+  });
+});
+
+describe('previewVerdict', () => {
+  const sides = (left: string, right: string) => ({
+    characterId: 'Seraphina.png',
+    probe: 'Hello.',
+    left: { contenderId: left, model: `${left}-model`, provider: 'openrouter', text: 'a' },
+    right: { contenderId: right, model: `${right}-model`, provider: 'openrouter', text: 'b' },
+  });
+
+  test('a first win moves both ratings away from the start, symmetrically', () => {
+    const preview = previewVerdict([], [], { ...sides('a', 'b'), verdict: 'left' });
+    expect(preview.left.before).toBe(START_RATING);
+    expect(preview.right.before).toBe(START_RATING);
+    expect(preview.left.delta).toBeGreaterThan(0);
+    expect(preview.right.delta).toBeLessThan(0);
+    expect(preview.left.delta).toBe(-preview.right.delta);
+  });
+
+  test('after equals before plus delta, so the reveal reconciles with itself', () => {
+    const preview = previewVerdict([], [], { ...sides('a', 'b'), verdict: 'right' });
+    expect(preview.left.after).toBe(preview.left.before + preview.left.delta);
+    expect(preview.right.after).toBe(preview.right.before + preview.right.delta);
+  });
+
+  test('a rejected round moves nothing, exactly as the replay scores it', () => {
+    const preview = previewVerdict([], [], { ...sides('a', 'b'), verdict: 'bad' });
+    expect(preview.left.delta).toBe(0);
+    expect(preview.right.delta).toBe(0);
+  });
+
+  test('agrees with the leaderboard once the round is actually recorded', () => {
+    const history = [round('a', 'b', 'left'), round('a', 'b', 'left')];
+    const preview = previewVerdict(history, [], { ...sides('a', 'b'), verdict: 'right' });
+
+    const recorded: ArenaRound = {
+      ...sides('a', 'b'),
+      verdict: 'right',
+      id: 'real',
+      created: 9_999_999,
+    };
+    const rows = replayRatings([...history, recorded]);
+    expect(rowFor(rows, 'a').rating).toBe(preview.left.after);
+    expect(rowFor(rows, 'b').rating).toBe(preview.right.after);
+  });
+
+  test('appends after the history however the clock behaved', () => {
+    const history = [round('a', 'b', 'left')];
+    const preview = previewVerdict(history, [], { ...sides('a', 'b'), verdict: 'left' });
+    // `a` already won once, so it enters this round as the favourite.
+    expect(preview.left.before).toBeGreaterThan(START_RATING);
+    expect(preview.right.before).toBeLessThan(START_RATING);
+  });
+
+  test('seeds pool entrants so an unfought contender is not invented mid-round', () => {
+    const preview = previewVerdict([], [contender('a'), contender('b'), contender('c')], {
+      ...sides('a', 'b'),
+      verdict: 'left',
+    });
+    expect(preview.left.before).toBe(START_RATING);
   });
 });

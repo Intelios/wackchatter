@@ -286,3 +286,55 @@ export function replayRatings(
 ): LeaderboardRow[] {
   return replay(rounds, contenders).rows;
 }
+
+/** What one contender's rating did, either side of a round. */
+export interface RatingMove {
+  before: number;
+  after: number;
+  delta: number;
+}
+
+export interface VerdictPreview {
+  left: RatingMove;
+  right: RatingMove;
+}
+
+/**
+ * What a verdict would do to the two ratings, before the round has been recorded.
+ *
+ * The reveal has to show this immediately — you have just paid for two generations and the
+ * one thing you want back is what they bought — but the round is not in the history until
+ * its POST lands. So the answer is computed by replaying the history **with the round
+ * appended**, through the same `replay` every other number on the board comes from.
+ *
+ * Deliberately not a second Elo loop. A local `K_FACTOR * (score - expected)` here would be
+ * a fourth-decimal-place disagreement waiting to happen with the leaderboard, which is the
+ * exact failure the no-ratings-table rule exists to prevent.
+ */
+export function previewVerdict(
+  rounds: readonly ArenaRound[],
+  contenders: readonly Contender[],
+  next: Pick<ArenaRound, 'characterId' | 'probe' | 'left' | 'right' | 'verdict'>,
+): VerdictPreview {
+  // Sorted last whatever the clock says: `replay` orders by `created`, and a machine whose
+  // time has slipped backwards must not have its newest round folded in halfway.
+  const latest = rounds.reduce((max, round) => Math.max(max, round.created), 0);
+  const synthetic: ArenaRound = {
+    ...next,
+    id: 'preview',
+    created: latest + 1,
+  };
+
+  const { series } = replay([...rounds, synthetic], contenders);
+  const move = (contenderId: string): RatingMove => {
+    const points = series.find((entry) => entry.contenderId === contenderId)?.points ?? [];
+    const last = points[points.length - 1];
+    if (!last) return { before: START_RATING, after: START_RATING, delta: 0 };
+    return { before: last.rating - last.delta, after: last.rating, delta: last.delta };
+  };
+
+  return {
+    left: move(next.left.contenderId),
+    right: move(next.right.contenderId),
+  };
+}

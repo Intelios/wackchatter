@@ -1105,6 +1105,7 @@ export function App() {
         worldInfoSettings={worldInfoSettings}
         globalVariables={settings?.variables ?? {}}
         regexScripts={regexScripts}
+        hiddenTags={hiddenTags}
         tokenizerEncoding={settings?.tokenizerEncoding}
         streamingFps={Number(settings?.streamingFps ?? 30)}
         backgroundUrl={resolveBackgroundUrl(settings?.background)}

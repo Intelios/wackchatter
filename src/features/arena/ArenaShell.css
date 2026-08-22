@@ -5,10 +5,20 @@
  * scrolling body. Structural only: every colour, space, radius and duration comes from
  * tokens.css.
  *
- * The one layout idea worth stating: a comparison is columns of equal width, never columns
- * sized to their content. Letting a long reply widen its own column would make "which one
- * wrote more" a visual property of the layout, and length is exactly the thing a reader is
- * already too willing to mistake for quality.
+ * Three layout ideas carry the design.
+ *
+ * A comparison is columns of EQUAL width, never columns sized to their content. Letting a
+ * long reply widen its own column would make "which one wrote more" a visual property of the
+ * layout, and length is exactly the thing a reader is already too willing to mistake for
+ * quality. Length is stated instead — see .arena-column__length.
+ *
+ * Nothing inside a comparison scrolls on its own. Two independently-scrolling boxes side by
+ * side lose their alignment the moment either one moves, which is the one thing a comparison
+ * cannot afford. In the Arena the page scrolls; in the Benchmark the duel is ONE scroller
+ * holding both panes, so a single gesture moves them together and the vote bar stays docked.
+ *
+ * And the centre gutter of a two-way comparison is a live element, never empty space: it
+ * carries the card in the masthead and the divider in the duel.
  */
 
 .arena-shell {
@@ -66,29 +76,36 @@
   justify-self: center;
 }
 
+/*
+ * Destinations, marked by an underline rather than a filled pill.
+ *
+ * A pill reads as a toggle — the app's own convention for `aria-pressed` bar buttons — and
+ * these four are places, one of which is always current. The rule under the current one says
+ * that without borrowing the vocabulary of a switch.
+ */
 .arena-shell__mode {
-  padding: var(--wc-space-1) var(--wc-space-3);
-  border: var(--wc-border-width) solid transparent;
-  border-radius: var(--wc-radius-sm);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
   background: none;
-  color: var(--wc-text-muted);
-  font-size: var(--wc-text-sm);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
   font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
   cursor: pointer;
   transition:
-    background var(--wc-duration-fast) var(--wc-ease),
-    color var(--wc-duration-fast) var(--wc-ease);
+    color var(--wc-duration-fast) var(--wc-ease),
+    border-color var(--wc-duration-fast) var(--wc-ease);
 }
 
 .arena-shell__mode:hover {
-  background: var(--wc-surface-hover);
   color: var(--wc-text);
 }
 
 .arena-shell__mode[aria-selected="true"] {
-  border-color: var(--wc-accent-border);
-  background: var(--wc-accent-subtle);
-  color: var(--wc-accent-text);
+  border-bottom-color: var(--wc-accent);
+  color: var(--wc-text);
 }
 
 .arena-shell__body {
@@ -98,6 +115,11 @@
   overflow-y: auto;
   transform-origin: center 20%;
   animation: wc-view-body-enter var(--wc-duration-view) var(--wc-ease);
+}
+
+/* The blind round owns the viewport: it scrolls inside the duel, never as a page. */
+.arena-shell__body[data-mode="blind"] {
+  overflow: hidden;
 }
 
 .arena-shell[data-glass="true"] .arena-shell__bar {
@@ -115,76 +137,627 @@
   white-space: pre-wrap;
 }
 
-/* ---------------------------------------------------------------- bench */
+/* ---------------------------------------------------------------- canvas */
 
 .arena-bench,
 .arena-blind,
 .arena-board,
 .arena-pool {
   display: grid;
-  gap: var(--wc-space-5);
+  gap: var(--wc-space-4);
   max-width: var(--wc-arena-canvas-width);
   margin: 0 auto;
   padding: var(--wc-space-5);
   align-content: start;
 }
 
-.arena-setup {
+/*
+ * Width is a property of the reader's monitor, not of the comparison.
+ *
+ * Two columns of prose at 1240px is a comfortable measure and the right default. Four is
+ * not, and someone on a wide display should not be held to a canvas sized for a laptop.
+ */
+.arena-shell[data-wide="true"] .arena-bench {
+  max-width: none;
+}
+
+/* ---------------------------------------------------------------- masthead */
+
+.arena-mast {
+  position: relative;
   display: grid;
-  gap: var(--wc-space-3);
-  padding: var(--wc-space-4);
+  align-items: center;
+  gap: var(--wc-space-4);
+  padding: var(--wc-space-4) var(--wc-space-5);
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
   background: var(--wc-surface);
+  animation: wc-arena-mast-enter var(--wc-duration) var(--wc-ease) backwards;
 }
 
-.arena-setup__row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--wc-space-2) var(--wc-space-3);
+/*
+ * Two contenders: mirrored either side of the card.
+ *
+ * The corners are rendered from one `.map`, so the stage follows both in the DOM and `order`
+ * is what puts it in the seam. Placement, not source order — which also keeps the three-up
+ * and four-up cases a pure CSS change.
+ */
+.arena-mast[data-columns="2"] {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 }
 
-.arena-setup__row .wc-label {
-  margin: 0;
+/* The seam. Only drawn where there are two sides for it to be between. */
+.arena-mast[data-columns="2"]::before {
+  content: "";
+  position: absolute;
+  top: var(--wc-space-3);
+  bottom: var(--wc-space-3);
+  left: 50%;
+  width: var(--wc-border-width);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--wc-border-strong) 20%,
+    var(--wc-border-strong) 80%,
+    transparent
+  );
 }
 
-.arena-setup__columns {
-  width: calc(var(--wc-control) * 2);
-}
-
-/* The pickers sit on the same track count as the columns they choose, so the dropdown for
-   column three is above column three rather than merely near it. */
-.arena-setup__picks,
-.arena-run__columns {
-  display: grid;
-  grid-template-columns: repeat(var(--wc-arena-columns, 2), minmax(0, 1fr));
-  gap: var(--wc-space-3);
-}
-
-.arena-setup__probes {
+/*
+ * Three or four: the card leads and the corners run beside it.
+ *
+ * A medallion wedged between corners two and three would be sitting between two contenders
+ * that are not opposed to each other, which is the one thing the seam is supposed to mean.
+ */
+.arena-mast:is([data-columns="3"], [data-columns="4"]) {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--wc-space-2);
 }
 
-.arena-probe-chip {
-  max-width: var(--wc-arena-column-min);
+.arena-corner {
+  display: grid;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.arena-corner[data-side="b"] {
+  justify-items: end;
+  text-align: right;
+}
+
+.arena-corner__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.arena-corner[data-side="b"] .arena-corner__pick {
+  flex-direction: row-reverse;
+}
+
+.arena-corner__swatch {
+  flex: none;
+  width: var(--wc-space-3);
+  height: var(--wc-space-3);
+  border-radius: 3px;
+  background: var(--wc-corner, var(--wc-border-strong));
+}
+
+/*
+ * A real `<select>`, dressed as a name.
+ *
+ * Not a custom menu: this is a single choice from a short list, which is exactly what a
+ * select is for and what every assistive technology already knows how to drive. Only its
+ * chrome is removed — the control underneath is the same one that was in the form row.
+ */
+.arena-corner__select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--wc-text);
+  font-family: inherit;
+  font-size: var(--wc-text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.arena-corner__select:hover {
+  color: var(--wc-accent);
+}
+
+.arena-corner__select:focus-visible {
+  outline: 2px solid var(--wc-accent);
+  outline-offset: 3px;
+  border-radius: var(--wc-radius-sm);
+}
+
+.arena-corner__meta {
   overflow: hidden;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
   font-size: var(--wc-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.arena-setup__send {
+.arena-corner__record {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-3);
+  margin-top: var(--wc-space-1);
+}
+
+.arena-corner[data-side="b"] .arena-corner__record {
+  flex-direction: row-reverse;
+}
+
+.arena-corner__rating {
+  color: var(--wc-corner, var(--wc-text));
+  font-size: var(--wc-text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.arena-corner__provisional {
+  margin-left: 2px;
+  color: var(--wc-warning);
+  font-size: var(--wc-text-xs);
+  font-style: normal;
+  cursor: help;
+}
+
+.arena-corner__wl,
+.arena-corner__unrated {
+  color: var(--wc-text-muted);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-corner__unrated {
+  color: var(--wc-text-faint);
+}
+
+/* ---------------------------------------------------------------- the stage */
+
+/*
+ * The stage is the Popover's root, so it is positioned for the popup rather than laid out
+ * as a column — the trigger inside it does the arranging.
+ */
+.arena-stage {
+  position: relative;
+  z-index: 1;
+  padding: 0 var(--wc-space-2);
+  justify-self: center;
+}
+
+.arena-stage__trigger {
+  display: grid;
+  justify-items: center;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius);
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background var(--wc-duration-fast) var(--wc-ease),
+    border-color var(--wc-duration-fast) var(--wc-ease);
+}
+
+.arena-stage__trigger:hover,
+.arena-stage__trigger[aria-expanded="true"] {
+  border-color: var(--wc-border);
+  background: var(--wc-surface-raised);
+}
+
+.arena-stage__medallion {
+  display: block;
+  position: relative;
+  width: var(--wc-arena-medallion);
+  height: var(--wc-arena-medallion);
+}
+
+.arena-stage__medallion img,
+.arena-stage__blank {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--wc-border-strong);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.arena-stage__blank {
+  border-style: dashed;
+  background: var(--wc-surface-raised);
+}
+
+.arena-stage__vs {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  padding: 1px var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-accent);
+  color: var(--wc-accent-text);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: var(--wc-letter-spacing);
+  transform: translateX(-50%);
+}
+
+.arena-mast:is([data-columns="3"], [data-columns="4"]) .arena-stage__vs {
+  /* There is no "versus" between four things. */
+  display: none;
+}
+
+.arena-stage__name {
+  max-width: calc(var(--wc-arena-column-min) - var(--wc-space-5));
+  margin-top: var(--wc-space-2);
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-xs);
+  font-weight: 700;
+  letter-spacing: var(--wc-letter-spacing);
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.arena-stage__name[data-empty="true"] {
+  color: var(--wc-text-muted);
+}
+
+/* After the base rules it overrides, so specificity only ever ascends. */
+.arena-stage__trigger:hover .arena-stage__name,
+.arena-stage__trigger[aria-expanded="true"] .arena-stage__name {
+  color: var(--wc-accent);
+}
+
+.arena-stage__role {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------- the card popup */
+
+/*
+ * Faces, not names, and the same shape as the Pool's picker: a capped well with lazy
+ * avatars and a search field that only appears once the library is too big to scan. One
+ * behaviour at six cards and at six hundred.
+ */
+.arena-cardpicker {
+  display: grid;
+  gap: var(--wc-space-2);
+  width: min(420px, calc(100vw - var(--wc-space-6)));
+  padding: var(--wc-space-2);
+}
+
+.arena-cardpicker__search {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  height: var(--wc-control-sm);
+  padding: 0 var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border-strong);
+  border-radius: 999px;
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-faint);
+}
+
+.arena-cardpicker__search:focus-within {
+  border-color: var(--wc-accent);
+}
+
+.arena-cardpicker__search svg {
+  flex: none;
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+}
+
+.arena-cardpicker__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--wc-text);
+  font-family: inherit;
+  font-size: var(--wc-text-sm);
+  outline: none;
+}
+
+.arena-cardpicker__scroll {
+  max-height: var(--wc-scroll-cap);
+  overflow-y: auto;
+}
+
+.arena-cardpicker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--wc-space-2);
+}
+
+.arena-cardpicker__tile {
+  display: grid;
+  justify-items: center;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius);
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.arena-cardpicker__tile img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+  object-position: top center;
+}
+
+.arena-cardpicker__tile:hover {
+  background: var(--wc-surface-hover);
+}
+
+.arena-cardpicker__tile[data-on="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+}
+
+.arena-cardpicker__label {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-cardpicker__empty {
+  margin: 0;
+  padding: var(--wc-space-4);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
+  text-align: center;
+}
+
+/*
+ * Placement, placed after the base rules so specificity only ever ascends.
+ *
+ * Two-up: the corners come from one `.map` and the stage follows both in the DOM, so `order`
+ * is what puts the card in the seam between them.
+ */
+.arena-mast[data-columns="2"] .arena-corner[data-side="a"] {
+  order: 1;
+}
+
+.arena-mast[data-columns="2"] .arena-stage {
+  order: 2;
+}
+
+.arena-mast[data-columns="2"] .arena-corner[data-side="b"] {
+  order: 3;
+}
+
+/* Three or four abreast: the card leads, because nothing here is opposed pairwise. */
+.arena-mast:is([data-columns="3"], [data-columns="4"]) .arena-corner {
+  flex: 1 1 var(--wc-arena-column-min);
+}
+
+.arena-mast:is([data-columns="3"], [data-columns="4"]) .arena-stage {
+  order: -1;
+}
+
+/* ---------------------------------------------------------------- cue rail */
+
+.arena-cue {
+  display: grid;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3) var(--wc-space-4) var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-cue__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.arena-cue__label {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.arena-cue__none {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  max-width: var(--wc-arena-column-min);
+  padding: var(--wc-space-1) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border-strong);
+  border-radius: 999px;
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-muted);
+  font-family: inherit;
+  font-size: var(--wc-text-xs);
+  cursor: pointer;
+  transition:
+    background var(--wc-duration-fast) var(--wc-ease),
+    color var(--wc-duration-fast) var(--wc-ease);
+}
+
+.arena-chip > span:first-child {
+  color: var(--wc-accent);
+  font-size: 9px;
+}
+
+.arena-chip__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-chip:hover {
+  background: var(--wc-surface-hover);
+  color: var(--wc-text);
+}
+
+.arena-chip[data-on="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-text);
+}
+
+.arena-cue__settings {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+  margin-left: auto;
+}
+
+.arena-cue__columns {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-cue__columns .wc-select {
+  width: calc(var(--wc-control) * 2);
+}
+
+.arena-cue__warn {
+  color: var(--wc-warning);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-cue__send {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: var(--wc-space-3);
 }
 
-.arena-setup__probe {
+.arena-cue__actions {
+  display: grid;
+  justify-items: end;
+  gap: var(--wc-space-1);
+}
+
+.arena-cue__hint {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+}
+
+/*
+ * The mirror trick — see CueField.tsx.
+ *
+ * EVERY metric that affects wrapping is set once here and inherited by both layers. A
+ * padding or font change on one and not the other slides the highlight out of register with
+ * the glyphs, and it does so silently.
+ */
+.arena-cue__field {
+  position: relative;
+  display: grid;
+}
+
+.arena-cue__text {
+  grid-area: 1 / 1;
+  min-width: 0;
+  margin: 0;
+  padding: var(--wc-space-3) var(--wc-space-3) var(--wc-space-3) var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+  font-family: var(--wc-font);
+  font-size: var(--wc-text-sm);
+  font-style: italic;
+  letter-spacing: normal;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: normal;
+}
+
+.arena-cue__mirror {
+  overflow: hidden;
+  border-color: transparent;
+  color: var(--wc-text);
+  pointer-events: none;
+  /* The rule down the gutter: a cue is a line of script, not a form value. */
+  background:
+    linear-gradient(var(--wc-accent), var(--wc-accent)) left var(--wc-space-2) center / 2px 60%
+    no-repeat,
+    var(--wc-surface-raised);
+}
+
+.arena-cue__input {
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  background: transparent;
+  /* Transparent glyphs over the mirror, but a caret and a selection you can still see. */
+  color: transparent;
+  caret-color: var(--wc-text);
   resize: vertical;
+}
+
+.arena-cue__input::selection {
+  background: var(--wc-accent-selection);
+}
+
+.arena-cue__input::placeholder {
+  color: var(--wc-text-faint);
+  font-style: normal;
+}
+
+.arena-cue__input:focus {
+  border-color: var(--wc-accent);
+  outline: none;
+}
+
+.arena-cue__input:focus + .arena-cue__mirror,
+.arena-cue__field:focus-within .arena-cue__mirror {
+  border-color: transparent;
+}
+
+.arena-cue__macro {
+  border-radius: 3px;
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  font-family: var(--wc-font-mono);
+  font-size: 0.92em;
+  font-style: normal;
 }
 
 /* ---------------------------------------------------------------- run log */
@@ -194,8 +767,29 @@
   gap: var(--wc-space-4);
 }
 
+.arena-log__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.arena-log__wide {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+/*
+ * A slab with its number in the gutter.
+ *
+ * Free rhythm for what is otherwise a stack of identical rectangles, and it makes "the third
+ * one down" addressable out loud. The number is the run's position in the session, so it
+ * counts up as you work even though the newest is on top.
+ */
 .arena-run {
   display: grid;
+  grid-template-columns: var(--wc-space-6) minmax(0, 1fr);
   gap: var(--wc-space-3);
   padding: var(--wc-space-4);
   border: var(--wc-border-width) solid var(--wc-border);
@@ -204,16 +798,27 @@
   animation: wc-arena-run-enter var(--wc-duration) var(--wc-ease) backwards;
 }
 
-.arena-run__head,
-.arena-blind__scene {
+.arena-run__number {
+  color: var(--wc-text);
+  font-size: var(--wc-text-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 0.9;
+  opacity: 0.09;
+}
+
+.arena-run__main {
+  min-width: 0;
+  display: grid;
+  gap: var(--wc-space-3);
+}
+
+.arena-run__head {
   display: grid;
   grid-template-columns: var(--wc-arena-avatar) minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--wc-space-3);
-}
-
-.arena-blind__scene {
-  grid-template-columns: var(--wc-arena-avatar) minmax(0, 1fr);
 }
 
 .arena-run__avatar {
@@ -221,6 +826,7 @@
   height: var(--wc-arena-avatar);
   border-radius: var(--wc-radius-sm);
   object-fit: cover;
+  object-position: top center;
 }
 
 .arena-run__scene {
@@ -238,6 +844,7 @@
   overflow: hidden;
   color: var(--wc-text-muted);
   font-size: var(--wc-text-sm);
+  font-style: italic;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -247,15 +854,99 @@
   gap: var(--wc-space-2);
 }
 
+.arena-run__columns {
+  display: grid;
+  grid-template-columns: repeat(var(--wc-arena-columns, 2), minmax(0, 1fr));
+  gap: var(--wc-space-3);
+  align-items: start;
+}
+
+/* ---------------------------------------------------------------- empty */
+
+.arena-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-6) var(--wc-space-5);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  text-align: center;
+}
+
+.arena-empty__ring {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: var(--wc-space-3);
+}
+
+.arena-empty__corner {
+  width: calc(var(--wc-arena-medallion) * 1.4);
+  height: var(--wc-space-6);
+  border: var(--wc-border-width) dashed var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+}
+
+.arena-empty__seam {
+  width: var(--wc-border-width);
+  height: var(--wc-space-6);
+  background: var(--wc-border-strong);
+}
+
+.arena-empty__lede {
+  margin: 0;
+  color: var(--wc-text);
+  font-size: var(--wc-text-lg);
+  font-weight: 600;
+}
+
+.arena-empty__steps {
+  display: grid;
+  gap: var(--wc-space-1);
+  margin: 0;
+  padding: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  list-style: none;
+  counter-reset: arena-step;
+}
+
+.arena-empty__steps li {
+  counter-increment: arena-step;
+}
+
+.arena-empty__steps li::before {
+  content: counter(arena-step) ". ";
+  color: var(--wc-accent);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.arena-empty__note {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
 /* ---------------------------------------------------------------- column */
 
 .arena-column {
+  position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-width: 0;
+  overflow: hidden;
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius-sm);
   background: var(--wc-surface-raised);
+}
+
+/* The corner colour, worn as an edge. Never present while masked — see ContenderColumn. */
+.arena-column__stripe {
+  height: 3px;
+  background: var(--wc-corner, transparent);
 }
 
 .arena-column[data-status="failed"] {
@@ -263,8 +954,7 @@
 }
 
 .arena-column__head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: var(--wc-space-2);
   padding: var(--wc-space-2) var(--wc-space-3);
@@ -272,8 +962,16 @@
 }
 
 .arena-column__identity {
-  display: grid;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
   min-width: 0;
+  flex: 1;
+}
+
+/* Unmasked, the name and model stack. */
+.arena-column:not([data-masked="true"]) .arena-column__identity {
+  display: grid;
 }
 
 .arena-column__name {
@@ -294,34 +992,136 @@
   white-space: nowrap;
 }
 
-/* Big enough to be the column's name while it has none. */
-.arena-column__mask {
+/*
+ * The seal: concealment as a deliberate act.
+ *
+ * A masked contender previously got a small lettered chip, which reads as a missing label
+ * rather than as a withheld one. The hatch is the difference — blindness is this feature's
+ * whole integrity claim, and it should look like something that is going to be broken.
+ */
+.arena-column[data-masked="true"]:not([data-revealed="true"]) .arena-column__head {
+  background: var(--wc-hatch), var(--wc-surface-raised);
+}
+
+.arena-column__seal {
   display: grid;
   place-items: center;
-  width: var(--wc-arena-mask);
-  height: var(--wc-arena-mask);
+  flex: none;
+  width: var(--wc-arena-seal);
+  height: var(--wc-arena-seal);
+  border: var(--wc-border-width) solid var(--wc-accent-border);
   border-radius: var(--wc-radius-sm);
   background: var(--wc-accent-subtle);
-  color: var(--wc-accent-text);
-  font-size: var(--wc-text-base);
+  color: var(--wc-accent);
+  font-size: var(--wc-text-lg);
   font-weight: 700;
 }
 
+/* Broken. The plate keeps its letter so the reveal is legibly the same round. */
+.arena-column__seal[data-broken="true"] {
+  border-color: var(--wc-corner, var(--wc-accent));
+  background: var(--wc-corner, var(--wc-accent));
+  color: var(--wc-accent-text);
+  font-size: var(--wc-text-sm);
+}
+
+.arena-column__sealed {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  letter-spacing: 0.04em;
+}
+
+.arena-column__revealed {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  animation: wc-arena-break var(--wc-duration) var(--wc-ease) backwards;
+}
+
+.arena-column__delta {
+  flex: none;
+  margin-left: auto;
+  padding: 2px var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.arena-column__delta[data-sign="up"] {
+  background: color-mix(in srgb, var(--wc-success) 15%, transparent);
+  color: var(--wc-success);
+}
+
+.arena-column__delta[data-sign="down"] {
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+}
+
+.arena-column__delta[data-sign="flat"] {
+  color: var(--wc-text-faint);
+}
+
+.arena-column__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  flex: none;
+  color: var(--wc-text-muted);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The reply, at the transcript's size and weight.
+ *
+ * This screen exists to have prose read and judged on it, and it was previously asking for
+ * that two steps down the scale from where the same prose is rendered in a chat.
+ */
 .arena-column__body {
-  min-height: var(--wc-arena-column-height);
-  max-height: calc(var(--wc-arena-column-height) * 2);
-  overflow-y: auto;
-  padding: var(--wc-space-3);
+  min-height: var(--wc-space-6);
+  padding: var(--wc-space-3) var(--wc-space-4);
+}
+
+.arena-column__body[data-folded="true"] {
+  max-height: calc(var(--wc-arena-column-height) * 1.6);
+  overflow: hidden;
+  /* The fade says "there is more" without a scrollbar's promise that you can reach it here. */
+  mask-image: linear-gradient(180deg, #000 calc(100% - var(--wc-space-6)), transparent);
 }
 
 .arena-column__text {
   color: var(--wc-text);
-  font-size: var(--wc-text-sm);
-  line-height: 1.6;
+  font-size: var(--wc-text-base);
+  font-weight: 500;
+  line-height: 1.55;
 }
 
 .arena-column__text > :first-child {
   margin-top: 0;
+}
+
+.arena-column__text > :last-child {
+  margin-bottom: 0;
+}
+
+.arena-column__fold {
+  padding: var(--wc-space-2);
+  border: none;
+  border-top: var(--wc-border-width) solid var(--wc-border);
+  background: none;
+  color: var(--wc-accent);
+  font-family: inherit;
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.arena-column__fold:hover {
+  background: var(--wc-surface-hover);
 }
 
 .arena-column__waiting {
@@ -337,8 +1137,13 @@
   width: var(--wc-space-2);
   height: var(--wc-space-2);
   border-radius: 50%;
-  background: var(--wc-accent);
+  background: var(--wc-corner, var(--wc-accent));
   animation: wc-arena-pulse 1.2s var(--wc-ease) infinite;
+}
+
+.arena-column__live .arena-column__pulse {
+  width: 5px;
+  height: 5px;
 }
 
 .arena-column__empty,
@@ -355,67 +1160,342 @@
   white-space: pre-wrap;
 }
 
-.arena-column__metrics {
-  padding: var(--wc-space-1) var(--wc-space-3);
+.arena-column__foot {
+  display: grid;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-4) var(--wc-space-3);
   border-top: var(--wc-border-width) solid var(--wc-border);
-  color: var(--wc-text-faint);
-  font-size: var(--wc-text-xs);
+}
+
+/*
+ * Length, said out loud.
+ *
+ * The columns are equal width on purpose, which stops a long reply widening its own column —
+ * but only stating the length stops the reader half-noticing it anyway and calling it
+ * quality.
+ */
+.arena-column__bar {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--wc-border);
+}
+
+.arena-column__fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--wc-corner, var(--wc-accent));
+  opacity: 0.65;
+  transition: width var(--wc-duration) var(--wc-ease);
+}
+
+/* ---------------------------------------------------------------- the tape */
+
+/*
+ * Figures arrive as a strip: a big tabular numeral with a small uppercase label under it.
+ * Used for run metrics, the champion line and the round cost, which is what ties four
+ * otherwise unrelated screens together.
+ */
+.arena-tape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1) var(--wc-space-5);
+  margin: 0;
+}
+
+.arena-tape__cell {
+  display: grid;
+  gap: 0;
+}
+
+.arena-tape__value {
+  margin: 0;
+  color: var(--wc-text);
+  font-size: var(--wc-text-base);
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.arena-tape__value small {
+  margin-left: 1px;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 400;
+}
+
+/* Won this measure. The reader should never be doing the subtraction themselves. */
+.arena-tape__value[data-best="true"] {
+  color: var(--wc-accent);
+}
+
+.arena-tape__key {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
 }
 
 /* ---------------------------------------------------------------- blind */
 
-.arena-blind__head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.arena-blind {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  max-width: var(--wc-arena-canvas-width);
+}
+
+.arena-blind__stage {
+  display: flex;
   align-items: center;
-  gap: var(--wc-space-4);
-  padding: var(--wc-space-4);
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3) var(--wc-space-4);
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
   background: var(--wc-surface);
 }
 
-.arena-blind__actions {
+.arena-blind__avatar {
+  flex: none;
+  width: var(--wc-avatar-md);
+  height: var(--wc-avatar-md);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+  object-position: top center;
+}
+
+.arena-blind__scene,
+.arena-blind__intro {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.arena-blind__intro p {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.arena-blind__character {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 700;
+}
+
+.arena-blind__probe {
+  margin: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-style: italic;
+}
+
+.arena-blind__meta {
   display: flex;
   align-items: center;
-  gap: var(--wc-space-3);
+  gap: var(--wc-space-4);
+  flex: none;
+}
+
+.arena-blind__session {
+  display: grid;
+  gap: var(--wc-space-1);
+  justify-items: end;
 }
 
 .arena-blind__count {
   color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
   font-size: var(--wc-text-xs);
   font-variant-numeric: tabular-nums;
 }
 
-.arena-vote {
+/* The sitting so far. A grind needs to feel like it accumulates. */
+.arena-streak {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--wc-space-3);
-  padding: var(--wc-space-4);
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-streak__tick {
+  width: 6px;
+  height: var(--wc-space-3);
+  border-radius: 1px;
+  background: var(--wc-border-strong);
+}
+
+.arena-streak__tick[data-verdict="left"] {
+  background: var(--wc-series-1);
+}
+
+.arena-streak__tick[data-verdict="right"] {
+  background: var(--wc-series-2);
+}
+
+.arena-streak__tick[data-verdict="bad"] {
+  background: var(--wc-danger);
+  opacity: 0.55;
+}
+
+.arena-blind__fair {
+  max-width: 18ch;
+  margin: 0;
+  padding-left: var(--wc-space-3);
+  border-left: var(--wc-border-width) solid var(--wc-border);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+/*
+ * ONE scroller holding both panes.
+ *
+ * Not two: a pane that scrolls on its own slides out of register with the one beside it, and
+ * "which paragraph am I comparing" becomes a manual alignment problem. A single gesture moves
+ * both, and the vote bar below never leaves the viewport.
+ */
+.arena-duel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  align-items: start;
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
   background: var(--wc-surface);
 }
 
-.arena-vote__reveal {
-  margin: 0;
+.arena-duel .arena-column {
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+
+/* The seam, again: the gutter between two opposed things is never empty. */
+.arena-duel .arena-column:first-child {
+  border-right: var(--wc-border-width) solid var(--wc-border-strong);
+}
+
+.arena-vote {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3) var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+/*
+ * Each verdict under the pane it is about.
+ *
+ * "A is better" in a centred row is a sentence about a thing that is somewhere else. The
+ * explicit columns place them regardless of DOM order, so the markup can stay in the order
+ * the keyboard shortcuts read in.
+ */
+/*
+ * The row is explicit as well as the column.
+ *
+ * With only a column named, auto-placement walks left-to-right and puts the fourth item —
+ * which sits in column 3 but comes last in the DOM — on a second row, because the cursor has
+ * already passed it. The DOM order follows the keyboard shortcuts; the grid does the layout.
+ */
+.arena-vote [data-vote="left"] {
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: start;
+}
+
+.arena-vote [data-vote="tie"] {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.arena-vote [data-vote="bad"] {
+  grid-row: 1;
+  grid-column: 3;
+}
+
+.arena-vote [data-vote="right"] {
+  grid-row: 1;
+  grid-column: 4;
+  justify-self: end;
+}
+
+.arena-vote__button {
+  height: var(--wc-control-lg);
+  padding: 0 var(--wc-space-5);
+  font-size: var(--wc-text-sm);
+}
+
+/* The rarest verdict, and the only one that moves no ratings. Demoted, not hidden. */
+.arena-vote__minor {
+  border: none;
+  background: none;
+  color: var(--wc-text-faint);
+  font-family: inherit;
+  font-size: var(--wc-text-xs);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.arena-vote__minor:hover:not(:disabled) {
+  color: var(--wc-danger);
+}
+
+.arena-vote__minor:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.arena-vote__result {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wc-space-3) var(--wc-space-4);
+}
+
+.arena-vote__outcome {
   color: var(--wc-text);
   font-size: var(--wc-text-base);
 }
 
+.arena-vote__saving {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--wc-space-4);
+  height: var(--wc-space-4);
+  padding: 0 var(--wc-space-1);
+  border: var(--wc-border-width) solid currentColor;
+  border-radius: 3px;
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 0.55;
+}
+
 /* ---------------------------------------------------------------- board */
 
-/*
- * The board and every standalone message get the same surface the other panels have.
- *
- * Not decoration: over a photographic background a bare table is unreadable, and the
- * scrim alone is sized for chrome rather than for eight columns of tabular numbers. Same
- * reasoning the shell's scrim exists for.
- */
 .arena-board__head,
-.arena-board__table,
 .arena-board > .wc-hint,
 .arena-board > .wc-empty,
 .arena-bench > .arena-log > .wc-empty,
@@ -426,37 +1506,12 @@
   background: var(--wc-surface);
 }
 
-.arena-board__table {
-  /* The border-radius has nothing to clip without this, so the first row's own border
-     would cut across the rounded corner. */
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.arena-board__head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--wc-space-4);
-}
-
 .arena-board__head h2 {
   font-size: var(--wc-text-lg);
 }
 
-.arena-board__filter {
-  display: grid;
-  gap: var(--wc-space-1);
-}
-
-.arena-board__table th:first-child,
-.arena-board__table tbody th {
-  width: 22%;
-}
-
-.arena-board__table tr[data-provisional="true"] th,
-.arena-board__table tr[data-provisional="true"] td {
-  color: var(--wc-text-faint);
+.arena-board__note {
+  color: var(--wc-text-muted);
 }
 
 .arena-board__provisional {
@@ -464,6 +1519,567 @@
   color: var(--wc-warning);
   font-weight: 700;
   cursor: help;
+}
+
+/* The current leader, and by how much. */
+.arena-champ {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-4) var(--wc-space-5);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-left: 3px solid var(--wc-corner, var(--wc-accent));
+  border-radius: var(--wc-radius);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--wc-corner, var(--wc-accent)) 7%, transparent),
+      transparent 55%
+    ),
+    var(--wc-surface);
+}
+
+.arena-champ__who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.arena-champ__label {
+  color: var(--wc-corner, var(--wc-accent));
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.arena-champ__name {
+  color: var(--wc-text);
+  font-size: var(--wc-text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.arena-champ__model {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-champ__tape {
+  margin-left: auto;
+}
+
+.arena-champ__tape .arena-tape__value {
+  font-size: var(--wc-text-xl);
+}
+
+/* ---------------------------------------------------------------- standings */
+
+.arena-ranks {
+  width: 100%;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  overflow: hidden;
+}
+
+/*
+ * `:where()` keeps this at the class's own specificity, so a column that needs another
+ * alignment simply says so below instead of reaching for `!important`.
+ */
+.arena-ranks :where(th, td) {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.arena-ranks thead th {
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.arena-ranks tbody tr + tr th,
+.arena-ranks tbody tr + tr td {
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.arena-ranks__n {
+  width: var(--wc-space-6);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.arena-ranks__id {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.arena-ranks__swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--wc-corner, var(--wc-border-strong));
+}
+
+.arena-ranks__name {
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-ranks__model {
+  max-width: var(--wc-stats-fact-width);
+  overflow: hidden;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Ratings as bars on a shared axis centred on the start.
+ *
+ * Every rating IS a distance from 1500, so draw it as one. A column of four-digit numbers
+ * makes the reader do that subtraction for every row and then compare the results.
+ */
+.arena-ranks__axis {
+  position: relative;
+  width: 34%;
+  min-width: calc(var(--wc-arena-column-min) / 2);
+  height: var(--wc-space-5);
+}
+
+.arena-ranks__axis-head {
+  width: 34%;
+  text-align: center;
+}
+
+.arena-ranks__zero {
+  position: absolute;
+  top: var(--wc-space-1);
+  bottom: var(--wc-space-1);
+  left: 50%;
+  width: var(--wc-border-width);
+  background: var(--wc-border-strong);
+}
+
+.arena-ranks__bar {
+  position: absolute;
+  top: 50%;
+  height: var(--wc-studio-meter-height);
+  border-radius: 2px;
+  background: var(--wc-corner, var(--wc-accent));
+  transform: translateY(-50%);
+  transform-origin: left center;
+  animation: wc-arena-bar-grow var(--wc-stats-draw) var(--wc-ease) backwards;
+}
+
+/*
+ * Provisional, drawn as unsettled rather than merely written as it.
+ *
+ * The rule that ranks a provisional entrant below an established one however high its number
+ * goes is a real judgement, and it was previously carried by slightly greyer text and a `?`.
+ * A hatched bar says "this shape is not finished yet" at a glance, and it survives greyscale.
+ */
+.arena-ranks__bar[data-provisional="true"] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--wc-corner, var(--wc-accent)) 0 3px,
+    color-mix(in srgb, var(--wc-corner, var(--wc-accent)) 25%, transparent) 3px 6px
+  );
+}
+
+.arena-ranks__rating {
+  color: var(--wc-text);
+  font-size: var(--wc-text-base);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.arena-ranks__rating-head {
+  text-align: right;
+}
+
+/* Placed after the row rules it overrides, so specificity only ever ascends. */
+.arena-ranks tr[data-provisional="true"] .arena-ranks__name,
+.arena-ranks tr[data-provisional="true"] .arena-ranks__rating {
+  color: var(--wc-text-muted);
+}
+
+.arena-ranks__record {
+  width: calc(var(--wc-stats-fact-width) / 2);
+}
+
+.arena-wlt {
+  display: flex;
+  gap: 1px;
+  height: var(--wc-space-2);
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--wc-border);
+}
+
+.arena-wlt i {
+  display: block;
+}
+
+.arena-wlt i[data-k="w"] {
+  background: var(--wc-success);
+}
+
+.arena-wlt i[data-k="t"] {
+  background: var(--wc-border-strong);
+}
+
+.arena-wlt i[data-k="l"] {
+  background: var(--wc-danger);
+  opacity: 0.7;
+}
+
+.arena-wlt__key {
+  display: block;
+  margin-top: 3px;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- head to head */
+
+.arena-h2h,
+.arena-oncard {
+  display: grid;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-h2h__head h3 {
+  margin: 0;
+  font-size: var(--wc-text-lg);
+}
+
+.arena-h2h__head .wc-hint {
+  margin-top: var(--wc-space-1);
+}
+
+.arena-h2h__scroll {
+  overflow-x: auto;
+}
+
+.arena-h2h__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.arena-h2h__table :where(th, td) {
+  text-align: left;
+}
+
+.arena-h2h__column {
+  max-width: calc(var(--wc-arena-column-min) / 2);
+  overflow: hidden;
+  padding: 0 var(--wc-space-1) var(--wc-space-1);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-h2h__column span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arena-h2h__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  max-width: var(--wc-stats-fact-width);
+  padding-right: var(--wc-space-3);
+  text-align: left;
+}
+
+.arena-h2h__swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--wc-corner, var(--wc-border-strong));
+}
+
+.arena-h2h__name {
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-h2h__cell {
+  height: calc(var(--wc-control) * 1.3);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.arena-h2h__cell[data-self="true"],
+.arena-h2h__cell[data-none="true"] {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+}
+
+.arena-h2h__cell[data-none="true"] {
+  opacity: 0.6;
+}
+
+.arena-h2h__rate {
+  display: block;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* The record under the rate, because a rate over three rounds is not the same fact as a
+   rate over thirty and the grid must not pretend otherwise. */
+.arena-h2h__record {
+  display: block;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- per card */
+
+.arena-oncard__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
+.arena-cardchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-1) var(--wc-space-3) var(--wc-space-1) var(--wc-space-1);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: 999px;
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-muted);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background var(--wc-duration-fast) var(--wc-ease),
+    border-color var(--wc-duration-fast) var(--wc-ease);
+}
+
+.arena-cardchip img,
+.arena-cardchip__all {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--wc-avatar-sm);
+  height: var(--wc-avatar-sm);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.arena-cardchip__all {
+  background: var(--wc-surface-hover);
+  color: var(--wc-star);
+  font-size: var(--wc-text-sm);
+}
+
+.arena-cardchip__name {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.arena-cardchip__count {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-cardchip:hover {
+  background: var(--wc-surface-hover);
+}
+
+.arena-cardchip[data-on="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+}
+
+/* ---------------------------------------------------------------- inspector */
+
+.arena-inspector {
+  display: grid;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-accent-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  animation: wc-arena-run-enter var(--wc-duration) var(--wc-ease) backwards;
+}
+
+.arena-inspector__head {
+  display: grid;
+  grid-template-columns: var(--wc-arena-avatar) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--wc-space-3);
+}
+
+.arena-inspector__avatar {
+  width: var(--wc-arena-avatar);
+  height: var(--wc-arena-avatar);
+  border-radius: var(--wc-radius-sm);
+  object-fit: cover;
+  object-position: top center;
+}
+
+.arena-inspector__scene {
+  min-width: 0;
+}
+
+.arena-inspector__title {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 700;
+}
+
+.arena-inspector__probe {
+  margin: 0;
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-style: italic;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-inspector__verdict {
+  padding: var(--wc-space-1) var(--wc-space-3);
+  border-radius: 999px;
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.arena-inspector__verdict[data-verdict="bad"] {
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+}
+
+.arena-inspector__sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--wc-space-3);
+  align-items: start;
+}
+
+.arena-inspector__side {
+  min-width: 0;
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-top: 3px solid var(--wc-corner, var(--wc-border-strong));
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+}
+
+.arena-inspector__side[data-won="true"] {
+  border-color: var(--wc-accent-border);
+  border-top-color: var(--wc-corner, var(--wc-accent));
+}
+
+.arena-inspector__who {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin-bottom: var(--wc-space-2);
+  padding-bottom: var(--wc-space-2);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.arena-inspector__label {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--wc-space-5);
+  height: var(--wc-space-5);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-corner, var(--wc-border-strong));
+  color: var(--wc-accent-text);
+  font-size: var(--wc-text-xs);
+  font-weight: 700;
+}
+
+.arena-inspector__name {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.arena-inspector__model {
+  overflow: hidden;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-inspector__text {
+  color: var(--wc-text);
+  font-size: var(--wc-text-base);
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.arena-inspector__text > :first-child {
+  margin-top: 0;
 }
 
 /* ---------------------------------------------------------------- rating chart */
@@ -543,6 +2159,59 @@
 }
 
 /*
+ * The axis, made legible: one tick per round, coloured by what you decided.
+ *
+ * Buttons rather than decoration, because each opens the round it stands for — and a
+ * keyboard user gets the same access to the history a pointer does.
+ */
+.rating-scrub {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rating-scrub__slot {
+  flex: 1;
+  min-width: 3px;
+}
+
+.rating-scrub__tick {
+  display: block;
+  width: 100%;
+  height: var(--wc-space-2);
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: var(--wc-border-strong);
+  cursor: pointer;
+  transition: opacity var(--wc-duration-fast) var(--wc-ease);
+}
+
+.rating-scrub__tick[data-verdict="left"] {
+  background: var(--wc-series-1);
+  opacity: 0.75;
+}
+
+.rating-scrub__tick[data-verdict="right"] {
+  background: var(--wc-series-2);
+  opacity: 0.75;
+}
+
+.rating-scrub__tick[data-verdict="bad"] {
+  background: var(--wc-danger);
+  opacity: 0.4;
+}
+
+.rating-scrub__tick:hover,
+.rating-scrub__tick[data-current="true"] {
+  opacity: 1;
+  outline: var(--wc-border-width) solid var(--wc-text-faint);
+  outline-offset: 1px;
+}
+
+/*
  * Flex, not a track grid.
  *
  * Equal-width tracks stretched each key across a third of the chart and stranded its
@@ -611,12 +2280,6 @@
   cursor: help;
 }
 
-@keyframes wc-rating-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 /* ---------------------------------------------------------------- pool */
 
 .arena-pool__section {
@@ -635,8 +2298,13 @@
 .arena-pool__head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: var(--wc-space-3);
+}
+
+.arena-pool__head .wc-hint {
+  margin-top: var(--wc-space-1);
+  max-width: 76ch;
 }
 
 .arena-pool__row {
@@ -650,9 +2318,7 @@
   margin: 0;
 }
 
-.arena-pool__check,
-.arena-cards__item,
-.arena-contender__enabled {
+.arena-pool__check {
   display: flex;
   align-items: center;
   gap: var(--wc-space-2);
@@ -676,54 +2342,492 @@
   text-align: left;
 }
 
-.arena-contender {
+/* ---------------------------------------------------------------- roster */
+
+.arena-roster {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
-  align-items: center;
+  grid-template-columns: repeat(auto-fill, minmax(var(--wc-arena-column-min), 1fr));
+  gap: var(--wc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-entrant {
+  position: relative;
+  display: grid;
   gap: var(--wc-space-2);
-  padding: var(--wc-space-2);
+  padding: var(--wc-space-3) var(--wc-space-3) var(--wc-space-3) var(--wc-space-4);
+  overflow: hidden;
   border: var(--wc-border-width) solid var(--wc-border);
-  border-radius: var(--wc-radius-sm);
+  border-radius: var(--wc-radius);
   background: var(--wc-surface-raised);
 }
 
-.arena-contender[data-unavailable="true"] {
+/* The colour it wears everywhere else, worn here too — this is where it is chosen. */
+.arena-entrant::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--wc-corner, var(--wc-border-strong));
+}
+
+.arena-entrant[data-unavailable="true"] {
   border-color: var(--wc-warning);
 }
 
-.arena-contender__model {
-  min-width: 0;
+.arena-entrant[data-dragging="true"] {
+  z-index: 1;
+  border-color: var(--wc-accent-border);
+  box-shadow: var(--wc-shadow);
+  opacity: 0.9;
 }
 
-.arena-contender__reason,
-.arena-contender__resolved {
-  grid-column: 1 / -1;
-  margin: 0;
-  font-size: var(--wc-text-xs);
-}
-
-.arena-contender__reason {
-  color: var(--wc-warning);
-}
-
-.arena-contender__resolved {
-  color: var(--wc-text-faint);
-  font-family: var(--wc-font-mono);
-}
-
-.arena-probe {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+.arena-entrant__top {
+  display: flex;
+  align-items: center;
   gap: var(--wc-space-2);
 }
 
-.arena-cards {
+.arena-entrant__grip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--wc-control-sm);
+  height: var(--wc-control-sm);
+  border: none;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text-faint);
+  cursor: grab;
+}
+
+.arena-entrant__grip svg {
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+}
+
+.arena-entrant__grip:hover {
+  background: var(--wc-surface-hover);
+  color: var(--wc-text);
+}
+
+.arena-entrant__grip:active {
+  cursor: grabbing;
+}
+
+.arena-entrant__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.arena-entrant__enabled {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  flex: none;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+}
+
+.arena-entrant__where {
+  display: grid;
+  gap: var(--wc-space-2);
+}
+
+.arena-entrant__warn {
+  margin: 0;
+  color: var(--wc-warning);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-entrant__record {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-3);
+  padding-top: var(--wc-space-2);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.arena-entrant__rating {
+  color: var(--wc-corner, var(--wc-text));
+  font-size: var(--wc-text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.arena-entrant__wl,
+.arena-entrant__rounds,
+.arena-entrant__unrated {
+  color: var(--wc-text-muted);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-entrant__rounds[data-provisional="true"] {
+  color: var(--wc-warning);
+}
+
+.arena-entrant__unrated {
+  color: var(--wc-text-faint);
+}
+
+.arena-entrant__remove {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------- cues */
+
+.arena-cues {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--wc-arena-column-min), 1fr));
-  gap: var(--wc-space-1) var(--wc-space-3);
-  max-height: var(--wc-arena-column-height);
+  gap: var(--wc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-cuecard {
+  display: grid;
+  gap: var(--wc-space-2);
+}
+
+.arena-cuecard__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+}
+
+/* ---------------------------------------------------------------- card picker */
+
+/*
+ * A capped, searchable well — see CardPicker.tsx.
+ *
+ * The previous checkbox list was already capped and scrolling, which was right. An avatar
+ * grid inherits that constraint rather than rediscovering it at two hundred cards.
+ */
+.arena-picker {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+}
+
+.arena-picker__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.arena-picker__search {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  flex: 1;
+  min-width: calc(var(--wc-arena-column-min) / 2);
+  height: var(--wc-control-sm);
+  padding: 0 var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border-strong);
+  border-radius: 999px;
+  background: var(--wc-surface);
+  color: var(--wc-text-faint);
+}
+
+.arena-picker__search:focus-within {
+  border-color: var(--wc-accent);
+}
+
+/*
+ * Bare icons need a size from their container.
+ *
+ * `.wc-button svg` sizes the ones inside buttons, but these two sit in a label and a grip
+ * handle — and an unsized inline SVG takes its container's width, which here is the whole
+ * search field.
+ */
+.arena-picker__search svg {
+  flex: none;
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+}
+
+.arena-picker__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--wc-text);
+  font-family: inherit;
+  font-size: var(--wc-text-sm);
+  outline: none;
+}
+
+.arena-picker__count {
+  color: var(--wc-text-muted);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.arena-picker__count b {
+  color: var(--wc-accent);
+}
+
+.arena-picker__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.arena-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--wc-space-1);
+  padding: 2px var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--wc-text-muted);
+  font-family: inherit;
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.arena-tag small {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+}
+
+.arena-tag:hover {
+  background: var(--wc-surface-hover);
+  color: var(--wc-text);
+}
+
+.arena-tag[data-on="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-text);
+}
+
+.arena-picker__scroll {
+  max-height: var(--wc-scroll-cap);
   overflow-y: auto;
+  padding: var(--wc-space-3);
+}
+
+.arena-picker__group {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin: 0 0 var(--wc-space-2);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+.arena-picker__group::after {
+  content: "";
+  flex: 1;
+  height: var(--wc-border-width);
+  background: var(--wc-border);
+}
+
+.arena-picker__group:not(:first-child) {
+  margin-top: var(--wc-space-4);
+}
+
+.arena-picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--wc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-pick {
+  display: grid;
+  justify-items: center;
+  gap: var(--wc-space-1);
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.arena-pick img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--wc-radius);
+  box-shadow: 0 0 0 2px var(--wc-border);
+  object-fit: cover;
+  object-position: top center;
+  transition: box-shadow var(--wc-duration-fast) var(--wc-ease);
+}
+
+.arena-pick[data-on="true"] img {
+  box-shadow: 0 0 0 2px var(--wc-accent);
+}
+
+.arena-pick[data-on="false"] img {
+  opacity: 0.42;
+}
+
+.arena-pick:hover img {
+  box-shadow: 0 0 0 2px var(--wc-border-strong);
+}
+
+.arena-pick[data-on="true"]:hover img {
+  box-shadow: 0 0 0 2px var(--wc-accent-hover);
+}
+
+.arena-pick__name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-pick[data-on="false"] .arena-pick__name {
+  color: var(--wc-text-faint);
+}
+
+.arena-pick__count {
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9px;
+}
+
+.arena-picker__foot {
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+}
+
+/* ---------------------------------------------------------------- cost */
+
+.arena-cost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--wc-space-3) var(--wc-space-5);
+  margin-top: var(--wc-space-2);
+  padding: var(--wc-space-3) var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+}
+
+.arena-cost__note {
+  margin: 0 0 0 auto;
+  max-width: 34ch;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------- narrow */
+
+/*
+ * Below two readable columns, stop pretending.
+ *
+ * Squashing two replies into 150px each would make the vote a judgement about layout rather
+ * than about writing, so the duel stacks and the masthead loses its seam.
+ */
+@media (max-width: 900px) {
+  .arena-mast[data-columns="2"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .arena-mast[data-columns="2"]::before {
+    display: none;
+  }
+
+  .arena-mast[data-columns="2"] .arena-corner[data-side="b"] {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .arena-mast[data-columns="2"] .arena-corner[data-side="b"] .arena-corner__pick,
+  .arena-mast[data-columns="2"] .arena-corner[data-side="b"] .arena-corner__record {
+    flex-direction: row;
+  }
+
+  .arena-mast:is([data-columns="2"], [data-columns="3"], [data-columns="4"]) .arena-stage {
+    order: -1;
+  }
+
+  .arena-run__columns,
+  .arena-duel,
+  .arena-inspector__sides {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .arena-duel .arena-column:first-child {
+    border-right: none;
+    border-bottom: var(--wc-border-width) solid var(--wc-border-strong);
+  }
+
+  .arena-vote {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .arena-vote [data-vote="left"] {
+    grid-row: 1;
+    grid-column: 1;
+    justify-self: stretch;
+  }
+
+  .arena-vote [data-vote="right"] {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: stretch;
+  }
+
+  .arena-vote [data-vote="tie"] {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  .arena-vote [data-vote="bad"] {
+    grid-row: 2;
+    grid-column: 2;
+  }
+
+  .arena-blind__fair {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------- motion */
@@ -735,9 +2839,37 @@
   }
 }
 
+/* The corners arrive from their own edges. Once, on entry. */
+@keyframes wc-arena-mast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* The seal breaking: one gesture, both plates, because both replies were already settled. */
+@keyframes wc-arena-break {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+}
+
+@keyframes wc-arena-bar-grow {
+  from {
+    transform: translateY(-50%) scaleX(0);
+  }
+}
+
 @keyframes wc-arena-pulse {
   50% {
     opacity: 0.25;
+  }
+}
+
+@keyframes wc-rating-draw {
+  to {
+    stroke-dashoffset: 0;
   }
 }
 
@@ -759,7 +2891,10 @@
 @media (prefers-reduced-motion: reduce) {
   .arena-shell__bar,
   .arena-shell__body,
-  .arena-run {
+  .arena-run,
+  .arena-mast,
+  .arena-inspector,
+  .arena-column__revealed {
     animation: none;
   }
 
@@ -768,9 +2903,17 @@
   }
 
   /* `animation: none` rather than a zeroed duration: a zeroed one still paints its `from`
-     frame, which here is a line that is not drawn at all. */
+     frame, which here is a line that is not drawn at all — and a bar with no width. */
   .rating-chart__line {
     animation: none;
     stroke-dashoffset: 0;
+  }
+
+  .arena-ranks__bar {
+    animation: none;
+  }
+
+  .arena-column__fill {
+    transition: none;
   }
 }

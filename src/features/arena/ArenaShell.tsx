@@ -36,10 +36,13 @@ import { BlindRound } from './BlindRound.tsx';
 import { eligibleContenders, resolveContenders } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
 import { createArenaDisplay, PASSTHROUGH_DISPLAY } from './display.ts';
+import type { VerdictPreview } from './elo.ts';
+import { previewVerdict, replay } from './elo.ts';
 import { Leaderboard } from './Leaderboard.tsx';
 import { PoolPanel } from './PoolPanel.tsx';
 import { drawRound, type RoundDraw } from './pairing.ts';
 import { buildScene, sceneSeedId } from './scene.ts';
+import { poolSlots, viewSeries } from './series.ts';
 import { useArenaRun } from './useArenaRun.ts';
 import './ArenaShell.css';
 
@@ -77,6 +80,8 @@ interface ArenaShellProps {
   worldInfoSettings: WorldInfoSettings;
   globalVariables: MacroVariableMap;
   regexScripts: readonly RegexScript[];
+  /** Tags the user has hidden app-wide. The card picker must not offer them back. */
+  hiddenTags: readonly string[];
   tokenizerEncoding?: 'auto' | 'o200k_base' | 'cl100k_base';
   streamingFps: number;
   backgroundUrl: string | null;
@@ -100,6 +105,7 @@ export function ArenaShell({
   worldInfoSettings,
   globalVariables,
   regexScripts,
+  hiddenTags,
   tokenizerEncoding,
   streamingFps,
   backgroundUrl,
@@ -129,7 +135,17 @@ export function ArenaShell({
   const [revealed, setRevealed] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
-  const [sessionRounds, setSessionRounds] = useState(0);
+  /** Every verdict given this sitting, oldest first — the streak strip on the bar. */
+  const [sessionVerdicts, setSessionVerdicts] = useState<Verdict[]>([]);
+  /**
+   * What the vote just did to the two ratings.
+   *
+   * Computed at the moment of the vote rather than read back after the POST: the reveal is
+   * immediate, and waiting on a round-trip to say what you just bought would be theatre.
+   */
+  const [preview, setPreview] = useState<VerdictPreview | null>(null);
+  /** Widen the canvas past the reading measure, for a monitor that has the room. */
+  const [wide, setWide] = useState(false);
 
   // --- library -------------------------------------------------------------
 
@@ -182,6 +198,34 @@ export function ArenaShell({
   const persona = useMemo(
     () => personas.find((entry) => entry.id === settings.personaId) ?? null,
     [personas, settings.personaId],
+  );
+
+  /*
+   * The unfiltered board, once, for everything outside the Leaderboard.
+   *
+   * The masthead wants each corner's record at the moment you are choosing, and the Pool
+   * wants it on every entry card. Both read the same replay the Leaderboard does — there is
+   * no second calculation here, only a second reader. The Leaderboard still replays its own,
+   * because it can be filtered to one card and that is a different question.
+   */
+  const board = useMemo(() => replay(rounds, settings.contenders), [rounds, settings.contenders]);
+
+  /**
+   * Preferred corner colours, by pool order.
+   *
+   * Only the *preference*: which colour a contender actually wears is resolved per view
+   * against the entrants in it, so two things on screen together can never collide. See
+   * series.ts.
+   */
+  const preferredSlots = useMemo(() => poolSlots(settings.contenders), [settings.contenders]);
+
+  const poolColours = useMemo(
+    () =>
+      viewSeries(
+        settings.contenders.map((entry) => entry.id),
+        preferredSlots,
+      ),
+    [preferredSlots, settings.contenders],
   );
 
   const presetId =
@@ -364,6 +408,7 @@ export function ArenaShell({
 
     setRecordError(null);
     setRevealed(false);
+    setPreview(null);
     setDraw(next);
     requestRun({
       target: 'blind',
@@ -381,36 +426,42 @@ export function ArenaShell({
       const right = current?.entries[1];
       if (!current || !left || !right) return;
 
+      const record = {
+        characterId: current.characterId,
+        probe: current.probe,
+        left: {
+          contenderId: left.contenderId,
+          model: left.model,
+          provider: left.provider,
+          text: left.text,
+        },
+        right: {
+          contenderId: right.contenderId,
+          model: right.model,
+          provider: right.provider,
+          text: right.text,
+        },
+        verdict,
+      };
+
       // Revealed immediately. The decision is already made, and making someone wait on a
       // local round-trip to learn who wrote what would be theatre.
       setRevealed(true);
-      setSessionRounds((count) => count + 1);
+      // What the vote bought, from the same replay every other rating comes from. Computed
+      // against the history as it stands *before* the POST, which is exactly the history the
+      // recorded round will be appended to.
+      setPreview(previewVerdict(rounds, settings.contenders, record));
+      setSessionVerdicts((current) => [...current, verdict]);
       setRecording(true);
       setRecordError(null);
 
       void arenaApi
-        .record({
-          characterId: current.characterId,
-          probe: current.probe,
-          left: {
-            contenderId: left.contenderId,
-            model: left.model,
-            provider: left.provider,
-            text: left.text,
-          },
-          right: {
-            contenderId: right.contenderId,
-            model: right.model,
-            provider: right.provider,
-            text: right.text,
-          },
-          verdict,
-        })
+        .record(record)
         .then(() => refreshRounds())
         .catch((err) => setRecordError(`This round was not recorded: ${(err as Error).message}`))
         .finally(() => setRecording(false));
     },
-    [blindRun.state.runs, refreshRounds],
+    [blindRun.state.runs, refreshRounds, rounds, settings.contenders],
   );
 
   const clearHistory = useCallback(() => {
@@ -459,6 +510,7 @@ export function ArenaShell({
     <div
       className="arena-shell"
       data-overlay-root
+      data-wide={wide}
       data-glass={backgroundUrl !== null && glass}
       style={
         {
@@ -505,7 +557,12 @@ export function ArenaShell({
         </div>
       </header>
 
-      <div className="arena-shell__body">
+      {/*
+       * The mode is on the scroll container because one of the four does not scroll: a blind
+       * round is a room you are in until you vote, and a vote bar that can leave the viewport
+       * turns a forty-round sitting into forty small hunts for it.
+       */}
+      <div className="arena-shell__body" data-mode={mode}>
         {cardError ? (
           <p className="arena-error" role="alert">
             {cardError}
@@ -529,6 +586,10 @@ export function ArenaShell({
             displayFor={displayFor}
             onRun={startBench}
             blockedReason={setupReason}
+            rows={board.rows}
+            preferredSlots={preferredSlots}
+            wide={wide}
+            onWideChange={setWide}
           />
         ) : null}
 
@@ -545,7 +606,9 @@ export function ArenaShell({
             onNext={nextRound}
             onVote={vote}
             blockedReason={blindReason}
-            sessionRounds={sessionRounds}
+            sessionVerdicts={sessionVerdicts}
+            preview={preview}
+            preferredSlots={preferredSlots}
           />
         ) : null}
 
@@ -555,6 +618,8 @@ export function ArenaShell({
             contenders={settings.contenders}
             characters={characters}
             loading={roundsLoading}
+            preferredSlots={preferredSlots}
+            displayFor={displayFor}
           />
         ) : null}
 
@@ -568,7 +633,11 @@ export function ArenaShell({
             personas={personas}
             presets={presets}
             activePresetId={activePresetId}
-            roundCount={rounds.length}
+            preset={preset}
+            rounds={rounds}
+            rows={board.rows}
+            colours={poolColours}
+            hiddenTags={hiddenTags}
             onClearHistory={clearHistory}
           />
         ) : null}
