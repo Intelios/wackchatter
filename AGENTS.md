@@ -24,6 +24,7 @@ the browser launching. `WC_DATA_DIR` beats the pointer file and locks the settin
 
 ```
 server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
+  index.ts       Loopback-gated server; dispatches to one handler per resource in routes/.
   lib/png.ts     PNG chunk parse/encode + CRC32 + tEXt. Pure TS, no deps.
   lib/card.ts    Card read/normalise/merge/write.
   lib/paths.ts   Data dirs, filename sanitising, traversal guards.
@@ -37,8 +38,9 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/stats.ts   Library statistics, aggregated in SQL. Built per request, never memoised.
   lib/arena.ts   Blind benchmark rounds. Write-once rows; no ratings table, by design.
 shared/          Pure, no I/O. Imported by both server and client.
-  chat/          MessageState — the swipe invariant, as a type.
+  chat/          MessageState — the swipe invariant; branch.ts — branch-time id repair.
   cocreator/     CardStash — the filed-card model.
+  memory/        Id-based memory list ops + the extraction prompt and reply contract.
   prompt/        Assembly engine, macros, preset I/O, defaults, token cache.
   providers/     Request building + SSE parsing.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
@@ -47,7 +49,7 @@ shared/          Pure, no I/O. Imported by both server and client.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
-                 cocreator/, stats/, arena/.
+                 cocreator/, stats/, arena/, memory/, regex/, settings/, start/, summary/.
                  arena/ splits its rules out as pure modules: elo.ts (replay + verdict
                  preview), matchups.ts (head to head), series.ts (corner colour),
                  runStats.ts (which column won each measure), pairing.ts, chart.ts.
@@ -185,6 +187,40 @@ byte-identically. The quirks are load-bearing and each has a named test.
   enabled non-blank guide is its own injection. Guides and guidance are pushed **last**
   into `depthInjections`; `tokenCounts.guides` / `.guidance` are their own keys.
 
+**Story memory** (`shared/memory/`, `src/features/memory/`, `src/features/summary/`)
+- **One story-memory slot, three modes** (`AppSettings.memoryMode`): `'classic'` rolling
+  summary, `'memories'` discrete recalls, `'off'`. A chat may carry both
+  `metadata.summary` and `metadata.memories`, but assembly injects one or neither —
+  never both, which would tell the model the same events twice in two voices.
+- **Memories are id-based, never index-based** (`Memory.range` names message ids;
+  indices shift under delete, branch and swipe). `memoryWatermark` (last covered
+  message) is the extraction checkpoint — the counterpart of
+  `summary.checkpointMessageId`.
+- **The extractor never sees a global message index and never names a destructive
+  action.** It is shown a window numbered from zero and answers in those local numbers,
+  mapped to real ids in `extract.ts`. Which messages get hidden is derived from the
+  ranges it wrote, by code — a malformed reply can produce a bad memory but cannot hide
+  the wrong thing. Extraction (`useChat.extractMemories`) builds its own request: no
+  `assemblePrompt`, no preset prompts, no jailbreak. It checkpoints after every window
+  and never overwrites a memory the user edited (`edited`). `autoHide` — the one
+  destructive switch — is always read live from saved settings, never a panel snapshot.
+- **Recall is the activation engine.** A memory's keywords become `WorldInfoEntry.key`
+  (so `/pattern/flags` keys work exactly as in a lorebook); `pinned` becomes `constant`.
+- **Hiding carries provenance.** A memory hides its covered range minus the verbatim
+  tail (enforced in `hideableMessageIds` — recent prose stays word-for-word) by setting
+  `is_system` + `hiddenBy`. A memory may only reveal what it stamped: a manual hide
+  survives its deletion, and one memory cannot reveal another's hides. Editing a
+  message marks covering memories `stale` (`markMemoriesStale`).
+- **Branching repairs the ids** (`shared/chat/branch.ts`). A branch copies the prefix
+  with fresh message ids, so `remapBranchMetadata` rewrites every range, the watermark
+  and the summary checkpoint onto the branch's ids, clamps ranges that straddle the
+  fork, and drops memories written from transcript past it. `branchedFrom.messageId`
+  still names the parent's message, on purpose.
+- Classic summarising chunks the backlog with estimate-then-verify packing
+  (`packClassicSummaryChunk`): one cheap token walk picks a prefix, a few full
+  assemblies verify it, and the accepted assembly is returned verbatim so dynamic lore
+  and macros are not rerun.
+
 **Messages** (`shared/chat/message.ts`)
 - **`mes` is derived, never stored**: text from `swipes[swipe_id]`, metadata from
   `swipe_info[swipe_id]` — no `mes`/`send_date`/`extra` to keep in step.
@@ -308,29 +344,22 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 
 ## UI conventions
 
-- **The four sub-apps replace the chat shell** — they are not modals or panels, they
-  share one shell skeleton, and all four are reached only from the Start screen. The
-  Studio is manual, the Co-Creator conversational, Stats read-only, the Arena a test bench;
-  Finish hands off from the Co-Creator to the Studio one-way with no path back. Entering
-  any of them flushes the save queue first and a failed flush aborts the transition rather
-  than hiding unsaved work — for Stats that is also what makes the numbers right, since a
-  chat still in the queue is one the server has not been told about. Only the two creator
-  areas register persistence; Stats and the Arena have nothing of their own to flush on the
-  way out.
+- **The four sub-apps replace the chat shell** — not modals or panels; all four are
+  reached only from the Start screen. Finish hands off from the Co-Creator to the Studio
+  one-way, no path back. Entering any of them flushes the save queue first and a failed
+  flush aborts the transition rather than hiding unsaved work (for Stats that is also
+  what makes the numbers right). Only the two creator areas register persistence.
 - **In the Co-Creator the model never writes a field** — it proposes in labelled fenced
-  blocks and every slot got there via "Use as". Two tested invariants: everything the
-  model sees is in the readable transcript (the stash never reaches a prompt), and block
-  affordances appear only on a settled message. Its re-roll is an overswipe — appends a
-  take, never displaces (`resumeSwipeId` restores the reader on failure); do not add a
-  destructive regenerate. Its streaming is its own setting
+  blocks and every slot got there via "Use as". Everything the model sees is in the
+  readable transcript (the stash never reaches a prompt); block affordances appear only
+  on a settled message. Its re-roll is an overswipe — appends a take, never displaces;
+  do not add a destructive regenerate. Its streaming is its own setting
   (`AppSettings.coCreator.streaming`, default true), not the preset's.
 - **The session's avatar column is revision-free; `finishedAvatar` is not.** The avatar
-  endpoints write it through `setSessionAvatar` with no revision bump — the whole-session
-  save preserves the column, so the two write families commute and a bump would collide
-  with the client's own next revision (the Finish "Session changed elsewhere." bug; pinned
-  by tests). The client's `avatar/set`/`avatar/cleared` likewise cost no revision: the
-  server write is already durable when the response dispatches. `finishedAvatar` is a real
-  document field — it rides the whole-session snapshot, which is the only way Finish's
+  endpoints write through `setSessionAvatar` with no revision bump — the whole-session
+  save preserves the column, so the two write families commute (a bump would collide
+  with the client's own next revision; pinned by tests). `finishedAvatar` is a real
+  document field that rides the whole-session snapshot — the only way Finish's
   recording reaches the server.
 - **No blocking modals.** Destructive actions use a two-click confirm in place. Disabled
   beats refused: a blocked entry is `disabled` with a `disabledReason` that becomes its
@@ -347,16 +376,13 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   makes a failed flush surface). Bar buttons are toggle buttons (`aria-pressed`), not
   tabs. The chat column is `1fr`; the header row is a fixed grid track so
   `grid-template-columns` stays the only animated property.
-- **The composer is a field with a tray under it**, not a row of controls around a field.
-  The field keeps the full measure; everything else — persona chip, menus, guided actions,
-  Send — sits in a `--wc-control`-height tray beneath. Two consequences. The tray is the
-  composer's *fixed* end (the dock is `flex-shrink: 0`, so the field grows upward and the
-  tray never moves while you type), and the tray's height comes out of the input's growth
-  budget: `MAX_VIEWPORT_SHARE` is a ceiling for the whole composer, so `composerGrowth.ts`
-  subtracts a *measured* `trayBlock` rather than a constant. Charging the share to the
-  input alone lets the composer exceed it by exactly the tray's height.
-  `--wc-composer-row` no longer aligns anything to the input's baseline — it is the input's
-  `min-height` and, through that, the one-row floor the clamp refuses to go below.
+- **The composer is a field with a tray under it**, not a row of controls around a
+  field. Everything except typing — persona chip, menus, guided actions, Send — sits in
+  a `--wc-control`-height tray beneath, and the tray's height comes out of the input's
+  growth budget: `MAX_VIEWPORT_SHARE` ceilings the *whole* composer, so
+  `composerGrowth.ts` subtracts a *measured* `trayBlock`, not a constant.
+  `--wc-composer-row` is the input's `min-height` and the one-row floor the clamp
+  refuses to go below.
 - **Presets save explicitly, characters autosave.** Editing a preset raises a Save/Revert
   bar and locks switching/rename/import until resolved; Revert re-reads the file, the
   only authority on what the preset was. The preset draft lives above the left panel's
@@ -408,89 +434,61 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 
 **Model Arena** (`server/lib/arena.ts`, `src/features/arena/`)
 
-- **Assemble once, send N times.** `useArenaRun.start` calls `assemblePrompt` a single time
-  per run and every column gets the same `messages` array; only `buildRequestBody` runs per
-  contender. This is the fairness invariant the whole sub-app rests on — identical history
-  packing, identical World Info draws, identical `{{random}}`/`{{pick}}` rolls. Bodies still
-  differ in provider-specific samplers, which is unavoidable and correct. A per-column
-  re-roll re-sends the run's *cached* messages for the same reason.
-- **No ratings table.** Rounds are stored write-once and the leaderboard is replayed from
-  them in `created` order on every render, so a rating cannot drift from the history behind
-  it and `K_FACTOR` can change without invalidating anything. Same rule as Stats. `bad`
-  ("neither is usable") is recorded but moves **no** ratings — it is not a draw, and scoring
-  it as one would drag a strong rating toward a weak one on evidence containing no
-  comparison. Named tests.
-- Ratings under `PROVISIONAL_ROUNDS` rank **below** established ones however high the number
-  goes; sorting on rating alone would let a lucky two-round entrant read as a verdict.
-- `replay` returns the table AND a per-round series for the chart from **one** walk. Two
-  walks would be two implementations of the same Elo loop, free to drift — the exact thing
-  the no-ratings-table rule exists to prevent. Every series covers every round, backfilled
-  at `START_RATING` for a contender that joined late, so the lines can be read against one
-  another. A `bad` round still takes a slot on the axis and moves nothing.
-- **Only blind rounds are scored.** The open Arena writes nothing — a comparison where you
-  knew which one was which is not evidence.
-- **The blind is a real blind.** While masked, nothing identifying reaches the DOM: no name,
-  model, provider, reasoning text or timings, and by default no streaming either, because
-  token cadence identifies a model as surely as a label. `hold` withholds a *settled* reply
+- **Assemble once, send N times.** `useArenaRun.start` calls `assemblePrompt` a single
+  time per run; every column gets the same `messages` array and only `buildRequestBody`
+  runs per contender — identical history packing, World Info draws and
+  `{{random}}`/`{{pick}}` rolls. A per-column re-roll re-sends the run's *cached*
+  messages for the same reason.
+- **No ratings table.** Rounds are stored write-once and the leaderboard is replayed
+  from them in `created` order on every render, so a rating cannot drift from its
+  history and `K_FACTOR` can change without invalidating anything. `replay` returns the
+  table AND the chart's per-round series from **one** walk; the reveal's deltas come
+  from `previewVerdict`, and `headToHead` counts from the same rounds — never a local
+  `K_FACTOR * (score - expected)`, which would drift from the leaderboard. Every series
+  covers every round (backfilled at `START_RATING`) so the lines read against one
+  another.
+- `bad` ("neither is usable") is recorded but moves **no** ratings and is excluded from
+  every head-to-head record — it is not a draw, and scoring it as one would drag a
+  strong rating toward a weak one on evidence containing no comparison.
+- Ratings under `PROVISIONAL_ROUNDS` rank **below** established ones however high the
+  number goes.
+- **Only blind rounds are scored.** The open Arena writes nothing.
+- **The blind is a real blind.** While masked, nothing identifying reaches the DOM — no
+  name, model, provider, reasoning text or timings, and by default no streaming (token
+  cadence identifies a model as surely as a label). `hold` withholds a *settled* reply
   too, or the first column to finish would reveal itself by finishing.
-- Deleting a contender never cascades into rounds. An id the pool can no longer resolve
-  falls back to the model string recorded on the round — the Stats rule, and the reason
-  `RoundSide` stores the model and provider as facts rather than display names.
-- Pairing is **least-played**, not uniform: uniform draws re-decide settled matchups while
-  two entrants never meet, so a leaderboard stays provisional long after the rounds were
-  paid for. Side assignment is a per-round coin flip, or position bias binds to one
-  contender for the whole history.
-- A run waits for `useLorebooks().pending` to clear. The chat never needed that flag — a
-  human is typing — but a blind round generates with nobody in the loop, and one that ran
-  before the card's linked book arrived would benchmark against lore a real chat would have
-  supplied.
-- **Corner colour is resolved per view, not stored** (`series.ts`). A contender's *preferred*
-  `--wc-series-N` comes from its position in the pool, so dragging the roster is a real edit
-  and a stable one with nothing persisted. But there are eight tokens and no limit on
-  contenders, so `viewSeries` resolves against the entrants actually in a given view: two
-  things visible at once can never wear the same colour. Past eight it repeats, which is why
-  every swatch in the UI is accompanied by a name. A masked column carries **no** colour —
-  a lime stripe against a blue one is a label in another alphabet.
-- **A comparison never nests a scroll.** Two independently-scrolling boxes side by side lose
-  their alignment the moment either moves. In the Arena the columns grow and the page
-  scrolls; in the Benchmark the duel is one scroller holding both panes, so a single gesture
-  moves them together and the docked vote bar cannot leave the viewport. A genuinely enormous
-  reply folds (measured, not guessed from a character count) rather than growing a scrollbar.
-- **Replies are set at the transcript's size and weight** (`--wc-text-base`/500), not the
-  UI's. This screen exists to have prose read and judged on it, and it was previously asking
-  for that two steps down the scale from where the same prose renders in a chat. Column type
-  steps down only as the column count goes up; four-up is labelled a scanning view because at
-  ~38 characters a line it is one whatever the size.
-- **Figures are compared at the precision they are displayed at** (`runStats.ts`). The tape
-  prints seconds to one decimal, so 118ms and 143ms both read "0.1s" — marking one of those
-  as the winner puts a lime `0.1s` beside a plain `0.1s`, which reads as a rendering fault.
-  Same rule `recordPoints` already follows for rating deltas. Length is never given a winner:
-  a longer reply is longer, not better. Pinned by tests.
-- **Length is stated, not smuggled.** Columns stay equal width — a long reply must not widen
-  its own column — but the bar says the length out loud, from character counts rather than
-  `completionTokens`, which is frequently our own estimate and missing entirely for a
-  provider that reports no usage.
-- The reveal's rating deltas come from `previewVerdict`, which appends the round to the
-  history and calls the same `replay` — never a local `K_FACTOR * (score - expected)`, which
-  would be a fourth-decimal disagreement with the leaderboard waiting to happen.
-- `headToHead` (`matchups.ts`) counts from the same rounds on every render, for the same
-  reason the ratings do. `bad` is counted but excluded from every record, matching
-  `replayRatings`: folding it into a win rate would invent a comparison the user declined.
-- The card picker is capped, searchable and pins the selection to the top, with lazy avatars
-  and the app's `hiddenTags` honoured. A dev library is six cards; a real one is hundreds,
-  and an unbounded avatar grid is worse than the checkbox wall it replaced.
-- The cue composer highlights macros with the mirror trick (`CueField.tsx`): a highlighted
-  copy painted under a transparent-glyph textarea. Every metric that affects wrapping is set
-  once on `.arena-cue__text` and inherited by both layers — a padding change on one and not
-  the other slides the highlight out of register, silently.
-- The card is chosen from the medallion itself (`CharacterPicker.tsx`), not from a field
-  beside it — it is the venue, so it is the trigger. Composed from `Popover` via
-  `renderTrigger` like `ModelCombobox`, per "Popover is the only popup mechanism", with a
-  face grid, roving focus whose row step is read off the grid's own computed
-  `grid-template-columns`, and a search field that appears only once the library is too big
-  to scan. Focus lands on the staged card on open, in a **layout effect** rather than a
-  `requestAnimationFrame` — a frame callback does not fire while the window is backgrounded,
-  which strands focus on `<body>`.
+- Deleting a contender never cascades into rounds; an id the pool can no longer resolve
+  falls back to the model string recorded on the round (`RoundSide` stores model and
+  provider as facts, not display names — the Stats rule).
+- Pairing is **least-played**, not uniform (uniform re-decides settled matchups while
+  two entrants never meet). Side assignment is a per-round coin flip, or position bias
+  binds to one contender for the whole history.
+- A run waits for `useLorebooks().pending` to clear — a blind round that ran before the
+  card's linked book arrived would benchmark against lore a real chat would supply.
+- **Corner colour is resolved per view, not stored** (`series.ts`): `viewSeries` assigns
+  `--wc-series-N` against the entrants actually in a given view, so two visible things
+  never share a colour; past eight tokens it repeats, hence every swatch is accompanied
+  by a name. A masked column carries **no** colour.
+- **A comparison never nests a scroll.** The columns grow and the page scrolls; the
+  Benchmark duel is one scroller holding both panes so a single gesture moves them
+  together. A genuinely enormous reply folds (measured, not guessed from a character
+  count) rather than growing a scrollbar.
+- **Replies render at the transcript's size and weight** (`--wc-text-base`/500) — this
+  screen exists to have prose judged; column type steps down only as column count goes
+  up. Columns stay equal width — a long reply must not widen its own column. Length is
+  stated aloud in the bar from character counts (never `completionTokens`), and length
+  is never given a winner.
+- **Figures are compared at the precision they are displayed at** (`runStats.ts`): the
+  tape prints seconds to one decimal, so 118ms and 143ms must both read as no-winner —
+  a lime `0.1s` beside a plain `0.1s` reads as a rendering fault. Same rule
+  `recordPoints` follows for rating deltas. Pinned by tests.
+- The card picker is capped, searchable, pins the selection to the top and honours
+  `hiddenTags` — a real library is hundreds of cards. The cue composer highlights macros
+  with the mirror trick (`CueField.tsx`): every wrapping metric is set once on
+  `.arena-cue__text` and inherited by both layers. The card is chosen from the medallion
+  itself (`CharacterPicker.tsx`), composed from `Popover` per the popup rule; focus
+  lands on the staged card in a **layout effect**, not a `requestAnimationFrame` — a
+  frame callback does not fire while the window is backgrounded.
 
 ## Testing
 
