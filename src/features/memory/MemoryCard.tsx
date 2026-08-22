@@ -1,6 +1,6 @@
 import type { Memory } from '@shared/types/chat.ts';
 import { useEffect, useState } from 'react';
-import { TagField, TextField } from '../../components/Field.tsx';
+import { KeyField, TextField } from '../../components/Field.tsx';
 import { ChevronIcon, EyeIcon, EyeOffIcon, PinIcon, TrashIcon } from '../../layout/icons.tsx';
 
 interface MemoryCardProps {
@@ -170,7 +170,7 @@ export function MemoryCard({
             rows={4}
             disabled={disabled}
           />
-          <TagField
+          <KeyField
             label="Recall keywords"
             value={memory.keywords}
             onChange={(keywords) => commit({ keywords })}
