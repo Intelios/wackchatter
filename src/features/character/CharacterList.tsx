@@ -11,7 +11,17 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import type { CharacterSummary } from '@shared/types/card.ts';
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type RefObject,
+  type UIEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Menu, type MenuEntry } from '../../components/Menu.tsx';
 import {
   ChevronIcon,
@@ -39,6 +49,12 @@ interface CharacterListProps {
   sort: 'name' | 'rating';
   onSortChange: (sort: 'name' | 'rating') => void;
   selected: string | null;
+  /**
+   * Where the list was scrolled to when the panel last closed, owned by App so it survives
+   * this component's unmount. App wipes it when the chat exits; while one is open, closing
+   * and reopening the panel lands where you left off.
+   */
+  scrollMemory: RefObject<number>;
   loading: boolean;
   error: string | null;
   /** Open this character's chat. */
@@ -64,6 +80,7 @@ export function CharacterList({
   sort,
   onSortChange,
   selected,
+  scrollMemory,
   loading,
   error,
   onSelect,
@@ -77,6 +94,8 @@ export function CharacterList({
   const [dragging, setDragging] = useState<CharacterSummary | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const itemsRef = useRef<HTMLDivElement>(null);
+  const restoredScroll = useRef(false);
 
   const searching = query.trim().length > 0;
 
@@ -92,6 +111,30 @@ export function CharacterList({
       }),
     [characters, folders, collapsedFolders, query, sort, ratings],
   );
+
+  /*
+   * The scroll memory is written on every scroll event rather than captured in an unmount
+   * cleanup: passive effect cleanups run after the panel's DOM is detached, and a detached
+   * element reads scrollTop as 0 — the position would be lost at the exact moment we tried
+   * to save it.
+   */
+  const rememberScroll = useCallback(
+    (e: UIEvent<HTMLDivElement>) => {
+      scrollMemory.current = e.currentTarget.scrollTop;
+    },
+    [scrollMemory],
+  );
+
+  // Restore once the rows exist: a cold open can mount before the characters load, and a
+  // scrollTop into an empty list is a no-op. Clamped so a list that shrank while the panel
+  // was closed cannot restore past its end.
+  useLayoutEffect(() => {
+    if (restoredScroll.current) return;
+    const el = itemsRef.current;
+    if (!el || loading || rows.length === 0) return;
+    el.scrollTop = Math.max(0, Math.min(scrollMemory.current, el.scrollHeight - el.clientHeight));
+    restoredScroll.current = true;
+  }, [loading, rows.length, scrollMemory]);
 
   // Matching PromptManager: a small distance threshold so a plain click on the grip is still
   // a click, and a drag only begins once the pointer has actually moved.
@@ -215,7 +258,7 @@ export function CharacterList({
         onDragCancel={() => setDragging(null)}
         onDragEnd={handleDragEnd}
       >
-        <div className="character-list__items">
+        <div className="character-list__items" ref={itemsRef} onScroll={rememberScroll}>
           {/* Only while dragging a card that is in a folder — otherwise it is a target that
               would do nothing, taking up space at the top of every library. */}
           {dragging?.folder ? <RootDropZone /> : null}

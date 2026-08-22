@@ -101,6 +101,12 @@ export function App() {
   const personaPersistence = useRef<PersistenceControls | null>(null);
   const studioPersistence = useRef<PersistenceControls | null>(null);
   const cocreatorPersistence = useRef<PersistenceControls | null>(null);
+  /*
+   * Where the character list was scrolled to, so closing and reopening the panel inside a
+   * chat lands where you left it. Session-only by design: it is a browsing convenience,
+   * not library state, so it never reaches settings.json.
+   */
+  const characterListScroll = useRef(0);
 
   const flushRightPanel = useCallback(async () => {
     const controls = editing
@@ -265,6 +271,17 @@ export function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  /*
+   * The scroll memory is valid only inside a chat. Leaving for the start screen wipes it,
+   * so the next open begins fresh at the top — and because child unmount cleanups run
+   * before this parent effect, the list's own save-then-this-wipe order is what makes
+   * "exit the chat" beat the memory even when the panel was open at the time. Switching
+   * characters never passes through null, so browsing between chats keeps the position.
+   */
+  useEffect(() => {
+    if (selected === null) characterListScroll.current = 0;
+  }, [selected]);
 
   // Load the full card whenever the selection changes.
   useEffect(() => {
@@ -1191,6 +1208,7 @@ export function App() {
                     sort={characterListSort}
                     onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
                     selected={selected}
+                    scrollMemory={characterListScroll}
                     loading={loading}
                     error={error}
                     onSelect={handleSelect}
