@@ -11,6 +11,7 @@ import type { Database } from 'bun:sqlite';
 import { remapBranchMetadata } from '../../shared/chat/branch.ts';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
 import type {
+  BranchOrigin,
   Chat,
   ChatMessage,
   ChatMetadata,
@@ -166,20 +167,39 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
   };
 
   // The current swipe's text as the preview, taken live rather than denormalised into a
-  // column that could disagree with the message it summarises.
+  // column that could disagree with the message it summarises. `branchedFrom` arrives as
+  // JSON text (json_extract of an object), parsed on the way out below.
   const summarySelect = `
     SELECT c.id, c.character_id AS characterId, c.title, c.created, c.modified,
       (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id) AS messageCount,
       (SELECT substr(json_extract(m.swipes, '$[' || m.swipe_id || ']'), 1, 200)
          FROM messages m WHERE m.chat_id = c.id
-        ORDER BY m.position DESC LIMIT 1) AS lastMessage
+        ORDER BY m.position DESC LIMIT 1) AS lastMessage,
+      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom
     FROM chats c`;
 
-  const listAll = database.query<ChatSummary, []>(`${summarySelect} ORDER BY c.modified DESC`);
-  const listRecent = database.query<ChatSummary, [number]>(
+  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom'> {
+    branchedFrom: string | null;
+  }
+
+  function rowToSummary(row: SummaryRow): ChatSummary {
+    const origin =
+      row.branchedFrom === null
+        ? undefined
+        : parseJson<BranchOrigin | null>(row.branchedFrom, null);
+    // A malformed blob is not a summary-killer; the chat lists without its provenance.
+    return {
+      ...row,
+      lastMessage: row.lastMessage ?? '',
+      branchedFrom: origin ?? undefined,
+    };
+  }
+
+  const listAll = database.query<SummaryRow, []>(`${summarySelect} ORDER BY c.modified DESC`);
+  const listRecent = database.query<SummaryRow, [number]>(
     `${summarySelect} ORDER BY c.modified DESC LIMIT ?`,
   );
-  const listForCharacter = database.query<ChatSummary, [string]>(
+  const listForCharacter = database.query<SummaryRow, [string]>(
     `${summarySelect} WHERE c.character_id = ? ORDER BY c.modified DESC`,
   );
 
@@ -332,12 +352,11 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
   return {
     listChats(characterId?: string): ChatSummary[] {
       const rows = characterId ? listForCharacter.all(characterId) : listAll.all();
-      // json_extract returns null for an empty chat; ChatSummary promises a string.
-      return rows.map((row) => ({ ...row, lastMessage: row.lastMessage ?? '' }));
+      return rows.map(rowToSummary);
     },
 
     listRecent(limit: number): ChatSummary[] {
-      return listRecent.all(limit).map((row) => ({ ...row, lastMessage: row.lastMessage ?? '' }));
+      return listRecent.all(limit).map(rowToSummary);
     },
 
     getChat: readChat,

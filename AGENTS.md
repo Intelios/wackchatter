@@ -406,6 +406,22 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 - Quick commands are normalised app settings (id opaque, name editable) reachable only
   from the burger menu; picking one fills the composer and is not gated on `busy`. The
   composer's draft has exactly one write path: `ComposerHandle.insert`.
+- **The branch timeline is a read-only map** (`branchTree.ts` pure, `BranchTree.tsx` renders).
+  The burger's "Branch timeline…" takes the chat column the way the card reader does (portal
+  into the overlay root, non-modal, Escape), and like "Character card…" it is deliberately
+  not busy-gated — the jumps *inside* are what wait for the reply, since a switch would
+  discard it. The family is the **connected component of the current chat over `branchedFrom`
+  links**, never "all chats with this character" — `ChatSummary.branchedFrom` is extracted in
+  the summary SQL (`json_extract` on the metadata blob) so one list fetch builds the whole
+  tree. `branchedFrom` has no root id and no foreign key: a parent deleted from the library
+  severs the chain (the chat stays, marked orphaned, dashed stub where the ancestry went),
+  and a parent loop — only possible through imported metadata — breaks at the loop's earliest
+  chat. `x` is the created-timestamp fraction **except** that a child is never drawn left of
+  its parent; the timeline may lie slightly about *when*, it never draws an edge backwards.
+  The px placement pass (`placeBranchTimeline`) enforces on-screen spacing — lanes push
+  collisions right and the canvas widens rather than compresses. Clicking a node is the one
+  action: `openChat`, the same door as every transcript switch. Branching and deleting stay
+  in the menus that already own them.
 - Error boundaries wrap the root and each shell region (left panel, chat, right panel).
   `lib/crashReport.ts` is pure and tested because it runs in the failure path on values
   that may not be Errors.

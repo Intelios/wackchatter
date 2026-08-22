@@ -36,6 +36,8 @@ export interface ChatMenuState {
   summaryRunning?: boolean;
   /** A blocking memory extraction prevents only provider-generating actions. */
   memoryRunning?: boolean;
+  /** The open chat — the branch timeline has nothing to centre on without one. */
+  chatId: string | null;
   messageCount: number;
   lastMessageId: string | null;
   /** The transcript ends on the user's turn, so there is nothing to continue. */
@@ -52,6 +54,7 @@ export interface ChatMenuActions {
   exportChat: () => void;
   importChat: () => void;
   openCard: () => void;
+  openBranchTree: () => void;
 }
 
 const BUSY = 'Wait for the current reply to finish.';
@@ -64,6 +67,7 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
     busy,
     summaryRunning = false,
     memoryRunning = false,
+    chatId,
     messageCount,
     lastMessageId,
     lastIsUser,
@@ -148,6 +152,19 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       onSelect: actions.openCard,
     },
 
+    /*
+     * The timeline reads too, so it keeps the card's mid-generation availability — the
+     * moment a fork looks wrong is exactly when you want to see where you are. The jumps
+     * inside it are the part that waits for the reply.
+     */
+    {
+      label: 'Branch timeline…',
+      icon: <BranchIcon />,
+      disabled: !chatId,
+      disabledReason: 'No chat is open.',
+      onSelect: actions.openBranchTree,
+    },
+
     // Jumps, not actions — these open the panel where the tool already lives, rather than
     // growing a second copy of it in here.
     {
@@ -178,6 +195,8 @@ interface ChatMenuProps {
   onImportChat: (file: File) => void;
   /** Opens the card reader — the one entry here that works mid-generation. */
   onOpenCard: () => void;
+  /** Opens the branch timeline — reads only, like the card reader. */
+  onOpenBranchTree: () => void;
 }
 
 export function ChatMenu({
@@ -186,6 +205,7 @@ export function ChatMenu({
   onOpenPanel,
   onImportChat,
   onOpenCard,
+  onOpenBranchTree,
 }: ChatMenuProps) {
   const { messages } = chat.state;
   const last = messages[messages.length - 1] ?? null;
@@ -198,6 +218,7 @@ export function ChatMenu({
       busy: chat.busy,
       summaryRunning: chat.summaryStatus.running,
       memoryRunning: chat.memoryStatus.running,
+      chatId: chat.state.chatId,
       messageCount: messages.length,
       lastMessageId: last?.id ?? null,
       lastIsUser: Boolean(last?.is_user),
@@ -210,6 +231,7 @@ export function ChatMenu({
       openPanel: onOpenPanel,
       closeChat: onCloseChat,
       openCard: onOpenCard,
+      openBranchTree: onOpenBranchTree,
       importChat: () => importInput.current?.click(),
       exportChat: () => {
         const chatId = chat.state.chatId;
