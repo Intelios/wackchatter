@@ -34,6 +34,8 @@ interface BlindRoundProps {
   settings: ArenaSettings;
   characters: readonly CharacterSummary[];
   run: UseArenaRun;
+  /** Whether the next round is loading its card and lorebooks. */
+  pending?: boolean;
   /** The identities behind this round. Never rendered until `revealed`. */
   draw: RoundDraw | null;
   revealed: boolean;
@@ -92,6 +94,7 @@ export function BlindRound({
   settings,
   characters,
   run,
+  pending = false,
   draw,
   revealed,
   recording,
@@ -111,8 +114,8 @@ export function BlindRound({
     ? characters.find((entry) => entry.avatar === current.characterId)
     : null;
 
-  const canVote = Boolean(current) && settled && !revealed && !recording;
-  const canAdvance = !run.busy && !blockedReason && (!current || revealed);
+  const canVote = Boolean(current) && settled && !revealed && !recording && !pending;
+  const canAdvance = !run.busy && !pending && !blockedReason && (!current || revealed);
 
   /*
    * Keyboard voting.
@@ -256,7 +259,11 @@ export function BlindRound({
               disabled={!canAdvance}
               title={
                 blockedReason ??
-                (current && !revealed ? 'Judge this round first' : 'Draw the next round')
+                (pending
+                  ? 'Loading next round…'
+                  : current && !revealed
+                    ? 'Judge this round first'
+                    : 'Draw the next round')
               }
             >
               <RefreshIcon />

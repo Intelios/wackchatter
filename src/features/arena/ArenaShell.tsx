@@ -64,6 +64,7 @@ interface PendingRun {
   probe: string;
   contenderIds: string[];
   replace: boolean;
+  draw?: RoundDraw;
 }
 
 interface ArenaShellProps {
@@ -350,6 +351,12 @@ export function ArenaShell({
     });
 
     setPendingRun(null);
+    if (pendingRun.target === 'blind') {
+      if (pendingRun.draw) setDraw(pendingRun.draw);
+      setRevealed(false);
+      setPreview(null);
+      setRecordError(null);
+    }
     const engine = pendingRun.target === 'blind' ? blindRef.current : benchRef.current;
     void engine.start({
       runId: pendingRun.runId,
@@ -396,7 +403,7 @@ export function ArenaShell({
   }, [drawableCards.length, resolved, settings.probes.length, setupReason]);
 
   const nextRound = useCallback(() => {
-    if (blindReason) return;
+    if (blindReason || pendingRun || blindRun.busy) return;
     const next = drawRound({
       contenders: eligibleContenders(resolved),
       cards: drawableCards,
@@ -406,18 +413,18 @@ export function ArenaShell({
     });
     if (!next) return;
 
-    setRecordError(null);
-    setRevealed(false);
-    setPreview(null);
-    setDraw(next);
     requestRun({
       target: 'blind',
       characterId: next.characterId,
       probe: next.probe.text,
       contenderIds: [next.left.id, next.right.id],
       replace: true,
+      draw: next,
     });
-  }, [blindReason, drawableCards, requestRun, resolved, rounds, settings.probes]);
+  }, [blindReason, blindRun.busy, drawableCards, pendingRun, requestRun, resolved, rounds, settings.probes]);
+
+  /** The run ID that was last voted on, to prevent double recording the same round. */
+  const votedRunIdRef = useRef<string | null>(null);
 
   const vote = useCallback(
     (verdict: Verdict) => {
@@ -425,6 +432,8 @@ export function ArenaShell({
       const left = current?.entries[0];
       const right = current?.entries[1];
       if (!current || !left || !right) return;
+      if (votedRunIdRef.current === current.id) return;
+      votedRunIdRef.current = current.id;
 
       const record = {
         characterId: current.characterId,
@@ -458,7 +467,10 @@ export function ArenaShell({
       void arenaApi
         .record(record)
         .then(() => refreshRounds())
-        .catch((err) => setRecordError(`This round was not recorded: ${(err as Error).message}`))
+        .catch((err) => {
+          votedRunIdRef.current = null;
+          setRecordError(`This round was not recorded: ${(err as Error).message}`);
+        })
         .finally(() => setRecording(false));
     },
     [blindRun.state.runs, refreshRounds, rounds, settings.contenders],
@@ -598,6 +610,7 @@ export function ArenaShell({
             settings={settings}
             characters={characters}
             run={blindRun}
+            pending={pendingRun?.target === 'blind'}
             draw={draw}
             revealed={revealed}
             recording={recording}
