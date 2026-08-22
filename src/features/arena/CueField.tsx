@@ -27,14 +27,17 @@ interface CueFieldProps {
   ariaLabel?: string;
 }
 
-/** `{{char}}`, `{{user}}`, `{{random:a,b}}` — anything the assembler will expand. */
-const MACRO_PARTS = /(\{\{[^{}]*\}\})/g;
+/**
+ * `{{char}}`, `{{user}}`, `{{random:a,b}}` — anything the assembler will expand. Exported
+ * for the example-cue picker, which highlights macros in cue text the same way.
+ */
+export const MACRO_PARTS = /(\{\{[^{}]*\}\})/g;
 /*
  * A separate, un-flagged pattern for the per-part test. `RegExp.test` on a /g regex advances
  * its own `lastIndex`, so reusing the split pattern here would return true and false
  * alternately down the same array and highlight every other macro.
  */
-const IS_MACRO = /^\{\{[^{}]*\}\}$/;
+export const IS_MACRO = /^\{\{[^{}]*\}\}$/;
 
 export function CueField({
   value,

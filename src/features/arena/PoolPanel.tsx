@@ -43,6 +43,7 @@ import { ModelCombobox } from '../connection/ModelCombobox.tsx';
 import { CardPicker } from './CardPicker.tsx';
 import { CueField } from './CueField.tsx';
 import type { ResolvedContender } from './contenders.ts';
+import { ExampleCuePicker } from './ExampleCuePicker.tsx';
 import type { LeaderboardRow } from './elo.ts';
 import { PROVISIONAL_ROUNDS } from './elo.ts';
 import { headToHead, unplayedPairings } from './matchups.ts';
@@ -455,31 +456,23 @@ export function PoolPanel({
               actually send. Macros work: <code>{'{{char}}'}</code>, <code>{'{{user}}'}</code>.
             </p>
           </div>
-          <button type="button" className="wc-button" onClick={() => addProbe()}>
-            <PlusIcon />
-            Add cue
-          </button>
+          <div className="arena-pool__head-actions">
+            <ExampleCuePicker
+              existing={new Set(settings.probes.map((entry) => entry.text))}
+              onAdd={(text) => addProbe(text)}
+            />
+            <button type="button" className="wc-button" onClick={() => addProbe()}>
+              <PlusIcon />
+              Add cue
+            </button>
+          </div>
         </header>
 
         {settings.probes.length === 0 ? (
-          <div className="arena-pool__empty">
-            <p className="wc-empty">
-              No cues yet — a blind round has nothing to ask. Add your own, or start from one of
-              these.
-            </p>
-            <div className="arena-pool__suggestions">
-              {SUGGESTED_PROBES.map((text) => (
-                <button
-                  key={text}
-                  type="button"
-                  className="wc-button wc-button--ghost"
-                  onClick={() => addProbe(text)}
-                >
-                  {text}
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="wc-empty">
+            No cues yet — a blind round has nothing to ask. Write your own, or take a few to start
+            from in Example cues.
+          </p>
         ) : null}
 
         {settings.probes.length > 0 ? (
@@ -674,17 +667,3 @@ export function PoolPanel({
     </div>
   );
 }
-
-/**
- * Starter cues, offered only while the pool is empty.
- *
- * Offered, not bundled: they are inserted by a click and become the user's own, so the
- * default really is an empty list — the same line quick commands and regex scripts hold.
- * Without them a first-time blind round is a wall with no obvious next step.
- */
-const SUGGESTED_PROBES = [
-  '*I step through the door and stop.* So you’re the one they warned me about.',
-  'Tell me what you actually want. No hedging.',
-  '*I say nothing, and wait for {{char}} to break the silence.*',
-  'Something is wrong here. What are you not telling me?',
-];

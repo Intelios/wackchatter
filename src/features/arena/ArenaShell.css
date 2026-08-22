@@ -2442,20 +2442,12 @@
   font-size: var(--wc-text-sm);
 }
 
-.arena-pool__empty {
-  display: grid;
-  gap: var(--wc-space-3);
-}
-
-.arena-pool__suggestions {
-  display: grid;
+/* The section headers' right-hand buttons — two act side by side in the cues section. */
+.arena-pool__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--wc-space-2);
-}
-
-.arena-pool__suggestions .wc-button {
-  justify-content: flex-start;
-  font-size: var(--wc-text-sm);
-  text-align: left;
 }
 
 /* ---------------------------------------------------------------- roster */
@@ -2622,6 +2614,97 @@
   color: var(--wc-text-faint);
   font-family: var(--wc-font-mono);
   font-size: 9.5px;
+}
+
+/* ------------------------------------------------------------ example cues */
+
+/*
+ * The example picker's contents. Anchoring, flip and dismissal belong to Popover.css; this
+ * is the list. Wide enough for a cue to read as a sentence at rest, narrow enough not to
+ * blanket the pool it floats over.
+ */
+.arena-examples {
+  width: clamp(340px, 34vw, 500px);
+  padding: var(--wc-space-3);
+}
+
+.arena-examples__body {
+  display: grid;
+  gap: var(--wc-space-3);
+}
+
+.arena-examples__group {
+  display: grid;
+  gap: var(--wc-space-1);
+}
+
+.arena-examples__label {
+  margin: 0;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.arena-examples__note {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+.arena-examples__cues {
+  display: grid;
+  gap: var(--wc-space-2);
+  margin: var(--wc-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-examples__cue {
+  display: block;
+  width: 100%;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease;
+}
+
+.arena-examples__cue:hover:not(:disabled) {
+  background: var(--wc-surface-hover);
+  border-color: var(--wc-accent-border);
+}
+
+.arena-examples__cue:disabled {
+  cursor: default;
+}
+
+/* Added cues keep the accent tint of every other picked row, at disabled opacity. */
+.arena-examples__cue[data-on="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+}
+
+/* The same macro voice as the composer's highlight, so a macro reads the same everywhere. */
+.arena-examples__cue code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--wc-code-bg);
+  color: var(--wc-code-color);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-examples__foot {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
 }
 
 /* ---------------------------------------------------------------- card picker */
