@@ -12,11 +12,10 @@ import { SINGLE_SLOTS } from '@shared/types/cocreator.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { SendIcon, StopIcon } from '../../layout/icons.tsx';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { AvatarDrop } from './AvatarDrop.tsx';
 import { SLOT_LABELS } from './blocks.ts';
-import { CocreatorQuickCommands } from './CocreatorQuickCommands.tsx';
+import { CocreatorComposer } from './CocreatorComposer.tsx';
 import { CocreatorSetup } from './CocreatorSetup.tsx';
 import { DesignMessage } from './DesignMessage.tsx';
 import { ExamplesPanel } from './ExamplesPanel.tsx';
@@ -89,12 +88,10 @@ export function CocreatorDesk({
   const stateRef = useRef(design.state);
   stateRef.current = design.state;
 
-  const [draft, setDraft] = useState('');
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupMode, setSetupMode] = useState<'session' | 'defaults'>('session');
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
   const following = useRef(true);
   const programmatic = useRef(false);
   const { persistence, saving, saveError, state, busy, blockedReason } = design;
@@ -161,18 +158,6 @@ export function CocreatorDesk({
   useLayoutEffect(() => {
     if (following.current) pinBottom();
   }, [state.messages.length, state.status, pinBottom]);
-
-  // The composer is the only thing on this screen you can do anything with on arrival.
-  useEffect(() => {
-    composerRef.current?.focus({ preventScroll: true });
-  }, []);
-
-  const submit = useCallback(() => {
-    const text = draft.trim();
-    if (!text || busy || blockedReason) return;
-    setDraft('');
-    void design.send(text);
-  }, [draft, busy, blockedReason, design]);
 
   /**
    * File a piece of the transcript into a slot.
@@ -273,14 +258,6 @@ export function CocreatorDesk({
     }
   }, [design, session.id, session.modified, onFinished, onError]);
 
-  const handleInsertQuickCommand = useCallback((text: string) => {
-    setDraft((current) => {
-      const trimmed = current.trimEnd();
-      return trimmed ? `${trimmed}\n${text}` : text;
-    });
-    setTimeout(() => composerRef.current?.focus({ preventScroll: true }), 0);
-  }, []);
-
   const lastIndex = state.messages.length - 1;
 
   return (
@@ -371,54 +348,14 @@ export function CocreatorDesk({
             </div>
           </div>
 
-          <div className="cocreator-composer">
-            <CocreatorQuickCommands
-              quickCommands={defaults.quickCommands ?? []}
-              onInsertCommand={handleInsertQuickCommand}
-              onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}
-            />
-            <textarea
-              ref={composerRef}
-              className="wc-textarea cocreator-composer__input"
-              value={draft}
-              rows={3}
-              placeholder={
-                blockedReason
-                  ? `${blockedReason}. Open Connections from the chat screen to set one up.`
-                  : 'Describe the character, or ask for a first message…'
-              }
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                // Enter sends, Shift+Enter is a newline — the composer's convention app-wide.
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  submit();
-                }
-              }}
-            />
-            {busy ? (
-              <button
-                type="button"
-                className="wc-button wc-button--danger cocreator-composer__send"
-                onClick={design.abort}
-                title="Stop generating"
-              >
-                <StopIcon />
-                Stop
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="wc-button wc-button--primary cocreator-composer__send"
-                onClick={submit}
-                disabled={!draft.trim() || Boolean(blockedReason)}
-                title={blockedReason ?? 'Send'}
-              >
-                <SendIcon />
-                Send
-              </button>
-            )}
-          </div>
+          <CocreatorComposer
+            busy={busy}
+            blockedReason={blockedReason}
+            onSend={(text) => void design.send(text)}
+            onStop={design.abort}
+            quickCommands={defaults.quickCommands ?? []}
+            onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}
+          />
         </div>
 
         <StashPanel
