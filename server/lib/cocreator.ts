@@ -51,6 +51,7 @@ interface SessionRow {
   settings: string;
   avatar: string | null;
   finished_avatar: string | null;
+  seed_avatar: string | null;
 }
 
 interface MessageRow {
@@ -81,7 +82,14 @@ export interface CocreatorPatch {
 export interface CocreatorStore {
   listSessions(): CocreatorSessionSummary[];
   getSession(id: string): CocreatorSession | null;
-  createSession(input: { title?: string }): CocreatorSession;
+  /**
+   * The card a session was seeded from (the Studio's handoff), or nothing for a blank one.
+   *
+   * Write-once: this is the column's only writer outside the reference cascade, and the
+   * whole-session UPDATE statement never mentions it, so every later save preserves it. That
+   * is what lets Finish trust the reference to still name the card the user started from.
+   */
+  createSession(input: { title?: string; seedAvatar?: string | null }): CocreatorSession;
   /** Whole-session write: the only path that changes messages. */
   replaceSession(
     id: string,
@@ -118,6 +126,15 @@ export interface CocreatorStore {
    * chat store's `reassignCharacter` exists. Returns how many sessions changed.
    */
   reassignExampleCard(oldAvatar: string, newAvatar: string | null): number;
+  /**
+   * Repoint (or detach, for a null) the seed card across every session.
+   *
+   * Same rule as `reassignExampleCard` — including the deliberately missing revision bump —
+   * but simpler, because the seed is a bare column rather than JSON. Deleting the seed card
+   * detaches rather than deletes: the transcript keeps the seed text (self-contained
+   * reasoning), only Finish loses the lorebook copy it would have made.
+   */
+  reassignSeedCard(oldAvatar: string, newAvatar: string | null): number;
 }
 
 function parseJson<T>(raw: string, fallback: T): T {
@@ -201,12 +218,16 @@ export function createCocreatorStore(database: Database): CocreatorStore {
   const statements = {
     insertSession: database.query(
       `INSERT INTO cocreator_sessions
-         (id, title, created, modified, revision, stash, examples, settings, avatar, finished_avatar)
-       VALUES ($id, $title, $created, $modified, $revision, $stash, $examples, $settings, NULL, NULL)`,
+         (id, title, created, modified, revision, stash, examples, settings, avatar,
+          finished_avatar, seed_avatar)
+       VALUES ($id, $title, $created, $modified, $revision, $stash, $examples, $settings, NULL,
+               NULL, $seedAvatar)`,
     ),
     selectSession: database.query<SessionRow, [string]>(
       'SELECT * FROM cocreator_sessions WHERE id = ?',
     ),
+    // seed_avatar is deliberately absent: whole-session writes preserve it by omission, so
+    // the column stays whatever creation and the reference cascade last made it.
     updateSession: database.query(
       `UPDATE cocreator_sessions
           SET title = $title, stash = $stash, examples = $examples, settings = $settings,
@@ -225,6 +246,9 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     ),
     updateExamples: database.query(
       'UPDATE cocreator_sessions SET examples = $examples WHERE id = $id',
+    ),
+    updateSeedAvatar: database.query(
+      'UPDATE cocreator_sessions SET seed_avatar = $seedAvatar WHERE seed_avatar = $old',
     ),
     insertMessage: database.query(
       `INSERT INTO cocreator_messages
@@ -284,6 +308,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       settings: normalizeSessionSettings(parseJson<unknown>(row.settings, null)),
       avatar: row.avatar,
       finishedAvatar: row.finished_avatar,
+      seedAvatar: row.seed_avatar,
       messages: statements.selectMessages.all(id).map(rowToMessage),
     };
   }
@@ -295,7 +320,9 @@ export function createCocreatorStore(database: Database): CocreatorStore {
   /** Write the merged session row. Callers have already resolved the revision race. */
   function commit(
     id: string,
-    next: Omit<CocreatorSession, 'messages' | 'created' | 'modified'>,
+    // seedAvatar is omitted on purpose: it is write-once at creation and never part of a
+    // whole-session save — the UPDATE statement preserves the column by not naming it.
+    next: Omit<CocreatorSession, 'messages' | 'created' | 'modified' | 'seedAvatar'>,
   ): void {
     statements.updateSession.run({
       $id: id,
@@ -464,6 +491,14 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     },
   );
 
+  /*
+   * Deliberately no revision bump, and for the same reason as `reassignExampleCard`: this is
+   * a repair of a reference the user never edited, not a change to their session.
+   */
+  const reassignSeedCard = database.transaction((oldAvatar: string, newAvatar: string | null) => {
+    return statements.updateSeedAvatar.run({ $old: oldAvatar, $seedAvatar: newAvatar }).changes;
+  });
+
   /** The avatar write behind the upload/clear routes. See the interface for the discipline. */
   const setSessionAvatar = database.transaction(
     (id: string, avatar: string | null): CocreatorSession | null => {
@@ -513,6 +548,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         $stash: JSON.stringify(emptyStash()),
         $examples: JSON.stringify({ cards: [], fields: { ...DEFAULT_EXAMPLE_FIELDS } }),
         $settings: '{}',
+        $seedAvatar: input.seedAvatar ?? null,
       });
 
       return readSession(id)!;
@@ -536,6 +572,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     },
 
     reassignExampleCard,
+    reassignSeedCard,
   };
 }
 

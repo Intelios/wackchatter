@@ -176,7 +176,7 @@ function normalizeProvenance(raw: unknown): StashProvenance {
       ? Math.max(0, value.swipeIndex as number)
       : 0,
     at: typeof value.at === 'string' ? value.at : '',
-    source: source === 'block' || source === 'selection' ? source : 'message',
+    source: source === 'block' || source === 'selection' || source === 'seed' ? source : 'message',
   };
   if (typeof value.model === 'string') provenance.model = value.model;
   if (typeof value.label === 'string') provenance.label = value.label;

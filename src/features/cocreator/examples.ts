@@ -71,14 +71,16 @@ export const EXAMPLE_PREAMBLE =
   'the card you are helping build. Do not reuse their characters, names, settings or ' +
   'phrasing, and do not treat any of them as the character being designed.';
 
-function section(label: string, value: string | undefined): string {
+/** Labelled `Label:\ntext` sections — shared with the seed turn, which reads the same way. */
+export function section(label: string, value: string | undefined): string {
   // A blank field is omitted rather than emitted as an empty heading: an empty label teaches
   // the model that empty is an acceptable answer.
   const text = value?.trim();
   return text ? `${label}:\n${text}\n\n` : '';
 }
 
-function renderBook(card: CardDataV2): string {
+/** The embedded book as readable `keys → content` lines — shared with the seed turn. */
+export function renderBook(card: CardDataV2): string {
   // The EMBEDDED book's `entries` is an array (unlike a standalone lorebook's numeric-keyed
   // object), so plain iteration is correct here and the `bookEntries()` ordering rule does
   // not apply. It looks like it should.

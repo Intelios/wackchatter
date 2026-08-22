@@ -68,8 +68,13 @@ export async function handleCocreatorRoute(
   if (segments.length === 0) {
     if (method === 'GET') return json(store.listSessions());
     if (method === 'POST') {
-      const body = await readJson<{ title?: string }>(request);
-      return json(store.createSession({ title: body?.title }), { status: 201 });
+      const body = await readJson<{ title?: string; seedAvatar?: string | null }>(request);
+      // Write-once facts about a session's origin: both are only meaningful at creation, so
+      // they ride the create call and nothing else can ever change them.
+      return json(
+        store.createSession({ title: body?.title, seedAvatar: body?.seedAvatar ?? null }),
+        { status: 201 },
+      );
     }
     return null;
   }

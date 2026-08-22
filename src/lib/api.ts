@@ -12,6 +12,7 @@ import type {
   ProviderId,
   ProviderModel,
 } from '@shared/providers/types.ts';
+import type { ArenaRound, RoundSide, Verdict } from '@shared/types/arena.ts';
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type {
   Chat,
@@ -430,11 +431,12 @@ export const cocreatorApi = {
 
   get: (id: string) => request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}`),
 
-  create: (title?: string) =>
+  /** `seedAvatar` is write-once: only creation records it, never a later save. */
+  create: (title?: string, seedAvatar?: string) =>
     request<CocreatorSession>('/cocreator', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, seedAvatar: seedAvatar ?? null }),
     }),
 
   /** Whole-session write — the only path that changes messages. */
@@ -710,4 +712,35 @@ export const statsApi = {
   /** One card. A card with no chats answers with zeros rather than a 404. */
   character: (avatar: string) =>
     request<CharacterStats>(`/stats/characters/${encodeURIComponent(avatar)}`),
+};
+
+export const arenaApi = {
+  /**
+   * Every recorded round, oldest first.
+   *
+   * The whole history in one call, deliberately: the leaderboard is a *replay*, not an
+   * aggregate, so it needs the rounds in order anyway — and a personal benchmark measures
+   * in hundreds of rounds, not millions.
+   */
+  rounds: () => request<ArenaRound[]>('/arena/rounds'),
+
+  /** Record one finished round. The server mints the id and the timestamp. */
+  record: (round: {
+    characterId: string;
+    probe: string;
+    left: RoundSide;
+    right: RoundSide;
+    verdict: Verdict;
+  }) =>
+    request<ArenaRound>('/arena/rounds', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(round),
+    }),
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/arena/rounds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** Empty the history. Guarded by a two-click confirm in the panel, not here. */
+  clear: () => request<{ ok: true; removed: number }>('/arena/rounds', { method: 'DELETE' }),
 };

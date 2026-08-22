@@ -321,9 +321,9 @@
 }
 
 /*
- * The doors into the sub-apps — none of them is the primary one. The two character tools
- * share a row and Stats sits centred beneath, so the row shape says what they are: a pair
- * that do the same job, and one that does something else.
+ * The doors into the sub-apps — none of them is the primary one. Two rows of two: the
+ * character tools above, the measuring tools below, so the row shape says what each pair
+ * is for before you read the labels.
  */
 .start-screen__tool-links {
   display: grid;

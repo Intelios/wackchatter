@@ -15,6 +15,7 @@ import { initDataLocation } from './lib/location.ts';
 import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { degradedReason, isSwitching } from './lib/relocate.ts';
+import { handleArenaRoute } from './routes/arena.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';
 import { handleCharacterRoute } from './routes/characters.ts';
@@ -61,6 +62,7 @@ await ensureDefaultPreset();
 type RouteHandler = (request: Request, segments: string[]) => Promise<Response | null>;
 
 const API_ROUTES: Record<string, RouteHandler> = {
+  arena: handleArenaRoute,
   backgrounds: handleBackgroundRoute,
   backups: handleBackupRoute,
   characters: handleCharacterRoute,

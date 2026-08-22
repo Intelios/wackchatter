@@ -436,6 +436,22 @@ export function CoCreatorIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Model Arena — two panels facing each other across a divider.
+ *
+ * Not a trophy or a medal: the sub-app is a test bench first and a leaderboard second, and
+ * the icon should say "compare these two" rather than "win".
+ */
+export function ArenaIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="2" y="5" width="8" height="14" rx="1.5" />
+      <rect x="14" y="5" width="8" height="14" rx="1.5" />
+      <path d="M12 3v18" />
+    </svg>
+  );
+}
+
 /** Stats — a column chart with axes for library analytics. */
 export function StatsIcon({ className }: IconProps) {
   return (

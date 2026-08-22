@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { currentInfo, currentText, swipeCount } from '@shared/chat/message.ts';
-import { emptyStash } from '@shared/cocreator/stash.ts';
+import { emptyStash, setSlot } from '@shared/cocreator/stash.ts';
 import type { CocreatorSession, StashProvenance } from '@shared/types/cocreator.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from '@shared/types/cocreator.ts';
 import {
@@ -32,6 +32,7 @@ function session(overrides: Partial<CocreatorSession> = {}): CocreatorSession {
     settings: {},
     avatar: null,
     finishedAvatar: null,
+    seedAvatar: null,
     messages: [],
     ...overrides,
   };
@@ -102,6 +103,89 @@ describe('opening and closing', () => {
     expect(cocreatorReducer(withExchange(), { type: 'session/closed' })).toEqual(
       initialCocreatorState,
     );
+  });
+});
+
+describe('seeding from the Studio', () => {
+  /** A stash as `seedStash` builds one: pre-filed from the card, provenance 'seed'. */
+  function seededStash() {
+    return setSlot(emptyStash(), 'description', 'A healer of the deep wood.', {
+      ...provenance,
+      source: 'seed',
+    });
+  }
+
+  test('the seed lands as one user turn plus the whole stash, at the cost of one revision', () => {
+    const stash = seededStash();
+    const state = run(opened(), {
+      type: 'session/seeded',
+      id: 'seed1',
+      text: '### The character — Seraphina\n…',
+      stash,
+    });
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({ id: 'seed1', is_user: true });
+    expect(currentText(state.messages[0]!)).toContain('Seraphina');
+    expect(state.stash).toBe(stash);
+    expect(state.stash.description?.provenance.source).toBe('seed');
+    expect(state.revision).toBe(8);
+    expect(hasUnsavedWork(state)).toBe(true);
+    assertConsistent(state);
+  });
+
+  test('the seed turn is durable — a mid-flight save projects it, not transient state', () => {
+    const seeded = run(opened(), {
+      type: 'session/seeded',
+      id: 'seed1',
+      text: 'The character.',
+      stash: seededStash(),
+    });
+    const generating = run(seeded, { type: 'gen/started', mode: 'send', newId: 'a1' });
+
+    expect(toPersistedMessages(seeded)).toHaveLength(1);
+    expect(toPersistedMessages(generating)).toHaveLength(1);
+  });
+
+  test('a second dispatch is a no-op — the guard makes double-seeding impossible', () => {
+    const action = {
+      type: 'session/seeded',
+      id: 'seed2',
+      text: 'Again.',
+      stash: seededStash(),
+    } as const;
+    const first = run(opened(), action);
+
+    expect(cocreatorReducer(first, action)).toBe(first);
+  });
+
+  test('seeding is refused once the session has any content of its own', () => {
+    const withMessage = run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' });
+
+    expect(
+      cocreatorReducer(withMessage, {
+        type: 'session/seeded',
+        id: 'seed1',
+        text: 'The character.',
+        stash: seededStash(),
+      }),
+    ).toBe(withMessage);
+
+    const withStashOnly = run(opened(), {
+      type: 'stash/set',
+      slot: 'description',
+      text: 'Filed by hand.',
+      provenance,
+    });
+
+    expect(
+      cocreatorReducer(withStashOnly, {
+        type: 'session/seeded',
+        id: 'seed1',
+        text: 'The character.',
+        stash: seededStash(),
+      }),
+    ).toBe(withStashOnly);
   });
 });
 

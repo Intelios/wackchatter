@@ -13,12 +13,20 @@
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
+import type { CharacterDetail } from '@shared/types/card.ts';
 import type { MessageExtra } from '@shared/types/chat.ts';
 import type { CocreatorSaveSnapshot, CocreatorSession } from '@shared/types/cocreator.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
-import type { RefObject } from 'react';
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { cocreatorApi, presetApi, streamGenerate } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
@@ -26,6 +34,7 @@ import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
 import { buildDesignPrompt } from './prompt.ts';
+import { renderSeedTurn, seedStash } from './seed.ts';
 import { resolveCocreatorSettings } from './settings.ts';
 import {
   type CocreatorAction,
@@ -65,6 +74,14 @@ export interface UseCocreatorOptions {
    */
   exampleBlockRef: RefObject<string>;
   streamingFps: number;
+  /**
+   * The card the Studio handed off, when this desk is the arrival side of that handoff.
+   *
+   * Seeded as part of adopting the session — never re-applied afterwards, so a user who
+   * deletes the seed turn and empties the stash has genuinely un-seeded the session. The
+   * desk is keyed on `session.id`, so a new seed can only ever mean a new desk.
+   */
+  seed?: CharacterDetail | null;
 }
 
 export interface UseCocreator {
@@ -109,6 +126,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     tokenizerEncoding,
     exampleBlockRef,
     streamingFps,
+    seed,
   } = options;
 
   const [state, dispatch] = useReducer(cocreatorReducer, initialCocreatorState);
@@ -188,10 +206,22 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   const persistence = persistenceRef.current;
 
   // Adopting the loaded session is keyed on its id: re-running on every field change would
-  // reset the transcript out from under an edit typed while a save was in flight.
+  // reset the transcript out from under an edit typed while a save was in flight. The seed
+  // rides the same key for the same reason, and its dispatch right after the load is what
+  // makes it survive StrictMode's double-invoked effects: load → seed → load (resets to the
+  // still-empty server doc) → seed again, which the reducer's guard collapses to one turn.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the session id only
   useEffect(() => {
     dispatch({ type: 'session/loaded', session });
+    if (seed) {
+      const id = crypto.randomUUID();
+      dispatch({
+        type: 'session/seeded',
+        id,
+        text: renderSeedTurn(seed),
+        stash: seedStash(seed, id),
+      });
+    }
   }, [session.id]);
 
   // The override is endpoint-bound. If an inherited default moves the session to another

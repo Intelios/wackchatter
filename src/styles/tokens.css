@@ -132,6 +132,16 @@
   --wc-shadow-text-strong: 0 1px 3px rgb(0 0 0 / 0.9), 0 0 10px rgb(0 0 0 / 0.75);
   /* A barely-there lift, for a panel inside a panel. */
   --wc-tint: rgb(255 255 255 / 0.03);
+  /*
+   * Withheld. Used where something is deliberately not being shown yet — a sealed blind
+   * contender, a rating with too few rounds behind it. A texture rather than a colour
+   * because it has to survive greyscale and sit under text either way.
+   */
+  --wc-hatch: repeating-linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.04) 0 6px,
+    transparent 6px 12px
+  );
 
   /* Spacing scale */
   --wc-space-1: 4px;
@@ -155,6 +165,15 @@
   --wc-text-lg: 16px;
   /* Display size — the fallback initial on a persona card. */
   --wc-text-xl: 24px;
+  /*
+   * Two sizes above the UI scale, for the Arena's masthead and its rank numerals.
+   *
+   * A comparison screen needs one thing that reads as a *name* rather than a label — who is
+   * in this corner — and 16px semibold cannot do that next to two columns of prose. No new
+   * family: this is the app's one face at a weight and size it was not being asked for.
+   */
+  --wc-text-2xl: 20px;
+  --wc-text-display: 30px;
 
   /* Control and icon sizes. Named by role, not by pixel value, so a denser or
      roomier pass is one edit here. */
@@ -216,6 +235,22 @@
   --wc-stats-columns-height: 120px;
   --wc-stats-stagger: 55ms;
   --wc-stats-draw: 900ms;
+  --wc-arena-canvas-width: 1240px;
+  /* A column narrower than this stops being readable prose and starts being a ticker
+     tape, which is the one thing a side-by-side comparison must not do. */
+  --wc-arena-column-min: 280px;
+  --wc-arena-column-height: 420px;
+  --wc-arena-avatar: 40px;
+  /* The card in the masthead's seam: the thing both contenders are being judged on. */
+  --wc-arena-medallion: 72px;
+  /* A masked contender's plate. Big enough to be the column's name while it has none. */
+  --wc-arena-seal: 32px;
+  /*
+   * The floor for one side of a blind round. Below two of these the duel stops being
+   * readable prose side by side, and the Benchmark swaps to one pane at a time — squashing
+   * two replies into 150px each would make the vote a guess about layout, not writing.
+   */
+  --wc-arena-duel-min: 300px;
   --wc-letter-spacing: 0.08em;
   --wc-code-line-height: 1.6;
   --wc-glass-blur: 20px;

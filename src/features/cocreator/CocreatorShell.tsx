@@ -1,5 +1,5 @@
 import type { Connection } from '@shared/providers/types.ts';
-import type { CharacterSummary } from '@shared/types/card.ts';
+import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { CocreatorSession, CocreatorSessionSummary } from '@shared/types/cocreator.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
@@ -7,7 +7,7 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon } from '../../layout/icons.tsx';
-import { cocreatorApi } from '../../lib/api.ts';
+import { characterApi, cocreatorApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { CocreatorDesk } from './CocreatorDesk.tsx';
 import { CocreatorSessions } from './CocreatorSessions.tsx';
@@ -32,6 +32,12 @@ interface CocreatorShellProps {
   onExit: () => Promise<void>;
   /** Leave for the Studio, opened on the card this session produced. */
   onFinished: (avatar: string) => void;
+  /**
+   * The card the Studio just handed off. Entering with one creates a seeded session instead
+   * of showing the list: the card becomes the transcript's opening turn and the stash's
+   * starting contents, so Finish can produce a complete variant of it.
+   */
+  seedAvatar?: string | null;
   registerPersistence: (controls: PersistenceControls | null) => void;
 }
 
@@ -56,10 +62,13 @@ export function CocreatorShell({
   glass,
   onExit,
   onFinished,
+  seedAvatar,
   registerPersistence,
 }: CocreatorShellProps) {
   const [sessions, setSessions] = useState<CocreatorSessionSummary[]>([]);
   const [session, setSession] = useState<CocreatorSession | null>(null);
+  /** The handed-off card itself, fetched once so the desk can seed from it. */
+  const [seed, setSeed] = useState<CharacterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -103,6 +112,9 @@ export function CocreatorShell({
     setLoading(true);
     setError(null);
     try {
+      // Opening anything by hand ends the handoff's context: a blank session created next
+      // must stay blank, not inherit a seed that was only ever meant for the arrival.
+      setSeed(null);
       setSession(await cocreatorApi.get(id));
       setStatus('');
     } catch (err) {
@@ -116,12 +128,44 @@ export function CocreatorShell({
     setError(null);
     try {
       const created = await cocreatorApi.create();
+      setSeed(null);
       setSession(created);
       await refresh();
     } catch (err) {
       setError((err as Error).message);
     }
   }, [refresh]);
+
+  /*
+   * The Studio's handoff. Keyed on the avatar, so arriving with one seeds exactly once: the
+   * Co-Creator is otherwise entered on the sessions list, and this must not re-seed after
+   * the user has navigated away. A failed fetch or create leaves them on that list with the
+   * error showing — never a silent blank session pretending to be the one they asked for.
+   */
+  useEffect(() => {
+    if (!seedAvatar) return;
+    let cancelled = false;
+    setError(null);
+    setLoading(true);
+    void characterApi
+      .get(seedAvatar)
+      .then(async (detail) => {
+        const created = await cocreatorApi.create(detail.name.trim() || undefined, seedAvatar);
+        if (cancelled) return;
+        setSeed(detail);
+        setSession(created);
+        await refresh();
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [seedAvatar, refresh]);
 
   const remove = useCallback(
     async (id: string) => {
@@ -149,6 +193,7 @@ export function CocreatorShell({
       return;
     }
     setSession(null);
+    setSeed(null);
     setStatus('');
     try {
       await refresh();
@@ -211,6 +256,7 @@ export function CocreatorShell({
           <CocreatorDesk
             key={session.id}
             session={session}
+            seed={seed}
             defaults={defaults}
             connections={connections}
             activeConnectionId={activeConnectionId}

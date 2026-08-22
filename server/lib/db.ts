@@ -10,7 +10,12 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { detectCloudProvider } from './location.ts';
 import { PATHS } from './paths.ts';
 
-const SCHEMA_VERSION = 5;
+/**
+ * Bumped whenever the schema below grows. Exported because the migration tests assert that
+ * an upgraded database is stamped with the CURRENT version — a literal in each test would
+ * only pin that someone remembered to edit three files.
+ */
+export const SCHEMA_VERSION = 7;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -71,7 +76,11 @@ CREATE TABLE IF NOT EXISTS cocreator_sessions (
   avatar          TEXT,
   -- The card this session produced, once Finish has run. Kept rather than deleting the
   -- session: the transcript is the reasoning behind the card and is worth going back to.
-  finished_avatar TEXT
+  finished_avatar TEXT,
+  -- The card this session was seeded from (the Studio handoff), or NULL. Write-once at
+  -- creation: the whole-session update statement never mentions it, so saves preserve it,
+  -- and only the reference cascade (rename/delete) or row deletion ever changes it.
+  seed_avatar     TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cocreator_sessions_modified
@@ -93,6 +102,40 @@ CREATE TABLE IF NOT EXISTS cocreator_messages (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cocreator_messages_order
   ON cocreator_messages(session_id, position);
+
+-- Model Arena: one row per completed blind round.
+--
+-- Both sides live in one row rather than two, because a round is the unit of evidence:
+-- half a comparison says nothing, and a schema that can store one is a schema that will.
+-- Written once and never updated, so there is no revision column — an abandoned round is
+-- never recorded at all.
+--
+-- Deliberately NOT derived into a ratings table. The leaderboard replays these rows in
+-- order, which is what makes a rating impossible to drift from the rounds behind it and
+-- lets the K-factor change without invalidating history. Same rule as Stats.
+CREATE TABLE IF NOT EXISTS arena_rounds (
+  id             TEXT    PRIMARY KEY,
+  created        INTEGER NOT NULL,
+  -- The card PNG filename. Not a foreign key: a deleted card must not take its rounds
+  -- with it, the way a deleted character keeps its Stats history.
+  character_id   TEXT    NOT NULL,
+  probe          TEXT    NOT NULL,
+  -- Contender pool ids resolve against settings for a name; the model and provider are
+  -- facts about what actually ran and are what an unresolvable id falls back to.
+  left_id        TEXT    NOT NULL,
+  left_model     TEXT    NOT NULL,
+  left_provider  TEXT    NOT NULL,
+  left_text      TEXT    NOT NULL,
+  right_id       TEXT    NOT NULL,
+  right_model    TEXT    NOT NULL,
+  right_provider TEXT    NOT NULL,
+  right_text     TEXT    NOT NULL,
+  -- left | right | tie | bad. Never null.
+  verdict        TEXT    NOT NULL
+);
+
+-- Ascending, because chronological replay is the only read the leaderboard makes.
+CREATE INDEX IF NOT EXISTS idx_arena_rounds_created ON arena_rounds(created ASC);
 `;
 
 export function createSchema(database: Database): void {
@@ -118,6 +161,15 @@ export function createSchema(database: Database): void {
   // no memory may reveal them.
   if (!messageColumns.some((column) => column.name === 'hidden_by')) {
     database.exec('ALTER TABLE messages ADD COLUMN hidden_by TEXT');
+  }
+
+  // The card a Co-Creator session was seeded from. NULL for every session that started
+  // blank, which is all of them before the Studio handoff existed.
+  const sessionColumns = database
+    .query<{ name: string }, []>('PRAGMA table_info(cocreator_sessions)')
+    .all();
+  if (!sessionColumns.some((column) => column.name === 'seed_avatar')) {
+    database.exec('ALTER TABLE cocreator_sessions ADD COLUMN seed_avatar TEXT');
   }
 
   database

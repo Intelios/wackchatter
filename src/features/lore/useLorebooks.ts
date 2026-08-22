@@ -37,6 +37,15 @@ interface UseLorebooksOptions {
 export interface UseLorebooks {
   /** Sources without a persona book, retained for callers that do not have a persona. */
   sources: WorldInfoSource[];
+  /**
+   * A book this card wants is still being fetched, so `sources` is incomplete.
+   *
+   * The chat never needed this: a human is typing, which is all the delay a local fetch
+   * ever required. The Arena's blind round generates with nobody in the loop, and a round
+   * that ran before the card's linked book arrived would be benchmarking models against
+   * lore the real chat would have given them.
+   */
+  pending: boolean;
   active: ActiveBook[];
   /** Add the active persona's book ahead of every other source, with id-based deduplication. */
   sourcesForPersona: (id?: string) => WorldInfoSource[];
@@ -187,11 +196,13 @@ export function useLorebooks({
     [],
   );
 
+  const pending = useMemo(() => wanted.some((id) => !(id in loaded)), [wanted, loaded]);
+
   const active = useMemo(() => toActive(sources), [sources, toActive]);
   const activeForPersona = useCallback(
     (id?: string) => toActive(sourcesForPersona(id)),
     [sourcesForPersona, toActive],
   );
 
-  return { sources, active, sourcesForPersona, activeForPersona, invalidate };
+  return { sources, pending, active, sourcesForPersona, activeForPersona, invalidate };
 }

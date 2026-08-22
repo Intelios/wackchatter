@@ -1,6 +1,8 @@
 import { greetingTexts } from '@shared/chat/message.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
+import type { ArenaSettings } from '@shared/types/arena.ts';
+import { DEFAULT_ARENA } from '@shared/types/arena.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { ChatBackupSummary, Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
@@ -28,6 +30,7 @@ import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { ArenaShell } from './features/arena/ArenaShell.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatContext } from './features/chat/ChatContext.tsx';
@@ -67,9 +70,11 @@ import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
 export function App() {
-  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats'>('app');
+  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
+  /** The card the Studio just handed off, seeded into a new session on arrival in the Co-Creator. */
+  const [cocreatorSeedAvatar, setCocreatorSeedAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
 
@@ -375,6 +380,7 @@ export function App() {
         : null;
 
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
+  const arenaSettings: ArenaSettings = settings?.arena ?? DEFAULT_ARENA;
 
   const worldInfoSettings: WorldInfoSettings = settings?.worldInfo ?? DEFAULT_WI_SETTINGS;
   const guidanceSettings: GuidanceSettings = settings?.guidance ?? DEFAULT_GUIDANCE;
@@ -925,8 +931,29 @@ export function App() {
       setError((err as Error).message);
       return;
     }
+    // Entering by hand opens the sessions list. Only the Studio's handoff names a card, and
+    // one the user has already left behind must not seed a later, unrelated entry.
+    setCocreatorSeedAvatar(null);
     setView('cocreator');
   }, [chat, flushRightPanel]);
+
+  /**
+   * The Studio's half of the handoff: leave for the Co-Creator, seeded on the open card.
+   *
+   * The workbench is unmounting, so its queue drains first and a failed flush aborts — the
+   * same bargain every navigation edge makes. The Co-Creator reads the card from disk on the
+   * far side, so what it seeds from is what this flush just landed.
+   */
+  const enterCoCreatorFromStudio = useCallback(async (avatar: string) => {
+    try {
+      await studioPersistence.current?.flush();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setCocreatorSeedAvatar(avatar);
+    setView('cocreator');
+  }, []);
 
   /**
    * Finish: leave the Co-Creator for the Studio, on the card it just made.
@@ -951,6 +978,8 @@ export function App() {
       setError((err as Error).message);
       return;
     }
+    // Cleared, or entering the Co-Creator again later would seed from the handed-off card.
+    setCocreatorSeedAvatar(null);
     setView('app');
     void refresh();
   }, [refresh]);
@@ -976,6 +1005,30 @@ export function App() {
 
   /** Read-only throughout, so there is nothing of its own to flush on the way out. */
   const exitStats = useCallback(() => {
+    setView('app');
+  }, []);
+
+  /** The fourth of the set, on the same terms: it suspends the chat, so pending work lands. */
+  const enterArena = useCallback(async () => {
+    try {
+      chat.abort();
+      chat.cancelSummary();
+      chat.cancelMemoryRun();
+      await chat.flushSaves();
+      await flushRightPanel();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setView('arena');
+  }, [chat, flushRightPanel]);
+
+  /*
+   * Nothing of its own to flush either. The run log is session work, and a blind verdict is
+   * written the moment it is cast — so unlike the two creator areas there is no queue that
+   * could still be holding something on the way out.
+   */
+  const exitArena = useCallback(() => {
     setView('app');
   }, []);
 
@@ -1050,6 +1103,7 @@ export function App() {
     if (view === 'studio') return 'Character Creator Studio';
     if (view === 'cocreator') return 'Character Co-Creator';
     if (view === 'stats') return 'Stats';
+    if (view === 'arena') return 'Model Arena';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
   }, [view, active, chat.state.title]);
@@ -1059,6 +1113,34 @@ export function App() {
   }, [documentTitle]);
 
   const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
+
+  if (view === 'arena') {
+    return (
+      <ArenaShell
+        settings={arenaSettings}
+        onSettingsChange={(patch) => void patchSettings({ arena: { ...arenaSettings, ...patch } })}
+        connections={settings?.connections ?? []}
+        presets={presets}
+        activePresetId={presetId}
+        activePreset={preset}
+        characters={characters}
+        personas={personas}
+        books={books}
+        globalLorebookIds={globalBookIds}
+        worldInfoSettings={worldInfoSettings}
+        globalVariables={settings?.variables ?? {}}
+        regexScripts={regexScripts}
+        hiddenTags={hiddenTags}
+        tokenizerEncoding={settings?.tokenizerEncoding}
+        streamingFps={Number(settings?.streamingFps ?? 30)}
+        backgroundUrl={resolveBackgroundUrl(settings?.background)}
+        backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+        backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+        glass={settings?.glass !== false}
+        onExit={exitArena}
+      />
+    );
+  }
 
   if (view === 'stats') {
     return (
@@ -1093,6 +1175,7 @@ export function App() {
         glass={settings?.glass !== false}
         onExit={exitCoCreator}
         onFinished={finishCoCreator}
+        seedAvatar={cocreatorSeedAvatar}
         registerPersistence={(controls) => {
           cocreatorPersistence.current = controls;
         }}
@@ -1117,7 +1200,9 @@ export function App() {
           void patchSettings({ studioInspectorCollapsed: collapsed })
         }
         onExit={exitStudio}
-        onOpenCoCreator={() => void enterCoCreator()}
+        onOpenCoCreator={(avatar) =>
+          avatar ? void enterCoCreatorFromStudio(avatar) : void enterCoCreator()
+        }
         initialAvatar={studioInitialAvatar}
         registerPersistence={(controls) => {
           studioPersistence.current = controls;
@@ -1353,6 +1438,7 @@ export function App() {
             onOpenStudio={() => void enterStudio()}
             onOpenCoCreator={() => void enterCoCreator()}
             onOpenStats={() => void enterStats()}
+            onOpenArena={() => void enterArena()}
           />
         )}
       </ErrorBoundary>
