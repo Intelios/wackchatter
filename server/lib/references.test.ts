@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createBlankCard, mergeCardData, readCard, writeCard } from './card.ts';
 import { updateWorldLinks, updateWorldLinksRecoverable } from './characters.ts';
 import { resetChatStore } from './chats.ts';
-import { resetCocreatorStore } from './cocreator.ts';
+import { cocreatorStore, resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { DEFAULT_DATA_DIR, ensureDataDirs, setDataDir } from './paths.ts';
 import {
@@ -173,6 +173,19 @@ describe('character cascades', () => {
 
     expect(getSettings().characterRatings).toEqual({ 'Kept.png': 2 });
     expect(getSettings().dialogueColors.characters).toEqual({});
+  });
+
+  test('a rename repoints sessions seeded from the card, and a delete detaches them', () => {
+    const seeded = cocreatorStore().createSession({ seedAvatar: 'Old.png' }).id;
+
+    const rollback = cascadeCharacterRename('Old.png', 'New.png');
+    expect(cocreatorStore().getSession(seeded)?.seedAvatar).toBe('New.png');
+
+    rollback();
+    expect(cocreatorStore().getSession(seeded)?.seedAvatar).toBe('Old.png');
+
+    cascadeCharacterDelete('Old.png');
+    expect(cocreatorStore().getSession(seeded)?.seedAvatar).toBeNull();
   });
 
   test('an unrated character leaves settings untouched', () => {

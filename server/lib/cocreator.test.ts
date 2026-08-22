@@ -68,6 +68,28 @@ describe('creating and reading', () => {
     expect(session.settings).toEqual({});
     expect(session.avatar).toBeNull();
     expect(session.finishedAvatar).toBeNull();
+    expect(session.seedAvatar).toBeNull();
+  });
+
+  test('a seeded session records its seed at creation', () => {
+    const session = store.createSession({ title: 'Seraphina', seedAvatar: 'Seraphina.png' });
+
+    expect(session.title).toBe('Seraphina');
+    expect(session.seedAvatar).toBe('Seraphina.png');
+  });
+
+  test('whole-session and metadata saves preserve the seed — it is write-once', () => {
+    const created = store.createSession({ seedAvatar: 'Seraphina.png' });
+    saved(
+      store.replaceSession(created.id, {
+        revision: 1,
+        stash: filledStash(),
+        messages: [message({ mes: 'Hi.' })],
+      }),
+    );
+    saved(store.patchSession(created.id, { revision: 2, title: 'Renamed by the desk' }));
+
+    expect(store.getSession(created.id)!.seedAvatar).toBe('Seraphina.png');
   });
 
   test('stash, examples and settings round-trip through their JSON columns', () => {
@@ -492,6 +514,73 @@ describe('migration', () => {
     createSchema(database);
 
     expect(store.getSession(created.id)?.title).toBe('Survivor');
+  });
+
+  test('a v6 database gains the seed column, and its sessions read as unseeded', () => {
+    const legacy = new Database(':memory:');
+    legacy.exec(`
+      CREATE TABLE cocreator_sessions (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, created INTEGER NOT NULL,
+        modified INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
+        stash TEXT NOT NULL DEFAULT '{"alternate_greetings":[],"tags":[]}',
+        examples TEXT NOT NULL DEFAULT '{"cards":[],"fields":{}}',
+        settings TEXT NOT NULL DEFAULT '{}', avatar TEXT, finished_avatar TEXT
+      );
+      CREATE TABLE cocreator_messages (
+        session_id TEXT NOT NULL REFERENCES cocreator_sessions(id) ON DELETE CASCADE,
+        id TEXT NOT NULL, position INTEGER NOT NULL, is_user INTEGER NOT NULL,
+        swipe_id INTEGER NOT NULL DEFAULT 0, swipes TEXT NOT NULL, swipe_info TEXT NOT NULL,
+        PRIMARY KEY (session_id, id)
+      ) WITHOUT ROWID;
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta VALUES ('schema_version', '6');
+      INSERT INTO cocreator_sessions (id, title, created, modified, revision)
+        VALUES ('s1', 'Old session', 1, 2, 3);
+    `);
+
+    createSchema(legacy);
+
+    const migrated = createCocreatorStore(legacy);
+    const old = migrated.getSession('s1')!;
+    expect(old.title).toBe('Old session');
+    expect(old.seedAvatar).toBeNull();
+    // New writes know the column, and reassigning reaches the pre-existing rows.
+    const fresh = migrated.createSession({ seedAvatar: 'Mika.png' });
+    expect(migrated.reassignSeedCard('Mika.png', 'Mika2.png')).toBe(1);
+    expect(migrated.getSession(fresh.id)!.seedAvatar).toBe('Mika2.png');
+  });
+});
+
+describe('reassigning the seed card', () => {
+  function seededSession(seedAvatar: string): string {
+    return store.createSession({ seedAvatar }).id;
+  }
+
+  test('a rename repoints every session seeded from the old card', () => {
+    const seeded = seededSession('Mika.png');
+    const blank = store.createSession({}).id;
+
+    expect(store.reassignSeedCard('Mika.png', 'Mika2.png')).toBe(1);
+
+    expect(store.getSession(seeded)?.seedAvatar).toBe('Mika2.png');
+    expect(store.getSession(blank)?.seedAvatar).toBeNull();
+  });
+
+  test('a null detaches the seed rather than naming a card nothing can load', () => {
+    const seeded = seededSession('Mika.png');
+
+    expect(store.reassignSeedCard('Mika.png', null)).toBe(1);
+
+    expect(store.getSession(seeded)?.seedAvatar).toBeNull();
+  });
+
+  test('the session keeps its revision, so an open client is not forced into a conflict', () => {
+    const seeded = seededSession('Mika.png');
+    const before = store.getSession(seeded)!.revision;
+
+    store.reassignSeedCard('Mika.png', 'Mika2.png');
+
+    expect(store.getSession(seeded)?.revision).toBe(before);
   });
 });
 

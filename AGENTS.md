@@ -292,9 +292,12 @@ byte-identically. The quirks are load-bearing and each has a named test.
   the head sentinel is load-bearing for whole-word matching.
 - `vectorized: true` **excludes** the entry; `sticky`/`cooldown`/`delay` only ever
   suppress — carried, unread.
-- The client never sends the server a whole `character_book`: `mergeCardData`'s spread is
-  shallow and replaces it wholesale; the per-uid endpoints exist so a stale tab cannot
-  write a mass deletion.
+- The client never sends the server a whole `character_book` *when editing an established
+  card*: `mergeCardData`'s spread is shallow and replaces it wholesale; the per-uid endpoints
+  exist so a stale tab cannot write a mass deletion. The one exception is the Co-Creator's
+  Finish for a seeded session, which copies the seed card's book onto a card it created
+  seconds earlier in the same flow from a fresh read — there is no established card to
+  clobber, so the hazard the rule exists for cannot occur (`finish.ts`).
 
 **Personas** (`server/lib/personas.ts`)
 - A lorebook's filename **is** its name (cards link via `extensions.world`, so renaming
@@ -350,13 +353,19 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 ## UI conventions
 
 - **The four sub-apps replace the chat shell** — not modals or panels; all four are
-  reached only from the Start screen. Finish hands off from the Co-Creator to the Studio
-  one-way, no path back. Entering any of them flushes the save queue first and a failed
-  flush aborts the transition rather than hiding unsaved work (for Stats that is also
-  what makes the numbers right). Only the two creator areas register persistence.
+  reached only from the Start screen. The two creator areas hand off to each other in both
+  directions: Finish leaves the Co-Creator for the Studio opened on the card it produced,
+  and the Studio workbench's "Design with an assistant" enters the Co-Creator seeded from
+  the open card (the library's button still starts a blank session). Entering any of them
+  flushes the save queue first and a failed flush aborts the transition rather than hiding
+  unsaved work (for Stats that is also what makes the numbers right). Only the two creator
+  areas register persistence.
 - **In the Co-Creator the model never writes a field** — it proposes in labelled fenced
-  blocks and every slot got there via "Use as". Everything the model sees is in the
-  readable transcript (the stash never reaches a prompt); block affordances appear only
+  blocks and every slot got there via "Use as" or arrived with the Studio seed
+  (`provenance.source: 'seed'`). Everything the model sees is in the readable transcript
+  (the stash never reaches a prompt; the seed card arrives as a visible opening user turn —
+  `seed.ts`, dispatched with `session/loaded` so it survives StrictMode and never re-seeds
+  a session the user has emptied); block affordances appear only
   on a settled message. Its re-roll is an overswipe — appends a take, never displaces;
   do not add a destructive regenerate. Its streaming is its own setting
   (`AppSettings.coCreator.streaming`, default true), not the preset's.
@@ -366,6 +375,15 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   with the client's own next revision; pinned by tests). `finishedAvatar` is a real
   document field that rides the whole-session snapshot — the only way Finish's
   recording reaches the server.
+- **`seedAvatar` is write-once at creation.** The Studio handoff records which card the
+  session was seeded from; the whole-session UPDATE statement never names the column, so
+  every later save preserves it by omission. Renames follow the reference cascade
+  (`reassignSeedCard`, deliberately no revision bump — same rule as the examples);
+  deleting the seed card detaches it while the transcript keeps the seed text, and Finish
+  then degrades to a flat card rather than failing. Finish copies the seed's embedded
+  book, extensions (`fav` reset, like duplicate) and identity fields onto the new Drafts
+  card — the carry-over is disjoint from `toCardPatch`, so a stash slot the user cleared
+  stays cleared.
 - **No blocking modals.** Destructive actions use a two-click confirm in place. Disabled
   beats refused: a blocked entry is `disabled` with a `disabledReason` that becomes its
   `title` — no toast system.

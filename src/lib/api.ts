@@ -431,11 +431,12 @@ export const cocreatorApi = {
 
   get: (id: string) => request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}`),
 
-  create: (title?: string) =>
+  /** `seedAvatar` is write-once: only creation records it, never a later save. */
+  create: (title?: string, seedAvatar?: string) =>
     request<CocreatorSession>('/cocreator', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, seedAvatar: seedAvatar ?? null }),
     }),
 
   /** Whole-session write — the only path that changes messages. */

@@ -73,6 +73,8 @@ export function App() {
   const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
+  /** The card the Studio just handed off, seeded into a new session on arrival in the Co-Creator. */
+  const [cocreatorSeedAvatar, setCocreatorSeedAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
 
@@ -929,8 +931,29 @@ export function App() {
       setError((err as Error).message);
       return;
     }
+    // Entering by hand opens the sessions list. Only the Studio's handoff names a card, and
+    // one the user has already left behind must not seed a later, unrelated entry.
+    setCocreatorSeedAvatar(null);
     setView('cocreator');
   }, [chat, flushRightPanel]);
+
+  /**
+   * The Studio's half of the handoff: leave for the Co-Creator, seeded on the open card.
+   *
+   * The workbench is unmounting, so its queue drains first and a failed flush aborts — the
+   * same bargain every navigation edge makes. The Co-Creator reads the card from disk on the
+   * far side, so what it seeds from is what this flush just landed.
+   */
+  const enterCoCreatorFromStudio = useCallback(async (avatar: string) => {
+    try {
+      await studioPersistence.current?.flush();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    setCocreatorSeedAvatar(avatar);
+    setView('cocreator');
+  }, []);
 
   /**
    * Finish: leave the Co-Creator for the Studio, on the card it just made.
@@ -955,6 +978,8 @@ export function App() {
       setError((err as Error).message);
       return;
     }
+    // Cleared, or entering the Co-Creator again later would seed from the handed-off card.
+    setCocreatorSeedAvatar(null);
     setView('app');
     void refresh();
   }, [refresh]);
@@ -1150,6 +1175,7 @@ export function App() {
         glass={settings?.glass !== false}
         onExit={exitCoCreator}
         onFinished={finishCoCreator}
+        seedAvatar={cocreatorSeedAvatar}
         registerPersistence={(controls) => {
           cocreatorPersistence.current = controls;
         }}
@@ -1174,7 +1200,9 @@ export function App() {
           void patchSettings({ studioInspectorCollapsed: collapsed })
         }
         onExit={exitStudio}
-        onOpenCoCreator={() => void enterCoCreator()}
+        onOpenCoCreator={(avatar) =>
+          avatar ? void enterCoCreatorFromStudio(avatar) : void enterCoCreator()
+        }
         initialAvatar={studioInitialAvatar}
         registerPersistence={(controls) => {
           studioPersistence.current = controls;

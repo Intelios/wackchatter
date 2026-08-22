@@ -4,7 +4,7 @@ import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
-import { ChevronLeftIcon, DownloadIcon } from '../../layout/icons.tsx';
+import { ChevronLeftIcon, CoCreatorIcon, DownloadIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { downloadUrl } from '../../lib/download.ts';
@@ -25,7 +25,11 @@ interface StudioShellProps {
   inspectorCollapsed: boolean;
   onInspectorCollapsedChange: (collapsed: boolean) => void;
   onExit: () => Promise<void>;
-  onOpenCoCreator: () => void;
+  /**
+   * Enter the Co-Creator. With an avatar — the workbench button — the new session is seeded
+   * from that card; without one — the library button — it starts blank.
+   */
+  onOpenCoCreator: (avatar?: string) => void;
   /** Open the workbench on this card rather than the library — the Co-Creator's handoff. */
   initialAvatar?: string | null;
   registerPersistence: (controls: PersistenceControls | null) => void;
@@ -205,6 +209,15 @@ export function StudioShell({
           {status ? <span className="studio-shell__status">{status}</span> : null}
           {detail ? (
             <>
+              <button
+                type="button"
+                className="wc-button wc-button--ghost"
+                title="Continue this card with the design assistant, seeded from it"
+                onClick={() => onOpenCoCreator(detail.avatar)}
+              >
+                <CoCreatorIcon />
+                Design with an assistant
+              </button>
               <button
                 type="button"
                 className="wc-button wc-button--ghost"

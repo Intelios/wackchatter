@@ -15,7 +15,7 @@ import { PATHS } from './paths.ts';
  * an upgraded database is stamped with the CURRENT version — a literal in each test would
  * only pin that someone remembered to edit three files.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -76,7 +76,11 @@ CREATE TABLE IF NOT EXISTS cocreator_sessions (
   avatar          TEXT,
   -- The card this session produced, once Finish has run. Kept rather than deleting the
   -- session: the transcript is the reasoning behind the card and is worth going back to.
-  finished_avatar TEXT
+  finished_avatar TEXT,
+  -- The card this session was seeded from (the Studio handoff), or NULL. Write-once at
+  -- creation: the whole-session update statement never mentions it, so saves preserve it,
+  -- and only the reference cascade (rename/delete) or row deletion ever changes it.
+  seed_avatar     TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cocreator_sessions_modified
@@ -157,6 +161,15 @@ export function createSchema(database: Database): void {
   // no memory may reveal them.
   if (!messageColumns.some((column) => column.name === 'hidden_by')) {
     database.exec('ALTER TABLE messages ADD COLUMN hidden_by TEXT');
+  }
+
+  // The card a Co-Creator session was seeded from. NULL for every session that started
+  // blank, which is all of them before the Studio handoff existed.
+  const sessionColumns = database
+    .query<{ name: string }, []>('PRAGMA table_info(cocreator_sessions)')
+    .all();
+  if (!sessionColumns.some((column) => column.name === 'seed_avatar')) {
+    database.exec('ALTER TABLE cocreator_sessions ADD COLUMN seed_avatar TEXT');
   }
 
   database

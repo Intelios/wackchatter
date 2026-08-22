@@ -284,4 +284,12 @@ describe('repairing a stored stash', () => {
 
     expect(normalizeStash(JSON.parse(JSON.stringify(stash)))).toEqual(stash);
   });
+
+  test("a 'seed' provenance survives normalisation rather than degrading to 'message'", () => {
+    let stash = setSlot(emptyStash(), 'scenario', 'A rain-soaked port.', prov({ source: 'seed' }));
+    stash = setSlot(stash, 'tags', 'nautical, quiet', prov({ source: 'seed' }));
+
+    expect(stash.scenario!.provenance.source).toBe('seed');
+    expect(normalizeStash(JSON.parse(JSON.stringify(stash)))).toEqual(stash);
+  });
 });

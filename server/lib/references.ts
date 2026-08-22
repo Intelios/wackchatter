@@ -45,6 +45,7 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
     // Sessions hold the same avatar filenames the example sets do, so the rename has to
     // reach both or the identical reference is repaired in one place and dangles in the other.
     cocreatorStore().reassignExampleCard(oldAvatar, newAvatar);
+    cocreatorStore().reassignSeedCard(oldAvatar, newAvatar);
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
@@ -82,6 +83,9 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
         () => {
           cocreatorStore().reassignExampleCard(newAvatar, oldAvatar);
         },
+        () => {
+          cocreatorStore().reassignSeedCard(newAvatar, oldAvatar);
+        },
       ],
       WHAT,
     );
@@ -104,8 +108,11 @@ export function cascadeCharacterDelete(avatar: string): void {
   try {
     chatStore().deleteChatsForCharacter(avatar);
     // Detached, not snapshotted: the session keeps its transcript, it just stops naming a
-    // card that no longer exists — the same thing the example sets do above.
+    // card that no longer exists — the same thing the example sets do above. The seed turns
+    // stay in the transcript (they are self-contained text), so only Finish's lorebook copy
+    // loses anything, and it degrades rather than fails.
     cocreatorStore().reassignExampleCard(avatar, null);
+    cocreatorStore().reassignSeedCard(avatar, null);
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });

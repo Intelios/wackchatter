@@ -63,7 +63,11 @@ export interface StashProvenance {
   model?: string;
   /** ISO, from shared/chat/message.ts `timestamp()`. Empty when not recorded. */
   at: string;
-  source: 'block' | 'message' | 'selection';
+  /**
+   * 'seed' is the Studio handoff: the entry arrived with the card the session was seeded
+   * from, not out of anything the model wrote. It is the one source no model produced.
+   */
+  source: 'block' | 'message' | 'selection' | 'seed';
   /** The label as written, when the block it came from named no known slot. */
   label?: string;
 }
@@ -192,6 +196,14 @@ export interface CocreatorSession {
   avatar: string | null;
   /** The card Finish produced, or null. Kept so the session stays the card's reasoning. */
   finishedAvatar: string | null;
+  /**
+   * The card this session was seeded from (the Studio's "Design with an assistant" handoff),
+   * or null. Write-once at creation: the desk never edits it, so it is deliberately NOT part
+   * of the save snapshot — whole-session saves preserve the column. A rename follows the
+   * reference cascade; deleting the seed card detaches it (the transcript keeps the seed
+   * text, which is self-contained) and Finish degrades to a flat card.
+   */
+  seedAvatar: string | null;
   messages: ChatMessage[];
 }
 

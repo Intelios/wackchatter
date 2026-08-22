@@ -1,7 +1,7 @@
 import { currentInfo, currentText, timestamp } from '@shared/chat/message.ts';
 import { isSlotFilled } from '@shared/cocreator/stash.ts';
 import type { Connection } from '@shared/providers/types.ts';
-import type { CharacterSummary } from '@shared/types/card.ts';
+import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type {
   CardSlot,
   CocreatorSession,
@@ -28,6 +28,11 @@ import { useExampleCards } from './useExampleCards.ts';
 
 interface CocreatorDeskProps {
   session: CocreatorSession;
+  /**
+   * The card the Studio handed off, present only on the arrival side of that handoff. The
+   * hook seeds the transcript and the stash from it as part of adopting the session.
+   */
+  seed?: CharacterDetail | null;
   defaults: CoCreatorSettings;
   connections: Connection[];
   activeConnectionId: string | null;
@@ -49,6 +54,7 @@ interface CocreatorDeskProps {
 /** The design conversation. Examples and the stash join it in the next phases. */
 export function CocreatorDesk({
   session,
+  seed,
   defaults,
   connections,
   activeConnectionId,
@@ -67,6 +73,7 @@ export function CocreatorDesk({
   const exampleBlockRef = useRef('');
   const design = useCocreator({
     session,
+    seed,
     defaults,
     connections,
     activeConnectionId,
@@ -240,6 +247,7 @@ export function CocreatorDesk({
         stash: stateRef.current.stash,
         avatar: stateRef.current.avatar,
         cacheKey: session.modified,
+        seedAvatar: session.seedAvatar,
       });
       // Flushed against the state the reducer produces, not the ref: React has not
       // re-rendered yet, so `stateRef` still holds the pre-dispatch revision and the flush
@@ -256,7 +264,7 @@ export function CocreatorDesk({
     } finally {
       setFinishing(false);
     }
-  }, [design, session.id, session.modified, onFinished, onError]);
+  }, [design, session.id, session.modified, session.seedAvatar, onFinished, onError]);
 
   const lastIndex = state.messages.length - 1;
 

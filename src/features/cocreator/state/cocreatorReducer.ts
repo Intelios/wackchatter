@@ -37,6 +37,7 @@ import {
   removeTag,
   reorderGreetings,
   setSlot,
+  stashedSlotCount,
 } from '@shared/cocreator/stash.ts';
 import type { ChatMessage, MessageExtra } from '@shared/types/chat.ts';
 import {
@@ -129,6 +130,7 @@ export type CocreatorAction =
   | { type: 'session/closed' }
   | { type: 'session/saved'; sessionId: string; revision: number }
   | { type: 'session/renamed'; title: string }
+  | { type: 'session/seeded'; id: string; text: string; stash: CardStash }
   | { type: 'message/appendUser'; id: string; text: string; extra?: MessageExtra }
   | { type: 'message/edited'; id: string; text: string }
   | { type: 'message/deleted'; id: string }
@@ -276,6 +278,19 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         revision: state.revision + 1,
         error: null,
       };
+
+    case 'session/seeded': {
+      // Seeding is only ever the first thing a session experiences. The guard makes the desk's
+      // one-shot effect idempotent — a StrictMode double-run or a re-dispatch is a no-op
+      // rather than a duplicated seed turn.
+      if (state.messages.length > 0 || stashedSlotCount(state.stash) > 0) return state;
+      return {
+        ...state,
+        messages: [...state.messages, userMessage(action.id, DESIGNER_NAME, action.text, null)],
+        stash: action.stash,
+        revision: state.revision + 1,
+      };
+    }
 
     case 'message/edited':
       return {
