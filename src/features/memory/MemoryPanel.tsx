@@ -1,3 +1,4 @@
+import { hideableMessageIds } from '@shared/memory/memories.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { Memory } from '@shared/types/chat.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
@@ -181,6 +182,9 @@ function MemoriesBody({
                 memory={memory}
                 hiddenCount={chat.memoryHiddenCount(memory.id)}
                 coveredCount={coveredNow(chat, memory)}
+                hideableCount={
+                  hideableMessageIds(memory, chat.messages, settings.verbatimTail).length
+                }
                 onChange={(patch) => updateMemory(memory.id, patch)}
                 onDelete={() => chat.deleteMemory(memory.id)}
                 onSetHidden={(hidden) => chat.setMemoryHidden(memory.id, hidden)}

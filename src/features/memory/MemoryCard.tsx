@@ -9,6 +9,8 @@ interface MemoryCardProps {
   hiddenCount: number;
   /** Messages it covers that are not currently hidden by it. */
   coveredCount: number;
+  /** Messages it covers outside the verbatim tail that can be hidden. */
+  hideableCount: number;
   onChange: (patch: Partial<Memory>) => void;
   onDelete: () => void;
   onSetHidden: (hidden: boolean) => void;
@@ -24,6 +26,7 @@ export function MemoryCard({
   memory,
   hiddenCount,
   coveredCount,
+  hideableCount,
   onChange,
   onDelete,
   onSetHidden,
@@ -79,13 +82,15 @@ export function MemoryCard({
           type="button"
           className="memory-card__action"
           onClick={() => onSetHidden(hiddenCount === 0)}
-          disabled={disabled || (hiddenCount === 0 && coveredCount === 0)}
+          disabled={disabled || (hiddenCount === 0 && hideableCount === 0)}
           title={
             hiddenCount > 0
               ? `Show the ${hiddenCount} message${hiddenCount === 1 ? '' : 's'} this memory hid`
-              : coveredCount > 0
-                ? `Hide the ${coveredCount} message${coveredCount === 1 ? '' : 's'} this memory covers`
-                : 'This memory covers no messages in the current transcript'
+              : hideableCount > 0
+                ? `Hide the ${hideableCount} message${hideableCount === 1 ? '' : 's'} this memory covers`
+                : coveredCount > 0
+                  ? 'All messages this memory covers are in the verbatim tail and cannot be hidden'
+                  : 'This memory covers no messages in the current transcript'
           }
         >
           {hiddenCount > 0 ? <EyeIcon /> : <EyeOffIcon />}
