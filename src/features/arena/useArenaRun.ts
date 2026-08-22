@@ -20,7 +20,7 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { Contender } from '@shared/types/arena.ts';
-import { ARENA_MAX_COLUMNS } from '@shared/types/arena.ts';
+import { ARENA_MAX_COLUMNS, ARENA_MIN_COLUMNS } from '@shared/types/arena.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ApiMessage, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -284,7 +284,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
         setError('No preset is loaded.');
         return;
       }
-      if (request.columns.length === 0) {
+      if (request.columns.length < ARENA_MIN_COLUMNS) {
         setError('Nothing to compare — choose at least two contenders.');
         return;
       }
