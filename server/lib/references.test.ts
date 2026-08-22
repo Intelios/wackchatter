@@ -8,7 +8,12 @@ import { resetChatStore } from './chats.ts';
 import { resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { DEFAULT_DATA_DIR, ensureDataDirs, setDataDir } from './paths.ts';
-import { cascadeCharacterDelete, cascadeCharacterRename } from './references.ts';
+import {
+  cascadeCharacterDelete,
+  cascadeCharacterRename,
+  cascadePresetDelete,
+  cascadePresetRename,
+} from './references.ts';
 import { getSettings, resetSettingsCache, saveSettings } from './settings.ts';
 
 /**
@@ -190,3 +195,62 @@ describe('character cascades', () => {
     expect(getSettings().characterRatings).toEqual({ 'Old.png': 4 });
   });
 });
+
+describe('preset cascades', () => {
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'wc-preset-cascades-'));
+    setDataDir(dir);
+    ensureDataDirs();
+    resetSettingsCache();
+  });
+
+  afterEach(() => {
+    setDataDir(DEFAULT_DATA_DIR);
+    resetSettingsCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a rename updates presetId across settings, memory, and coCreator', () => {
+    saveSettings({
+      presetId: 'OldPreset',
+      memory: { ...getSettings().memory, presetId: 'OldPreset' },
+      coCreator: { ...getSettings().coCreator, presetId: 'OldPreset' },
+    });
+
+    cascadePresetRename('OldPreset', 'NewPreset');
+
+    expect(getSettings().presetId).toBe('NewPreset');
+    expect(getSettings().memory.presetId).toBe('NewPreset');
+    expect(getSettings().coCreator.presetId).toBe('NewPreset');
+  });
+
+  test('a delete clears presetId across settings, memory, and coCreator', () => {
+    saveSettings({
+      presetId: 'DoomedPreset',
+      memory: { ...getSettings().memory, presetId: 'DoomedPreset' },
+      coCreator: { ...getSettings().coCreator, presetId: 'DoomedPreset' },
+    });
+
+    cascadePresetDelete('DoomedPreset');
+
+    expect(getSettings().presetId).toBeNull();
+    expect(getSettings().memory.presetId).toBeNull();
+    expect(getSettings().coCreator.presetId).toBeNull();
+  });
+
+  test('a rename rollback restores original presetId references', async () => {
+    saveSettings({
+      presetId: 'OldPreset',
+      memory: { ...getSettings().memory, presetId: 'OldPreset' },
+    });
+
+    const rollback = cascadePresetRename('OldPreset', 'NewPreset');
+    expect(getSettings().presetId).toBe('NewPreset');
+    expect(getSettings().memory.presetId).toBe('NewPreset');
+
+    await rollback();
+    expect(getSettings().presetId).toBe('OldPreset');
+    expect(getSettings().memory.presetId).toBe('OldPreset');
+  });
+});
+

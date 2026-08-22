@@ -12,6 +12,7 @@ import {
   renamePreset,
   savePreset,
 } from '../lib/presets.ts';
+import { cascadePresetDelete, cascadePresetRename } from '../lib/references.ts';
 
 export async function handlePresetRoute(
   request: Request,
@@ -72,6 +73,7 @@ export async function handlePresetRoute(
 
     try {
       const summary = renamePreset(id, body.name);
+      if (summary) cascadePresetRename(id, summary.id);
       return summary ? json(summary) : notFound('Preset not found.');
     } catch (error) {
       return errorResponse((error as Error).message);
@@ -94,7 +96,9 @@ export async function handlePresetRoute(
     }
 
     if (method === 'DELETE') {
-      return deletePreset(id) ? json({ ok: true }) : notFound('Preset not found.');
+      const deleted = deletePreset(id);
+      if (deleted) cascadePresetDelete(id);
+      return deleted ? json({ ok: true }) : notFound('Preset not found.');
     }
   }
 

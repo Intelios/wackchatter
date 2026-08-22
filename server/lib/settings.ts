@@ -985,3 +985,38 @@ export function reassignCharacterExampleSets(
     },
   };
 }
+
+/**
+ * Repoint or clear preset references when a preset is renamed or deleted.
+ * Updates `AppSettings.presetId`, `AppSettings.memory.presetId`, and `AppSettings.coCreator.presetId`.
+ */
+export function reassignPreset(
+  current: AppSettings,
+  oldId: string,
+  newId: string | null,
+): AppSettings | null {
+  let changed = false;
+  let presetId = current.presetId;
+  if (presetId === oldId) {
+    presetId = newId;
+    changed = true;
+  }
+  let memoryPresetId = current.memory.presetId;
+  if (memoryPresetId === oldId) {
+    memoryPresetId = newId;
+    changed = true;
+  }
+  let coCreatorPresetId = current.coCreator.presetId;
+  if (coCreatorPresetId === oldId) {
+    coCreatorPresetId = newId;
+    changed = true;
+  }
+  if (!changed) return null;
+  return {
+    ...current,
+    presetId,
+    memory: { ...current.memory, presetId: memoryPresetId },
+    coCreator: { ...current.coCreator, presetId: coCreatorPresetId },
+  };
+}
+

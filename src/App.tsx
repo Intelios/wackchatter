@@ -328,6 +328,10 @@ export function App() {
     ? (settings?.connections.find((entry) => entry.id === memorySettings.connectionId) ??
       connection)
     : connection;
+  const memoryPresetId =
+    memorySettings.presetId && presets.some((entry) => entry.id === memorySettings.presetId)
+      ? memorySettings.presetId
+      : null;
 
   /*
    * The memory extractor's preset, which is a different thing from the summariser's
@@ -340,8 +344,11 @@ export function App() {
     null,
   );
   useEffect(() => {
-    const id = memorySettings.presetId;
-    if (!id || id === presetId) return;
+    const id = memoryPresetId;
+    if (!id || id === presetId) {
+      setMemoryPresetFile(null);
+      return;
+    }
     let cancelled = false;
     void presetApi
       .get(id)
@@ -354,12 +361,12 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [memorySettings.presetId, presetId]);
+  }, [memoryPresetId, presetId, presets, presetReload]);
 
   const memoryPreset =
-    !memorySettings.presetId || memorySettings.presetId === presetId
+    !memoryPresetId || memoryPresetId === presetId
       ? preset
-      : memoryPresetFile && memoryPresetFile.id === memorySettings.presetId
+      : memoryPresetFile && memoryPresetFile.id === memoryPresetId
         ? memoryPresetFile.value
         : null;
 

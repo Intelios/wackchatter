@@ -265,7 +265,11 @@ function MemoriesBody({
         />
         <SelectField<string | null>
           label="Samplers from"
-          value={settings.presetId}
+          value={
+            settings.presetId && presets.some((entry) => entry.id === settings.presetId)
+              ? settings.presetId
+              : null
+          }
           options={[
             { label: 'Same as chat preset', value: null },
             ...presets.map((entry) => ({
