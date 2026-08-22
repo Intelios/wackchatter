@@ -381,7 +381,7 @@ function MemoriesBody({
           max={32000}
           step={100}
           onChange={(budgetTokens) => onSettingsChange({ budgetTokens })}
-          hint="Separate from the World Info budget, so memories cannot crowd out your lorebooks."
+          hint="Separate from the World Info budget, so memories cannot crowd out your lorebooks. 0 disables recall outright."
           disabled={running}
         />
         <SelectField<SummaryPosition>
