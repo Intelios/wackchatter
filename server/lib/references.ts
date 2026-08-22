@@ -227,4 +227,3 @@ export function cascadePresetDelete(id: string): Rollback {
     });
   };
 }
-

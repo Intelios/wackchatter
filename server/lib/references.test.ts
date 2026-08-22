@@ -253,4 +253,3 @@ describe('preset cascades', () => {
     expect(getSettings().memory.presetId).toBe('OldPreset');
   });
 });
-

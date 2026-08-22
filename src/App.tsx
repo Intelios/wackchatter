@@ -343,6 +343,10 @@ export function App() {
   const [memoryPresetFile, setMemoryPresetFile] = useState<{ id: string; value: Preset } | null>(
     null,
   );
+  // `presets` and `presetReload` are not read in here — they are the cache invalidation
+  // triggers. Without them an edit, rename or revert of the chosen preset would leave
+  // extraction running on the stale cached samplers.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: presets and presetReload are triggers, not reads
   useEffect(() => {
     const id = memoryPresetId;
     if (!id || id === presetId) {
