@@ -223,7 +223,7 @@ function boundedIndex(value: unknown, size: number): number | null {
  *
  * Every index is validated against the window rather than trusted, and ranges are forced
  * to be ordered and non-overlapping. That last rule is not tidiness: hiding is attributed
- * per memory via `MessageExtra.hiddenBy`, so two memories claiming the same message would
+ * per memory via `ChatMessage.hiddenBy`, so two memories claiming the same message would
  * make "delete this memory and get its messages back" ambiguous.
  */
 export function parseMemoryResponse(text: string, window: ChatMessage[]): ParsedMemoryResponse {
