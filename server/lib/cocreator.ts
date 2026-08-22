@@ -91,11 +91,24 @@ export interface CocreatorStore {
       stash?: CardStash;
       examples?: ExampleSelection;
       settings?: SessionModelSettings;
+      finishedAvatar?: string | null;
       messages: ChatMessage[];
     },
   ): CocreatorSaveResult;
   /** Metadata-only write. Never touches the transcript. */
   patchSession(id: string, patch: CocreatorPatch): CocreatorSaveResult;
+  /**
+   * Write the avatar column without touching the revision counter.
+   *
+   * The avatar routes are the column's only writer, and `replaceSession` preserves whatever
+   * is there (`commit` writes `existing.avatar`), so the two write families commute — there
+   * is nothing for a revision to arbitrate. Minting one here anyway used to collide with the
+   * client's own next revision whenever artwork landed while a debounced save was in flight,
+   * and the client's Finish flush then died on a 409 it had no way to rebase from. The same
+   * reasoning as `reassignExampleCard`'s deliberately missing bump, minus the "repair"
+   * qualifier: this is a user edit, but one the revision counter cannot see on either side.
+   */
+  setSessionAvatar(id: string, avatar: string | null): CocreatorSession | null;
   deleteSession(id: string): boolean;
   /**
    * Repoint (or drop, for a null) an attached example card across every session.
@@ -334,6 +347,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         stash?: CardStash;
         examples?: ExampleSelection;
         settings?: SessionModelSettings;
+        finishedAvatar?: string | null;
         messages: ChatMessage[];
       },
     ): CocreatorSaveResult => {
@@ -347,12 +361,17 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         ? normalizeSessionSettings(input.settings)
         : existing.settings;
       const messages = normalizeMessages(input.messages);
+      // Absent means "keep what is there" — a whole-session save that predates the field, or
+      // one the client has no reason to change, must not clear the recording.
+      const finishedAvatar =
+        input.finishedAvatar === undefined ? existing.finishedAvatar : input.finishedAvatar;
 
       const conflict = checkRevision(
         existing,
         input.revision,
         () =>
           title === existing.title &&
+          finishedAvatar === existing.finishedAvatar &&
           JSON.stringify(stash) === JSON.stringify(existing.stash) &&
           JSON.stringify(examples) === JSON.stringify(existing.examples) &&
           JSON.stringify(settings) === JSON.stringify(existing.settings) &&
@@ -368,7 +387,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         examples,
         settings,
         avatar: existing.avatar,
-        finishedAvatar: existing.finishedAvatar,
+        finishedAvatar,
       });
       writeMessages(id, messages);
       return { kind: 'saved', session: readSession(id)! };
@@ -445,6 +464,27 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     },
   );
 
+  /** The avatar write behind the upload/clear routes. See the interface for the discipline. */
+  const setSessionAvatar = database.transaction(
+    (id: string, avatar: string | null): CocreatorSession | null => {
+      const existing = readSession(id);
+      if (!existing) return null;
+
+      statements.updateSession.run({
+        $id: id,
+        $title: existing.title,
+        $stash: JSON.stringify(existing.stash),
+        $examples: JSON.stringify(existing.examples),
+        $settings: JSON.stringify(existing.settings),
+        $avatar: avatar,
+        $finishedAvatar: existing.finishedAvatar,
+        $modified: Date.now(),
+        $revision: existing.revision,
+      });
+      return readSession(id);
+    },
+  );
+
   return {
     listSessions(): CocreatorSessionSummary[] {
       return listAll.all().map((row) => {
@@ -485,6 +525,8 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     patchSession(id, patch): CocreatorSaveResult {
       return savePatch(id, patch);
     },
+
+    setSessionAvatar,
 
     deleteSession(id): boolean {
       // No backup, deliberately — see the file header. Messages go with it via

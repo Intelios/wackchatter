@@ -105,6 +105,32 @@ describe('opening and closing', () => {
   });
 });
 
+describe('avatar and finish bookkeeping', () => {
+  test('adopting artwork costs no revision — the server write is already durable', () => {
+    const state = run(opened(), { type: 'avatar/set', filename: 's1.png' });
+
+    expect(state.avatar).toBe('s1.png');
+    expect(state.revision).toBe(7);
+    expect(hasUnsavedWork(state)).toBe(false);
+  });
+
+  test('clearing artwork costs no revision either', () => {
+    const withAvatar = run(opened({ avatar: 's1.png' }), { type: 'avatar/set', filename: 'x' });
+    const state = cocreatorReducer(withAvatar, { type: 'avatar/cleared' });
+
+    expect(state.avatar).toBeNull();
+    expect(state.revision).toBe(withAvatar.revision);
+  });
+
+  test('recording the finished card is a real document change, so it does cost one', () => {
+    const state = run(opened(), { type: 'finished/recorded', avatar: 'Elowen.png' });
+
+    expect(state.finishedAvatar).toBe('Elowen.png');
+    expect(state.revision).toBe(8);
+    expect(hasUnsavedWork(state)).toBe(true);
+  });
+});
+
 describe('generation: the happy path', () => {
   test('a typed Co-Creator action is persisted on the visible user turn', () => {
     const state = run(opened(), {

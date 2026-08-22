@@ -208,6 +208,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       stash: current.stash,
       examples: current.examples,
       settings: current.settings,
+      finishedAvatar: current.finishedAvatar,
       // The pre-generation projection: a blank placeholder or a tentative swipe is UI state
       // until the request settles, and must not become durable under the earlier revision.
       messages: toPersistedMessages(current),

@@ -166,6 +166,29 @@ describe('the revision race', () => {
     ).toBe('stale');
   });
 
+  test('the finished card is recorded by the whole-session save, so it survives a reload', () => {
+    const created = store.createSession({});
+    saved(
+      store.replaceSession(created.id, {
+        revision: 1,
+        stash: filledStash(),
+        finishedAvatar: 'Elowen.png',
+        messages: [],
+      }),
+    );
+
+    expect(store.getSession(created.id)!.finishedAvatar).toBe('Elowen.png');
+    // And it is part of the document the idempotent retry compares.
+    expect(
+      store.replaceSession(created.id, {
+        revision: 1,
+        stash: filledStash(),
+        finishedAvatar: 'Other.png',
+        messages: [],
+      }).kind,
+    ).toBe('stale');
+  });
+
   test('saving an unknown session is notFound, not a silent create', () => {
     expect(store.replaceSession('nope', { revision: 1, messages: [] })).toEqual({
       kind: 'notFound',
@@ -212,6 +235,49 @@ describe('patching', () => {
     const patched = saved(store.patchSession(created.id, { revision: 1, title: 'Moved' }));
 
     expect(patched.modified).toBeGreaterThanOrEqual(created.modified);
+  });
+});
+
+describe('the avatar column and the revision counter', () => {
+  // The regression these tests pin: the avatar routes used to patch at `read + 1`, minting a
+  // revision from the *server's* counter while the client mints its next one from its own.
+  // Drop artwork while a debounced save is in flight and both writes claim the same revision —
+  // the client's save lands on a session the avatar patch already moved, and Finish dies with
+  // "Session changed elsewhere." until the page is refreshed.
+  test('an avatar write does not mint a revision, so a save in flight cannot collide with it', () => {
+    const created = store.createSession({});
+    saved(store.replaceSession(created.id, { revision: 5, messages: [message({ mes: 'Hi.' })] }));
+
+    const withAvatar = store.setSessionAvatar(created.id, 'a.png')!;
+    expect(withAvatar.revision).toBe(5);
+
+    // The client's own revision-6 save (its last edit, flush #1 of Finish) still lands…
+    const saved6 = saved(
+      store.replaceSession(created.id, { revision: 6, messages: [message({ mes: 'Edited.' })] }),
+    );
+    // …and does not clobber the artwork on the way through.
+    expect(saved6.avatar).toBe('a.png');
+  });
+
+  test('clearing the avatar is the same revision-free write', () => {
+    const created = store.createSession({});
+    store.setSessionAvatar(created.id, 'a.png');
+    saved(store.replaceSession(created.id, { revision: 1, messages: [] }));
+
+    const cleared = store.setSessionAvatar(created.id, null)!;
+    expect(cleared.avatar).toBeNull();
+    expect(cleared.revision).toBe(1);
+  });
+
+  test('an avatar write still bumps `modified`, so lists and image caches move on', () => {
+    const created = store.createSession({});
+
+    const withAvatar = store.setSessionAvatar(created.id, 'a.png')!;
+    expect(withAvatar.modified).toBeGreaterThanOrEqual(created.modified);
+  });
+
+  test('an avatar write on an unknown session is null, not a create', () => {
+    expect(store.setSessionAvatar('nope', 'a.png')).toBeNull();
   });
 });
 
