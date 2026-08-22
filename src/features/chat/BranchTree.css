@@ -1,0 +1,222 @@
+/*
+ * The branch timeline, over the chat column.
+ *
+ * A grid item pinned to the column's cell — row 2, column 2 — exactly like `.card-reader`
+ * and `.fullscreen-text`, so the grid sizes it and it inherits the panel-open transition
+ * for free. Solid even in glass mode via --wc-surface-popup: the timeline is a surface
+ * you read nodes off, not a pane the wallpaper should show through.
+ *
+ * Unlike the reader, it is a window rather than a wall: centred in the cell, as tall as
+ * its lanes, capped wide. A timeline of four nodes does not want the full column — with
+ * both panels closed that is the whole screen, and the diagram would drown in the space
+ * around it. Big families overflow inside the capped box (one scroller, both axes).
+ *
+ * Node geometry (width, height, lane pitch) is decided in branchTree.ts, which places the
+ * buttons in pixels; this file only skins them. One scroll container for the whole canvas
+ * — a nested one is what makes an off-screen fork unreachable with the wheel.
+ */
+
+.branch-tree {
+  grid-column: 2;
+  grid-row: 2;
+  z-index: 3;
+  justify-self: center;
+  align-self: center;
+  width: min(100% - var(--wc-space-6), 1080px);
+  max-height: calc(100% - var(--wc-space-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-5);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+  border-radius: var(--wc-radius-lg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  animation: branch-tree-in var(--wc-duration-view) var(--wc-ease);
+}
+
+.branch-tree__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+  flex: none;
+}
+
+.branch-tree__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.branch-tree__title {
+  font-size: var(--wc-text-lg);
+  color: var(--wc-text);
+}
+
+.branch-tree__subtitle {
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The read-out for whichever node is hovered or focused; defaults to this chat. */
+.branch-tree__detail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+}
+
+.branch-tree__detail-line {
+  color: var(--wc-text);
+  overflow-wrap: anywhere;
+}
+
+.branch-tree__detail-meta,
+.branch-tree__detail-preview {
+  font-size: var(--wc-text-xs);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.branch-tree__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+
+.branch-tree__canvas {
+  position: relative;
+}
+
+.branch-tree__edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.branch-tree__edge {
+  stroke: var(--wc-border-strong);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+/* The recorded parent is gone from the library; where it went is not ours to guess. */
+.branch-tree__edge--severed {
+  stroke: var(--wc-border);
+  stroke-dasharray: 3 4;
+}
+
+.branch-tree__node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border-strong);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.branch-tree__node:hover:not(:disabled) {
+  background: var(--wc-surface-hover);
+  border-color: var(--wc-accent-border);
+}
+
+.branch-tree__node:focus-visible {
+  outline: 2px solid var(--wc-accent);
+  outline-offset: 2px;
+}
+
+/* Disabled only ever means "a jump would discard the reply being written". */
+.branch-tree__node:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.branch-tree__node--current {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+  cursor: default;
+}
+
+.branch-tree__node--orphan {
+  border-style: dashed;
+}
+
+.branch-tree__node-title {
+  font-size: var(--wc-text-sm);
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.branch-tree__node-meta {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The window is content-height now, so the states carry their own presence rather than
+ * stretching to fill a parent that no longer has a fixed height.
+ */
+.branch-tree__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wc-space-3);
+  min-height: 180px;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  text-align: center;
+}
+
+.branch-tree__hint {
+  margin: var(--wc-space-3) 0 var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  text-align: center;
+}
+
+@keyframes branch-tree-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+ * Paired reduced-motion block — `animation: none`, not a zeroed duration, so the final
+ * state applies without a transition running under it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .branch-tree {
+    animation: none;
+  }
+}

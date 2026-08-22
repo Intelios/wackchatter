@@ -27,6 +27,7 @@ import { characterApi, personaApi } from '../../lib/api.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
 import { matchPersonaByName } from '../persona/personaRoster.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
+import { BranchTree } from './BranchTree.tsx';
 import { CardReader, type CardReaderInit } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
@@ -428,6 +429,11 @@ export function ChatView({
   );
   const closeCardReader = useCallback(() => setCardReader(null), []);
 
+  // The branch timeline: the card reader's sibling takeover, one door (the chat menu).
+  const [branchTreeOpen, setBranchTreeOpen] = useState(false);
+  const openBranchTree = useCallback(() => setBranchTreeOpen(true), []);
+  const closeBranchTree = useCallback(() => setBranchTreeOpen(false), []);
+
   // --- Slash commands --------------------------------------------------------
 
   const runCommand = useCallback(
@@ -726,6 +732,9 @@ export function ChatView({
         />
       ) : null}
 
+      {/* Same takeover, for the branch family. Unmounts with the chat it is centred on. */}
+      {branchTreeOpen && state.chatId ? <BranchTree chat={chat} onClose={closeBranchTree} /> : null}
+
       <div className="chat-view__scroll" ref={scrollRef}>
         <div className="chat-view__content" ref={contentRef}>
           {state.messages.length === 0 ? (
@@ -902,6 +911,7 @@ export function ChatView({
                 onOpenPanel={onOpenPanel}
                 onImportChat={onImportChat}
                 onOpenCard={openCardReader}
+                onOpenBranchTree={openBranchTree}
               />
               <QuickCommands
                 quickCommands={quickCommands}
