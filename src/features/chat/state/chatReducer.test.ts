@@ -1072,6 +1072,77 @@ describe('memory hide provenance', () => {
       }),
     ).toBe(once);
   });
+
+  test('a memory hide cannot overwrite an existing manual hide', () => {
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true },
+      { type: 'message/setHidden', ids: ['m0', 'u1'], hidden: true, memoryId: 'mem-1' },
+    );
+    expect(state.messages[0]!.is_system).toBe(true);
+    expect(state.messages[0]!.hiddenBy).toBeUndefined();
+    expect(state.messages[1]!.is_system).toBe(true);
+    expect(state.messages[1]!.hiddenBy).toBe('mem-1');
+
+    // Deleting or revealing mem-1 must not unhide m0
+    const afterUnhide = run(state, {
+      type: 'message/setHidden',
+      ids: ['m0', 'u1'],
+      hidden: false,
+      memoryId: 'mem-1',
+    });
+    expect(afterUnhide.messages[0]!.is_system).toBe(true);
+    expect(afterUnhide.messages[0]!.hiddenBy).toBeUndefined();
+    expect(afterUnhide.messages[1]!.is_system).toBe(false);
+  });
+
+  test('a memory hide cannot overwrite another memory stamp', () => {
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
+      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-2' },
+    );
+    expect(state.messages[0]!.hiddenBy).toBe('mem-1');
+
+    // mem-2 revealing m0 is refused
+    const afterMem2 = run(state, {
+      type: 'message/setHidden',
+      ids: ['m0'],
+      hidden: false,
+      memoryId: 'mem-2',
+    });
+    expect(afterMem2.messages[0]!.is_system).toBe(true);
+    expect(afterMem2.messages[0]!.hiddenBy).toBe('mem-1');
+
+    // mem-1 revealing m0 unhides it
+    const afterMem1 = run(afterMem2, {
+      type: 'message/setHidden',
+      ids: ['m0'],
+      hidden: false,
+      memoryId: 'mem-1',
+    });
+    expect(afterMem1.messages[0]!.is_system).toBe(false);
+    expect(afterMem1.messages[0]!.hiddenBy).toBeUndefined();
+  });
+
+  test('a person manually hiding a memory-hidden message takes ownership', () => {
+    const state = run(
+      threeMessages(),
+      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
+      { type: 'message/setHidden', ids: ['m0'], hidden: true },
+    );
+    expect(state.messages[0]!.is_system).toBe(true);
+    expect(state.messages[0]!.hiddenBy).toBeUndefined();
+
+    // mem-1 unhiding m0 is now refused
+    const afterMem1 = run(state, {
+      type: 'message/setHidden',
+      ids: ['m0'],
+      hidden: false,
+      memoryId: 'mem-1',
+    });
+    expect(afterMem1.messages[0]!.is_system).toBe(true);
+  });
 });
 
 describe('memory staleness', () => {

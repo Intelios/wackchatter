@@ -410,10 +410,15 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const messages = state.messages.map((message) => {
         if (!target.has(message.id)) return message;
 
-        // Ownership, enforced here rather than at the call site: a memory may only reveal
-        // what it hid. Without this rule, deleting a memory whose range overlapped a
-        // manual `/hide` would silently undo the manual one too.
+        // Ownership, enforced here rather than at the call site:
+        // - A memory may only reveal what it hid. Without this rule, deleting a memory
+        //   whose range overlapped a manual `/hide` would silently undo the manual one too.
+        // - A memory may only hide what is currently visible: it must not overwrite an
+        //   existing manual hide or another memory's stamp.
         if (!action.hidden && action.memoryId && message.hiddenBy !== action.memoryId) {
+          return message;
+        }
+        if (action.hidden && action.memoryId && message.is_system) {
           return message;
         }
         if (message.is_system === action.hidden && message.hiddenBy === action.memoryId) {
