@@ -32,9 +32,9 @@ import {
 import { characterApi } from '../../lib/api.ts';
 import { CharacterPicker } from './CharacterPicker.tsx';
 import { ContenderColumn } from './ContenderColumn.tsx';
+import { CornerPicker } from './CornerPicker.tsx';
 import { CueField } from './CueField.tsx';
 import type { ResolvedContender } from './contenders.ts';
-import { contenderLabel } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
 import type { LeaderboardRow } from './elo.ts';
 import { columnLeaders, lengthRatios } from './runStats.ts';
@@ -172,6 +172,7 @@ export function ArenaBench({
           const entry = resolved.find((item) => item.contender.id === pick);
           const row = pick ? rowFor(pick) : null;
           const colour = mastColours.get(pick);
+          const side = index === 0 ? 'a' : index === 1 && columns === 2 ? 'b' : 'n';
           return (
             <div
               // The slot is the identity here — two slots can legitimately hold the same
@@ -179,35 +180,22 @@ export function ArenaBench({
               // biome-ignore lint/suspicious/noArrayIndexKey: the column slot is the identity
               key={index}
               className="arena-corner"
-              data-side={index === 0 ? 'a' : index === 1 && columns === 2 ? 'b' : 'n'}
+              data-side={side}
               style={{ '--wc-corner': colour } as CSSProperties}
             >
               <div className="arena-corner__pick">
                 <span className="arena-corner__swatch" aria-hidden="true" />
-                <select
-                  className="arena-corner__select"
+                <CornerPicker
+                  resolved={resolved}
                   value={pick}
-                  aria-label={`Contender for column ${index + 1}`}
-                  onChange={(event) => {
-                    const value = event.target.value;
+                  column={index + 1}
+                  side={side}
+                  onChange={(id) =>
                     setPicks((current) =>
-                      current.map((current_, i) => (i === index ? value : current_)),
-                    );
-                  }}
-                >
-                  <option value="">Choose a contender…</option>
-                  {resolved.map((item) => (
-                    <option
-                      key={item.contender.id}
-                      value={item.contender.id}
-                      disabled={item.connection === null}
-                      title={item.unavailableReason ?? undefined}
-                    >
-                      {contenderLabel(item.contender, item.connection)}
-                      {item.connection === null ? ' (unavailable)' : ''}
-                    </option>
-                  ))}
-                </select>
+                      current.map((current_, i) => (i === index ? id : current_)),
+                    )
+                  }
+                />
               </div>
 
               <span className="arena-corner__meta">

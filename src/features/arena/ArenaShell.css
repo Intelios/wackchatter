@@ -227,6 +227,19 @@
   text-align: right;
 }
 
+/*
+ * While a masthead popup is open, lift the whole masthead above the cue rail.
+ *
+ * The cue's textarea sits at z-index 1 — level with the corners and the stage — and is
+ * later in the DOM, so it paints over any popup that opens into it. A popup's own
+ * z-index cannot win that fight from inside one of those stacks, so the masthead climbs
+ * instead — and only while a popup is open, which is the only moment the layering
+ * matters.
+ */
+.arena-mast:has([aria-expanded="true"]) {
+  z-index: 2;
+}
+
 .arena-corner__pick {
   display: flex;
   align-items: center;
@@ -248,13 +261,25 @@
 }
 
 /*
- * A real `<select>`, dressed as a name.
+ * The name is the trigger.
  *
- * Not a custom menu: this is a single choice from a short list, which is exactly what a
- * select is for and what every assistive technology already knows how to drive. Only its
- * chrome is removed — the control underneath is the same one that was in the form row.
+ * The pick opens the app's own listbox below — a native `<select>` here dropped an
+ * operating-system list over a screen that is otherwise entirely the app's own, and all
+ * it could say about an entrant that could not run was a suffix in brackets. Only the
+ * chrome changes: the trigger still reads as the corner's name, not as a form row.
  */
-.arena-corner__select {
+.arena-corner__pick .arena-cornerpicker {
+  /* Popover's root does not shrink; the name inside it must, or a long label pushes the
+     swatch out of the corner. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.arena-corner__pickbtn {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
   min-width: 0;
   max-width: 100%;
   padding: 0;
@@ -265,18 +290,41 @@
   font-size: var(--wc-text-2xl);
   font-weight: 700;
   letter-spacing: -0.015em;
-  text-overflow: ellipsis;
   cursor: pointer;
 }
 
-.arena-corner__select:hover {
+.arena-corner__pickbtn[data-empty="true"] {
+  color: var(--wc-text-muted);
+}
+
+.arena-corner__pickbtn:hover,
+.arena-corner__pickbtn[aria-expanded="true"] {
   color: var(--wc-accent);
 }
 
-.arena-corner__select:focus-visible {
+.arena-corner__pickbtn:focus-visible {
   outline: 2px solid var(--wc-accent);
   outline-offset: 3px;
   border-radius: var(--wc-radius-sm);
+}
+
+.arena-corner__pickname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-corner__chevron {
+  flex: none;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  transform: rotate(90deg);
+  transition: transform var(--wc-duration-fast) var(--wc-ease);
+}
+
+.arena-corner__pickbtn[aria-expanded="true"] .arena-corner__chevron {
+  transform: rotate(-90deg);
 }
 
 .arena-corner__meta {
@@ -324,6 +372,74 @@
 
 .arena-corner__unrated {
   color: var(--wc-text-faint);
+}
+
+/* --------------------------------------------------- the contender popup */
+
+/*
+ * The list a corner opens. One row per entrant, in pool order — the same order the
+ * roster reads, so a name is where it was last seen.
+ */
+.arena-cornerpicker__popup {
+  max-width: min(360px, calc(100vw - var(--wc-space-6)));
+}
+
+.arena-cornerpicker__list {
+  display: grid;
+  gap: 2px;
+}
+
+.arena-cornerpicker__option {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.arena-cornerpicker__option:hover:not(:disabled),
+.arena-cornerpicker__option:focus-visible {
+  background: var(--wc-surface-hover);
+}
+
+.arena-cornerpicker__option[data-on="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+}
+
+.arena-cornerpicker__option:disabled {
+  cursor: not-allowed;
+}
+
+.arena-cornerpicker__name {
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-cornerpicker__option:disabled .arena-cornerpicker__name {
+  color: var(--wc-text-muted);
+}
+
+/* Why an entrant cannot run — the fact the native select could only suffix. */
+.arena-cornerpicker__why {
+  color: var(--wc-warning);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-cornerpicker__empty {
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
 }
 
 /* ---------------------------------------------------------------- the stage */
