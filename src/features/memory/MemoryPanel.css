@@ -1,0 +1,240 @@
+.memory-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Mode switch --------------------------------------------------- */
+
+/* A fieldset for the semantics; every default it brings has to be undone. */
+.memory-panel__modes {
+  display: grid;
+  min-width: 0;
+  margin: 0 0 var(--wc-space-3);
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.memory-panel__mode {
+  padding: var(--wc-space-2);
+  border: none;
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  cursor: pointer;
+}
+
+.memory-panel__mode:hover {
+  color: var(--wc-text);
+  background: var(--wc-surface-hover);
+}
+
+.memory-panel__mode[data-active] {
+  color: var(--wc-accent-text);
+  background: var(--wc-accent);
+}
+
+/* --- Shared panel furniture ---------------------------------------- */
+
+.memory-panel__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--wc-space-3);
+}
+
+.memory-panel__progress,
+.memory-panel__note,
+.memory-panel__empty,
+.memory-panel__notice {
+  margin: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.memory-panel__notice {
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+}
+
+.memory-panel__error {
+  margin: 0;
+  padding: var(--wc-space-3);
+  border: 1px solid var(--wc-danger);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
+  font-size: var(--wc-text-sm);
+}
+
+.memory-panel__reset {
+  align-self: flex-start;
+}
+
+.memory-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* --- One memory ----------------------------------------------------- */
+
+.memory-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.memory-card[data-disabled] {
+  opacity: 0.55;
+}
+
+.memory-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+}
+
+.memory-card__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  color: var(--wc-text);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.memory-card__chevron--open {
+  transform: rotate(90deg);
+}
+
+/* These SVGs carry no intrinsic size — every consumer sets its own box. */
+.memory-card__toggle svg {
+  flex: none;
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+  transition: transform 120ms ease;
+}
+
+.memory-card__action svg {
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+}
+
+.memory-card__title {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.memory-card__action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.memory-card__action:hover:not(:disabled) {
+  color: var(--wc-text);
+  background: var(--wc-surface-hover);
+}
+
+.memory-card__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.memory-card__action[data-active] {
+  color: var(--wc-accent);
+}
+
+.memory-card__action--danger:hover:not(:disabled),
+.memory-card__action--danger[data-confirming] {
+  color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
+}
+
+.memory-card__preview {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.memory-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1);
+}
+
+.memory-card__meta:empty {
+  display: none;
+}
+
+.memory-card__chip {
+  padding: 2px var(--wc-space-2);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+  font-size: var(--wc-text-xs);
+}
+
+.memory-card__chip--quiet {
+  color: var(--wc-text-muted);
+  background: var(--wc-surface-raised);
+}
+
+.memory-card__chip--warn {
+  color: var(--wc-warning);
+  background: var(--wc-warning-subtle);
+  cursor: help;
+}
+
+.memory-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding-top: var(--wc-space-2);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.memory-card__enable {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  cursor: pointer;
+}

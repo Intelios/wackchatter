@@ -25,9 +25,15 @@ const PLACEMENT_LABELS = {
   depth: 'At depth',
 } as const;
 
-export function WorldInfoReport({ result }: { result: ActivationResult | null }) {
+interface WorldInfoReportProps {
+  result: ActivationResult | null;
+  /** Shown when there was no pass at all. Memory recall has a different reason for that. */
+  emptyLabel?: string;
+}
+
+export function WorldInfoReport({ result, emptyLabel }: WorldInfoReportProps) {
   if (!result) {
-    return <div className="wc-empty">No lorebooks are active for this chat.</div>;
+    return <div className="wc-empty">{emptyLabel ?? 'No lorebooks are active for this chat.'}</div>;
   }
 
   const { activated, skipped } = result;

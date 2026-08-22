@@ -48,8 +48,12 @@ import type { RegexScript } from '../types/regex.ts';
 import { REGEX_PLACEMENT } from '../types/regex.ts';
 import {
   DEFAULT_GUIDANCE,
+  DEFAULT_MEMORY,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
+  type MemoryMode,
+  type MemorySettings,
+  type StoryMemoryPlacement,
   type SummarySettings,
 } from '../types/settings.ts';
 import {
@@ -81,6 +85,22 @@ export interface AssembleOptions {
   summary?: StorySummary;
   /** App-wide summary template and insertion preferences. */
   summarySettings?: Partial<SummarySettings>;
+  /**
+   * Which story-memory feature fills the slot. Defaults to `'classic'`.
+   *
+   * There is one slot, not two: a chat can hold both a rolling summary and a list of
+   * memories, and sending both would tell the model the same events twice in two voices.
+   */
+  memoryMode?: MemoryMode;
+  /**
+   * Memories already selected for this turn, rendered and ready.
+   *
+   * Selection — pinned plus whatever the keywords woke — happens in the world-info
+   * activation pass before assembly, so this is text by the time it arrives here.
+   */
+  memoryText?: string;
+  /** App-wide memory template and insertion preferences. */
+  memorySettings?: Partial<MemorySettings>;
   /** Standing per-chat instructions, injected on every generation. */
   guides?: PersistentGuide[];
   /**
@@ -367,6 +387,9 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     authorNote: authorNoteInput,
     summary,
     summarySettings,
+    memoryMode = 'classic',
+    memoryText,
+    memorySettings,
     guides = [],
     guidance = '',
     guidanceSettings,
@@ -453,8 +476,26 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       ]
     : [];
   const authorNoteText = noteParts.join('\n');
-  const summaryConfig: SummarySettings = { ...DEFAULT_SUMMARY, ...summarySettings };
-  const summaryText = summary?.text.trim() ?? '';
+  /*
+   * The one story-memory slot, resolved by mode.
+   *
+   * `summaryConfig` and `summaryText` keep their names below because every placement rule
+   * downstream — the relative splice around `main`, the absolute-prompt sibling, the
+   * at-depth injection — is identical whichever feature filled them. Only the source of
+   * the text and the macro that carries it differ, and both are settled here.
+   */
+  const memoryConfig: MemorySettings = { ...DEFAULT_MEMORY, ...memorySettings };
+  const summarySettingsResolved = { ...DEFAULT_SUMMARY, ...summarySettings };
+  const usingMemories = memoryMode === 'memories';
+  const summaryConfig: StoryMemoryPlacement = usingMemories
+    ? memoryConfig
+    : summarySettingsResolved;
+  const storyIdentifier = usingMemories ? 'memories' : 'summary';
+  const summaryText = usingMemories
+    ? (memoryText?.trim() ?? '')
+    : memoryMode === 'classic'
+      ? (summary?.text.trim() ?? '')
+      : '';
 
   /** Content for the marker prompts, resolved from live state. */
   const markerContent: Record<string, string> = {
@@ -505,7 +546,9 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   function getSummaryContent(): string {
     if (resolvedSummary === undefined) {
-      resolvedSummary = substitute(summaryConfig.template, 'summary', { summary: summaryText });
+      resolvedSummary = substitute(summaryConfig.template, storyIdentifier, {
+        [storyIdentifier]: summaryText,
+      });
     }
     return resolvedSummary;
   }
@@ -517,9 +560,9 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     if (!content.trim()) return;
     const message: ApiMessage = { role: summaryConfig.role, content };
     const tokens = messageCost(message);
-    tokenCounts.summary = tokens;
-    mandatoryIdentifiers.push('summary');
-    slots.splice(index, 0, { identifier: 'summary', messages: [message], tokens });
+    tokenCounts[storyIdentifier] = tokens;
+    mandatoryIdentifiers.push(storyIdentifier);
+    slots.splice(index, 0, { identifier: storyIdentifier, messages: [message], tokens });
   }
 
   function addRelativeAuthorNote(index = slots.length): void {
@@ -664,11 +707,11 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
             content: summaryContent,
           };
           absolutePrompts.push(summaryInjection);
-          tokenCounts.summary = messageCost({
+          tokenCounts[storyIdentifier] = messageCost({
             role: summaryInjection.role,
             content: summaryInjection.content,
           });
-          mandatoryIdentifiers.push('summary');
+          mandatoryIdentifiers.push(storyIdentifier);
         }
       }
       if (entry.identifier === 'scenario' && authorNoteIsRelative && !authorNoteAdded) {
@@ -830,7 +873,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         content: resolvedAuthorNoteDepth,
       });
     }
-    if (summaryDepthTokens > 0) tokenCounts.summary = summaryDepthTokens;
+    if (summaryDepthTokens > 0) tokenCounts[storyIdentifier] = summaryDepthTokens;
     // Their own keys rather than folded into worldInfoDepth, which is already the sum over
     // every grouped injection. Extending that over-count would make both numbers useless.
     if (guideTokens > 0) tokenCounts.guides = guideTokens;
@@ -842,7 +885,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     }
     mandatoryIdentifiers.push('worldInfoDepth');
     if (resolvedAuthorNoteDepth) mandatoryIdentifiers.push('authorNote');
-    if (summaryDepthTokens > 0) mandatoryIdentifiers.push('summary');
+    if (summaryDepthTokens > 0) mandatoryIdentifiers.push(storyIdentifier);
     if (guideTokens > 0) mandatoryIdentifiers.push('guides');
     if (resolvedGuidance) mandatoryIdentifiers.push('guidance');
   }

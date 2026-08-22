@@ -16,9 +16,12 @@ import {
   DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
+  DEFAULT_MEMORY,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
   MAX_RECENT_PERSONAS,
+  type MemoryMode,
+  type MemorySettings,
   type SummarySettings,
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -34,6 +37,7 @@ import { usePromptPreview } from './features/chat/usePromptPreview.ts';
 import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
+import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
@@ -42,7 +46,6 @@ import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
 import { StatsShell } from './features/stats/StatsShell.tsx';
 import { StudioShell } from './features/studio/StudioShell.tsx';
-import { SummaryPanel } from './features/summary/SummaryPanel.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
 import {
@@ -98,6 +101,12 @@ export function App() {
   const personaPersistence = useRef<PersistenceControls | null>(null);
   const studioPersistence = useRef<PersistenceControls | null>(null);
   const cocreatorPersistence = useRef<PersistenceControls | null>(null);
+  /*
+   * Where the character list was scrolled to, so closing and reopening the panel inside a
+   * chat lands where you left it. Session-only by design: it is a browsing convenience,
+   * not library state, so it never reaches settings.json.
+   */
+  const characterListScroll = useRef(0);
 
   const flushRightPanel = useCallback(async () => {
     const controls = editing
@@ -263,6 +272,17 @@ export function App() {
     void refresh();
   }, [refresh]);
 
+  /*
+   * The scroll memory is valid only inside a chat. Leaving for the start screen wipes it,
+   * so the next open begins fresh at the top — and because child unmount cleanups run
+   * before this parent effect, the list's own save-then-this-wipe order is what makes
+   * "exit the chat" beat the memory even when the panel was open at the time. Switching
+   * characters never passes through null, so browsing between chats keeps the position.
+   */
+  useEffect(() => {
+    if (selected === null) characterListScroll.current = 0;
+  }, [selected]);
+
   // Load the full card whenever the selection changes.
   useEffect(() => {
     if (!selected) {
@@ -301,6 +321,58 @@ export function App() {
     summaryConnection?.model ?? '',
     settings?.tokenizerEncoding,
   );
+
+  const memoryMode: MemoryMode = settings?.memoryMode ?? 'classic';
+  const memorySettings: MemorySettings = settings?.memory ?? DEFAULT_MEMORY;
+  const memoryConnection = memorySettings.connectionId
+    ? (settings?.connections.find((entry) => entry.id === memorySettings.connectionId) ??
+      connection)
+    : connection;
+  const memoryPresetId =
+    memorySettings.presetId && presets.some((entry) => entry.id === memorySettings.presetId)
+      ? memorySettings.presetId
+      : null;
+
+  /*
+   * The memory extractor's preset, which is a different thing from the summariser's
+   * absence of one. Only its samplers are read — `buildRequestBody` never looks at
+   * `prompts` — so this is "the user's temperature without the user's jailbreak", and an
+   * RP preset's high temperature is exactly what makes an extractor drift off its output
+   * contract. Null, or the active id, means the already-loaded active preset.
+   */
+  const [memoryPresetFile, setMemoryPresetFile] = useState<{ id: string; value: Preset } | null>(
+    null,
+  );
+  // `presets` and `presetReload` are not read in here — they are the cache invalidation
+  // triggers. Without them an edit, rename or revert of the chosen preset would leave
+  // extraction running on the stale cached samplers.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: presets and presetReload are triggers, not reads
+  useEffect(() => {
+    const id = memoryPresetId;
+    if (!id || id === presetId) {
+      setMemoryPresetFile(null);
+      return;
+    }
+    let cancelled = false;
+    void presetApi
+      .get(id)
+      .then((value) => {
+        if (!cancelled) setMemoryPresetFile({ id, value });
+      })
+      .catch(() => {
+        if (!cancelled) setMemoryPresetFile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [memoryPresetId, presetId, presets, presetReload]);
+
+  const memoryPreset =
+    !memoryPresetId || memoryPresetId === presetId
+      ? preset
+      : memoryPresetFile && memoryPresetFile.id === memoryPresetId
+        ? memoryPresetFile.value
+        : null;
 
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
 
@@ -519,6 +591,10 @@ export function App() {
     summaryConnection,
     summarySettings,
     summaryCountTokens,
+    memoryMode,
+    memorySettings,
+    memoryConnection,
+    memoryPreset,
     globalVariables: settings?.variables ?? {},
     regexScripts,
     onGlobalVariablesChange: commitGlobalVariables,
@@ -545,6 +621,8 @@ export function App() {
           chatMetadata: chat.state.metadata,
           guidanceSettings,
           summarySettings,
+          memoryMode,
+          memorySettings,
           globalVariables: settings?.variables ?? {},
           regexScripts,
         }
@@ -560,6 +638,7 @@ export function App() {
       if (avatar !== selected || editing || options?.chatId !== undefined) {
         chat.abort();
         chat.cancelSummary();
+        chat.cancelMemoryRun();
         try {
           await chat.flushSaves();
         } catch {
@@ -603,6 +682,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch {
@@ -729,6 +809,8 @@ export function App() {
       const previousAvatar = selected;
       try {
         chat.abort();
+        chat.cancelSummary();
+        chat.cancelMemoryRun();
         await chat.flushSaves();
       } catch {
         // The rename already landed; a failed chat flush is surfaced by the app shell and
@@ -771,6 +853,8 @@ export function App() {
 
   const handleDeleted = useCallback(() => {
     chat.abort();
+    chat.cancelSummary();
+    chat.cancelMemoryRun();
     const deleted = selected;
     if (deleted) {
       setSettings((current) => {
@@ -803,6 +887,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -833,6 +918,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -878,6 +964,7 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
+      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -1081,6 +1168,7 @@ export function App() {
             // The last generation's result when there is one, else the live preview — so the
             // report answers "why didn't it fire?" before you send, too.
             worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
+            memoryRecall={chat.memoryRecall ?? preview?.memoryRecall ?? null}
             inspection={chat.inspection}
           />
         </ErrorBoundary>
@@ -1131,6 +1219,7 @@ export function App() {
                     sort={characterListSort}
                     onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
                     selected={selected}
+                    scrollMemory={characterListScroll}
                     loading={loading}
                     error={error}
                     onSelect={handleSelect}
@@ -1161,15 +1250,24 @@ export function App() {
               ) : null}
 
               {rightPanel === 'summary' ? (
-                <SummaryPanel
+                <MemoryPanel
                   chat={chat}
-                  settings={summarySettings}
+                  mode={memoryMode}
+                  onModeChange={(nextMode) => void patchSettings({ memoryMode: nextMode })}
+                  settings={memorySettings}
+                  onSettingsChange={(patch) =>
+                    void patchSettings({ memory: { ...memorySettings, ...patch } })
+                  }
+                  summarySettings={summarySettings}
+                  onSummarySettingsChange={(patch) =>
+                    void patchSettings({ summary: { ...summarySettings, ...patch } })
+                  }
                   connections={settings?.connections ?? []}
                   activeConnection={connection}
                   summaryConnection={summaryConnection}
-                  onSettingsChange={(patch) =>
-                    void patchSettings({ summary: { ...summarySettings, ...patch } })
-                  }
+                  memoryConnection={memoryConnection}
+                  presets={presets}
+                  activePresetId={presetId}
                 />
               ) : null}
 

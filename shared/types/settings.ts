@@ -77,6 +77,10 @@ export interface AppSettings {
   guidance: GuidanceSettings;
   /** Manual rolling chat summaries: generation source and prompt injection preferences. */
   summary: SummarySettings;
+  /** Which story-memory feature reaches the model: the rolling summary, memories, or neither. */
+  memoryMode: MemoryMode;
+  /** Discrete memories: extraction source, prompt, hiding and injection preferences. */
+  memory: MemorySettings;
   coCreator: CoCreatorSettings;
   /** Render-only colours for quoted dialogue. Local UI state; never exported with cards. */
   dialogueColors: DialogueColorSettings;
@@ -198,16 +202,27 @@ export const DEFAULT_GUIDANCE: Readonly<GuidanceSettings> = {
 
 export type SummaryPosition = 'none' | 'beforeMain' | 'afterMain' | 'atDepth';
 
-export interface SummarySettings {
-  /** Null follows the active chat connection; otherwise names a saved connection. */
-  connectionId: string | null;
-  prompt: string;
-  targetWords: number;
-  /** Wraps the current summary. `{{summary}}` is filled without re-scanning its text. */
+/**
+ * Where a story-memory feature's text lands in the prompt.
+ *
+ * Shared by `SummarySettings` and `MemorySettings` because assembly has exactly one slot
+ * for "what happened earlier" and either feature can fill it. Splitting the placement out
+ * is what lets that slot stay a single code path instead of two parallel ones that would
+ * drift.
+ */
+export interface StoryMemoryPlacement {
+  /** Wraps the feature's text. Its `{{macro}}` is filled without re-scanning the result. */
   template: string;
   position: SummaryPosition;
   depth: number;
   role: 'system' | 'user' | 'assistant';
+}
+
+export interface SummarySettings extends StoryMemoryPlacement {
+  /** Null follows the active chat connection; otherwise names a saved connection. */
+  connectionId: string | null;
+  prompt: string;
+  targetWords: number;
 }
 
 export const DEFAULT_SUMMARY_PROMPT =
@@ -218,6 +233,86 @@ export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
   prompt: DEFAULT_SUMMARY_PROMPT,
   targetWords: 200,
   template: '[Summary: {{summary}}]',
+  position: 'afterMain',
+  depth: 2,
+  role: 'system',
+};
+
+/**
+ * Which memory feature reaches the model. Exactly one, or neither — never both.
+ *
+ * `classic` is the default so an existing chat keeps behaving as it did. The two write to
+ * different `ChatMetadata` fields, so switching mode is reversible and loses nothing: the
+ * old rolling summary is still sitting there when you switch back.
+ */
+export type MemoryMode = 'classic' | 'memories' | 'off';
+
+/**
+ * Discrete memory extraction and recall.
+ *
+ * Takes a `presetId` as well as a `connectionId`, which summarisation does not — the
+ * `CoCreatorSettings` shape rather than the `SummarySettings` one, for the reason given
+ * there. `buildRequestBody` reads samplers and never `prompts`, so "the user's samplers
+ * without the user's jailbreak" costs nothing to offer, and an RP preset's high
+ * temperature and repetition penalties are exactly what makes an extractor wander off its
+ * output contract.
+ *
+ * The extraction prompt is deliberately style guidance only. The JSON contract is appended
+ * by `buildExtractionMessages` and is not editable here, so rewriting the prompt cannot
+ * break parsing — the one failure a user could not diagnose from the panel.
+ */
+export interface MemorySettings extends StoryMemoryPlacement {
+  /** Null follows the active chat connection; otherwise names a saved connection. */
+  connectionId: string | null;
+  /** Null follows the active preset. Samplers only; its prompts are never read. */
+  presetId: string | null;
+  extractPrompt: string;
+  /** Transcript messages handed to one extraction call. */
+  windowSize: number;
+  /**
+   * Extract automatically once this many eligible messages sit unextracted, checked after
+   * a reply settles. 0 disables it — no run should ever cost money the user did not ask
+   * for by chatting.
+   */
+  autoInterval: number;
+  /** Reply budget for one extraction call. Several memories have to fit in it. */
+  maxMemoryTokens: number;
+  /**
+   * Hide the messages a new memory covers. Off by default: compressing two hundred turns
+   * into a dozen cards is a one-way door, and it should not be opened by a feature the
+   * user has not yet learned to trust.
+   */
+  autoHide: boolean;
+  /**
+   * Never auto-hide this many messages at the live end of the chat, whatever a memory
+   * covers. Enforced at hide time rather than at extraction time, so the memories stay
+   * complete while the recent prose stays verbatim.
+   */
+  verbatimTail: number;
+  /**
+   * Token allowance for memory injection, kept separate from the World Info budget.
+   *
+   * Memories accumulate over the life of a chat; sharing one pool would let them silently
+   * crowd out lorebook entries, and the symptom — lore quietly not firing any more —
+   * is close to undiagnosable.
+   */
+  budgetTokens: number;
+}
+
+export const DEFAULT_MEMORY_PROMPT =
+  'You are a story archivist. You will be given a transcript excerpt from an ongoing roleplay, numbered one line per message.\n\nDivide the excerpt into scenes and write one memory for each completed scene. A scene is a continuous stretch of story with a single situation and place — it ends when the location, the time, or the company changes.\n\nFor each memory write:\n- A short title naming the moment, like "First Meeting" or "The Bargain". Two to four words.\n- Two to four sentences of what happened, in past tense, as an all-seeing narrator. Record events, decisions, revelations and changes in the relationship. Name people and places explicitly rather than saying "he" or "there" — this will be read on its own, months later, with no surrounding context.\n- Keywords that should bring this memory back to mind: the names, places, objects and topics it is about.\n- At most two short verbatim lines from the excerpt that are worth keeping word for word.\n\nDo not write about the roleplay as a text or mention messages, numbers, summaries or the transcript. Write only about what happened in the story. Do not moralise, do not soften, and do not skip material because of its content — an accurate record is the only thing being asked for.\n\nIf the excerpt ends part-way through a scene, leave that scene out and say where it began.';
+
+export const DEFAULT_MEMORY: Readonly<MemorySettings> = {
+  connectionId: null,
+  presetId: null,
+  extractPrompt: DEFAULT_MEMORY_PROMPT,
+  windowSize: 40,
+  autoInterval: 0,
+  maxMemoryTokens: 700,
+  autoHide: false,
+  verbatimTail: 20,
+  budgetTokens: 1200,
+  template: '{{memories}}',
   position: 'afterMain',
   depth: 2,
   role: 'system',
@@ -368,6 +463,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   glass: true,
   guidance: { ...DEFAULT_GUIDANCE },
   summary: { ...DEFAULT_SUMMARY },
+  memoryMode: 'classic',
+  memory: { ...DEFAULT_MEMORY },
   coCreator: {
     ...DEFAULT_COCREATOR,
     exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },

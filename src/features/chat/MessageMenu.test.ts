@@ -71,6 +71,17 @@ describe('buildMessageMenu', () => {
     expect(byLabel(entries, 'Delete')?.disabled).toBeFalsy();
   });
 
+  test('a blocking memory extraction leaves structural transcript actions available', () => {
+    const entries = buildMessageMenu({ ...lastReply, memoryRunning: true }, actions);
+    expect(byLabel(entries, 'Regenerate')?.disabledReason).toBe(
+      'Cancel or finish the current memory extraction first.',
+    );
+    expect(byLabel(entries, 'Continue')?.disabled).toBe(true);
+    expect(byLabel(entries, 'Branch')?.disabled).toBeFalsy();
+    expect(byLabel(entries, 'Hide')?.disabled).toBeFalsy();
+    expect(byLabel(entries, 'Delete')?.disabled).toBeFalsy();
+  });
+
   test('a message that is not last cannot be regenerated or continued', () => {
     const entries = buildMessageMenu({ ...lastReply, isLast: false }, actions);
     expect(byLabel(entries, 'Regenerate')?.disabled).toBe(true);
@@ -97,6 +108,7 @@ describe('buildMessageMenu', () => {
       lastReply,
       { ...lastReply, busy: true },
       { ...lastReply, summaryRunning: true },
+      { ...lastReply, memoryRunning: true },
       { ...lastReply, isLast: false },
       { ...lastReply, isUser: true },
       { ...lastReply, isHidden: true, confirmingDelete: true },

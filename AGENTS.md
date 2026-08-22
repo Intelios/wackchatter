@@ -319,6 +319,14 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   take, never displaces (`resumeSwipeId` restores the reader on failure); do not add a
   destructive regenerate. Its streaming is its own setting
   (`AppSettings.coCreator.streaming`, default true), not the preset's.
+- **The session's avatar column is revision-free; `finishedAvatar` is not.** The avatar
+  endpoints write it through `setSessionAvatar` with no revision bump — the whole-session
+  save preserves the column, so the two write families commute and a bump would collide
+  with the client's own next revision (the Finish "Session changed elsewhere." bug; pinned
+  by tests). The client's `avatar/set`/`avatar/cleared` likewise cost no revision: the
+  server write is already durable when the response dispatches. `finishedAvatar` is a real
+  document field — it rides the whole-session snapshot, which is the only way Finish's
+  recording reaches the server.
 - **No blocking modals.** Destructive actions use a two-click confirm in place. Disabled
   beats refused: a blocked entry is `disabled` with a `disabledReason` that becomes its
   `title` — no toast system.

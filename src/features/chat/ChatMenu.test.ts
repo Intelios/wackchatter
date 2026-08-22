@@ -134,6 +134,25 @@ describe('buildChatMenu', () => {
     }
   });
 
+  test('a blocking memory extraction disables only actions that contact the provider', () => {
+    const entries = build({ memoryRunning: true });
+    for (const label of ['Regenerate', 'Continue']) {
+      expect(item(entries, label).disabled).toBe(true);
+      expect(item(entries, label).disabledReason).toBe(
+        'Cancel or finish the current memory extraction first.',
+      );
+    }
+    for (const label of [
+      'New chat',
+      'Save checkpoint',
+      'Export chat',
+      'Close chat',
+      ...ALWAYS_OPEN,
+    ]) {
+      expect(item(entries, label).disabled).toBeFalsy();
+    }
+  });
+
   test('the checkpoint is taken at the last message', () => {
     const { calls, actions } = spies();
     item(build({ lastMessageId: 'm9' }, actions), 'Save checkpoint').onSelect();
@@ -172,7 +191,12 @@ describe('buildChatMenu', () => {
    * check a detail in the window where you are most likely to want one.
    */
   test('the card stays open mid-generation, unlike everything around it', () => {
-    for (const state of [{ busy: true }, { summaryRunning: true }, { messageCount: 0 }]) {
+    for (const state of [
+      { busy: true },
+      { summaryRunning: true },
+      { memoryRunning: true },
+      { messageCount: 0 },
+    ]) {
       expect(item(build(state), 'Character card…').disabled).toBeFalsy();
     }
   });
@@ -200,6 +224,7 @@ describe('buildChatMenu', () => {
     for (const state of [
       { busy: true },
       { summaryRunning: true },
+      { memoryRunning: true },
       { messageCount: 0, lastMessageId: null },
       { lastIsUser: true },
     ]) {

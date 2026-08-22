@@ -217,5 +217,11 @@ export interface CocreatorSaveSnapshot {
   stash: CardStash;
   examples: ExampleSelection;
   settings: SessionModelSettings;
+  /**
+   * The card Finish produced. Part of the document the revision guards, unlike `avatar`,
+   * which the avatar endpoints own outright — Finish records it through this save, so it
+   * must ride the snapshot or the recording never reaches the server.
+   */
+  finishedAvatar: string | null;
   messages: ChatMessage[];
 }

@@ -1,12 +1,17 @@
 /**
  * The bridge between the loaded lorebooks and the activation engine.
  *
- * One function, called from exactly two places — `useChat.generate` and
- * `usePromptPreview` — so the preview and the send cannot disagree about what lore fires.
+ * Called from exactly two places — `useChat.generate` and `usePromptPreview` — so the
+ * preview and the send cannot disagree about what fires. `memoryRecallForChat` lives here
+ * rather than beside the memory code for the same reason: it shares `seedFor`, so the two
+ * passes roll their probabilities identically, and anyone adding a third call site has
+ * both functions in front of them.
  */
 
+import type { MemoryRecall } from '@shared/memory/source.ts';
+import { recallMemories } from '@shared/memory/source.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { ChatMessage } from '@shared/types/chat.ts';
+import type { ChatMessage, Memory } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { CHARACTER_NAMES_BEHAVIOR } from '@shared/types/preset.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -54,6 +59,43 @@ export function worldInfoForChat(options: WorldInfoForChatOptions): ActivationRe
     countTokens: countTokens.countText,
     // Match how the transcript will be rendered into the prompt, so a key that only
     // appears in a name prefix behaves consistently between the scan and the send.
+    includeNames: preset.names_behavior === CHARACTER_NAMES_BEHAVIOR.CONTENT,
+    seed: seedFor(chatId, messages),
+  });
+}
+
+export interface MemoryRecallForChatOptions {
+  /** This chat's memories, oldest first. */
+  memories: Memory[] | undefined;
+  messages: ChatMessage[];
+  /** Global scan settings, shared with lore: scan depth, case, whole words. */
+  settings: WorldInfoSettings;
+  /** `MemorySettings.budgetTokens` — the memory allowance, not the World Info one. */
+  budget: number;
+  preset: Preset;
+  chatId: string | null;
+  /** The SAME memoised counter assembly uses, or every memory is tokenised twice. */
+  countTokens: TokenCounter;
+}
+
+/**
+ * Which memories this turn recalls: the pinned ones, plus whatever the keywords woke.
+ *
+ * A pass of its own, over the memory source alone — see `shared/memory/source.ts` for why
+ * it does not simply join the lorebook sources. Returns null when the chat has no memories,
+ * which is also what `memoryMode: 'classic'` and `'off'` look like from here: the caller
+ * does not run it, and the story-memory slot stays empty or holds the summary instead.
+ */
+export function memoryRecallForChat(options: MemoryRecallForChatOptions): MemoryRecall | null {
+  const { memories, messages, settings, budget, preset, chatId, countTokens } = options;
+  if (!memories?.length) return null;
+
+  return recallMemories({
+    memories,
+    messages,
+    settings,
+    budget,
+    countTokens: countTokens.countText,
     includeNames: preset.names_behavior === CHARACTER_NAMES_BEHAVIOR.CONTENT,
     seed: seedFor(chatId, messages),
   });

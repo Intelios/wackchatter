@@ -458,12 +458,16 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         revision: state.revision + 1,
       };
 
+    // Both avatar actions mirror a write the server has already made durable by the time the
+    // dispatch fires (the upload/clear response carried it), so neither costs a revision —
+    // there is nothing left for the save queue to flush. Bumping anyway used to mint phantom
+    // revisions that raced the server's own avatar bump and left Finish dying on a 409.
     case 'avatar/set':
-      return { ...state, avatar: action.filename, revision: state.revision + 1 };
+      return { ...state, avatar: action.filename };
 
     case 'avatar/cleared':
       if (state.avatar === null) return state;
-      return { ...state, avatar: null, revision: state.revision + 1 };
+      return { ...state, avatar: null };
 
     case 'finished/recorded':
       return { ...state, finishedAvatar: action.avatar, revision: state.revision + 1 };

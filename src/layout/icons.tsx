@@ -174,6 +174,16 @@ export function EyeIcon({ className }: IconProps) {
   );
 }
 
+/** A pushpin: this memory is always in the prompt, not waiting on a keyword. */
+export function PinIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M12 17v5" />
+      <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
+    </svg>
+  );
+}
+
 /** Stop generation — a filled square. */
 export function StopIcon({ className }: IconProps) {
   return (

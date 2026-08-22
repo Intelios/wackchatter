@@ -34,6 +34,8 @@ export interface ChatMenuState {
   busy: boolean;
   /** A blocking summary request prevents only provider-generating actions. */
   summaryRunning?: boolean;
+  /** A blocking memory extraction prevents only provider-generating actions. */
+  memoryRunning?: boolean;
   messageCount: number;
   lastMessageId: string | null;
   /** The transcript ends on the user's turn, so there is nothing to continue. */
@@ -54,13 +56,25 @@ export interface ChatMenuActions {
 
 const BUSY = 'Wait for the current reply to finish.';
 const SUMMARY_BUSY = 'Cancel or finish the current summary first.';
+const MEMORY_BUSY = 'Cancel or finish the current memory extraction first.';
 const EMPTY = 'This chat has no messages yet.';
 
 export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): MenuEntry[] {
-  const { busy, summaryRunning = false, messageCount, lastMessageId, lastIsUser } = state;
+  const {
+    busy,
+    summaryRunning = false,
+    memoryRunning = false,
+    messageCount,
+    lastMessageId,
+    lastIsUser,
+  } = state;
   const empty = messageCount === 0;
-  const generationBlocked = busy || summaryRunning;
-  const generationBlockedReason = summaryRunning ? SUMMARY_BUSY : BUSY;
+  const generationBlocked = busy || summaryRunning || memoryRunning;
+  const generationBlockedReason = summaryRunning
+    ? SUMMARY_BUSY
+    : memoryRunning
+      ? MEMORY_BUSY
+      : BUSY;
 
   return [
     {
@@ -183,6 +197,7 @@ export function ChatMenu({
     {
       busy: chat.busy,
       summaryRunning: chat.summaryStatus.running,
+      memoryRunning: chat.memoryStatus.running,
       messageCount: messages.length,
       lastMessageId: last?.id ?? null,
       lastIsUser: Boolean(last?.is_user),

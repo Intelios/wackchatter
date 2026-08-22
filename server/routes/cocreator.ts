@@ -25,6 +25,8 @@ interface ReplaceBody {
   stash?: CardStash;
   examples?: ExampleSelection;
   settings?: SessionModelSettings;
+  /** Three-state like the patch body: absent keeps the recording, null clears it. */
+  finishedAvatar?: string | null;
   messages?: ChatMessage[];
 }
 
@@ -93,42 +95,35 @@ export async function handleCocreatorRoute(
     }
 
     if (method === 'PUT') {
-      const session = store.getSession(id);
-      if (!session) return notFound('Session not found.');
-
       const form = await request.formData();
       const file = form.get('image');
       if (!(file instanceof File)) return errorResponse('No image provided.');
 
       const bytes = new Uint8Array(await file.arrayBuffer());
       // The filename is derived from the id, so this is idempotent — but the row still has
-      // to learn the avatar exists, and that write needs a revision like any other.
+      // to learn the avatar exists. The claim is revision-free: the avatar column's only
+      // other writer is `replaceSession`, which preserves it, so there is nothing for a
+      // revision to arbitrate — and minting one here used to collide with the client's own
+      // next revision whenever artwork landed while a debounced save was in flight.
       //
-      // Claimed before the bytes land: a concurrent save can move the revision on between
-      // the read above and this write, and a rejected patch that had already written the
-      // file would leave artwork on disk that no session names.
-      const result = store.patchSession(id, {
-        revision: session.revision + 1,
-        avatar: `${id}.png`,
-      });
-      if (result.kind !== 'saved') return saveResponse(result);
+      // Claimed before the bytes land: a rejected or crashed write must not leave artwork on
+      // disk that no session names.
+      const session = store.setSessionAvatar(id, `${id}.png`);
+      if (!session) return notFound('Session not found.');
 
       await atomicWrite(path, bytes);
-      return saveResponse(result);
+      return json(session);
     }
 
     if (method === 'DELETE') {
-      const session = store.getSession(id);
+      // Released before the file goes, for the same reason the upload claims it first: a
+      // rejected or crashed write must not leave the row naming artwork that
+      // `GET /:id/avatar` can no longer serve.
+      const session = store.setSessionAvatar(id, null);
       if (!session) return notFound('Session not found.');
 
-      // Released before the file goes, for the same reason the upload claims it first: a
-      // rejected patch that had already unlinked would leave the row naming artwork that
-      // `GET /:id/avatar` can no longer serve.
-      const result = store.patchSession(id, { revision: session.revision + 1, avatar: null });
-      if (result.kind !== 'saved') return saveResponse(result);
-
       if (existsSync(path)) unlinkSync(path);
-      return saveResponse(result);
+      return json(session);
     }
 
     return null;
@@ -158,6 +153,7 @@ export async function handleCocreatorRoute(
           stash: body.stash,
           examples: body.examples,
           settings: body.settings,
+          ...(Object.hasOwn(body, 'finishedAvatar') ? { finishedAvatar: body.finishedAvatar } : {}),
           messages: body.messages,
         }),
       );

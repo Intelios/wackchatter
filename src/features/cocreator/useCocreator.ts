@@ -80,6 +80,11 @@ export interface UseCocreator {
   send: (text: string, extra?: MessageExtra) => Promise<void>;
   /** Generate another take on the last reply — an overswipe, never destructive. */
   reroll: () => Promise<void>;
+  /**
+   * Generate the reply owed to the user turn at the end of the transcript — one whose
+   * generation failed, was aborted empty, or was deleted afterwards.
+   */
+  retry: () => Promise<void>;
   abort: () => void;
   /** `base` flushes a state the reducer has produced but React has not yet committed. */
   flushSaves: (base?: CocreatorState) => Promise<void>;
@@ -208,6 +213,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       stash: current.stash,
       examples: current.examples,
       settings: current.settings,
+      finishedAvatar: current.finishedAvatar,
       // The pre-generation projection: a blank placeholder or a tentative swipe is UI state
       // until the request settles, and must not become durable under the earlier revision.
       messages: toPersistedMessages(current),
@@ -431,6 +437,16 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     await generate('swipe');
   }, [generate]);
 
+  /*
+   * A retry is `send` without appending a turn: the reducer's send arm already generates
+   * from the whole transcript, so a trailing user message is simply what gets answered.
+   * A failed or empty-aborted send removes the placeholder and leaves the user message
+   * last again — which is exactly when the UI offers this.
+   */
+  const retry = useCallback(async () => {
+    await generate('send');
+  }, [generate]);
+
   // A design session is worth more than a chat turn, so an unload attempts the save too.
   useEffect(() => {
     const onPagehide = () => {
@@ -459,6 +475,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     blockedReason,
     send,
     reroll,
+    retry,
     abort,
     flushSaves,
     persistence: persistenceControls,

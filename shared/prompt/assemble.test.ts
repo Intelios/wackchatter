@@ -1831,3 +1831,88 @@ describe('regex scripts', () => {
     );
   });
 });
+
+describe('the story-memory slot', () => {
+  const summary = { text: 'The gate is open.', checkpointMessageId: 'm0' };
+  const memoryText = '## The Cellar\nHe found the sealed jars.';
+
+  test('classic mode injects the rolling summary and nothing else', () => {
+    const result = assemble({ summary, memoryText, memoryMode: 'classic' });
+    const contents = result.messages.map((message) => message.content).join('\n');
+    expect(contents).toContain('The gate is open.');
+    expect(contents).not.toContain('The Cellar');
+    expect(result.tokenCounts.memories).toBeUndefined();
+  });
+
+  test('classic is the default, so an assembly that never heard of memories is unchanged', () => {
+    expect(assemble({ summary }).messages).toEqual(
+      assemble({ summary, memoryMode: 'classic' }).messages,
+    );
+  });
+
+  test('memories mode injects the memories and suppresses the summary', () => {
+    // Both live in metadata at once. Sending both would narrate the same events twice.
+    const result = assemble({ summary, memoryText, memoryMode: 'memories' });
+    const contents = result.messages.map((message) => message.content).join('\n');
+    expect(contents).toContain('The Cellar');
+    expect(contents).not.toContain('The gate is open.');
+    expect(result.tokenCounts.summary).toBeUndefined();
+    expect(result.tokenCounts.memories).toBeGreaterThan(0);
+  });
+
+  test('off mode injects neither', () => {
+    const result = assemble({ summary, memoryText, memoryMode: 'off' });
+    const contents = result.messages.map((message) => message.content).join('\n');
+    expect(contents).not.toContain('The gate is open.');
+    expect(contents).not.toContain('The Cellar');
+  });
+
+  test('the memory template wraps the text through its own macro', () => {
+    const result = assemble({
+      memoryText,
+      memoryMode: 'memories',
+      memorySettings: { template: 'RECALL: {{memories}}', position: 'afterMain' },
+    });
+    expect(result.messages.map((m) => m.content).join('\n')).toContain('RECALL: ## The Cellar');
+  });
+
+  test('memories honour their own position, independently of the summary settings', () => {
+    const before = assemble({
+      memoryText,
+      memoryMode: 'memories',
+      memorySettings: { position: 'beforeMain' },
+      summarySettings: { position: 'atDepth' },
+    });
+    const indexOf = (result: typeof before, needle: string) =>
+      result.messages.findIndex((message) => message.content.includes(needle));
+    expect(indexOf(before, 'The Cellar')).toBeLessThan(indexOf(before, 'next reply'));
+  });
+
+  test('memories can be injected at depth', () => {
+    const result = assemble({
+      messages: makeMessages(4),
+      memoryText,
+      memoryMode: 'memories',
+      memorySettings: { position: 'atDepth', depth: 0, role: 'system' },
+    });
+    expect(result.messages.at(-1)?.content).toContain('The Cellar');
+    expect(result.tokenCounts.memories).toBeGreaterThan(0);
+    expect(result.tokenCounts.summary).toBeUndefined();
+  });
+
+  test('memories mode with nothing recalled injects nothing', () => {
+    const result = assemble({ summary, memoryText: '', memoryMode: 'memories' });
+    const contents = result.messages.map((message) => message.content).join('\n');
+    expect(contents).not.toContain('The gate is open.');
+    expect(result.tokenCounts.memories).toBeUndefined();
+  });
+
+  test('position none suppresses memories the same way it suppresses the summary', () => {
+    const result = assemble({
+      memoryText,
+      memoryMode: 'memories',
+      memorySettings: { position: 'none' },
+    });
+    expect(result.messages.map((m) => m.content).join('\n')).not.toContain('The Cellar');
+  });
+});

@@ -51,7 +51,9 @@
   gap: var(--wc-space-1);
   padding-right: var(--wc-space-1);
   border-radius: var(--wc-radius);
-  transition: background var(--wc-duration-fast) ease;
+  transition:
+    background var(--wc-duration-fast) ease,
+    box-shadow var(--wc-duration-fast) ease;
 }
 
 .character-card[data-draggable] {
@@ -82,8 +84,32 @@
   background: var(--wc-surface-hover);
 }
 
+/*
+ * The open chat's card: no fill, just an accent edge that breathes — brightening toward
+ * the full accent and simmering back, so the row reads as a live state rather than a
+ * static mark. The declared box-shadow is also the reduced-motion fallback below; the
+ * edge is an inset shadow rather than a real border so the row's layout never shifts
+ * when the selection moves.
+ */
 .character-card[data-current] {
-  background: var(--wc-accent-subtle);
+  box-shadow: inset 0 0 0 1px var(--wc-accent-border);
+  animation: wc-card-current 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes wc-card-current {
+  from {
+    box-shadow: inset 0 0 0 1px var(--wc-accent-border);
+  }
+
+  to {
+    box-shadow: inset 0 0 0 1px var(--wc-accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character-card[data-current] {
+    animation: none;
+  }
 }
 
 /* Revealed on hover so the list stays quiet at rest. */

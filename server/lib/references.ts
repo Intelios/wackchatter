@@ -23,6 +23,7 @@ import {
   reassignCharacterExampleSets,
   reassignCharacterRating,
   reassignGlobalLorebooks,
+  reassignPreset,
   removePersonaDialogueColor,
   saveSettings,
 } from './settings.ts';
@@ -183,4 +184,46 @@ export async function cascadeLorebookDelete(id: string): Promise<Rollback> {
   }
 
   return () => rollbackAll(rollbacks, WHAT);
+}
+
+/** A preset's file moved: keep settings pointed at the new identity. */
+export function cascadePresetRename(oldId: string, newId: string): Rollback {
+  const current = getSettings();
+  const updated = reassignPreset(current, oldId, newId);
+  if (!updated) return () => {};
+
+  saveSettings({
+    presetId: updated.presetId,
+    memory: updated.memory,
+    coCreator: updated.coCreator,
+  });
+
+  return () => {
+    saveSettings({
+      presetId: current.presetId,
+      memory: current.memory,
+      coCreator: current.coCreator,
+    });
+  };
+}
+
+/** A preset is gone: clear every setting reference that pointed at it. */
+export function cascadePresetDelete(id: string): Rollback {
+  const current = getSettings();
+  const updated = reassignPreset(current, id, null);
+  if (!updated) return () => {};
+
+  saveSettings({
+    presetId: updated.presetId,
+    memory: updated.memory,
+    coCreator: updated.coCreator,
+  });
+
+  return () => {
+    saveSettings({
+      presetId: current.presetId,
+      memory: current.memory,
+      coCreator: current.coCreator,
+    });
+  };
 }
