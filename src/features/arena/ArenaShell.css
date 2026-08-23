@@ -868,18 +868,22 @@
   outline: none;
 }
 
-.arena-cue__input:focus + .arena-cue__mirror,
+/* The mirror precedes the input in the DOM, so only :focus-within can reach it. */
 .arena-cue__field:focus-within .arena-cue__mirror {
   border-color: transparent;
 }
 
+/*
+ * Colour and weight only — never a metric. The macro must typeset identically to the real
+ * text it sits under, so font-family/size, line-height, padding and letter-spacing are all
+ * forbidden here: any of them makes the mirror wrap differently from the textarea and the
+ * caret stops agreeing with the painted text mid-word.
+ */
 .arena-cue__macro {
   border-radius: 3px;
   background: var(--wc-accent-subtle);
   color: var(--wc-accent);
-  font-family: var(--wc-font-mono);
-  font-size: 0.92em;
-  font-style: normal;
+  font-weight: 500;
 }
 
 /* ---------------------------------------------------------------- run log */
