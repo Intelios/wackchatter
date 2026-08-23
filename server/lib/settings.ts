@@ -564,6 +564,22 @@ function normalizeCharacterRatings(value: unknown): Record<string, number> {
   return Object.fromEntries(entries);
 }
 
+/**
+ * Coerce the stored background→effect pairing map. Only string→string entries survive;
+ * the client's effect catalog is the authority on ids, so an id it no longer knows is kept
+ * here and degrades to "no effect" at render — the deleted-upload rule for pairings.
+ */
+function normalizeBackgroundEffects(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+
+  const entries: Array<[string, string]> = [];
+  for (const [background, candidate] of Object.entries(value)) {
+    if (!background || typeof candidate !== 'string' || !candidate) continue;
+    entries.push([background, candidate]);
+  }
+  return Object.fromEntries(entries);
+}
+
 /** Coerce the app-wide list of tags hidden from character-list chips. */
 function normalizeHiddenTags(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -692,6 +708,14 @@ export function getSettings(): AppSettings {
     arena: normalizeArena(stored.arena),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
+    backgroundEffectEnabled:
+      typeof stored.backgroundEffectEnabled === 'boolean'
+        ? stored.backgroundEffectEnabled
+        : DEFAULT_SETTINGS.backgroundEffectEnabled,
+    backgroundEffects: normalizeBackgroundEffects(stored.backgroundEffects),
+    // Pinned to the two legal values, the `characterListSort` shape: anything else is a
+    // stale or hand-edited file, and behind is the default.
+    backgroundEffectLayer: stored.backgroundEffectLayer === 'front' ? 'front' : 'behind',
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
     hiddenTags: normalizeHiddenTags(stored.hiddenTags),
     quickCommands: normalizeQuickCommands(stored.quickCommands),
@@ -820,6 +844,21 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
               : patch.characterRatings,
           )
         : current.characterRatings,
+    // Same guard for the background→effect pairings. The client always sends the whole
+    // map (it holds the loaded settings), so a real object replaces wholesale — the
+    // `dialogueColors` semantics — while `{"backgroundEffects": null}` keeps the map.
+    backgroundEffects:
+      isRecord(patch.backgroundEffects) || patch.backgroundEffects === undefined
+        ? normalizeBackgroundEffects(
+            patch.backgroundEffects === undefined
+              ? current.backgroundEffects
+              : patch.backgroundEffects,
+          )
+        : current.backgroundEffects,
+    backgroundEffectLayer:
+      patch.backgroundEffectLayer === 'behind' || patch.backgroundEffectLayer === 'front'
+        ? patch.backgroundEffectLayer
+        : current.backgroundEffectLayer,
     characterListSort:
       patch.characterListSort === 'name' || patch.characterListSort === 'rating'
         ? patch.characterListSort

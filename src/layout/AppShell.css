@@ -72,6 +72,16 @@
 }
 
 /*
+ * The ambient-effect canvas spans the same area as the backdrop. Geometry only — its
+ * z-index comes from ParticleLayer.css (`behind` joins this z-0 band, `front` ties the
+ * columns' z-index 1 and wins by DOM order, being the shell's last static child).
+ */
+.shell > .particle-layer {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+}
+
+/*
  * The crossfade. The backdrop's backgroundImage is swapped when the user picks a new
  * picture, and background-image is not animatable — so the outgoing image is held in a
  * ::before layer, painted from --wc-bg-prev (set by Backdrop), that fades out over the

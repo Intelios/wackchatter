@@ -13,6 +13,12 @@
   z-index: 0;
 }
 
+/* Geometry only; the layer's z-index lives in ParticleLayer.css per data-layer. */
+.studio-shell > .particle-layer {
+  position: absolute;
+  inset: 0;
+}
+
 .studio-shell__bar,
 .studio-shell__body {
   position: relative;

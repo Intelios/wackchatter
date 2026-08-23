@@ -1,0 +1,44 @@
+/*
+ * The ambient-effect layer's own rules: everything that is true on every shell. The
+ * geometry (grid area or absolute inset) lives in each shell's CSS beside its backdrop
+ * rules, because that is where the backdrop/scrim geometry lives too.
+ *
+ * Layering, decided here once:
+ * - behind: z-index 0, the backdrop/scrim band. Rendered as the last child of that
+ *   band, so it paints above the scrim (bright streaks, not double-dimmed) and under
+ *   all content; glass panels' backdrop-filter samples it, which is the "blurred
+ *   behind the glass" look.
+ * - front: z-index 1 as the shell's last static child. The bar, panels and chat
+ *   column are z-index 1 too, so DOM order decides and the layer wins; everything
+ *   raised above them — flyouts, overlays at z-index 2+ — still wins over the rain.
+ */
+
+.particle-layer {
+  pointer-events: none;
+}
+
+.particle-layer__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.particle-layer[data-layer="behind"] {
+  z-index: 0;
+}
+
+.particle-layer[data-layer="front"] {
+  z-index: 1;
+}
+
+/*
+ * The transparency/contrast floor kills the backdrop; an effect dancing on a floor
+ * the user asked to remove is noise. Two separate conditions rather than one `and`
+ * for the tokens.css reason: a browser that doesn't know one query drops the whole
+ * media block.
+ */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .particle-layer {
+    display: none;
+  }
+}
