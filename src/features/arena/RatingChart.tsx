@@ -13,12 +13,18 @@
  * It is the only place the shape of a sitting is visible — a run of one-sided verdicts, a
  * patch of ties, the round where you rejected both — and because every round stores the full
  * text of both replies, a tick can open the round it stands for.
+ *
+ * The legend is a focus filter: with eight lines in one plot, picking two or three is often
+ * the only way to read any of them. Picking narrows the drawn lines AND the y-axis to the
+ * selection — the shape of the picked climb is the point — while the x-axis keeps counting
+ * every round, since every series covers every one. A line's colour is the full view's and
+ * never changes through a focus, so the eye keeps its bearings.
  */
 
 import type { ArenaRound } from '@shared/types/arena.ts';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { useCallback, useState } from 'react';
-import { indexAt, plotLine, plotX, plotY, ratingBounds } from './chart.ts';
+import { indexAt, plotLine, plotX, plotY, ratingBounds, visibleSeries } from './chart.ts';
 import type { LeaderboardRow, RatingSeries } from './elo.ts';
 import { START_RATING } from './elo.ts';
 import { colourOf } from './series.ts';
@@ -56,9 +62,22 @@ export function RatingChart({
   onOpenRound,
 }: RatingChartProps) {
   const [active, setActive] = useState<number | null>(null);
+  /** Contender ids the legend has picked. Empty means the whole board is drawn. */
+  const [focus, setFocus] = useState<ReadonlySet<string>>(new Set());
+
+  const toggleFocus = (contenderId: string) => {
+    setFocus((prev) => {
+      const next = new Set(prev);
+      if (next.has(contenderId)) next.delete(contenderId);
+      else next.add(contenderId);
+      return next;
+    });
+  };
 
   const count = series[0]?.points.length ?? 0;
-  const bounds = ratingBounds(series);
+  const visible = visibleSeries(series, focus);
+  const focused = focus.size > 0 && visible.length < series.length;
+  const bounds = ratingBounds(visible);
   const startY = plotY(START_RATING, bounds, HEIGHT);
 
   const onMove = useCallback(
@@ -74,6 +93,9 @@ export function RatingChart({
   if (count < 2) return null;
 
   const reading = active ?? count - 1;
+  const focusNote = focused
+    ? `, focused on ${visible.map((entry) => nameOf(entry.contenderId, entry.model)).join(', ')}`
+    : '';
 
   return (
     <figure className="rating-chart">
@@ -81,10 +103,17 @@ export function RatingChart({
         <span className="rating-chart__title">
           Rating over {count - 1} {count - 1 === 1 ? 'round' : 'rounds'}
         </span>
+        {focus.size > 0 ? (
+          <button type="button" className="rating-chart__clear" onClick={() => setFocus(new Set())}>
+            Show all
+          </button>
+        ) : null}
         <span className="rating-chart__reading">
-          {active === null
-            ? 'Hover to read a round · click a tick to open it'
-            : `After round ${reading}`}
+          {active !== null
+            ? `After round ${reading}`
+            : focus.size > 0
+              ? `Showing ${visible.length} of ${series.length} · hover to read a round`
+              : 'Hover to read a round · click a tick to open it · click a name to focus'}
         </span>
       </figcaption>
 
@@ -97,11 +126,11 @@ export function RatingChart({
         className="rating-chart__plot"
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
-        aria-label={`Rating over ${count - 1} rounds`}
+        aria-label={`Rating over ${count - 1} rounds${focusNote}`}
         onMouseMove={onMove}
         onMouseLeave={() => setActive(null)}
       >
-        <title>{`Rating over ${count - 1} rounds`}</title>
+        <title>{`Rating over ${count - 1} rounds${focusNote}`}</title>
 
         {/* Where everyone started. The only reference line worth drawing: every rating on
             the chart is a distance from it. */}
@@ -125,7 +154,7 @@ export function RatingChart({
           />
         ) : null}
 
-        {series.map((entry, index) => (
+        {visible.map((entry, index) => (
           <g
             key={entry.contenderId}
             style={{ '--wc-series': colourOf(colours, entry.contenderId) } as CSSProperties}
@@ -174,29 +203,46 @@ export function RatingChart({
         ))}
       </ol>
 
+      {/* Every model stays listed however narrow the focus gets — the way back in is the
+          same one click as the way out. */}
       <ul className="rating-chart__legend">
         {series.map((entry) => {
           const point = entry.points[reading];
           const row = rows.find((item) => item.contenderId === entry.contenderId);
+          const on = focus.size === 0 || focus.has(entry.contenderId);
+          const title = !on
+            ? 'Click to draw this model'
+            : focus.size > 0
+              ? 'Click to remove this model from the focus'
+              : 'Click to focus the chart on this model';
           return (
             <li
               key={entry.contenderId}
               className="rating-chart__key"
               style={{ '--wc-series': colourOf(colours, entry.contenderId) } as CSSProperties}
             >
-              <span className="rating-chart__swatch" aria-hidden="true" />
-              <span className="rating-chart__name">{nameOf(entry.contenderId, entry.model)}</span>
-              <span className="rating-chart__value">{point?.rating ?? START_RATING}</span>
-              {/* The swing this round, which is the whole story of a single row: winning as
-                  a favourite earns little, losing as one costs a lot. */}
-              <span className="rating-chart__delta" data-sign={signOf(point?.delta ?? 0)}>
-                {formatDelta(point?.delta ?? 0)}
-              </span>
-              {row?.provisional ? (
-                <span className="rating-chart__provisional" title="Provisional — see the table">
-                  ?
+              <button
+                type="button"
+                className="rating-chart__keybtn"
+                data-on={on}
+                aria-pressed={on}
+                title={title}
+                onClick={() => toggleFocus(entry.contenderId)}
+              >
+                <span className="rating-chart__swatch" aria-hidden="true" />
+                <span className="rating-chart__name">{nameOf(entry.contenderId, entry.model)}</span>
+                <span className="rating-chart__value">{point?.rating ?? START_RATING}</span>
+                {/* The swing this round, which is the whole story of a single row: winning as
+                    a favourite earns little, losing as one costs a lot. */}
+                <span className="rating-chart__delta" data-sign={signOf(point?.delta ?? 0)}>
+                  {formatDelta(point?.delta ?? 0)}
                 </span>
-              ) : null}
+                {row?.provisional ? (
+                  <span className="rating-chart__provisional" title="Provisional — see the table">
+                    ?
+                  </span>
+                ) : null}
+              </button>
             </li>
           );
         })}

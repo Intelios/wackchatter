@@ -12,7 +12,10 @@
  *
  * The ratings are drawn as bars on a shared axis centred on 1500, because every rating *is*
  * a distance from the start; a column of four-digit numbers makes the reader do that
- * subtraction. And the per-card filter is a row of faces rather than a dropdown: "which model
+ * subtraction. The number itself is tinted by the same distance — green above, amber sinking
+ * to red below — on a fixed scale, so a colour means the same thing on every board.
+ * Provisional numbers keep the grey: a tint would lend weight to what the `?` is saying to
+ * ignore. And the per-card filter is a row of faces rather than a dropdown: "which model
  * plays Mika best" is the question this arena can answer and a generic one cannot, so it
  * should not be three clicks deep.
  */
@@ -29,6 +32,7 @@ import { HeadToHead } from './HeadToHead.tsx';
 import { headToHead } from './matchups.ts';
 import { RatingChart } from './RatingChart.tsx';
 import { RoundInspector } from './RoundInspector.tsx';
+import { ratingTone } from './ratingTone.ts';
 import { colourOf, viewSeries } from './series.ts';
 
 interface LeaderboardProps {
@@ -48,6 +52,23 @@ interface LeaderboardProps {
  * a bar chart of ratings must not do. Ratings past this clamp, and say so by touching the end.
  */
 const AXIS_SPAN = 200;
+
+/**
+ * The attributes that tint a rating value by its distance from the start — see `ratingTone`.
+ *
+ * Nothing for a level rating, and nothing while provisional: the colour scale belongs to
+ * settled numbers, and a bright 1620 earned in four rounds would read as a verdict however
+ * loudly the `?` protests.
+ */
+function toneProps(
+  rating: number,
+  provisional: boolean,
+): { dataTone?: 'above' | 'below'; style?: CSSProperties } {
+  if (provisional) return {};
+  const tone = ratingTone(rating);
+  if (tone.kind === 'level') return {};
+  return { dataTone: tone.kind, style: { '--wc-rating-t': tone.strength } as CSSProperties };
+}
 
 export function Leaderboard({
   rounds,
@@ -108,6 +129,7 @@ export function Leaderboard({
 
   const leader = rows.find((row) => !row.provisional && row.rounds > 0) ?? null;
   const runnerUp = rows.find((row) => row !== leader && !row.provisional && row.rounds > 0);
+  const leaderTone = leader ? toneProps(leader.rating, false) : {};
 
   return (
     <div className="arena-board">
@@ -142,7 +164,13 @@ export function Leaderboard({
           </div>
           <dl className="arena-tape arena-champ__tape">
             <div className="arena-tape__cell">
-              <dd className="arena-tape__value">{leader.rating}</dd>
+              <dd
+                className="arena-tape__value"
+                data-tone={leaderTone.dataTone}
+                style={leaderTone.style}
+              >
+                {leader.rating}
+              </dd>
               <dt className="arena-tape__key">Rating</dt>
             </div>
             {runnerUp ? (
@@ -218,6 +246,7 @@ export function Leaderboard({
               const offset = Math.max(-AXIS_SPAN, Math.min(AXIS_SPAN, row.rating - START_RATING));
               const share = (Math.abs(offset) / AXIS_SPAN) * 50;
               const decided = Math.max(1, row.wins + row.losses + row.ties);
+              const tone = toneProps(row.rating, row.provisional);
               return (
                 <tr
                   key={row.contenderId}
@@ -247,7 +276,7 @@ export function Leaderboard({
                       }}
                     />
                   </td>
-                  <td className="arena-ranks__rating">
+                  <td className="arena-ranks__rating" data-tone={tone.dataTone} style={tone.style}>
                     {row.rating}
                     {row.provisional ? (
                       <span
@@ -270,9 +299,10 @@ export function Leaderboard({
                         <i data-k="l" style={{ width: `${(row.losses / decided) * 100}%` }} />
                       ) : null}
                     </span>
+                    {/* Rejected rounds are deliberately absent: they moved no rating and
+                        decided nothing, so the record has nothing to say about them. */}
                     <span className="arena-wlt__key">
                       {row.wins}W · {row.losses}L · {row.ties}T
-                      {row.rejected > 0 ? ` · ${row.rejected} rejected` : ''}
                     </span>
                   </td>
                 </tr>

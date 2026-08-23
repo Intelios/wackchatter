@@ -1845,7 +1845,35 @@
   text-align: right;
 }
 
-/* Placed after the row rules it overrides, so specificity only ever ascends. */
+/*
+ * Tinted by distance from the start — the same arithmetic the bar column does, made
+ * pre-attentive. ratingTone.ts supplies `--wc-rating-t`: 0 at 1500, 1 at and beyond the
+ * clamp points (1600 above, 1250 below). The mix floor keeps a barely-moved rating
+ * visibly coloured — a 1% tint would read as a rendering accident, not as a signal.
+ * Below the start the hue itself slides from warning toward danger as the rating falls.
+ */
+.arena-ranks__rating[data-tone="above"],
+.arena-tape__value[data-tone="above"] {
+  color: color-mix(
+    in oklab,
+    var(--wc-success) calc(25% + var(--wc-rating-t, 1) * 75%),
+    var(--wc-text)
+  );
+}
+
+.arena-ranks__rating[data-tone="below"],
+.arena-tape__value[data-tone="below"] {
+  color: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--wc-danger) calc(var(--wc-rating-t, 1) * 100%), var(--wc-warning))
+      calc(25% + var(--wc-rating-t, 1) * 75%),
+    var(--wc-text)
+  );
+}
+
+/* Placed after the row rules it overrides, so specificity only ever ascends. A
+   provisional rating stays muted whatever its number: the tint scale belongs to
+   settled ratings, and colour would lend weight to noise. */
 .arena-ranks tr[data-provisional="true"] .arena-ranks__name,
 .arena-ranks tr[data-provisional="true"] .arena-ranks__rating {
   color: var(--wc-text-muted);
@@ -2235,6 +2263,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Clears the legend's focus; only mounted while one is active. */
+.rating-chart__clear {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rating-chart__clear:hover {
+  color: var(--wc-text);
+}
+
 /*
  * Uniform scaling, so a climb has the same slope at every window width. `height: auto`
  * with no aspect override is what keeps the viewBox honest — see the note in RatingChart.
@@ -2350,10 +2390,22 @@
 }
 
 .rating-chart__key {
+  font-size: var(--wc-text-sm);
+}
+
+/*
+ * The legend is the chart's focus filter: one click narrows the plot to a model, another
+ * brings it back. Buttons rather than spans because picking is an action a keyboard user
+ * must be able to take, and `aria-pressed` is what says which models are on the plot.
+ */
+.rating-chart__keybtn {
   display: flex;
   align-items: baseline;
   gap: var(--wc-space-2);
-  font-size: var(--wc-text-sm);
+}
+
+.rating-chart__keybtn[data-on="false"] {
+  opacity: 0.45;
 }
 
 .rating-chart__swatch {
@@ -2371,6 +2423,13 @@
   color: var(--wc-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* After the name rule it overrides, so specificity only ever ascends. The brightening is
+   the affordance that says a key is something you can pick. */
+.rating-chart__keybtn:hover .rating-chart__name,
+.rating-chart__keybtn:focus-visible .rating-chart__name {
+  color: var(--wc-text);
 }
 
 .rating-chart__value {
