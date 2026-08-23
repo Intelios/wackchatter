@@ -31,6 +31,16 @@ export const K_FACTOR = 32;
 /** Below this many rated rounds a rating is noise, and is labelled as such. */
 export const PROVISIONAL_ROUNDS = 10;
 
+/**
+ * What a tie adds to BOTH ratings.
+ *
+ * Elo is zero-sum, and scoring a draw at 0.5 either way would charge the favourite a
+ * point for failing to win — a penalty on a round that said both replies were worth
+ * keeping. A tie lifts both sides by this instead: the one verdict that is
+ * deliberately not zero-sum.
+ */
+export const TIE_BONUS = 1;
+
 export interface LeaderboardRow {
   contenderId: string;
   /**
@@ -114,6 +124,11 @@ function expectedScore(rating: number, against: number): number {
  * strong rating toward a weak one on evidence that contains no comparison at all. It is
  * counted instead, which is the number that actually answers "does anything handle this
  * card?" — and it means the user can reject a round honestly without corrupting the board.
+ *
+ * **A tie lifts both ratings by `TIE_BONUS`.** The standard 0.5-each update would charge
+ * the favourite a point for the draw, penalising a round whose verdict was "both are
+ * good". A tie is good enough to keep, so neither side loses out — the one verdict that
+ * is deliberately not zero-sum.
  */
 export function replay(
   rounds: readonly ArenaRound[],
@@ -180,29 +195,35 @@ export function replay(
       continue;
     }
 
-    const leftScore = round.verdict === 'left' ? 1 : round.verdict === 'right' ? 0 : 0.5;
+    if (round.verdict === 'tie') {
+      // Both replies were worth keeping, so neither pays for failing to win: the zero-sum
+      // update would charge the favourite a point on the draw. See `TIE_BONUS`.
+      left.rating += TIE_BONUS;
+      right.rating += TIE_BONUS;
+      left.ties++;
+      right.ties++;
+    } else {
+      const leftScore = round.verdict === 'left' ? 1 : 0;
 
-    // Both expectations are computed from the pre-round ratings, or whichever side updated
-    // first would be answering a question the other one already changed.
-    const leftExpected = expectedScore(left.rating, right.rating);
-    const rightExpected = expectedScore(right.rating, left.rating);
+      // Both expectations are computed from the pre-round ratings, or whichever side updated
+      // first would be answering a question the other one already changed.
+      const leftExpected = expectedScore(left.rating, right.rating);
+      const rightExpected = expectedScore(right.rating, left.rating);
 
-    left.rating += K_FACTOR * (leftScore - leftExpected);
-    right.rating += K_FACTOR * (1 - leftScore - rightExpected);
+      left.rating += K_FACTOR * (leftScore - leftExpected);
+      right.rating += K_FACTOR * (1 - leftScore - rightExpected);
+
+      if (round.verdict === 'left') {
+        left.wins++;
+        right.losses++;
+      } else {
+        left.losses++;
+        right.wins++;
+      }
+    }
 
     left.rounds++;
     right.rounds++;
-
-    if (round.verdict === 'tie') {
-      left.ties++;
-      right.ties++;
-    } else if (round.verdict === 'left') {
-      left.wins++;
-      right.losses++;
-    } else {
-      left.losses++;
-      right.wins++;
-    }
 
     played++;
     recordPoints(tallies, before, played);
@@ -271,8 +292,9 @@ function recordPoints(
        * The difference between the DISPLAYED ratings, not the rounded difference of the
        * real ones — so the number shown always reconciles with the two numbers either side
        * of it. The cost is that a round's two deltas can read as -19 and +20 where the
-       * underlying swing was ±19.5 either way. Zero-sum still holds on the real values; it
-       * is the integers on screen that cannot both be right.
+       * underlying swing was ±19.5 either way. Zero-sum still holds on the real values of
+       * a decisive round — a tie lifts both by the bonus — and it is the integers on
+       * screen that cannot both be right.
        */
       delta: Math.round(entry.rating) - Math.round(previous),
     });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { indexAt, MIN_SPAN, plotLine, plotX, plotY, ratingBounds } from './chart.ts';
+import { indexAt, MIN_SPAN, plotLine, plotX, plotY, ratingBounds, visibleSeries } from './chart.ts';
 import type { RatingPoint, RatingSeries } from './elo.ts';
 import { START_RATING } from './elo.ts';
 
@@ -84,6 +84,27 @@ describe('plotLine', () => {
 
   test('an empty series draws nothing rather than throwing', () => {
     expect(plotLine([], { min: 1400, max: 1600 }, 100, 100)).toBe('');
+  });
+});
+
+describe('visibleSeries', () => {
+  const all = [series([1500, 1510], 'a'), series([1500, 1490], 'b'), series([1500, 1520], 'c')];
+
+  test('no focus draws every line', () => {
+    expect(visibleSeries(all, new Set())).toEqual(all);
+  });
+
+  test('a focus keeps only the picked lines, in the board order', () => {
+    expect(visibleSeries(all, new Set(['c', 'a'])).map((entry) => entry.contenderId)).toEqual([
+      'a',
+      'c',
+    ]);
+  });
+
+  test('a focus that matches nothing falls back to every line rather than a blank plot', () => {
+    // The per-card filter can change under a focus and remove the picked entrants; the
+    // chart must degrade to the full view, not to nothing.
+    expect(visibleSeries(all, new Set(['gone']))).toEqual(all);
   });
 });
 

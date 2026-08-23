@@ -498,6 +498,21 @@ export function ArenaShell({
       .catch((err) => setRecordError((err as Error).message));
   }, [refreshRounds]);
 
+  const purgeContender = useCallback(
+    (contenderId: string) => {
+      if (settings.contenders.some((entry) => entry.id === contenderId)) {
+        onSettingsChange({
+          contenders: settings.contenders.filter((entry) => entry.id !== contenderId),
+        });
+      }
+      void arenaApi
+        .deleteContender(contenderId)
+        .then(() => refreshRounds())
+        .catch((err) => setRecordError((err as Error).message));
+    },
+    [onSettingsChange, refreshRounds, settings.contenders],
+  );
+
   // --- rendering ------------------------------------------------------------
 
   /**
@@ -648,6 +663,7 @@ export function ArenaShell({
             loading={roundsLoading}
             preferredSlots={preferredSlots}
             displayFor={displayFor}
+            onPurgeContender={purgeContender}
           />
         ) : null}
 
@@ -667,6 +683,7 @@ export function ArenaShell({
             colours={poolColours}
             hiddenTags={hiddenTags}
             onClearHistory={clearHistory}
+            onPurgeContender={purgeContender}
           />
         ) : null}
       </div>

@@ -426,9 +426,24 @@ export function App() {
     [settings?.globalLorebooks],
   );
 
+  /*
+   * Autosaves race. Every keystroke in an arena cue (and several other write-through paths)
+   * issues its own PUT, and the responses are not guaranteed to resolve in request order.
+   * Without a guard, an older snapshot can land after a newer one and `setSettings` would
+   * snap the textarea's value — and caret — back to the older text mid-edit ("one char lands,
+   * the rest jump to the end"). The server stays authoritative and still merges every patch
+   * it receives; the seq only decides which *responses* we're allowed to paint. The newest
+   * response always wins, so state converges on the last thing the user did.
+   */
+  const settingsWriteSeq = useRef(0);
+
   const saveSettingsStrict = useCallback(async (patch: Record<string, unknown>) => {
+    const seq = ++settingsWriteSeq.current;
     try {
-      setSettings(await settingsApi.save(patch));
+      const saved = await settingsApi.save(patch);
+      // Only paint this response if nothing newer has been issued since; a slow older
+      // response arriving late is stale and would clobber the text being typed right now.
+      if (seq === settingsWriteSeq.current) setSettings(saved);
     } catch (err) {
       setError((err as Error).message);
       throw err;

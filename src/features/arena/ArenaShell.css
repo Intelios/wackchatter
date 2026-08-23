@@ -868,18 +868,22 @@
   outline: none;
 }
 
-.arena-cue__input:focus + .arena-cue__mirror,
+/* The mirror precedes the input in the DOM, so only :focus-within can reach it. */
 .arena-cue__field:focus-within .arena-cue__mirror {
   border-color: transparent;
 }
 
+/*
+ * Colour and weight only — never a metric. The macro must typeset identically to the real
+ * text it sits under, so font-family/size, line-height, padding and letter-spacing are all
+ * forbidden here: any of them makes the mirror wrap differently from the textarea and the
+ * caret stops agreeing with the painted text mid-word.
+ */
 .arena-cue__macro {
   border-radius: 3px;
   background: var(--wc-accent-subtle);
   color: var(--wc-accent);
-  font-family: var(--wc-font-mono);
-  font-size: 0.92em;
-  font-style: normal;
+  font-weight: 500;
 }
 
 /* ---------------------------------------------------------------- run log */
@@ -1845,7 +1849,35 @@
   text-align: right;
 }
 
-/* Placed after the row rules it overrides, so specificity only ever ascends. */
+/*
+ * Tinted by distance from the start — the same arithmetic the bar column does, made
+ * pre-attentive. ratingTone.ts supplies `--wc-rating-t`: 0 at 1500, 1 at and beyond the
+ * clamp points (1600 above, 1250 below). The mix floor keeps a barely-moved rating
+ * visibly coloured — a 1% tint would read as a rendering accident, not as a signal.
+ * Below the start the hue itself slides from warning toward danger as the rating falls.
+ */
+.arena-ranks__rating[data-tone="above"],
+.arena-tape__value[data-tone="above"] {
+  color: color-mix(
+    in oklab,
+    var(--wc-success) calc(25% + var(--wc-rating-t, 1) * 75%),
+    var(--wc-text)
+  );
+}
+
+.arena-ranks__rating[data-tone="below"],
+.arena-tape__value[data-tone="below"] {
+  color: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--wc-danger) calc(var(--wc-rating-t, 1) * 100%), var(--wc-warning))
+      calc(25% + var(--wc-rating-t, 1) * 75%),
+    var(--wc-text)
+  );
+}
+
+/* Placed after the row rules it overrides, so specificity only ever ascends. A
+   provisional rating stays muted whatever its number: the tint scale belongs to
+   settled ratings, and colour would lend weight to noise. */
 .arena-ranks tr[data-provisional="true"] .arena-ranks__name,
 .arena-ranks tr[data-provisional="true"] .arena-ranks__rating {
   color: var(--wc-text-muted);
@@ -1889,6 +1921,22 @@
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.arena-ranks__actions-head {
+  width: var(--wc-space-8);
+}
+
+.arena-ranks__actions {
+  width: var(--wc-space-8);
+  text-align: right;
+}
+
+.arena-ranks__delete {
+  min-width: 32px;
+  justify-content: center;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  font-size: 11px;
 }
 
 /* ---------------------------------------------------------------- head to head */
@@ -2235,6 +2283,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Clears the legend's focus; only mounted while one is active. */
+.rating-chart__clear {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rating-chart__clear:hover {
+  color: var(--wc-text);
+}
+
 /*
  * Uniform scaling, so a climb has the same slope at every window width. `height: auto`
  * with no aspect override is what keeps the viewBox honest — see the note in RatingChart.
@@ -2350,10 +2410,22 @@
 }
 
 .rating-chart__key {
+  font-size: var(--wc-text-sm);
+}
+
+/*
+ * The legend is the chart's focus filter: one click narrows the plot to a model, another
+ * brings it back. Buttons rather than spans because picking is an action a keyboard user
+ * must be able to take, and `aria-pressed` is what says which models are on the plot.
+ */
+.rating-chart__keybtn {
   display: flex;
   align-items: baseline;
   gap: var(--wc-space-2);
-  font-size: var(--wc-text-sm);
+}
+
+.rating-chart__keybtn[data-on="false"] {
+  opacity: 0.45;
 }
 
 .rating-chart__swatch {
@@ -2371,6 +2443,13 @@
   color: var(--wc-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* After the name rule it overrides, so specificity only ever ascends. The brightening is
+   the affordance that says a key is something you can pick. */
+.rating-chart__keybtn:hover .rating-chart__name,
+.rating-chart__keybtn:focus-visible .rating-chart__name {
+  color: var(--wc-text);
 }
 
 .rating-chart__value {
@@ -2594,6 +2673,61 @@
 
 .arena-entrant__remove {
   margin-left: auto;
+}
+
+/* -------------------------------------------------------- retired contenders */
+
+.arena-retired {
+  display: grid;
+  gap: var(--wc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-retired__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-retired__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.arena-retired__name {
+  font-weight: 600;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-retired__stats {
+  font-family: var(--wc-font-mono);
+  font-size: 11px;
+  color: var(--wc-text-faint);
+}
+
+.arena-retired__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  flex-shrink: 0;
+}
+
+.arena-retired__actions .wc-button--danger {
+  min-width: 145px;
+  justify-content: center;
 }
 
 /* ---------------------------------------------------------------- cues */

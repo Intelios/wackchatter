@@ -26,6 +26,23 @@ export const MIN_SPAN = 120;
 const PADDING = 0.12;
 
 /**
+ * Which lines a focused chart draws.
+ *
+ * An empty focus draws everything. A focus that no longer matches anything — the per-card
+ * filter changed under it — degrades to everything as well, because a blank plot would
+ * read as "no history" rather than as "your selection is stale". Colours are the full
+ * view's and are never re-assigned here, so a line keeps its corner colour through a focus.
+ */
+export function visibleSeries(
+  series: readonly RatingSeries[],
+  focus: ReadonlySet<string>,
+): readonly RatingSeries[] {
+  if (focus.size === 0) return series;
+  const visible = series.filter((entry) => focus.has(entry.contenderId));
+  return visible.length > 0 ? visible : series;
+}
+
+/**
  * The rating range to draw.
  *
  * Always includes the starting rating, so the 1500 guide line is on the chart and every

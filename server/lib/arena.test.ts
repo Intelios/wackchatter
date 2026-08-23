@@ -134,6 +134,42 @@ describe('arena store', () => {
     expect(store.clearRounds()).toBe(0);
   });
 
+  test('deleteContender purges every round where that contender fought and leaves others untouched', () => {
+    // Round 1: c1 vs c2
+    store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ contenderId: 'c1' }),
+      right: side({ contenderId: 'c2' }),
+      verdict: 'left',
+    });
+    // Round 2: c3 vs c1 (c1 on right)
+    store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ contenderId: 'c3' }),
+      right: side({ contenderId: 'c1' }),
+      verdict: 'right',
+    });
+    // Round 3: c2 vs c3 (no c1)
+    store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ contenderId: 'c2' }),
+      right: side({ contenderId: 'c3' }),
+      verdict: 'tie',
+    });
+
+    expect(store.deleteContender('c1')).toBe(2);
+    const remaining = store.listRounds();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.left.contenderId).toBe('c2');
+    expect(remaining[0]?.right.contenderId).toBe('c3');
+
+    // Deleting nonexistent contender is safe and returns 0
+    expect(store.deleteContender('c1')).toBe(0);
+  });
+
   test('a deleted card does not take its rounds with it — character_id is not a key', () => {
     store.recordRound({
       characterId: 'Gone.png',

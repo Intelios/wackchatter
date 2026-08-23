@@ -741,6 +741,12 @@ export const arenaApi = {
   remove: (id: string) =>
     request<{ ok: true }>(`/arena/rounds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  /** Delete all rounds for one contender. Guarded by a two-click confirm in the UI. */
+  deleteContender: (id: string) =>
+    request<{ ok: true; removed: number }>(`/arena/contenders/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
   /** Empty the history. Guarded by a two-click confirm in the panel, not here. */
   clear: () => request<{ ok: true; removed: number }>('/arena/rounds', { method: 'DELETE' }),
 };

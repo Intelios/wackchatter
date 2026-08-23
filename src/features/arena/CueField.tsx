@@ -14,7 +14,7 @@
  * this technique fails, and it fails silently.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
 interface CueFieldProps {
   value: string;
@@ -49,6 +49,25 @@ export function CueField({
   ariaLabel = 'Cue',
 }: CueFieldProps) {
   const mirrorRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  /*
+   * The caret position captured in onChange, re-applied by the layout effect below. Pool cues
+   * autosave every keystroke: the save round-trip returns a rebuilt probes array (server-side
+   * `normalizeProbes`), `setSettings` hands this field a fresh `value` prop, and React's
+   * controlled-textarea update resets the caret to the end of the line when it writes that
+   * value back. The text is identical, so the only visible damage is the caret — capture it
+   * at the moment of the edit and put it back once React has finished writing.
+   */
+  const caretRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const caret = caretRef.current;
+    if (caret === null) return;
+    caretRef.current = null;
+    const input = inputRef.current;
+    if (!input || document.activeElement !== input) return;
+    if (input.selectionStart !== caret) input.setSelectionRange(caret, caret);
+  });
 
   const syncScroll = useCallback((element: HTMLTextAreaElement) => {
     const mirror = mirrorRef.current;
@@ -79,6 +98,7 @@ export function CueField({
       </div>
 
       <textarea
+        ref={inputRef}
         className="arena-cue__text arena-cue__input"
         value={value}
         rows={rows}
@@ -86,7 +106,12 @@ export function CueField({
         disabled={disabled}
         aria-label={ariaLabel}
         spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          // Capture the caret *after* this keystroke has been applied — that is the position
+          // the layout effect restores once React rewrites the value on the autosave echo.
+          caretRef.current = event.target.selectionStart;
+          onChange(event.target.value);
+        }}
         onScroll={(event) => syncScroll(event.currentTarget)}
         onKeyDown={(event) => {
           // Enter sends, Shift+Enter breaks the line — the composer's bargain, because a cue

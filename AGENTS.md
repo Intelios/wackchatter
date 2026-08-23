@@ -507,6 +507,10 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 - `bad` ("neither is usable") is recorded but moves **no** ratings and is excluded from
   every head-to-head record — it is not a draw, and scoring it as one would drag a
   strong rating toward a weak one on evidence containing no comparison.
+- A tie lifts **both** ratings by `TIE_BONUS` (1) instead of scoring 0.5 each — the
+  zero-sum update would charge the favourite a point for the draw, penalising a round
+  that said both replies were worth keeping. Ties are the one verdict that is not
+  zero-sum; win *rate* still counts a tie as half.
 - Ratings under `PROVISIONAL_ROUNDS` rank **below** established ones however high the
   number goes.
 - **Only blind rounds are scored.** The open Arena writes nothing.

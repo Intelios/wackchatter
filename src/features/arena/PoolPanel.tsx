@@ -65,6 +65,7 @@ interface PoolPanelProps {
   colours: ReadonlyMap<string, string>;
   hiddenTags: readonly string[];
   onClearHistory: () => void;
+  onPurgeContender?: (contenderId: string) => void;
 }
 
 interface EntrantProps {
@@ -212,9 +213,12 @@ export function PoolPanel({
   colours,
   hiddenTags,
   onClearHistory,
+  onPurgeContender,
 }: PoolPanelProps) {
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [confirmingCueId, setConfirmingCueId] = useState<string | null>(null);
+  const [confirmingRetiredId, setConfirmingRetiredId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -226,6 +230,18 @@ export function PoolPanel({
     const timer = setTimeout(() => setConfirmingClear(false), 4000);
     return () => clearTimeout(timer);
   }, [confirmingClear]);
+
+  useEffect(() => {
+    if (!confirmingCueId) return;
+    const timer = setTimeout(() => setConfirmingCueId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingCueId]);
+
+  useEffect(() => {
+    if (!confirmingRetiredId) return;
+    const timer = setTimeout(() => setConfirmingRetiredId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingRetiredId]);
 
   /*
    * Model catalogues, fetched once per connection that a contender actually points at.
@@ -357,6 +373,11 @@ export function PoolPanel({
     [rows],
   );
 
+  const retiredRows = useMemo(() => {
+    const activeIds = new Set(settings.contenders.map((c) => c.id));
+    return rows.filter((r) => !activeIds.has(r.contenderId) && r.rounds + r.rejected > 0);
+  }, [rows, settings.contenders]);
+
   const playCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const round of rounds) {
@@ -446,6 +467,91 @@ export function PoolPanel({
         )}
       </section>
 
+      {/* ------------------------------------------- retired contenders */}
+      {retiredRows.length > 0 ? (
+        <section className="arena-pool__section">
+          <header className="arena-pool__head">
+            <div>
+              <h2>Retired from pool</h2>
+              <p className="wc-hint">
+                These models were removed from the pool but keep their recorded rounds in the
+                leaderboard. You can add them back, or permanently delete them to purge their
+                rounds.
+              </p>
+            </div>
+          </header>
+          <ul className="arena-retired">
+            {retiredRows.map((retired) => {
+              const label = retired.model || retired.contenderId;
+              const isConfirming = confirmingRetiredId === retired.contenderId;
+              return (
+                <li key={retired.contenderId} className="arena-retired__row">
+                  <div className="arena-retired__info">
+                    <span className="arena-retired__name">{label}</span>
+                    <span className="arena-retired__stats">
+                      {retired.rating} rating · {retired.rounds}{' '}
+                      {retired.rounds === 1 ? 'round' : 'rounds'} ({retired.wins}W ·{' '}
+                      {retired.losses}L · {retired.ties}T)
+                    </span>
+                  </div>
+                  <div className="arena-retired__actions">
+                    <button
+                      type="button"
+                      className="wc-button wc-button--ghost"
+                      onClick={() =>
+                        onSettingsChange({
+                          contenders: [
+                            ...settings.contenders,
+                            {
+                              id: retired.contenderId,
+                              name: label,
+                              connectionId: '',
+                              model: retired.model,
+                              enabled: true,
+                            },
+                          ],
+                        })
+                      }
+                      title="Add back to the active pool"
+                    >
+                      <PlusIcon />
+                      Add to pool
+                    </button>
+                    {onPurgeContender ? (
+                      <button
+                        type="button"
+                        className="wc-button wc-button--ghost wc-button--danger"
+                        data-confirming={isConfirming || undefined}
+                        onClick={() => {
+                          if (isConfirming) {
+                            onPurgeContender(retired.contenderId);
+                            setConfirmingRetiredId(null);
+                          } else {
+                            setConfirmingRetiredId(retired.contenderId);
+                          }
+                        }}
+                        onBlur={() =>
+                          setConfirmingRetiredId((id) => (id === retired.contenderId ? null : id))
+                        }
+                        title={
+                          isConfirming
+                            ? 'Click again to permanently erase all rounds'
+                            : 'Permanently delete model and rounds'
+                        }
+                        aria-label={isConfirming ? `Confirm delete ${label}` : `Delete ${label}`}
+                      >
+                        <TrashIcon />
+                        {isConfirming ? 'Click again' : 'Permanently delete'}
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {/* ---------------------------------------------------------------- cues */}
       <section className="arena-pool__section">
         <header className="arena-pool__head">
@@ -479,6 +585,7 @@ export function PoolPanel({
           <ul className="arena-cues">
             {settings.probes.map((probe, index) => {
               const uses = probeUses.get(probe.text) ?? 0;
+              const isConfirming = confirmingCueId === probe.id;
               return (
                 <li key={probe.id} className="arena-cuecard">
                   <CueField
@@ -497,14 +604,24 @@ export function PoolPanel({
                     <button
                       type="button"
                       className="wc-button wc-button--ghost wc-button--danger"
-                      onClick={() =>
-                        onSettingsChange({
-                          probes: settings.probes.filter((entry) => entry.id !== probe.id),
-                        })
+                      data-confirming={isConfirming || undefined}
+                      onClick={() => {
+                        if (isConfirming) {
+                          onSettingsChange({
+                            probes: settings.probes.filter((entry) => entry.id !== probe.id),
+                          });
+                          setConfirmingCueId(null);
+                        } else {
+                          setConfirmingCueId(probe.id);
+                        }
+                      }}
+                      onBlur={() => setConfirmingCueId((id) => (id === probe.id ? null : id))}
+                      title={isConfirming ? 'Click again to delete' : 'Delete cue'}
+                      aria-label={
+                        isConfirming ? `Confirm remove cue ${index + 1}` : `Remove cue ${index + 1}`
                       }
-                      aria-label={`Remove cue ${index + 1}`}
                     >
-                      <TrashIcon />
+                      {isConfirming ? 'Sure?' : <TrashIcon />}
                     </button>
                   </footer>
                 </li>
