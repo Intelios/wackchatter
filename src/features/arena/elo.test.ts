@@ -7,6 +7,7 @@ import {
   replay,
   replayRatings,
   START_RATING,
+  TIE_BONUS,
 } from './elo.ts';
 
 let clock = 0;
@@ -52,30 +53,36 @@ describe('replayRatings', () => {
     expect(rowFor(rows, 'b').rating).toBe(START_RATING - K_FACTOR / 2);
   });
 
-  test('ratings are zero-sum across a round', () => {
+  test('decisive rounds are zero-sum', () => {
     const rows = replayRatings(
-      [round('a', 'b', 'left'), round('b', 'a', 'left'), round('a', 'b', 'tie')],
+      [round('a', 'b', 'left'), round('b', 'a', 'left')],
       [contender('a'), contender('b')],
     );
 
     expect(rowFor(rows, 'a').rating + rowFor(rows, 'b').rating).toBe(START_RATING * 2);
   });
 
-  test('a tie between equals moves nothing', () => {
+  test('a tie lifts both sides by the bonus and counts the tie', () => {
     const rows = replayRatings([round('a', 'b', 'tie')], [contender('a'), contender('b')]);
 
-    expect(rowFor(rows, 'a').rating).toBe(START_RATING);
+    expect(rowFor(rows, 'a').rating).toBe(START_RATING + TIE_BONUS);
+    expect(rowFor(rows, 'b').rating).toBe(START_RATING + TIE_BONUS);
     expect(rowFor(rows, 'a').ties).toBe(1);
     expect(rowFor(rows, 'b').ties).toBe(1);
   });
 
-  test('a tie against a stronger opponent still moves both ratings', () => {
-    const history = [round('a', 'b', 'left'), round('a', 'b', 'left'), round('a', 'b', 'tie')];
-    const rows = replayRatings(history, [contender('a'), contender('b')]);
+  test('a tie never penalises the favourite', () => {
+    // Scoring a draw at 0.5 would charge the stronger side a point for failing to win.
+    // A tie says both replies were worth keeping, so both simply rise by the bonus.
+    const history = [round('a', 'b', 'left'), round('a', 'b', 'left')];
+    const before = replayRatings(history, [contender('a'), contender('b')]);
+    const after = replayRatings(
+      [...history, round('a', 'b', 'tie')],
+      [contender('a'), contender('b')],
+    );
 
-    // a is now favoured, so drawing costs it and earns b.
-    expect(rowFor(rows, 'a').rating).toBeLessThan(START_RATING + K_FACTOR);
-    expect(rowFor(rows, 'b').rating).toBeGreaterThan(START_RATING - K_FACTOR);
+    expect(rowFor(after, 'a').rating).toBe(rowFor(before, 'a').rating + TIE_BONUS);
+    expect(rowFor(after, 'b').rating).toBe(rowFor(before, 'b').rating + TIE_BONUS);
   });
 
   test('"both bad" records the round and moves no ratings at all', () => {
@@ -325,6 +332,12 @@ describe('previewVerdict', () => {
     const preview = previewVerdict([], [], { ...sides('a', 'b'), verdict: 'bad' });
     expect(preview.left.delta).toBe(0);
     expect(preview.right.delta).toBe(0);
+  });
+
+  test('a tie lifts both sides by the bonus, exactly as the replay scores it', () => {
+    const preview = previewVerdict([], [], { ...sides('a', 'b'), verdict: 'tie' });
+    expect(preview.left.delta).toBe(TIE_BONUS);
+    expect(preview.right.delta).toBe(TIE_BONUS);
   });
 
   test('agrees with the leaderboard once the round is actually recorded', () => {

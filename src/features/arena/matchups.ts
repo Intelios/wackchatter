@@ -91,9 +91,10 @@ export function matchupOf(table: MatchupTable, from: string, against: string): M
 }
 
 /**
- * Win rate as a fraction, counting a tie as half — the same weighting the Elo update uses,
- * so the matrix and the ratings cannot tell contradictory stories. Null when they have
- * never had a scored round together, which is not the same as 0%.
+ * Win rate as a fraction, counting a tie as half. The ratings themselves treat a tie as a
+ * small rise for both sides rather than a half-scored draw — see `TIE_BONUS` in elo.ts — so
+ * this is a win-rate summary, not the rating arithmetic. Null when they have never had a
+ * scored round together, which is not the same as 0%.
  */
 export function winRate(matchup: Matchup): number | null {
   if (matchup.played === 0) return null;

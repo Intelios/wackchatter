@@ -57,9 +57,9 @@ export function HeadToHead({ rows, table, colours, nameOf }: HeadToHeadProps) {
       <header className="arena-h2h__head">
         <h3>Head to head</h3>
         <p className="wc-hint">
-          Each row&rsquo;s win rate against each column, counting a tie as half — the same weighting
-          the ratings use. Least-played pairing keeps this filling in evenly rather than re-deciding
-          the matchups you have already settled.
+          Each row&rsquo;s win rate against each column, counting a tie as half. A tie lifts both
+          ratings a little rather than splitting a point; least-played pairing keeps this filling in
+          evenly rather than re-deciding the matchups you have already settled.
         </p>
       </header>
 
