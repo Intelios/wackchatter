@@ -18,7 +18,7 @@
   --wc-bg: #0e0e0f;
   /*
    * The dim scrim's colour, as channels for a variable-alpha rgb(). Pure black rather
-   * than the background colour: the bundled backgrounds are near-black gradients, and an
+   * than the background colour: the built-in backgrounds are photographs, and an
    * overlay the same colour as its backdrop cannot darken it — the Dim slider moved
    * through its whole range with nothing to show for it. Black has room to pull every
    * image down.

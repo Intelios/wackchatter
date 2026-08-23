@@ -391,7 +391,7 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   hardcode none of it. Glass is token redefinition on `.shell[data-glass]`; the scrim,
   blur and `@supports`/`prefers-*` fallbacks are legibility requirements, not polish; and
   `backdrop-filter` goes on the bar and panels only, never on message bubbles (scroll
-  recomposite). Built-in backgrounds are bundled SVG assets, never seeded into
+  recomposite). Built-in backgrounds are bundled image assets, never seeded into
   gitignored `data/`.
 - Panels are **multi-destination, routed by a panel id** — not an open/closed boolean
   plus a tab (a boolean and a tab can disagree; an id cannot). Closing a side unmounts

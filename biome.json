@@ -24,16 +24,5 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["src/assets/backgrounds/*.svg"],
-      "linter": {
-        "rules": {
-          "a11y": {
-            "noSvgWithoutTitle": "off"
-          }
-        }
-      }
-    }
-  ]
+  "overrides": []
 }
