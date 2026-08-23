@@ -32,6 +32,13 @@ export async function handleArenaRoute(
   const method = request.method;
   const store = arenaStore();
 
+  // /api/arena/contenders/:id
+  if (segments[0] === 'contenders' && segments.length === 2 && method === 'DELETE') {
+    const id = decodeURIComponent(segments[1]!);
+    const removed = store.deleteContender(id);
+    return json({ ok: true, removed });
+  }
+
   if (segments[0] !== 'rounds') return null;
 
   // /api/arena/rounds

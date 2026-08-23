@@ -1923,6 +1923,22 @@
   white-space: nowrap;
 }
 
+.arena-ranks__actions-head {
+  width: var(--wc-space-8);
+}
+
+.arena-ranks__actions {
+  width: var(--wc-space-8);
+  text-align: right;
+}
+
+.arena-ranks__delete {
+  min-width: 32px;
+  justify-content: center;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  font-size: 11px;
+}
+
 /* ---------------------------------------------------------------- head to head */
 
 .arena-h2h,
@@ -2657,6 +2673,61 @@
 
 .arena-entrant__remove {
   margin-left: auto;
+}
+
+/* -------------------------------------------------------- retired contenders */
+
+.arena-retired {
+  display: grid;
+  gap: var(--wc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-retired__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.arena-retired__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.arena-retired__name {
+  font-weight: 600;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-retired__stats {
+  font-family: var(--wc-font-mono);
+  font-size: 11px;
+  color: var(--wc-text-faint);
+}
+
+.arena-retired__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  flex-shrink: 0;
+}
+
+.arena-retired__actions .wc-button--danger {
+  min-width: 145px;
+  justify-content: center;
 }
 
 /* ---------------------------------------------------------------- cues */

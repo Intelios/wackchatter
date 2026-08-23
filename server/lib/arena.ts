@@ -56,6 +56,8 @@ export interface ArenaStore {
   listRounds(): ArenaRound[];
   recordRound(input: RoundInput): ArenaRound;
   deleteRound(id: string): boolean;
+  /** Delete all rounds where a contender fought. Returns how many rounds went. */
+  deleteContender(contenderId: string): number;
   /** Empty the history. Returns how many rounds went. */
   clearRounds(): number;
 }
@@ -114,6 +116,7 @@ export function createArenaStore(database: Database): ArenaStore {
        )`,
     ),
     delete: database.query('DELETE FROM arena_rounds WHERE id = ?'),
+    deleteByContender: database.query('DELETE FROM arena_rounds WHERE left_id = ? OR right_id = ?'),
     clear: database.query('DELETE FROM arena_rounds'),
     count: database.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM arena_rounds'),
   };
@@ -157,6 +160,10 @@ export function createArenaStore(database: Database): ArenaStore {
       return statements.delete.run(id).changes > 0;
     },
 
+    deleteContender(contenderId): number {
+      return statements.deleteByContender.run(contenderId, contenderId).changes;
+    },
+
     clearRounds(): number {
       const { count } = statements.count.get() ?? { count: 0 };
       statements.clear.run();
@@ -169,7 +176,7 @@ let store: ArenaStore | null = null;
 
 /** The application round store. Tests build their own against an in-memory database. */
 export function arenaStore(): ArenaStore {
-  if (!store) store = createArenaStore(getDb());
+  if (!store?.deleteContender) store = createArenaStore(getDb());
   return store;
 }
 

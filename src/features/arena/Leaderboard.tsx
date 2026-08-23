@@ -23,7 +23,8 @@
 import type { ArenaRound, Contender } from '@shared/types/arena.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { CSSProperties } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import { contenderLabel } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
@@ -42,6 +43,7 @@ interface LeaderboardProps {
   loading: boolean;
   preferredSlots: ReadonlyMap<string, number>;
   displayFor: (characterId: string) => ArenaDisplay;
+  onPurgeContender?: (contenderId: string) => void;
 }
 
 /**
@@ -77,9 +79,17 @@ export function Leaderboard({
   loading,
   preferredSlots,
   displayFor,
+  onPurgeContender,
 }: LeaderboardProps) {
   const [cardFilter, setCardFilter] = useState('');
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
+  const [confirmingPurgeId, setConfirmingPurgeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmingPurgeId) return;
+    const timer = setTimeout(() => setConfirmingPurgeId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingPurgeId]);
 
   const cardsPlayed = useMemo(() => {
     const seen = new Map<string, number>();
@@ -238,7 +248,14 @@ export function Leaderboard({
               <th scope="col" className="arena-ranks__rating-head">
                 Rating
               </th>
-              <th scope="col">Record</th>
+              <th scope="col" className="arena-ranks__record">
+                Record
+              </th>
+              {onPurgeContender ? (
+                <th scope="col" className="arena-ranks__actions-head">
+                  <span className="wc-visually-hidden">Actions</span>
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -247,6 +264,7 @@ export function Leaderboard({
               const share = (Math.abs(offset) / AXIS_SPAN) * 50;
               const decided = Math.max(1, row.wins + row.losses + row.ties);
               const tone = toneProps(row.rating, row.provisional);
+              const isConfirming = confirmingPurgeId === row.contenderId;
               return (
                 <tr
                   key={row.contenderId}
@@ -305,6 +323,38 @@ export function Leaderboard({
                       {row.wins}W · {row.losses}L · {row.ties}T
                     </span>
                   </td>
+                  {onPurgeContender ? (
+                    <td className="arena-ranks__actions">
+                      <button
+                        type="button"
+                        className="wc-button wc-button--ghost wc-button--danger arena-ranks__delete"
+                        data-confirming={isConfirming || undefined}
+                        onClick={() => {
+                          if (isConfirming) {
+                            onPurgeContender(row.contenderId);
+                            setConfirmingPurgeId(null);
+                          } else {
+                            setConfirmingPurgeId(row.contenderId);
+                          }
+                        }}
+                        onBlur={() =>
+                          setConfirmingPurgeId((id) => (id === row.contenderId ? null : id))
+                        }
+                        title={
+                          isConfirming
+                            ? 'Click again to permanently erase all recorded rounds for this model'
+                            : `Permanently delete ${nameOf(row.contenderId, row.model)} and erase its rounds`
+                        }
+                        aria-label={
+                          isConfirming
+                            ? `Confirm delete ${nameOf(row.contenderId, row.model)}`
+                            : `Delete ${nameOf(row.contenderId, row.model)}`
+                        }
+                      >
+                        {isConfirming ? 'Sure?' : <TrashIcon />}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
