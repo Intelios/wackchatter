@@ -8,6 +8,8 @@ import { ChevronLeftIcon, CoCreatorIcon, DownloadIcon } from '../../layout/icons
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { downloadUrl } from '../../lib/download.ts';
+import type { EffectId } from '../backgrounds/effects.ts';
+import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
 import { StudioLibrary } from './StudioLibrary.tsx';
 import { StudioWorkbench } from './StudioWorkbench.tsx';
 import './StudioShell.css';
@@ -22,6 +24,8 @@ interface StudioShellProps {
   backgroundBlur: number;
   backgroundDim: number;
   glass: boolean;
+  effect: EffectId | null;
+  effectLayer: 'behind' | 'front';
   inspectorCollapsed: boolean;
   onInspectorCollapsedChange: (collapsed: boolean) => void;
   onExit: () => Promise<void>;
@@ -46,6 +50,8 @@ export function StudioShell({
   backgroundBlur,
   backgroundDim,
   glass,
+  effect,
+  effectLayer,
   inspectorCollapsed,
   onInspectorCollapsedChange,
   onExit,
@@ -268,6 +274,9 @@ export function StudioShell({
           />
         ) : null}
       </div>
+
+      {/* The shell's last static child; see the AppShell comment for the stacking rule. */}
+      <ParticleLayer effect={effect} layer={effectLayer} />
     </div>
   );
 }

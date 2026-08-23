@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Backdrop } from '../components/Backdrop.tsx';
+import type { EffectId } from '../features/backgrounds/effects.ts';
+import { ParticleLayer } from '../features/backgrounds/ParticleLayer.tsx';
 import type { PanelSpec } from './panels.tsx';
 import './AppShell.css';
 
@@ -169,6 +171,10 @@ interface AppShellProps<L extends string, R extends string> {
   backgroundBlur?: number;
   backgroundDim?: number;
   glass?: boolean;
+  /** Ambient particle effect, already resolved. Null renders no layer at all. */
+  effect?: EffectId | null;
+  /** Whether the effect layer sits behind the glass surfaces or in front of them. */
+  effectLayer?: 'behind' | 'front';
 }
 
 /**
@@ -201,6 +207,8 @@ export function AppShell<L extends string, R extends string>({
   backgroundBlur = 8,
   backgroundDim = 0.55,
   glass = true,
+  effect = null,
+  effectLayer = 'behind',
 }: AppShellProps<L, R>) {
   return (
     <div
@@ -262,6 +270,15 @@ export function AppShell<L extends string, R extends string>({
       >
         <div className="panel__inner">{right}</div>
       </aside>
+
+      {/*
+       * The ambient-effect layer is the shell's last static child on purpose. Behind
+       * mode joins the backdrop/scrim z-0 band and wins its DOM-order tie with the scrim;
+       * front mode ties the columns' z-index 1 and wins that the same way. Overlays
+       * portal into this element and land after it in DOM order with z-index 2+, so
+       * popups always outrank the rain.
+       */}
+      <ParticleLayer effect={effect} layer={effectLayer} />
     </div>
   );
 }

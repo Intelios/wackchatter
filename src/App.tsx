@@ -31,6 +31,7 @@ import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { ArenaShell } from './features/arena/ArenaShell.tsx';
+import { resolveBackgroundEffect } from './features/backgrounds/resolve.ts';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatContext } from './features/chat/ChatContext.tsx';
@@ -390,6 +391,11 @@ export function App() {
   const characterRatings: Record<string, number> = settings?.characterRatings ?? {};
   const characterListSort: 'name' | 'rating' =
     settings?.characterListSort === 'rating' ? 'rating' : 'name';
+  // The one resolve point for the ambient-effect layer — every shell gets the same
+  // answer, so pairing, master switch and unknown-id degrade cannot disagree by surface.
+  const backgroundEffect = resolveBackgroundEffect(settings ?? {});
+  const backgroundEffectLayer: 'behind' | 'front' =
+    settings?.backgroundEffectLayer === 'front' ? 'front' : 'behind';
   const hiddenTags = useMemo(
     () => (Array.isArray(settings?.hiddenTags) ? settings.hiddenTags : []),
     [settings?.hiddenTags],
@@ -1137,6 +1143,8 @@ export function App() {
         backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
         backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
         glass={settings?.glass !== false}
+        effect={backgroundEffect}
+        effectLayer={backgroundEffectLayer}
         onExit={exitArena}
       />
     );
@@ -1151,6 +1159,8 @@ export function App() {
         backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
         backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
         glass={settings?.glass !== false}
+        effect={backgroundEffect}
+        effectLayer={backgroundEffectLayer}
         onExit={exitStats}
       />
     );
@@ -1173,6 +1183,8 @@ export function App() {
         backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
         backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
         glass={settings?.glass !== false}
+        effect={backgroundEffect}
+        effectLayer={backgroundEffectLayer}
         onExit={exitCoCreator}
         onFinished={finishCoCreator}
         seedAvatar={cocreatorSeedAvatar}
@@ -1195,6 +1207,8 @@ export function App() {
         backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
         backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
         glass={settings?.glass !== false}
+        effect={backgroundEffect}
+        effectLayer={backgroundEffectLayer}
         inspectorCollapsed={studioInspectorCollapsed}
         onInspectorCollapsedChange={(collapsed) =>
           void patchSettings({ studioInspectorCollapsed: collapsed })
@@ -1223,6 +1237,8 @@ export function App() {
       backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
       backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
       glass={settings?.glass !== false}
+      effect={backgroundEffect}
+      effectLayer={backgroundEffectLayer}
       /*
        * One boundary per region, under the root one in main.tsx.
        *

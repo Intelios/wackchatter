@@ -33,6 +33,23 @@
   box-shadow: inset 0 0 0 1px var(--wc-accent);
 }
 
+/*
+ * Marks a background that carries a paired effect. Top-left: the delete button owns
+ * top-right on uploads. Accent rather than a colour of its own — it is a selection
+ * annotation, not content.
+ */
+.user-settings__swatch[data-effect]::after {
+  content: "";
+  position: absolute;
+  top: var(--wc-space-1);
+  left: var(--wc-space-1);
+  z-index: 1;
+  width: var(--wc-space-2);
+  height: var(--wc-space-2);
+  border-radius: 50%;
+  background: var(--wc-accent);
+}
+
 .user-settings__swatch--none {
   background: var(--wc-bg);
   align-items: center;

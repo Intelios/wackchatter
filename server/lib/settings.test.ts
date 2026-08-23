@@ -381,6 +381,42 @@ describe('mergeSettings', () => {
     expect(next.characterRatings).toEqual({ Good: 3 });
   });
 
+  test('background effect pairings replace wholesale, but a malformed patch cannot wipe them', () => {
+    // The client always sends the whole map (it holds the loaded settings), so a real
+    // object replacing is the dialogueColors semantics — the guard exists for the stale
+    // tab's `{"backgroundEffects": null}`.
+    const current = mergeSettings(base(), {
+      backgroundEffects: { 'builtin:stormy-lighthouse': 'rain' },
+    });
+    const next = mergeSettings(current, { backgroundEffects: { 'user:x.jpg': 'snow' } });
+    expect(next.backgroundEffects).toEqual({ 'user:x.jpg': 'snow' });
+    for (const patch of [{ backgroundEffects: null }, { backgroundEffects: 'rain' }]) {
+      expect(mergeSettings(current, patch as never).backgroundEffects).toEqual({
+        'builtin:stormy-lighthouse': 'rain',
+      });
+    }
+  });
+
+  test('non-string pairing entries are dropped on the way in', () => {
+    const next = mergeSettings(base(), {
+      backgroundEffects: {
+        Good: 'rain',
+        'No-effect': 42,
+        '': 'snow',
+        Nested: { id: 'x' },
+      } as never,
+    });
+    expect(next.backgroundEffects).toEqual({ Good: 'rain' });
+  });
+
+  test('backgroundEffectLayer accepts only behind and front', () => {
+    const next = mergeSettings(base(), { backgroundEffectLayer: 'front' });
+    expect(next.backgroundEffectLayer).toBe('front');
+    expect(
+      mergeSettings(next, { backgroundEffectLayer: 'above' } as never).backgroundEffectLayer,
+    ).toBe('front');
+  });
+
   test('characterListSort accepts only the two known values', () => {
     expect(mergeSettings(base(), { characterListSort: 'rating' }).characterListSort).toBe('rating');
     expect(mergeSettings(base(), { characterListSort: 'name' }).characterListSort).toBe('name');
@@ -1164,6 +1200,49 @@ describe('getSettings on disk', () => {
       );
 
       expect(getSettings().recentPersonaIds).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('background effect settings default when absent and normalise when malformed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(join(dir, 'settings.json'), JSON.stringify({}));
+
+      const fresh = getSettings();
+      expect(fresh.backgroundEffectEnabled).toBe(true);
+      expect(fresh.backgroundEffects).toEqual({});
+      expect(fresh.backgroundEffectLayer).toBe('behind');
+
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({
+          backgroundEffectEnabled: 'yes',
+          backgroundEffects: 'not-a-map',
+          backgroundEffectLayer: 'above',
+        }),
+      );
+      resetSettingsCache();
+      expect(getSettings().backgroundEffectEnabled).toBe(true);
+      expect(getSettings().backgroundEffects).toEqual({});
+      expect(getSettings().backgroundEffectLayer).toBe('behind');
+
+      writeFileSync(
+        join(dir, 'settings.json'),
+        JSON.stringify({
+          backgroundEffectEnabled: false,
+          backgroundEffects: { 'builtin:x': 'rain', Bad: 7, '': 'snow' },
+          backgroundEffectLayer: 'front',
+        }),
+      );
+      resetSettingsCache();
+      const settings = getSettings();
+      expect(settings.backgroundEffectEnabled).toBe(false);
+      expect(settings.backgroundEffects).toEqual({ 'builtin:x': 'rain' });
+      expect(settings.backgroundEffectLayer).toBe('front');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

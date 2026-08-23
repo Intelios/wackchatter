@@ -36,6 +36,12 @@
   z-index: 0;
 }
 
+/* Geometry only; the layer's z-index lives in ParticleLayer.css per data-layer. */
+.arena-shell > .particle-layer {
+  position: absolute;
+  inset: 0;
+}
+
 .arena-shell__bar,
 .arena-shell__body {
   position: relative;

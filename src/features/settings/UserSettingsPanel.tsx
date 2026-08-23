@@ -7,6 +7,8 @@ import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
 import { TrashIcon, UploadIcon } from '../../layout/icons.tsx';
 import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
+import { EFFECTS } from '../backgrounds/effects.ts';
+import { pairBackgroundEffect } from '../backgrounds/resolve.ts';
 import { RegexScriptSection } from '../regex/RegexScriptList.tsx';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
 import { DataLocationSection } from './DataLocationSection.tsx';
@@ -55,6 +57,15 @@ export function UserSettingsPanel({
   }, [refresh]);
 
   const selected = typeof settings?.background === 'string' ? settings.background : null;
+  // Normalised server-side; the fallback only covers the pre-load render.
+  const effectMap: Record<string, string> = settings?.backgroundEffects ?? {};
+  const selectedEffect = selected !== null ? (effectMap[selected] ?? 'none') : 'none';
+  // Names the pairing target in the field's hint, so "per background" is visible, not told.
+  const selectedLabel =
+    selected === null
+      ? null
+      : (BUILTIN_BACKGROUNDS.find((entry) => `builtin:${entry.id}` === selected)?.label ??
+        selected.replace(/^user:/, ''));
 
   async function handleUpload(file: File | undefined) {
     if (!file) return;
@@ -115,6 +126,8 @@ export function UserSettingsPanel({
               type="button"
               className="user-settings__swatch"
               data-selected={selected === `builtin:${background.id}` || undefined}
+              // The dot marking a paired effect — see the [data-effect] rule in the CSS.
+              data-effect={effectMap[`builtin:${background.id}`] || undefined}
               style={{ backgroundImage: `url("${background.url}")` }}
               onClick={() => onPatch({ background: `builtin:${background.id}` })}
               title={background.label}
@@ -129,6 +142,7 @@ export function UserSettingsPanel({
                 type="button"
                 className="user-settings__swatch"
                 data-selected={selected === `user:${upload.name}` || undefined}
+                data-effect={effectMap[`user:${upload.name}`] || undefined}
                 style={{
                   backgroundImage: `url("${backgroundApi.url(upload.name, upload.modified)}")`,
                 }}
@@ -212,6 +226,54 @@ export function UserSettingsPanel({
           checked={settings?.glass !== false}
           onChange={(checked) => onPatch({ glass: checked })}
           hint="Panels and bubbles let the background through. Ignored with no background set."
+        />
+        {/*
+         * Pairing is edited for the background that is selected above — the one place it
+         * can be seen while it is chosen, rather than a long list of every upload. The
+         * whole map goes out in the patch; mergeSettings guards it field-wise.
+         */}
+        <SelectField
+          label="Effect"
+          value={selectedEffect}
+          options={[
+            { label: 'None', value: 'none' },
+            ...EFFECTS.map((effect) => ({ label: effect.label, value: effect.id })),
+          ]}
+          onChange={(id) => {
+            if (selected === null) return;
+            onPatch({
+              backgroundEffects: pairBackgroundEffect(
+                effectMap,
+                selected,
+                id === 'none' ? null : id,
+              ),
+            });
+          }}
+          disabled={selected === null}
+          hint={
+            selectedLabel === null
+              ? 'Pick a background first — an effect is paired with one.'
+              : `Animated effect paired with “${selectedLabel}”.`
+          }
+        />
+      </Section>
+
+      <Section title="Effects">
+        <CheckField
+          label="Animated background effects"
+          checked={settings?.backgroundEffectEnabled !== false}
+          onChange={(checked) => onPatch({ backgroundEffectEnabled: checked })}
+          hint="Each background carries its own effect, set from the Background section above. Effects pause while the window is hidden and never run with reduced motion on."
+        />
+        <SelectField
+          label="Effect layer"
+          value={settings?.backgroundEffectLayer === 'front' ? 'front' : 'behind'}
+          options={[
+            { label: 'Behind glass', value: 'behind' },
+            { label: 'In front of glass', value: 'front' },
+          ]}
+          onChange={(layer) => onPatch({ backgroundEffectLayer: layer })}
+          hint="Behind blurs under the panels and bubbles. In front draws over the chat — busier, but immersive."
         />
       </Section>
 

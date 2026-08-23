@@ -21,6 +21,12 @@
   z-index: 0;
 }
 
+/* Geometry only; the layer's z-index lives in ParticleLayer.css per data-layer. */
+.cocreator-shell > .particle-layer {
+  position: absolute;
+  inset: 0;
+}
+
 /*
  * One stacking level for both, and they must stay equal.
  *

@@ -30,6 +30,8 @@ import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon } from '../../layout/icons.tsx';
 import { arenaApi, characterApi, presetApi } from '../../lib/api.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
+import type { EffectId } from '../backgrounds/effects.ts';
+import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
 import { useLorebooks } from '../lore/useLorebooks.ts';
 import { ArenaBench } from './ArenaBench.tsx';
 import { BlindRound } from './BlindRound.tsx';
@@ -89,6 +91,8 @@ interface ArenaShellProps {
   backgroundBlur: number;
   backgroundDim: number;
   glass: boolean;
+  effect: EffectId | null;
+  effectLayer: 'behind' | 'front';
   onExit: () => void;
 }
 
@@ -113,6 +117,8 @@ export function ArenaShell({
   backgroundBlur,
   backgroundDim,
   glass,
+  effect,
+  effectLayer,
   onExit,
 }: ArenaShellProps) {
   const [mode, setMode] = useState<ArenaMode>('bench');
@@ -421,7 +427,16 @@ export function ArenaShell({
       replace: true,
       draw: next,
     });
-  }, [blindReason, blindRun.busy, drawableCards, pendingRun, requestRun, resolved, rounds, settings.probes]);
+  }, [
+    blindReason,
+    blindRun.busy,
+    drawableCards,
+    pendingRun,
+    requestRun,
+    resolved,
+    rounds,
+    settings.probes,
+  ]);
 
   /** The run ID that was last voted on, to prevent double recording the same round. */
   const votedRunIdRef = useRef<string | null>(null);
@@ -655,6 +670,9 @@ export function ArenaShell({
           />
         ) : null}
       </div>
+
+      {/* The shell's last static child; see the AppShell comment for the stacking rule. */}
+      <ParticleLayer effect={effect} layer={effectLayer} />
     </div>
   );
 }

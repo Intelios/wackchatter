@@ -9,6 +9,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon, RefreshIcon } from '../../layout/icons.tsx';
 import { characterApi, statsApi } from '../../lib/api.ts';
+import type { EffectId } from '../backgrounds/effects.ts';
+import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
 import { CharacterStats } from './CharacterStats.tsx';
 import { StatsOverview } from './StatsOverview.tsx';
 import './StatsShell.css';
@@ -20,6 +22,8 @@ interface StatsShellProps {
   backgroundBlur: number;
   backgroundDim: number;
   glass: boolean;
+  effect: EffectId | null;
+  effectLayer: 'behind' | 'front';
   onExit: () => void;
 }
 
@@ -35,6 +39,8 @@ export function StatsShell({
   backgroundBlur,
   backgroundDim,
   glass,
+  effect,
+  effectLayer,
   onExit,
 }: StatsShellProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -171,6 +177,9 @@ export function StatsShell({
           />
         ) : null}
       </div>
+
+      {/* The shell's last static child; see the AppShell comment for the stacking rule. */}
+      <ParticleLayer effect={effect} layer={effectLayer} />
     </div>
   );
 }

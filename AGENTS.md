@@ -393,6 +393,24 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   `backdrop-filter` goes on the bar and panels only, never on message bubbles (scroll
   recomposite). Built-in backgrounds are bundled image assets, never seeded into
   gitignored `data/`.
+- **Ambient effects** (`src/features/backgrounds/`, rendered by `ParticleLayer`) are
+  particle overlays paired per background: `AppSettings.backgroundEffects` maps the
+  stored background string (`builtin:<id>` / `user:<file>`) to an effect id, ships
+  empty, and is written only through `pairBackgroundEffect` — the client sends the
+  whole map and `mergeSettings` guards it like `characterRatings`, so
+  `{"backgroundEffects": null}` cannot wipe pairings. `resolveBackgroundEffect` is the
+  one gate every shell goes through; an id the catalog no longer knows degrades to
+  "no effect", the deleted-upload rule. Physics is pure (`engine.ts`, tested without a
+  DOM); the canvas component is the only impure piece, and its budget rules are
+  contractual: one canvas per shell (never per panel/bubble), per-spec fps caps,
+  pause on `document.hidden`, no `shadowBlur` (glows are pre-rendered sprites), DPR
+  capped at 2. The loop checks `matchMedia('(prefers-reduced-motion)')` itself — token
+  overrides zero durations, they cannot stop a rAF loop — and the layer is
+  `display: none` under `prefers-reduced-transparency`/`prefers-contrast`. Layering:
+  the layer is the shell's **last static child**; `behind` (default) sits in the
+  z-index 0 band above the scrim and is sampled by glass `backdrop-filter`, `front`
+  ties the content's z-index 1 and wins by DOM order — anything raised to 2+ (popups,
+  overlays) always outranks the rain.
 - Panels are **multi-destination, routed by a panel id** — not an open/closed boolean
   plus a tab (a boolean and a tab can disagree; an id cannot). Closing a side unmounts
   its panel and flushes pending autosaves like switching does (`flushRightPanel` is what

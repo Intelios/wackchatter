@@ -9,6 +9,8 @@ import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon } from '../../layout/icons.tsx';
 import { characterApi, cocreatorApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import type { EffectId } from '../backgrounds/effects.ts';
+import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
 import { CocreatorDesk } from './CocreatorDesk.tsx';
 import { CocreatorSessions } from './CocreatorSessions.tsx';
 import './CocreatorShell.css';
@@ -29,6 +31,8 @@ interface CocreatorShellProps {
   backgroundBlur: number;
   backgroundDim: number;
   glass: boolean;
+  effect: EffectId | null;
+  effectLayer: 'behind' | 'front';
   onExit: () => Promise<void>;
   /** Leave for the Studio, opened on the card this session produced. */
   onFinished: (avatar: string) => void;
@@ -60,6 +64,8 @@ export function CocreatorShell({
   backgroundBlur,
   backgroundDim,
   glass,
+  effect,
+  effectLayer,
   onExit,
   onFinished,
   seedAvatar,
@@ -282,6 +288,9 @@ export function CocreatorShell({
           />
         )}
       </div>
+
+      {/* The shell's last static child; see the AppShell comment for the stacking rule. */}
+      <ParticleLayer effect={effect} layer={effectLayer} />
     </div>
   );
 }

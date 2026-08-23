@@ -75,6 +75,20 @@ export interface AppSettings {
   backgroundDim: number;
   /** Translucent panels and bubbles. Only meaningful with a background set. */
   glass: boolean;
+  /**
+   * Master switch for ambient particle effects. On by default — harmless, because
+   * nothing animates until a background is paired below.
+   */
+  backgroundEffectEnabled: boolean;
+  /**
+   * Which particle effect each background carries, keyed by the stored background
+   * string (`builtin:<id>` / `user:<filename>`). User-driven: ships empty, and the
+   * client's effect catalog is the authority — an id it no longer knows degrades to
+   * "no effect" at render, the same way a deleted upload degrades to "no background".
+   */
+  backgroundEffects: Record<string, string>;
+  /** Whether the effect layer sits behind the glass surfaces or in front of them. */
+  backgroundEffectLayer: 'behind' | 'front';
   /** Guided Generations: how steering text and standing guides reach the prompt. */
   guidance: GuidanceSettings;
   /** Manual rolling chat summaries: generation source and prompt injection preferences. */
@@ -469,6 +483,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundBlur: 8,
   backgroundDim: 0.55,
   glass: true,
+  backgroundEffectEnabled: true,
+  backgroundEffects: {},
+  backgroundEffectLayer: 'behind',
   guidance: { ...DEFAULT_GUIDANCE },
   summary: { ...DEFAULT_SUMMARY },
   memoryMode: 'classic',
