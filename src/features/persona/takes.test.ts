@@ -42,6 +42,16 @@ describe('takes', () => {
     expect(hasDirtyTake(edited)).toBe(true);
   });
 
+  test('hasDirtyTake reports dirty when an earlier take was edited', () => {
+    const { takes: initial } = appendTake([], take('Iris'));
+    const edited = editTake(initial, 0, { name: 'Iris Edited' });
+    const { takes } = appendTake(edited, take('Sera'));
+
+    expect(takes[0]?.dirty).toBe(true);
+    expect(takes[1]?.dirty).toBe(false);
+    expect(hasDirtyTake(takes)).toBe(true);
+  });
+
   test('stepping past either end is a no-op', () => {
     const { takes } = appendTake(appendTake([], take('Iris')).takes, take('Sera'));
     expect(stepTake(takes, 0, -1)).toBe(0);

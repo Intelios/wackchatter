@@ -20,7 +20,7 @@ import { characterApi, personaApi } from '../../lib/api.ts';
 import { fetchPngFile } from '../../lib/imageFile.ts';
 import { matchesQuery, visibleTagsOf } from '../character/characterTree.ts';
 import './PersonaConverter.css';
-import { appendTake, editTake, stepTake, type Take } from './takes.ts';
+import { appendTake, editTake, hasDirtyTake, stepTake, type Take } from './takes.ts';
 import { usePersonaDerive } from './usePersonaDerive.ts';
 
 /** A real library is hundreds of cards; the list is a means of finding one, not of browsing. */
@@ -170,7 +170,7 @@ export function PersonaConverter({
           type="button"
           className="wc-button wc-button--ghost"
           onClick={() => {
-            if (!take?.dirty || confirmChange) changeCard();
+            if (!hasDirtyTake(takes) || confirmChange) changeCard();
             else setConfirmChange(true);
           }}
           onBlur={() => setConfirmChange(false)}
