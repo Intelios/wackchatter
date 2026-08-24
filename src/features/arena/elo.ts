@@ -111,6 +111,48 @@ function expectedScore(rating: number, against: number): number {
   return 1 / (1 + 10 ** ((against - rating) / 400));
 }
 
+/** A thing whose rating a round can move: a replay tally, or a bootstrap state. */
+interface RatingHolder {
+  rating: number;
+}
+
+/**
+ * The one rating update, shared by every reader of the rounds.
+ *
+ * `replay` folds it into tallies and counts the result around it; the bootstrap in
+ * `intervals.ts` replays resampled histories through it with no counting at all. One body
+ * of arithmetic is the point — a second Elo loop would be a fourth-decimal-place
+ * disagreement waiting to happen, the exact failure `previewVerdict` avoids at vote time.
+ *
+ * A `bad` verdict moves nothing (see `replay`). Callers reach this with rated verdicts
+ * only, but the guard keeps the function honest about the whole verdict set.
+ */
+export function applyVerdict(
+  left: RatingHolder,
+  right: RatingHolder,
+  verdict: ArenaRound['verdict'],
+): void {
+  if (verdict === 'bad') return;
+
+  if (verdict === 'tie') {
+    // Both replies were worth keeping, so neither pays for failing to win: the zero-sum
+    // update would charge the favourite a point on the draw. See `TIE_BONUS`.
+    left.rating += TIE_BONUS;
+    right.rating += TIE_BONUS;
+    return;
+  }
+
+  const leftScore = verdict === 'left' ? 1 : 0;
+
+  // Both expectations are computed from the pre-round ratings, or whichever side updated
+  // first would be answering a question the other one already changed.
+  const leftExpected = expectedScore(left.rating, right.rating);
+  const rightExpected = expectedScore(right.rating, left.rating);
+
+  left.rating += K_FACTOR * (leftScore - leftExpected);
+  right.rating += K_FACTOR * (1 - leftScore - rightExpected);
+}
+
 /**
  * Replay every round into a leaderboard.
  *
@@ -196,31 +238,18 @@ export function replay(
     }
 
     if (round.verdict === 'tie') {
-      // Both replies were worth keeping, so neither pays for failing to win: the zero-sum
-      // update would charge the favourite a point on the draw. See `TIE_BONUS`.
-      left.rating += TIE_BONUS;
-      right.rating += TIE_BONUS;
       left.ties++;
       right.ties++;
+    } else if (round.verdict === 'left') {
+      left.wins++;
+      right.losses++;
     } else {
-      const leftScore = round.verdict === 'left' ? 1 : 0;
-
-      // Both expectations are computed from the pre-round ratings, or whichever side updated
-      // first would be answering a question the other one already changed.
-      const leftExpected = expectedScore(left.rating, right.rating);
-      const rightExpected = expectedScore(right.rating, left.rating);
-
-      left.rating += K_FACTOR * (leftScore - leftExpected);
-      right.rating += K_FACTOR * (1 - leftScore - rightExpected);
-
-      if (round.verdict === 'left') {
-        left.wins++;
-        right.losses++;
-      } else {
-        left.losses++;
-        right.wins++;
-      }
+      left.losses++;
+      right.wins++;
     }
+
+    // The rating movement itself — the shared update every reader of the rounds replays.
+    applyVerdict(left, right, round.verdict);
 
     left.rounds++;
     right.rounds++;

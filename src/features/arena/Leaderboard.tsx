@@ -29,7 +29,9 @@ import { characterApi } from '../../lib/api.ts';
 import { contenderLabel } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
 import { PROVISIONAL_ROUNDS, replay, START_RATING } from './elo.ts';
+import { ForestChart } from './ForestChart.tsx';
 import { HeadToHead } from './HeadToHead.tsx';
+import { ratingIntervals } from './intervals.ts';
 import { headToHead } from './matchups.ts';
 import { RatingChart } from './RatingChart.tsx';
 import { RoundInspector } from './RoundInspector.tsx';
@@ -72,6 +74,53 @@ function toneProps(
   return { dataTone: tone.kind, style: { '--wc-rating-t': tone.strength } as CSSProperties };
 }
 
+/**
+ * The board's two graphs.
+ *
+ * The forest of intervals is the default — one row per contender, readable at any roster
+ * size, honest about what few rounds actually pin down. The trend chart answers a question
+ * a snapshot cannot (when the lead was taken, and whether it holds), so it stays a toggle
+ * away. `aria-pressed` buttons per the panel rule: a pressed state cannot disagree with
+ * what is on screen the way an open/closed pair of flags can.
+ */
+function ViewToggle({
+  view,
+  trendable,
+  onChange,
+}: {
+  view: 'intervals' | 'trend';
+  trendable: boolean;
+  onChange: (view: 'intervals' | 'trend') => void;
+}) {
+  return (
+    <span className="chart-view">
+      <button
+        type="button"
+        className="chart-view__btn"
+        aria-pressed={view === 'intervals'}
+        onClick={() => onChange('intervals')}
+        title="Every rating with the band the same rounds could have put it in"
+      >
+        Intervals
+      </button>
+      <button
+        type="button"
+        className="chart-view__btn"
+        aria-pressed={view === 'trend'}
+        disabled={!trendable}
+        onClick={() => onChange('trend')}
+        title={
+          trendable
+            ? 'Rating over rounds — when the lead was taken, and whether it holds'
+            : 'The trend needs at least two rounds before a line can be drawn'
+        }
+      >
+        Trend
+      </button>
+    </span>
+  );
+}
+
 export function Leaderboard({
   rounds,
   contenders,
@@ -84,6 +133,8 @@ export function Leaderboard({
   const [cardFilter, setCardFilter] = useState('');
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
   const [confirmingPurgeId, setConfirmingPurgeId] = useState<string | null>(null);
+  /** Which of the board's two graphs is showing. The forest is the default. */
+  const [view, setView] = useState<'intervals' | 'trend'>('intervals');
 
   useEffect(() => {
     if (!confirmingPurgeId) return;
@@ -118,6 +169,17 @@ export function Leaderboard({
 
   const table = useMemo(() => headToHead(filtered), [filtered]);
 
+  /*
+   * The forest plot's whiskers — a bootstrap over the same filtered rounds, so a per-card
+   * board bands its own history. Deterministic by seed, so switching filters back and forth
+   * redraws the same whiskers.
+   */
+  const intervals = useMemo(() => ratingIntervals(filtered), [filtered]);
+
+  /** The trend view cannot draw a line until a second round exists. */
+  const trendable = (series[0]?.points.length ?? 0) >= 2;
+  const showTrend = view === 'trend' && trendable;
+
   /** Colours resolved against the entrants on this board, in ranked order. */
   const colours = useMemo(
     () =>
@@ -140,6 +202,12 @@ export function Leaderboard({
   const leader = rows.find((row) => !row.provisional && row.rounds > 0) ?? null;
   const runnerUp = rows.find((row) => row !== leader && !row.provisional && row.rounds > 0);
   const leaderTone = leader ? toneProps(leader.rating, false) : {};
+
+  // Pressed state follows what is actually showing: with one round on the board the trend
+  // view cannot draw, and a toggle claiming otherwise would be lying with its own chrome.
+  const viewToggle = (
+    <ViewToggle view={showTrend ? 'trend' : 'intervals'} trendable={trendable} onChange={setView} />
+  );
 
   return (
     <div className="arena-board">
@@ -203,16 +271,31 @@ export function Leaderboard({
       {loading ? <p className="wc-empty">Reading the history…</p> : null}
 
       {/* Above the table on purpose: the shape is the thing you came to look at, and the
-          exact figures are one glance further down. */}
-      {!loading && rows.length > 0 ? (
-        <RatingChart
-          series={series}
-          rows={rows}
-          ordered={ordered}
-          colours={colours}
-          nameOf={nameOf}
-          onOpenRound={(round) => setOpenRoundId(round.id)}
-        />
+          exact figures are one glance further down. The forest is the default because it
+          stays readable at any roster size; the trend chart answers a question a snapshot
+          cannot, so it stays one toggle away rather than deleted. */}
+      {!loading && rows.length > 0 && (showTrend || intervals.size > 0) ? (
+        showTrend ? (
+          <RatingChart
+            series={series}
+            rows={rows}
+            ordered={ordered}
+            colours={colours}
+            nameOf={nameOf}
+            onOpenRound={(round) => setOpenRoundId(round.id)}
+            action={viewToggle}
+          />
+        ) : (
+          <ForestChart
+            rows={rows}
+            intervals={intervals}
+            ordered={ordered}
+            colours={colours}
+            nameOf={nameOf}
+            onOpenRound={(round) => setOpenRoundId(round.id)}
+            action={viewToggle}
+          />
+        )
       ) : null}
 
       {openRound ? (

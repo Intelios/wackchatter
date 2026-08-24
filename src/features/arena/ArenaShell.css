@@ -2481,6 +2481,203 @@
   cursor: help;
 }
 
+/* ---------------------------------------------------------------- forest plot */
+
+/*
+ * Every contender's rating as a point with the band the same evidence could have put it
+ * in. Rows, not lines: a roster of any size reads top to bottom, and a late entrant is a
+ * row with an honestly wide band rather than a line flat at the start for eighty rounds.
+ */
+.forest {
+  display: grid;
+  gap: var(--wc-space-3);
+  margin: 0;
+  padding: var(--wc-space-4);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+}
+
+.forest__caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+}
+
+.forest__title {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+}
+
+.forest__reading {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.forest__rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forest__row {
+  display: grid;
+  /*
+   * Identical tracks on every row, on purpose. Each row is its own grid, so a
+   * content-sized track would resolve differently per row and the whiskers would stop
+   * sharing an axis — the one thing a forest plot must never do. The name track's `min()`
+   * is viewport-relative, hence the same on every row, but willing to shrink.
+   */
+  grid-template-columns: 1.75rem min(13rem, 32%) 1fr 7rem 3.5rem;
+  align-items: center;
+  column-gap: var(--wc-space-3);
+  padding-block: var(--wc-space-1);
+  font-size: var(--wc-text-sm);
+  animation: wc-forest-in var(--wc-stats-draw) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.forest__rank {
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.forest__name {
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forest__row:hover .forest__name {
+  color: var(--wc-text);
+}
+
+/* The shared axis lives here. One track per row, one percentage scale for the whole board. */
+.forest__track {
+  position: relative;
+  min-width: 0;
+  height: var(--wc-space-4);
+}
+
+/* Where everyone started — the same dashed-faint reference the trend chart draws. */
+.forest__guide {
+  position: absolute;
+  top: var(--wc-space-1);
+  bottom: var(--wc-space-1);
+  left: var(--wc-forest-zero, 50%);
+  width: var(--wc-border-width);
+  background: var(--wc-border-strong);
+}
+
+.forest__whisker {
+  position: absolute;
+  top: 50%;
+  height: 5px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--wc-series) 30%, transparent);
+  transform: translateY(-50%);
+  animation: wc-forest-grow var(--wc-stats-draw) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+/* The end caps that make the band read as an interval rather than a bar. */
+.forest__whisker::before,
+.forest__whisker::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--wc-series);
+}
+
+.forest__whisker::before {
+  left: 0;
+}
+
+.forest__whisker::after {
+  right: 0;
+}
+
+.forest__dot {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--wc-surface);
+  border-radius: 50%;
+  background: var(--wc-series);
+  transform: translate(-50%, -50%);
+  animation: wc-forest-pop var(--wc-stats-draw) var(--wc-ease) backwards;
+  animation-delay: calc(var(--i, 0) * var(--wc-stats-stagger));
+}
+
+.forest__range {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.forest__rating {
+  color: var(--wc-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/*
+ * Provisional, drawn as unsettled rather than merely written as it — the same hatched
+ * judgement the table's bar column makes, for the same reason: a lucky two-round entrant
+ * must not read as a verdict however wide its band honestly is. Placed after the row rules
+ * it overrides, so specificity only ever ascends.
+ */
+.forest__row[data-provisional="true"] .forest__whisker {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--wc-series) 55%, transparent) 0 3px,
+    color-mix(in srgb, var(--wc-series) 15%, transparent) 3px 6px
+  );
+}
+
+.forest__row[data-provisional="true"] .forest__name,
+.forest__row[data-provisional="true"] .forest__rating {
+  color: var(--wc-text-faint);
+}
+
+/* --------------------------------------------------------------- chart views */
+
+/* The board's two graphs. Toggle buttons (`aria-pressed`), not tabs — the panel rule. */
+.chart-view {
+  display: flex;
+  gap: var(--wc-space-2);
+}
+
+.chart-view__btn {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.chart-view__btn[aria-pressed="true"] {
+  color: var(--wc-text);
+  font-weight: 600;
+}
+
+/* Disabled beats refused: the reason rides along as the title. */
+.chart-view__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------------------------------------------------------------- pool */
 
 .arena-pool__section {
@@ -3212,6 +3409,27 @@
   }
 }
 
+@keyframes wc-forest-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Grows from its own centre outward — the direction a band spreads from its point. */
+@keyframes wc-forest-grow {
+  from {
+    transform: translateY(-50%) scaleX(0);
+  }
+}
+
+@keyframes wc-forest-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+  }
+}
+
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .arena-shell[data-glass="true"] .arena-shell__bar {
     backdrop-filter: none;
@@ -3246,6 +3464,14 @@
   .rating-chart__line {
     animation: none;
     stroke-dashoffset: 0;
+  }
+
+  /* Same rule for the forest: the `from` frames are an invisible row and a zero-width
+     band, so none rather than a zeroed duration. */
+  .forest__row,
+  .forest__whisker,
+  .forest__dot {
+    animation: none;
   }
 
   .arena-ranks__bar {

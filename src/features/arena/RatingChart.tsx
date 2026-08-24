@@ -22,11 +22,12 @@
  */
 
 import type { ArenaRound } from '@shared/types/arena.ts';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { indexAt, plotLine, plotX, plotY, ratingBounds, visibleSeries } from './chart.ts';
 import type { LeaderboardRow, RatingSeries } from './elo.ts';
 import { START_RATING } from './elo.ts';
+import { RatingScrub } from './RatingScrub.tsx';
 import { colourOf } from './series.ts';
 
 /**
@@ -51,6 +52,8 @@ interface RatingChartProps {
   nameOf: (contenderId: string, model: string) => string;
   /** Open the round a tick stands for. */
   onOpenRound: (round: ArenaRound) => void;
+  /** The view toggle, rendered between the title and the reading. */
+  action?: ReactNode;
 }
 
 export function RatingChart({
@@ -60,6 +63,7 @@ export function RatingChart({
   colours,
   nameOf,
   onOpenRound,
+  action,
 }: RatingChartProps) {
   const [active, setActive] = useState<number | null>(null);
   /** Contender ids the legend has picked. Empty means the whole board is drawn. */
@@ -103,6 +107,7 @@ export function RatingChart({
         <span className="rating-chart__title">
           Rating over {count - 1} {count - 1 === 1 ? 'round' : 'rounds'}
         </span>
+        {action}
         {focus.size > 0 ? (
           <button type="button" className="rating-chart__clear" onClick={() => setFocus(new Set())}>
             Show all
@@ -178,30 +183,13 @@ export function RatingChart({
         ))}
       </svg>
 
-      {/*
-       * One tick per round. Buttons rather than decoration, because each one opens something
-       * — and a keyboard user gets the same access to the history as a pointer does.
-       */}
-      <ol className="rating-scrub" aria-label="Every recorded round, by verdict">
-        {ordered.map((round, index) => (
-          <li key={round.id} className="rating-scrub__slot">
-            <button
-              type="button"
-              className="rating-scrub__tick"
-              data-verdict={round.verdict}
-              data-current={reading === index + 1}
-              onMouseEnter={() => setActive(index + 1)}
-              onFocus={() => setActive(index + 1)}
-              onClick={() => onOpenRound(round)}
-              title={`Round ${index + 1} — ${verdictWord(round.verdict)}. Open it.`}
-            >
-              <span className="wc-visually-hidden">
-                Round {index + 1}, {verdictWord(round.verdict)}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
+      {/* One tick per round, each opening the round it stands for — see `RatingScrub`. */}
+      <RatingScrub
+        ordered={ordered}
+        current={reading}
+        onHighlight={setActive}
+        onOpenRound={onOpenRound}
+      />
 
       {/* Every model stays listed however narrow the focus gets — the way back in is the
           same one click as the way out. */}
@@ -249,13 +237,6 @@ export function RatingChart({
       </ul>
     </figure>
   );
-}
-
-function verdictWord(verdict: ArenaRound['verdict']): string {
-  if (verdict === 'left') return 'A won';
-  if (verdict === 'right') return 'B won';
-  if (verdict === 'tie') return 'a tie';
-  return 'both rejected';
 }
 
 function signOf(delta: number): 'up' | 'down' | 'flat' {
