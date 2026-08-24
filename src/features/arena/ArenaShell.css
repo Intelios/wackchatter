@@ -80,6 +80,8 @@
   display: flex;
   gap: var(--wc-space-1);
   justify-self: center;
+  /* The containing block for the strip's sliding underline. */
+  position: relative;
 }
 
 /*
@@ -87,7 +89,10 @@
  *
  * A pill reads as a toggle — the app's own convention for `aria-pressed` bar buttons — and
  * these four are places, one of which is always current. The rule under the current one says
- * that without borrowing the vocabulary of a switch.
+ * that without borrowing the vocabulary of a switch. The rule itself is painted by the
+ * sliding indicator, not the button; the transparent border-bottom stays because it reserves
+ * the underline's slot — without it the strip's height would grow by the bar's two pixels
+ * the moment the indicator first appears.
  */
 .arena-shell__mode {
   padding: var(--wc-space-2) var(--wc-space-3);
@@ -100,9 +105,7 @@
   letter-spacing: var(--wc-letter-spacing);
   text-transform: uppercase;
   cursor: pointer;
-  transition:
-    color var(--wc-duration-fast) var(--wc-ease),
-    border-color var(--wc-duration-fast) var(--wc-ease);
+  transition: color var(--wc-duration-fast) var(--wc-ease);
 }
 
 .arena-shell__mode:hover {
@@ -110,8 +113,36 @@
 }
 
 .arena-shell__mode[aria-selected="true"] {
-  border-bottom-color: var(--wc-accent);
   color: var(--wc-text);
+}
+
+/*
+ * The sliding underline. One bar per strip, moved by ArenaTabs to sit under the current
+ * tab — same scheme as .shell__cluster-indicator, minus the fade: a tab is always current,
+ * so the bar has somewhere to be from the first paint and never parks.
+ *
+ * The buttons are stretched flex items, so `bottom: 0` with the border's two pixels lands
+ * exactly in the slot the transparent border-bottom reserves: where the underline always
+ * was, at the full button width it always had.
+ *
+ * Transitions switch on one frame after first placement (see .shell__cluster-indicator):
+ * without the delay the bar would animate out of its initial translateX-0 state and slide
+ * in from the strip's left edge on the very first paint.
+ */
+.arena-shell__mode-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--wc-accent);
+  pointer-events: none;
+  transition: none;
+}
+
+.arena-shell__mode-indicator[data-ready="true"] {
+  transition:
+    transform var(--wc-duration) var(--wc-ease),
+    width var(--wc-duration) var(--wc-ease);
 }
 
 .arena-shell__body {

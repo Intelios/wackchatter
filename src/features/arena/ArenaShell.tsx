@@ -34,6 +34,8 @@ import type { EffectId } from '../backgrounds/effects.ts';
 import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
 import { useLorebooks } from '../lore/useLorebooks.ts';
 import { ArenaBench } from './ArenaBench.tsx';
+import type { ArenaMode } from './ArenaTabs.tsx';
+import { ArenaTabs } from './ArenaTabs.tsx';
 import { BlindRound } from './BlindRound.tsx';
 import { eligibleContenders, resolveContenders } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
@@ -47,15 +49,6 @@ import { buildScene, sceneSeedId } from './scene.ts';
 import { poolSlots, viewSeries } from './series.ts';
 import { useArenaRun } from './useArenaRun.ts';
 import './ArenaShell.css';
-
-type ArenaMode = 'bench' | 'blind' | 'board' | 'pool';
-
-const MODES: { id: ArenaMode; label: string }[] = [
-  { id: 'bench', label: 'Arena' },
-  { id: 'blind', label: 'Benchmark' },
-  { id: 'board', label: 'Leaderboard' },
-  { id: 'pool', label: 'Pool' },
-];
 
 /** A run waiting for its card and lorebooks to finish loading. */
 interface PendingRun {
@@ -573,24 +566,10 @@ export function ArenaShell({
         </div>
 
         {/*
-         * A real tab set, so real tabs. The app's `aria-pressed` bar convention is for
-         * buttons that toggle a panel open and shut; these four are destinations and one is
-         * always current, which is what `aria-selected` says and `aria-pressed` cannot.
+         * A real tab set, so real tabs — see ArenaTabs for the aria-selected reasoning and
+         * the sliding underline.
          */}
-        <div className="arena-shell__modes" role="tablist" aria-label="Arena sections">
-          {MODES.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              role="tab"
-              aria-selected={mode === entry.id}
-              className="arena-shell__mode"
-              onClick={() => setMode(entry.id)}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
+        <ArenaTabs mode={mode} onChange={setMode} />
 
         <div className="arena-shell__actions">
           {benchRun.busy || blindRun.busy ? (
