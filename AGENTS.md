@@ -439,6 +439,12 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   data keeps builders like `buildChatMenu` pure and testable). Focus calls inside popups
   pass `preventScroll: true`; submenu flyouts are `position: fixed` to escape the menu's
   scroll container.
+- **The creator-notes scenario list is a picker.** When a card's `creator_notes` resolve to
+  one line per greeting (`readScenarioNotes` — committed only when the counts agree), each
+  line is a button: picking one is `useChat.swipeTo`, the reducer's existing `swipe/select`
+  at that index, never a generation. The popup stays open on a pick; a line naming a
+  greeting the message never received (card edited after the chat started) is disabled
+  with its reason as the title.
 - Slash commands are typed, parsed in `slashCommands.ts` before `chat.send`: only text
   starting with `/` is a command, and a command-shaped line that fails to parse is an
   **error, never a silent send**. Indexes/ranges are zero-based and inclusive, matching

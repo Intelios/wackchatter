@@ -163,6 +163,12 @@ export interface UseChat {
   regenerate(): Promise<void>;
   /** -1 shows a cached swipe; +1 past the end generates a new one. */
   swipe(direction: -1 | 1): Promise<void>;
+  /**
+   * Jump straight to a cached swipe by index — the scenario list's pick. Same
+   * cached-alternative branch as `swipe` with the destination chosen for it; never
+   * generates, and never moves the selection off the greeting it names.
+   */
+  swipeTo(id: string, index: number): void;
   continueLast(): Promise<void>;
   /**
    * Reply, steered by `guidance`, without writing it into the transcript.
@@ -1005,6 +1011,25 @@ export function useChat(options: UseChatOptions): UseChat {
   );
 
   /*
+   * The scenario list's pick: a jump rather than a step, and only ever into swipes that
+   * already exist — generating is the chevrons' job, not the popover's.
+   *
+   * Same-index is refused here rather than left to the reducer, which bumps the revision
+   * unconditionally: a no-op pick would schedule a save for a chat that did not change.
+   */
+  const swipeTo = useCallback((id: string, index: number) => {
+    const current = stateRef.current;
+    if (current.status !== 'idle') return;
+
+    const target = current.messages.find((m) => m.id === id);
+    if (!target || index < 0 || index >= target.swipes.length || index === target.swipe_id) {
+      return;
+    }
+
+    dispatch({ type: 'swipe/select', id, index });
+  }, []);
+
+  /*
    * The two guided entry points.
    *
    * `guidedRespond` runs mode `send` without appending a user message, which is what makes
@@ -1825,6 +1850,7 @@ export function useChat(options: UseChatOptions): UseChat {
     send,
     regenerate,
     swipe,
+    swipeTo,
     continueLast,
     guidedRespond,
     guidedSwipe,

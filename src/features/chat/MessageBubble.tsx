@@ -77,6 +77,8 @@ interface MessageBubbleProps {
    * Swipe, regenerate and continue need no id: they only ever act on the last message.
    */
   onSwipe: (direction: -1 | 1) => void;
+  /** Jump to a cached swipe by index — the creator-notes scenario list's pick. */
+  onSwipeTo: (id: string, index: number) => void;
   onRegenerate: () => void;
   onContinue: () => void;
   /** Generate a reply to this turn. Offered when the transcript ends on the user. */
@@ -115,6 +117,7 @@ export const MessageBubble = memo(function MessageBubble({
   onEditCharacter,
   onOpenCardReader,
   onSwipe,
+  onSwipeTo,
   onRegenerate,
   onContinue,
   onRetry,
@@ -403,6 +406,11 @@ export const MessageBubble = memo(function MessageBubble({
                     notes={creatorNotes}
                     greetingCount={greetingCount ?? swipes}
                     swipeIndex={message.swipe_id}
+                    // The id binds here rather than in ChatView so the callback stays
+                    // one stable prop for every row; the popover stays index-shaped.
+                    onSelectScenario={(index) => onSwipeTo(message.id, index)}
+                    swipeCount={swipes}
+                    busy={busy}
                   />
                 ) : null}
                 {/*
