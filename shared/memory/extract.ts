@@ -16,6 +16,7 @@
  *    adversarial reply can produce a bad memory but cannot hide the wrong thing.
  */
 
+import { looseParseJson } from '../providers/looseJson.ts';
 import type { ApiMessage, ChatMessage, Memory } from '../types/chat.ts';
 import { renderMemoryChain } from './render.ts';
 
@@ -170,30 +171,6 @@ export function buildExtractionMessages(options: BuildExtractionOptions): ApiMes
   return messages;
 }
 
-/**
- * Pull a JSON object out of a reply that may be fenced, prefaced, or trailing-comma'd.
- *
- * Roleplay-tuned models wrap JSON in prose and fences routinely; treating that as a hard
- * failure would make the feature unusable on exactly the models people run it with.
- */
-function looseParse(text: string): unknown {
-  const unfenced = text.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-  const start = unfenced.indexOf('{');
-  const end = unfenced.lastIndexOf('}');
-  if (start === -1 || end <= start) return null;
-  const slice = unfenced.slice(start, end + 1);
-
-  try {
-    return JSON.parse(slice);
-  } catch {
-    try {
-      return JSON.parse(slice.replace(/,\s*([}\]])/g, '$1'));
-    } catch {
-      return null;
-    }
-  }
-}
-
 function stringList(value: unknown, max: number, maxChars: number): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -227,7 +204,7 @@ function boundedIndex(value: unknown, size: number): number | null {
  * make "delete this memory and get its messages back" ambiguous.
  */
 export function parseMemoryResponse(text: string, window: ChatMessage[]): ParsedMemoryResponse {
-  const parsed = looseParse(text);
+  const parsed = looseParseJson(text);
   if (!parsed || typeof parsed !== 'object') {
     return { memories: [], error: 'The memory model did not return readable JSON.' };
   }

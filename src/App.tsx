@@ -1391,6 +1391,11 @@ export function App() {
                 <PersonaPanel
                   personas={personas}
                   books={books}
+                  characters={characters}
+                  hiddenTags={hiddenTags}
+                  connection={connection}
+                  preset={preset}
+                  globalVariables={settings?.variables ?? {}}
                   activeId={settings?.personaId ?? null}
                   recentIds={settings?.recentPersonaIds ?? []}
                   density={settings?.personaListDensity ?? 'list'}

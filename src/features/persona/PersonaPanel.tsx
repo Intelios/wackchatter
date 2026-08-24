@@ -8,7 +8,10 @@
  */
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Persona } from '@shared/types/chat.ts';
+import type { Connection } from '@shared/providers/types.ts';
+import type { CharacterSummary } from '@shared/types/card.ts';
+import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
+import type { Preset } from '@shared/types/preset.ts';
 import type { DialogueColorOverride, DialogueColorSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -27,6 +30,7 @@ import {
 import { personaApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
+import { PersonaConverter } from './PersonaConverter.tsx';
 import { matchesPersonaQuery, orderPersonas } from './personaRoster.ts';
 import './PersonaPanel.css';
 
@@ -49,6 +53,14 @@ const ROLE_OPTIONS = [
 interface PersonaPanelProps {
   personas: Persona[];
   books: LorebookSummary[];
+  /** The library, for the character-to-persona converter's picker. */
+  characters: CharacterSummary[];
+  /** Tags the user hid from the character list. A hidden card must not reappear here. */
+  hiddenTags: readonly string[];
+  /** The active connection and preset. The converter borrows both; it has no settings of its own. */
+  connection: Connection | null;
+  preset: Preset | null;
+  globalVariables: MacroVariableMap;
   /** The app-wide current persona. */
   activeId: string | null;
   /** Most recently switched to, newest first — the roster's default grouping. */
@@ -72,6 +84,11 @@ interface PersonaPanelProps {
 export function PersonaPanel({
   personas,
   books,
+  characters,
+  hiddenTags,
+  connection,
+  preset,
+  globalVariables,
   activeId,
   recentIds,
   density,
@@ -91,6 +108,16 @@ export function PersonaPanel({
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [query, setQuery] = useState('');
+  const [converting, setConverting] = useState(false);
+  /** Why the converter cannot run right now, or null. Becomes the button's `title`. */
+  const convertBlocked =
+    characters.length === 0
+      ? 'No characters in your library yet.'
+      : !connection?.baseUrl || !connection.model
+        ? 'The active connection needs an endpoint and a model.'
+        : !preset
+          ? 'Still loading your preset.'
+          : null;
   /**
    * Set when a persona is created, so the editor can put the caret in the Name field.
    *
@@ -227,6 +254,18 @@ export function PersonaPanel({
     } catch (err) {
       setError((err as Error).message);
     }
+  }
+
+  /**
+   * A converted persona has just been created. Same landing as `handleCreate`: refresh the
+   * roster and open the new persona in the editor, which is where you would go next anyway
+   * to set its placement or a lorebook. There is no toast system — the editor opening *is*
+   * the success signal.
+   */
+  async function handleConverted(id: string) {
+    setConverting(false);
+    onChanged();
+    await selectEditor(id);
   }
 
   async function handleDelete(id: string) {
@@ -413,7 +452,18 @@ export function PersonaPanel({
         </p>
       ) : null}
 
-      {draft ? (
+      {converting ? (
+        <PersonaConverter
+          characters={characters}
+          hiddenTags={hiddenTags}
+          connection={connection}
+          preset={preset}
+          globalVariables={globalVariables}
+          countTokens={countTokens}
+          onClose={() => setConverting(false)}
+          onSaved={(id) => void handleConverted(id)}
+        />
+      ) : draft ? (
         <div className="persona-editor">
           <div className="persona-editor__top">
             <button
@@ -621,6 +671,16 @@ export function PersonaPanel({
             <button type="button" className="wc-button" onClick={() => void handleCreate()}>
               <PlusIcon />
               New persona
+            </button>
+            {/* Disabled beats refused: the reason becomes the title rather than a toast. */}
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              disabled={Boolean(convertBlocked)}
+              title={convertBlocked ?? 'Boil a character card down into a persona'}
+              onClick={() => setConverting(true)}
+            >
+              From a character…
             </button>
             {activeId ? (
               <button

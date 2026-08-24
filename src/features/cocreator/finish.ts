@@ -10,21 +10,10 @@ import { toCardPatch } from '@shared/cocreator/stash.ts';
 import type { CardDataV2, CharacterDetail, TavernCard } from '@shared/types/card.ts';
 import type { CardStash } from '@shared/types/cocreator.ts';
 import { characterApi, cocreatorApi } from '../../lib/api.ts';
+import { fetchPngFile } from '../../lib/imageFile.ts';
 
 /** The folder new cards land in, so a design session's output is easy to find and move. */
 export const FINISH_FOLDER = 'Drafts';
-
-async function fetchPngFile(url: string): Promise<File | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    return new File([await response.blob()], 'avatar.png', { type: 'image/png' });
-  } catch {
-    // Artwork is worth losing before the card is: a failed fetch finishes without it rather
-    // than aborting a session's whole output.
-    return null;
-  }
-}
 
 /**
  * What a seeded session carries over from its seed card at Finish: everything the stash
