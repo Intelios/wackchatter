@@ -58,7 +58,8 @@ src/             React app.
                  cocreator/, stats/, arena/, memory/, regex/, settings/, start/, summary/.
                  arena/ splits its rules out as pure modules: elo.ts (replay + verdict
                  preview), matchups.ts (head to head), series.ts (corner colour),
-                 runStats.ts (which column won each measure), pairing.ts, chart.ts.
+                 runStats.ts (which column won each measure), pairing.ts, chart.ts,
+                 intervals.ts (bootstrap rating bands), forest.ts (forest-plot geometry).
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
                 secrets.json, lorebooks/, personas/, backups/, .wackchatter.
@@ -524,6 +525,22 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   `K_FACTOR * (score - expected)`, which would drift from the leaderboard. Every series
   covers every round (backfilled at `START_RATING`) so the lines read against one
   another.
+- **The board's default graph is a forest plot** (`ForestChart.tsx` over `intervals.ts` +
+  `forest.ts`): one row per contender — readable at any roster size, a late entrant a row
+  with an honestly wide band rather than a line flat at the start — with the dot being the
+  table rating by construction and the whisker a 95% bootstrap interval. The trend line
+  chart stays behind a toggle in the figure header (its button disabled under two rounds;
+  the pressed state follows what is actually showing). The intervals are one more pure
+  reader of the rounds, nothing stored: the bootstrap is seeded (`createRng`, constant
+  seed — whiskers must not breathe between renders), resamples **rated rounds only** (a
+  `bad` verdict carries no comparative evidence; resampling it would narrow bands with
+  information that does not exist), and replays each resample through `applyVerdict` —
+  the one Elo update `replay` itself uses; never write a second Elo loop. The band
+  deliberately does **not** shrink toward zero as history grows: fixed-K Elo's endpoint
+  genuinely never concentrates, and pretending otherwise would lend precision to a
+  thirty-point gap. Nothing clamps the dot into its band. The round scrub strip
+  (`RatingScrub.tsx`, lifted out of `RatingChart`) renders under both views and is the
+  only door into `RoundInspector`.
 - `bad` ("neither is usable") is recorded but moves **no** ratings and is excluded from
   every head-to-head record — it is not a draw, and scoring it as one would drag a
   strong rating toward a weak one on evidence containing no comparison.
