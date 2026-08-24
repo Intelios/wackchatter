@@ -46,8 +46,9 @@ shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant; branch.ts — branch-time id repair.
   cocreator/     CardStash — the filed-card model.
   memory/        Id-based memory list ops + the extraction prompt and reply contract.
+  persona/       derive.ts — card-to-persona: the prompt, the reply contract, the house format.
   prompt/        Assembly engine, macros, preset I/O, defaults, token cache.
-  providers/     Request building + SSE parsing.
+  providers/     Request building + SSE parsing. looseJson.ts is shared by both extractors.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine.
   types/         Card, preset, worldinfo, chat, settings, regex, cocreator, stats, arena.
@@ -313,6 +314,19 @@ byte-identically. The quirks are load-bearing and each has a named test.
   returns exact → prefix → substring and stops at the first rung with *any* match, so two
   personas called "Wren" is an error naming both, never a guess. `/persona` reports it and
   keeps the draft — a wrong guess would be stamped onto every message sent afterwards.
+- **The derived persona's house format is one `Label: value` line per fact, a blank line
+  between, appearance and identity only.** `renderPersonaDescription` (`shared/persona/derive.ts`)
+  is the one place it is written and `derive.test.ts` pins it — deliberately against the
+  *normalised* form, not byte-for-byte against `data/personas`, whose hand-edited files carry
+  incidental trailing whitespace. Labels are a closed, ordered vocabulary; a synonym is
+  rewritten to our spelling, a prose label (`Personality`, `Backstory`, `Scenario`) is
+  dropped, and at most three unknown labels survive, after the known block.
+- **The derivation omits, never infers.** A fact the card does not state gets no line. The
+  contract asks for that, and the parser *also* drops `unknown` / `N/A` / `—` values — prompt
+  compliance must not be the only thing between the user and an invented age, because a
+  persona rides in every request and a wrong fact there reads as true forever. The converter
+  writes nothing until Save, so a bad roll leaves no persona behind; `scenario` is never sent,
+  since a persona outlives the story it was derived from.
 - `AppSettings.recentPersonaIds` orders both the composer's switcher and the panel's
   roster, newest first, capped at `MAX_RECENT_PERSONAS`. The cap is enforced in
   `server/lib/settings.ts` on read *and* on patch, because the list is appended to on every
@@ -439,6 +453,12 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   data keeps builders like `buildChatMenu` pure and testable). Focus calls inside popups
   pass `preventScroll: true`; submenu flyouts are `position: fixed` to escape the menu's
   scroll container.
+- **The creator-notes scenario list is a picker.** When a card's `creator_notes` resolve to
+  one line per greeting (`readScenarioNotes` — committed only when the counts agree), each
+  line is a button: picking one is `useChat.swipeTo`, the reducer's existing `swipe/select`
+  at that index, never a generation. The popup stays open on a pick; a line naming a
+  greeting the message never received (card edited after the chat started) is disabled
+  with its reason as the title.
 - Slash commands are typed, parsed in `slashCommands.ts` before `chat.send`: only text
   starting with `/` is a command, and a command-shaped line that fails to parse is an
   **error, never a silent send**. Indexes/ranges are zero-based and inclusive, matching

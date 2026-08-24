@@ -12,8 +12,11 @@
  * costs the transcript no permanent chrome once the chat is under way.
  *
  * When the notes resolve into one line per greeting the list is numbered to match the
- * counter and the current one is marked. When they do not, they render whole, which is all
- * the Characters panel ever offered.
+ * counter, the current one is marked, and every line is a pick: clicking it shows that
+ * greeting, the same cached-alternative jump the chevrons make one step at a time. The
+ * popup stays open on a pick — comparing scenarios is the point, and the highlight moving
+ * (plus the greeting swapping behind) is all the feedback a pick needs. When the notes do
+ * not resolve, they render whole, which is all the Characters panel ever offered.
  */
 
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -29,16 +32,29 @@ interface CreatorNotesPopoverProps {
   greetingCount: number;
   /** The swipe on show, so its line can be marked. Past `greetingCount` it is a re-roll. */
   swipeIndex: number;
+  /** Show the greeting at this index. Never generates — only cached swipes are listed. */
+  onSelectScenario: (index: number) => void;
+  /**
+   * The message's actual swipe count. The card can gain greetings after a chat starts, so
+   * it can be shorter than `greetingCount`; lines past it name greetings this chat never
+   * received and are disabled rather than silently refused.
+   */
+  swipeCount: number;
+  /** A reply is in flight — the same window in which the chevrons refuse to move. */
+  busy: boolean;
 }
 
 export function CreatorNotesPopover({
   notes,
   greetingCount,
   swipeIndex,
+  onSelectScenario,
+  swipeCount,
+  busy,
 }: CreatorNotesPopoverProps) {
   const [open, setOpen] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
-  const currentRef = useRef<HTMLLIElement>(null);
+  const currentRef = useRef<HTMLButtonElement>(null);
   const { intro, scenarios, outro } = readScenarioNotes(notes, greetingCount);
   // A re-rolled greeting is a swipe the card never wrote, so nothing in the list is it.
   const current = swipeIndex < scenarios.length ? swipeIndex : -1;
@@ -48,7 +64,7 @@ export function CreatorNotesPopover({
    *
    * Ten scenarios do not fit the popup, so opening at the top means scrolling to hunt for
    * the highlight — the exact hunt this popover exists to end. Also re-runs while open, so
-   * swiping behind it (nothing here is modal) tracks.
+   * swiping behind it (nothing here is modal) and picking a line both track.
    *
    * scrollTop rather than scrollIntoView: this popup sits inside the scrolling transcript,
    * and scrollIntoView is entitled to scroll every ancestor to satisfy the request. It
@@ -85,9 +101,11 @@ export function CreatorNotesPopover({
     >
       <div className="creator-notes__head">
         <h2 className="creator-notes__title">Creator notes</h2>
-        {current >= 0 ? (
+        {scenarios.length > 0 ? (
           <p className="creator-notes__hint">
-            Greeting {current + 1} of {scenarios.length} is highlighted.
+            {current >= 0
+              ? `Pick a line to show that greeting — ${current + 1} of ${scenarios.length} is on show.`
+              : 'A re-roll is on show — pick a line to return to one of the card\u2019s greetings.'}
           </p>
         ) : null}
       </div>
@@ -97,18 +115,30 @@ export function CreatorNotesPopover({
 
         {scenarios.length > 0 ? (
           <ol className="creator-notes__scenarios">
-            {scenarios.map((scenario, index) => (
-              <li
-                // biome-ignore lint/suspicious/noArrayIndexKey: positional greeting list
-                key={index}
-                ref={index === current ? currentRef : undefined}
-                className="creator-notes__scenario"
-                data-current={index === current || undefined}
-                aria-current={index === current ? 'true' : undefined}
-              >
-                <Markdown text={scenario} />
-              </li>
-            ))}
+            {scenarios.map((scenario, index) => {
+              // The card outgrew the chat: this line names a greeting the message never
+              // received, so there is nothing to jump to. Native title, per the house rule.
+              const absent = index >= swipeCount;
+              return (
+                <li
+                  // biome-ignore lint/suspicious/noArrayIndexKey: positional greeting list
+                  key={index}
+                >
+                  <button
+                    type="button"
+                    ref={index === current ? currentRef : undefined}
+                    className="creator-notes__scenario"
+                    data-current={index === current || undefined}
+                    aria-current={index === current ? 'true' : undefined}
+                    onClick={() => onSelectScenario(index)}
+                    disabled={busy || absent}
+                    title={absent ? 'Added to the card after this chat started' : undefined}
+                  >
+                    <Markdown text={scenario} />
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         ) : null}
 

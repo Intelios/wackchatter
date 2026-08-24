@@ -51,7 +51,8 @@
 }
 
 /* Numbered to be read against the swipe counter, so the numbers are the point and cannot
-   be left to the marker glyph's default alignment. */
+   be left to the marker glyph's default alignment. The row is a button — the number sits
+   inside it, so the whole row is the pick, and the <li> is list semantics only. */
 .creator-notes__scenarios {
   list-style: none;
   margin: 0;
@@ -70,11 +71,16 @@
      stretching both to the row makes it float above the line it belongs to. */
   align-items: baseline;
   gap: var(--wc-space-1);
+  width: 100%;
   padding: var(--wc-space-1) var(--wc-space-2);
   border-radius: var(--wc-radius-sm);
+  text-align: left;
   /* A transparent left edge held open by every row, so marking the current one changes a
      colour and never a width — the list must not jump as you swipe through it. */
   border-left: 2px solid transparent;
+  transition:
+    background var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
 }
 
 .creator-notes__scenario::before {
@@ -85,6 +91,22 @@
   font-size: var(--wc-text-xs);
   color: var(--wc-text-faint);
   text-align: right;
+}
+
+/* Hover is a quiet offer, not the accent the current row wears — so the row you are on
+   does not dim when the pointer crosses it. */
+.creator-notes__scenario:hover:not(:disabled):not([data-current]) {
+  background: var(--wc-surface-hover);
+}
+
+/* The press, matching .menu__item. */
+.creator-notes__scenario:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.creator-notes__scenario:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .creator-notes__scenario[data-current] {

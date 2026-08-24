@@ -570,6 +570,10 @@ export function ChatView({
   chatRef.current = chat;
 
   const swipe = useCallback((direction: -1 | 1) => void chatRef.current.swipe(direction), []);
+  const swipeTo = useCallback(
+    (id: string, index: number) => chatRef.current.swipeTo(id, index),
+    [],
+  );
   const regenerate = useCallback(() => void chatRef.current.regenerate(), []);
   const continueLast = useCallback(() => void chatRef.current.continueLast(), []);
   const editMessage = useCallback(
@@ -760,6 +764,7 @@ export function ChatView({
                 creatorNotes: messageIndex === 0 ? renderedNotes : undefined,
                 greetingCount: messageIndex === 0 ? greetingCount : undefined,
                 onSwipe: swipe,
+                onSwipeTo: swipeTo,
                 onRegenerate: regenerate,
                 onContinue: continueLast,
                 onRetry: regenerate,

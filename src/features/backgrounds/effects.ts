@@ -2,7 +2,9 @@
  * The ambient-effect catalog: pure data, no DOM. Seven v1 effects as configs over
  * three engine families (`engine.ts` owns the physics):
  *
- * - `rain`   — fast slanted streaks, drawn as one batched stroke.
+ * - `rain`   — depth-layered streaks drawn as pre-rendered tapered sprites: one depth
+ *              roll makes a near drop at once faster, longer, wider and brighter than a
+ *              far one, and the slant slowly gusts.
  * - `fall`   — snow / leaves / petals: slow descent with sinusoidal sway and optional
  *              rotation, drawn as filled shapes.
  * - `motes`  — dust / embers / fireflies: near-static wandering particles whose alpha
@@ -23,16 +25,25 @@ export interface RainSpec {
   count: number;
   /** 0 = every frame; the fall/motes families cap below 60 to save battery. */
   frameIntervalMs: number;
-  /** Fall speed in px/s. */
+  /** Fall speed in px/s at depth 0 (far). */
   speedMin: number;
+  /** Fall speed in px/s at depth 1 (near). */
   speedMax: number;
-  /** Horizontal drift as a fraction of fall speed — the slant. */
+  /** Horizontal drift as a fraction of fall speed — the mean slant. */
   slant: number;
+  /** The gust: slant oscillates by this fraction around `slant` at `gustSpeed` rad/s. */
+  gustAmplitude: number;
+  gustSpeed: number;
   /** Streak length as speed × this factor, so faster drops draw longer. */
   lengthFactor: number;
-  alpha: number;
-  color: string;
-  lineWidth: number;
+  /** Streak width in px at depth 0 / depth 1. */
+  widthMin: number;
+  widthMax: number;
+  /** Streak opacity at depth 0 / depth 1. */
+  alphaMin: number;
+  alphaMax: number;
+  /** Per-particle colour, indexed by depth band — order far → near (dim → bright). */
+  colors: readonly string[];
 }
 
 export type FallShape = 'flake' | 'leaf' | 'petal';
@@ -88,15 +99,19 @@ export const EFFECTS: readonly EffectEntry[] = [
     label: 'Rain',
     spec: {
       family: 'rain',
-      count: 110,
+      count: 150,
       frameIntervalMs: 0,
-      speedMin: 700,
-      speedMax: 1100,
-      slant: 0.18,
-      lengthFactor: 0.09,
-      alpha: 0.32,
-      color: '#cfd9e6',
-      lineWidth: 1,
+      speedMin: 480,
+      speedMax: 1250,
+      slant: 0.2,
+      gustAmplitude: 0.07,
+      gustSpeed: 0.45,
+      lengthFactor: 0.105,
+      widthMin: 0.75,
+      widthMax: 2.4,
+      alphaMin: 0.08,
+      alphaMax: 0.4,
+      colors: ['#a9bdd6', '#c9d9ec', '#eef4fb'],
     },
   },
   {
