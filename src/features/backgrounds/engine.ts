@@ -20,23 +20,30 @@ export interface Particle {
   /** Motes only: live wander velocity, random-walked every step. */
   vx: number;
   vy: number;
-  /** Fall speed in px/s (rain and fall families). */
+  /** Fall speed in px/s (rain and fall families); rain's also scales its streak. */
   speed: number;
-  /** Radius-ish size in px (fall and motes families). */
+  /** Radius-ish size in px (fall and motes families); rain's streak width. */
   size: number;
+  /**
+   * Rain only: final streak opacity, derived from the same depth as speed and size —
+   * nearer means brighter, so the field reads as perspective rather than a dash pattern.
+   */
+  alpha: number;
   /** Sway (fall) / alpha-pulse (motes) phase in rad, walking at `phaseSpeed`. */
   phase: number;
   phaseSpeed: number;
   /** Rotation in rad and its speed — fall family, `rotate` specs only. */
   rot: number;
   rotSpeed: number;
-  /** Index into the spec's colour list. */
+  /** Index into the spec's colour list; rain's is ordered far → near by depth. */
   colorIndex: number;
 }
 
 export interface EffectState {
   spec: EffectSpec;
   particles: Particle[];
+  /** Seconds since the effect was created; rain's gust reads it. */
+  time: number;
 }
 
 /** Injectable so tests are deterministic; the default is fine for a visual effect. */
@@ -61,6 +68,7 @@ function newParticle(rand: Rand): Particle {
     vy: 0,
     speed: 0,
     size: 0,
+    alpha: 1,
     phase: rand() * Math.PI * 2,
     phaseSpeed: 1,
     rot: rand() * Math.PI * 2,
@@ -69,8 +77,28 @@ function newParticle(rand: Rand): Particle {
   };
 }
 
+/**
+ * The slant right now. A constant slant reads as a screen fault — the whole field
+ * marching at one fixed angle forever is the mechanical tell this exists to remove.
+ * The draw call and the physics must both read it for the streak to trail its motion.
+ */
+export function rainSlant(spec: RainSpec, time: number): number {
+  return spec.slant + spec.gustAmplitude * Math.sin(time * spec.gustSpeed);
+}
+
+/**
+ * Rain tune: one depth roll drives every visible property, so a near drop is at once
+ * faster, longer (speed × lengthFactor), wider, brighter and warmer-coloured than a
+ * far one. `rand() ** 2` biases the roll toward far — most drops are the quiet
+ * background the few near streaks stand against. Depth stays unstored: it is consumed
+ * here, and respawn re-rolls it wholesale.
+ */
 function tuneRain(particle: Particle, spec: RainSpec, rand: Rand): void {
-  particle.speed = range(rand, spec.speedMin, spec.speedMax);
+  const depth = rand() ** 2;
+  particle.speed = spec.speedMin + (spec.speedMax - spec.speedMin) * depth;
+  particle.size = spec.widthMin + (spec.widthMax - spec.widthMin) * depth;
+  particle.alpha = spec.alphaMin + (spec.alphaMax - spec.alphaMin) * depth;
+  particle.colorIndex = Math.min(spec.colors.length - 1, Math.floor(depth * spec.colors.length));
 }
 
 function tuneFall(particle: Particle, spec: FallSpec, rand: Rand): void {
@@ -115,7 +143,7 @@ export function createEffectState(
     }
     particles.push(particle);
   }
-  return { spec, particles };
+  return { spec, particles, time: 0 };
 }
 
 /** Wrap into [0, bound) without a jump for values already inside. */
@@ -131,12 +159,13 @@ function stepRain(
   height: number,
   rand: Rand,
 ): void {
+  const slant = rainSlant(spec, state.time);
   for (const particle of state.particles) {
-    particle.x += particle.speed * spec.slant * dt;
+    particle.x += particle.speed * slant * dt;
     particle.y += particle.speed * dt;
     const length = particle.speed * spec.lengthFactor;
     if (particle.y - length > height + OVERSCAN) {
-      // Respawned drops re-roll their speed, so a burst of identical streaks never
+      // Respawned drops re-roll their depth, so a burst of identical streaks never
       // marches in lockstep.
       tuneRain(particle, spec, rand);
       particle.x = spawnX(width, rand);
@@ -199,7 +228,12 @@ function stepMotes(
   }
 }
 
-/** Advance the simulation. `dt` is seconds; the caller clamps it (a backgrounded tab). */
+/**
+ * Advance the simulation. `dt` is seconds; the caller clamps it (a backgrounded tab).
+ * The clock advances before the family step, so a step integrates with the slant at
+ * its end time — the value the draw that follows reads, keeping streak angle and
+ * motion on the same frame.
+ */
 export function stepEffect(
   state: EffectState,
   dt: number,
@@ -208,6 +242,7 @@ export function stepEffect(
   rand: Rand,
 ): void {
   const { spec } = state;
+  state.time += dt;
   switch (spec.family) {
     case 'rain':
       stepRain(state, spec, dt, width, height, rand);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { EFFECTS, getEffect } from './effects.ts';
-import { createEffectState, OVERSCAN, resizeEffect, stepEffect } from './engine.ts';
+import { createEffectState, OVERSCAN, rainSlant, resizeEffect, stepEffect } from './engine.ts';
 
 /** Deterministic LCG, so respawn and clamp assertions are about the physics, not luck. */
 function lcg(seed: number): () => number {
@@ -86,10 +86,13 @@ describe('stepEffect', () => {
   test('two half steps match one full step when nothing respawns or wraps', () => {
     const spec = getEffect('rain')?.spec;
     if (spec?.family !== 'rain') throw new Error('rain spec missing');
+    // Gust off: with it, slant varies with time and midpoint sampling is legitimately
+    // a different integral — that is physics, not a scheduling bug.
+    const still = { ...spec, gustAmplitude: 0 };
     // Roomy bounds and a short window: no streak reaches an edge, so the motion is
     // linear and the two schedules must agree exactly.
-    const one = createEffectState(spec, 4000, 4000, lcg(21));
-    const two = createEffectState(spec, 4000, 4000, lcg(21));
+    const one = createEffectState(still, 4000, 4000, lcg(21));
+    const two = createEffectState(still, 4000, 4000, lcg(21));
     stepEffect(one, 0.02, 4000, 4000, lcg(0));
     stepEffect(two, 0.01, 4000, 4000, lcg(0));
     stepEffect(two, 0.01, 4000, 4000, lcg(0));
@@ -98,6 +101,61 @@ describe('stepEffect', () => {
       expect(particleAt(two, i).x).toBeCloseTo(particleAt(one, i).x, 9);
       expect(particleAt(two, i).y).toBeCloseTo(particleAt(one, i).y, 9);
     }
+  });
+
+  test('rain depth correlates speed, width, alpha and colour — nearer is all four at once', () => {
+    const spec = getEffect('rain')?.spec;
+    if (spec?.family !== 'rain') throw new Error('rain spec missing');
+    const state = createEffectState(spec, 400, 300, lcg(31));
+    // Run the field through many respawns, so the check covers re-tuned drops too.
+    for (let i = 0; i < 300; i++) stepEffect(state, 0.5, 400, 300, lcg(40 + i));
+
+    for (const particle of state.particles) {
+      expect(particle.speed).toBeGreaterThanOrEqual(spec.speedMin);
+      expect(particle.speed).toBeLessThanOrEqual(spec.speedMax);
+      expect(particle.size).toBeGreaterThanOrEqual(spec.widthMin);
+      expect(particle.size).toBeLessThanOrEqual(spec.widthMax);
+      expect(particle.alpha).toBeGreaterThanOrEqual(spec.alphaMin);
+      expect(particle.alpha).toBeLessThanOrEqual(spec.alphaMax);
+      expect(particle.colorIndex).toBeLessThan(spec.colors.length);
+    }
+    // Pairwise monotonicity is the actual rule: no drop may be faster yet dimmer,
+    // thinner or cooler-coloured than a slower one — that mixture is the uniform dash
+    // pattern the depth model exists to prevent.
+    for (let i = 0; i < state.particles.length; i++) {
+      for (let j = i + 1; j < state.particles.length; j++) {
+        const a = particleAt(state, i);
+        const b = particleAt(state, j);
+        if (a.speed < b.speed) {
+          expect(a.alpha).toBeLessThanOrEqual(b.alpha);
+          expect(a.size).toBeLessThanOrEqual(b.size);
+          expect(a.colorIndex).toBeLessThanOrEqual(b.colorIndex);
+        }
+      }
+    }
+  });
+
+  test('the gust stays within its amplitude and drives the horizontal drift', () => {
+    const spec = getEffect('rain')?.spec;
+    if (spec?.family !== 'rain') throw new Error('rain spec missing');
+    expect(rainSlant(spec, 0)).toBe(spec.slant);
+    for (let t = 0; t < 25; t += 0.37) {
+      expect(Math.abs(rainSlant(spec, t) - spec.slant)).toBeLessThanOrEqual(
+        spec.gustAmplitude + 1e-9,
+      );
+    }
+
+    // The step advances the clock first and integrates with the slant at its end
+    // time — the same value the draw that follows reads, so the streak angle and the
+    // motion can never disagree by a frame.
+    const gusty = { ...spec, gustAmplitude: 0.5, gustSpeed: 2 };
+    const state = createEffectState(gusty, 4000, 4000, lcg(3));
+    const particle = particleAt(state, 0);
+    const xBefore = particle.x;
+    const speed = particle.speed;
+    stepEffect(state, 0.1, 4000, 4000, lcg(4));
+    expect(particle.x - xBefore).toBeCloseTo(speed * rainSlant(gusty, 0.1) * 0.1, 9);
+    expect(state.time).toBeCloseTo(0.1, 9);
   });
 });
 
