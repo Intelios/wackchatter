@@ -108,9 +108,9 @@ export function App() {
   const studioPersistence = useRef<PersistenceControls | null>(null);
   const cocreatorPersistence = useRef<PersistenceControls | null>(null);
   /*
-   * Where the character list was scrolled to, so closing and reopening the panel inside a
-   * chat lands where you left it. Session-only by design: it is a browsing convenience,
-   * not library state, so it never reaches settings.json.
+   * Where the character list was scrolled to, so closing and reopening the panel lands
+   * where you left it. Session-only by design: it is a browsing convenience, not library
+   * state, so it never reaches settings.json.
    */
   const characterListScroll = useRef(0);
 
@@ -277,17 +277,6 @@ export function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  /*
-   * The scroll memory is valid only inside a chat. Leaving for the start screen wipes it,
-   * so the next open begins fresh at the top — and because child unmount cleanups run
-   * before this parent effect, the list's own save-then-this-wipe order is what makes
-   * "exit the chat" beat the memory even when the panel was open at the time. Switching
-   * characters never passes through null, so browsing between chats keeps the position.
-   */
-  useEffect(() => {
-    if (selected === null) characterListScroll.current = 0;
-  }, [selected]);
 
   // Load the full card whenever the selection changes.
   useEffect(() => {
@@ -704,6 +693,10 @@ export function App() {
    * for the same reason: navigating away from an unsaved chat drops the tail of the
    * transcript with nothing to show for it. Once `selected` is null `useChat` closes the
    * chat itself, so there is no further teardown here.
+   *
+   * The right panel is deliberately left as it was — closing a chat is not a reason to
+   * close the character browser, so browsing survives hopping in and out of chats (same
+   * rule as `handleDeleted`).
    */
   const handleCloseChat = useCallback(async () => {
     try {
@@ -718,7 +711,6 @@ export function App() {
     setSelected(null);
     setDetail(null);
     setEditing(false);
-    setRightPanel(null);
   }, [chat, flushRightPanel]);
 
   /**

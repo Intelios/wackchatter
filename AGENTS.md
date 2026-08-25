@@ -431,7 +431,9 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   its panel and flushes pending autosaves like switching does (`flushRightPanel` is what
   makes a failed flush surface). Bar buttons are toggle buttons (`aria-pressed`), not
   tabs. The chat column is `1fr`; the header row is a fixed grid track so
-  `grid-template-columns` stays the only animated property.
+  `grid-template-columns` stays the only animated property. **Closing a chat leaves the
+  panels alone** — the character browser stays open and scrolled where it was, so browsing
+  survives hopping in and out of chats (same rule as `handleDeleted`).
 - **The composer is a field with a tray under it**, not a row of controls around a
   field. Everything except typing — persona chip, menus, guided actions, Send — sits in
   a `--wc-control`-height tray beneath, and the tray's height comes out of the input's
