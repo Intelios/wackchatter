@@ -4,9 +4,12 @@
  * This is only the form. It opens from the "Rename chat…" entry in the chat menu and
  * anchors to the burger button, the way the quick-commands editor grows from the bolt.
  *
- * Enter (or the button) applies; Escape and clicking away discard — Popover dismissal
- * unmounts the field before any blur can commit, so those paths cannot half-apply. The
- * apply decision is `nextChatTitle`, pure and pinned beside the menu tests.
+ * Enter (or the button) applies; Escape and clicking away discard — neither path ever
+ * blurs a live field into `onCommit`. Click-away closes on `pointerdown`, so the field is
+ * gone before the browser moves focus; Escape relies on `Popover` restoring focus to the
+ * trigger only after the close has rendered (see its `handleKeyDown`) — until that fix the
+ * restore blurred this field while it was still mounted and Escape committed the rename.
+ * The apply decision is `nextChatTitle`, pure and pinned beside the menu tests.
  */
 
 import { type RefObject, useEffect, useRef, useState } from 'react';
