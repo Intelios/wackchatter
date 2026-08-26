@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { isSeparator, type MenuAction, type MenuEntry } from '../../components/Menu.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { buildChatMenu, type ChatMenuActions, type ChatMenuState } from './ChatMenu.tsx';
+import { nextChatTitle } from './RenameChatPopover.tsx';
 
 /** A transcript ending on the character's turn — the ordinary case, everything available. */
 const healthy: ChatMenuState = {
@@ -20,6 +21,7 @@ function spies() {
     checkpoint: (id) => calls.push(`checkpoint:${id}`),
     regenerate: () => calls.push('regenerate'),
     continueLast: () => calls.push('continueLast'),
+    renameChat: () => calls.push('renameChat'),
     openPanel: (tab) => panels.push(tab),
     closeChat: () => calls.push('closeChat'),
     exportChat: () => calls.push('exportChat'),
@@ -67,6 +69,7 @@ describe('buildChatMenu', () => {
       'Save checkpoint',
       'Regenerate',
       'Continue',
+      'Rename chat…',
       'Export chat',
       'Import chat',
       ...ALWAYS_OPEN,
@@ -91,7 +94,7 @@ describe('buildChatMenu', () => {
       expect(item(entries, label).disabled).toBe(true);
       expect(item(entries, label).disabledReason).toBe('This chat has no messages yet.');
     }
-    for (const label of ['New chat', 'Close chat', ...ALWAYS_OPEN]) {
+    for (const label of ['New chat', 'Rename chat…', 'Close chat', ...ALWAYS_OPEN]) {
       expect(item(entries, label).disabled).toBeFalsy();
     }
   });
@@ -128,6 +131,7 @@ describe('buildChatMenu', () => {
     for (const label of [
       'New chat',
       'Save checkpoint',
+      'Rename chat…',
       'Export chat',
       'Close chat',
       ...ALWAYS_OPEN,
@@ -147,6 +151,7 @@ describe('buildChatMenu', () => {
     for (const label of [
       'New chat',
       'Save checkpoint',
+      'Rename chat…',
       'Export chat',
       'Close chat',
       ...ALWAYS_OPEN,
@@ -168,6 +173,7 @@ describe('buildChatMenu', () => {
     item(entries, 'New chat').onSelect();
     item(entries, 'Regenerate').onSelect();
     item(entries, 'Continue').onSelect();
+    item(entries, 'Rename chat…').onSelect();
     item(entries, 'Export chat').onSelect();
     item(entries, 'Import chat').onSelect();
     item(entries, 'Close chat').onSelect();
@@ -175,6 +181,7 @@ describe('buildChatMenu', () => {
       'newChat',
       'regenerate',
       'continueLast',
+      'renameChat',
       'exportChat',
       'importChat',
       'closeChat',
@@ -217,6 +224,17 @@ describe('buildChatMenu', () => {
     expect(entry.disabledReason).toBe('No chat is open.');
   });
 
+  test('Rename chat needs an open chat but not a message', () => {
+    // A fresh transcript titled "New chat" is exactly when a real title is wanted most.
+    expect(
+      item(build({ messageCount: 0, lastMessageId: null }), 'Rename chat…').disabled,
+    ).toBeFalsy();
+
+    const entry = item(build({ chatId: null }), 'Rename chat…');
+    expect(entry.disabled).toBe(true);
+    expect(entry.disabledReason).toBe('No chat is open.');
+  });
+
   test('Export chat is disabled mid-generation, since the reply is not saved yet', () => {
     const entries = build({ busy: true });
     expect(item(entries, 'Export chat').disabled).toBe(true);
@@ -248,5 +266,20 @@ describe('buildChatMenu', () => {
         if (!isSeparator(entry) && entry.disabled) expect(entry.disabledReason).toBeTruthy();
       }
     }
+  });
+});
+
+describe('nextChatTitle', () => {
+  test('trims the ends and keeps inner spacing, the way /rename parses', () => {
+    expect(nextChatTitle('New chat', '  day  two  ')).toBe('day  two');
+  });
+
+  test('an empty or unchanged draft is not a rename', () => {
+    // Null means no dispatch, so a no-op never bumps the revision or schedules a save.
+    expect(nextChatTitle('New chat', '')).toBeNull();
+    expect(nextChatTitle('New chat', '   ')).toBeNull();
+    expect(nextChatTitle('New chat', 'New chat')).toBeNull();
+    // Surrounding whitespace does not make a re-typed title a different one.
+    expect(nextChatTitle('New chat', ' New chat ')).toBeNull();
   });
 });

@@ -193,8 +193,13 @@ export function Popover({
     if (event.key === 'Escape') {
       event.preventDefault();
       onOpenChange(false);
-      // Put focus back where it started, so keyboard users are not stranded.
-      triggerRef.current?.focus({ preventScroll: true });
+      // Put focus back where it started, so keyboard users are not stranded — but one
+      // tick later, after the close has rendered. The close is a batched state update,
+      // so the popup's content is still mounted at this instant and focusing the trigger
+      // now would blur whatever holds focus inside it; a field that commits on blur (the
+      // rename form) would commit the edit Escape was discarding. Once unmounted, no
+      // blur fires at all — removing a focused element from the DOM is silent.
+      window.setTimeout(() => triggerRef.current?.focus({ preventScroll: true }), 0);
       return;
     }
     onKeyDown?.(event);

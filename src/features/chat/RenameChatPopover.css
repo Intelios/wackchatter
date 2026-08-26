@@ -1,0 +1,56 @@
+/*
+ * The chat-rename popup. Anchoring belongs to Popover.css; this is the contents, plus the
+ * wrapper stretch that lets a trigger-less popover grow from the burger button — the same
+ * layout as the quick-commands editor (QuickCommandsPopover.css).
+ */
+
+/*
+ * The editor opens from inside the chat menu and anchors to the burger. Its Popover root
+ * is stretched over the wrapper — exactly that button's box — and the popup's ordinary CSS
+ * anchoring does the rest. The root keeps pointer-events off so the button underneath
+ * stays clickable; the popup itself turns them back on.
+ */
+.chat-menu {
+  position: relative;
+}
+
+.chat-menu > .popover--editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.chat-menu > .popover--editor .popover__popup {
+  pointer-events: auto;
+}
+
+.chat-rename {
+  /* Wide enough for a title to read as one, narrow enough that the popup does not cover
+     the transcript it sits beside. */
+  width: clamp(280px, 24vw, 400px);
+  padding: var(--wc-space-3);
+}
+
+.chat-rename__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+.chat-rename__title {
+  margin: 0;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.chat-rename__hint {
+  margin: var(--wc-space-1) 0 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+  line-height: 1.5;
+}
+
+.chat-rename__apply {
+  align-self: flex-start;
+}

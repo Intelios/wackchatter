@@ -7,7 +7,7 @@
  * `useLorebooks` handles the same problem.
  */
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { MenuEntry } from '../../components/Menu.tsx';
 import { Menu } from '../../components/Menu.tsx';
 import {
@@ -17,6 +17,7 @@ import {
   CloseIcon,
   ContinueIcon,
   DownloadIcon,
+  EditIcon,
   MenuIcon,
   MessagesIcon,
   PlusIcon,
@@ -27,6 +28,7 @@ import {
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { chatApi } from '../../lib/api.ts';
 import { downloadUrl } from '../../lib/download.ts';
+import { RenameChatPopover } from './RenameChatPopover.tsx';
 import type { UseChat } from './useChat.ts';
 
 export interface ChatMenuState {
@@ -49,6 +51,8 @@ export interface ChatMenuActions {
   checkpoint: (messageId: string) => void;
   regenerate: () => void;
   continueLast: () => void;
+  /** Opens the rename popover anchored to the burger. */
+  renameChat: () => void;
   openPanel: (panel: RightPanelId) => void;
   closeChat: () => void;
   exportChat: () => void;
@@ -116,6 +120,16 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
           ? EMPTY
           : 'The last message is yours.',
       onSelect: actions.continueLast,
+    },
+    {
+      // A rename is a real mutation — a revision bump and a save — so it waits for the
+      // reply with its neighbours here; `/rename` from the composer is already blocked in
+      // that window, and this is the same rule through a second door.
+      label: 'Rename chat…',
+      icon: <EditIcon />,
+      disabled: busy || !chatId,
+      disabledReason: busy ? BUSY : 'No chat is open.',
+      onSelect: actions.renameChat,
     },
     {
       label: 'Export chat',
@@ -212,6 +226,7 @@ export function ChatMenu({
 
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const entries = buildChatMenu(
     {
@@ -228,6 +243,7 @@ export function ChatMenu({
       checkpoint: (id) => void chat.branchFrom(id),
       regenerate: () => void chat.regenerate(),
       continueLast: () => void chat.continueLast(),
+      renameChat: () => setRenameOpen(true),
       openPanel: onOpenPanel,
       closeChat: onCloseChat,
       openCard: onOpenCard,
@@ -248,6 +264,13 @@ export function ChatMenu({
         icon={<MenuIcon />}
         entries={entries}
         triggerRef={menuTriggerRef}
+      />
+      <RenameChatPopover
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        triggerRef={menuTriggerRef}
+        title={chat.state.title}
+        onRename={chat.renameChat}
       />
       <input
         ref={importInput}
