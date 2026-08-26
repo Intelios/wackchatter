@@ -8,6 +8,7 @@ import {
   UploadIcon,
 } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
+import { matchesQuery } from '../character/characterTree.ts';
 
 interface StudioLibraryProps {
   characters: readonly CharacterSummary[];
@@ -36,15 +37,9 @@ export function StudioLibrary({
   const input = useRef<HTMLInputElement>(null);
 
   const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
     return [...characters]
       .filter((character) => !folder || character.folder === folder)
-      .filter((character) => {
-        if (!needle) return true;
-        return [character.name, character.creator, character.tags.join(' ')].some((value) =>
-          value.toLowerCase().includes(needle),
-        );
-      })
+      .filter((character) => matchesQuery(character, query))
       .sort((left, right) => right.modified - left.modified);
   }, [characters, folder, query]);
 
@@ -172,7 +167,7 @@ export function StudioLibrary({
           className="wc-input"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search name, creator, or tags"
+          placeholder="Search — name, creator, or #tag"
           aria-label="Search cards"
         />
         <select

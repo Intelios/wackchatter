@@ -227,7 +227,7 @@ export function CharacterList({
         <input
           className="wc-input"
           type="search"
-          placeholder="Search characters…"
+          placeholder="Search — name, creator, or #tag"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search characters"

@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import type { CharacterSummary } from '@shared/types/card.ts';
-import { buildCharacterTree, matchesQuery, type TreeRow, visibleTagsOf } from './characterTree.ts';
+import {
+  buildCharacterTree,
+  matchesQuery,
+  parseTagQuery,
+  type TreeRow,
+  visibleTagsOf,
+} from './characterTree.ts';
 
 function character(name: string, folder = '', extra: Partial<CharacterSummary> = {}) {
   return {
@@ -196,6 +202,69 @@ describe('matchesQuery', () => {
   test('an empty query matches everything', () => {
     expect(matchesQuery(character('Elf'), '')).toBe(true);
     expect(matchesQuery(character('Elf'), '  ')).toBe(true);
+  });
+});
+
+describe('parseTagQuery', () => {
+  test('extracts leading-# tokens and keeps the rest as text', () => {
+    expect(parseTagQuery('#vampire seraphina by night')).toEqual({
+      text: 'seraphina by night',
+      tags: ['vampire'],
+    });
+  });
+
+  test('a query without # tokens parses to itself as text', () => {
+    expect(parseTagQuery('  elf  woodland ')).toEqual({ text: 'elf woodland', tags: [] });
+  });
+
+  test('keeps several # tokens in typed order', () => {
+    expect(parseTagQuery('#elf #dwarf moria')).toEqual({ text: 'moria', tags: ['elf', 'dwarf'] });
+  });
+
+  test('a bare # and a mid-word # are ordinary text, not tag filters', () => {
+    expect(parseTagQuery('#')).toEqual({ text: '#', tags: [] });
+    expect(parseTagQuery('C# dev')).toEqual({ text: 'C# dev', tags: [] });
+  });
+
+  test('a blank query parses to nothing', () => {
+    expect(parseTagQuery('   ')).toEqual({ text: '', tags: [] });
+  });
+});
+
+describe('matchesQuery: #tag filter', () => {
+  const dracula = character('Dracula', '', { creator: 'Stoker', tags: ['Vampire', 'Noble'] });
+
+  test('matches a tag case-insensitively, as a substring', () => {
+    expect(matchesQuery(dracula, '#VAMPIRE')).toBe(true);
+    expect(matchesQuery(dracula, '#vamp')).toBe(true);
+    expect(matchesQuery(dracula, '#werewolf')).toBe(false);
+  });
+
+  test('scopes the # token to tags — a card only named for it does not match', () => {
+    expect(matchesQuery(character('Vampire Hunter'), '#vampire')).toBe(false);
+  });
+
+  test('ANDs with the remaining text', () => {
+    expect(matchesQuery(dracula, '#vampire stoker')).toBe(true);
+    expect(matchesQuery(dracula, '#vampire elrond')).toBe(false);
+  });
+
+  test('a multi-word tag is reachable without quoting', () => {
+    const slowBurn = character('Wren', '', { tags: ['Slow burn'] });
+    // "#slow burn" is the tag token `slow` plus the text `burn`, and the text pass searches
+    // tags too — together they find the card the tag belongs to.
+    expect(matchesQuery(slowBurn, '#slow burn')).toBe(true);
+    expect(matchesQuery(slowBurn, '#fast burn')).toBe(false);
+  });
+
+  test('several # tokens all have to match', () => {
+    expect(matchesQuery(dracula, '#vampire #noble')).toBe(true);
+    expect(matchesQuery(dracula, '#vampire #peasant')).toBe(false);
+  });
+
+  test('a # that is not a tag filter stays literal text', () => {
+    expect(matchesQuery(character('Turing'), '#')).toBe(false);
+    expect(matchesQuery(character('Turing', '', { creator: 'C# fan' }), 'C#')).toBe(true);
   });
 });
 

@@ -6,6 +6,9 @@
  * renderer. Everything that decides what appears where — grouping, ordering, folder counts,
  * what a search does to the structure — is in this file.
  *
+ * The search box carries an optional tag filter: a token starting with `#` matches tags only
+ * and ANDs with the remaining text. See `parseTagQuery` for the exact rules.
+ *
  * The output is a FLAT array with a `depth` on each row rather than a nested structure. A flat
  * list is what a scroll container and a drag layer both want, and it keeps "which row is under
  * the cursor" a plain index lookup instead of a tree walk.
@@ -45,9 +48,47 @@ export function visibleTagsOf(tags: readonly string[], hidden: readonly string[]
   return tags.filter((tag) => !hiddenSet.has(tag.toLowerCase()));
 }
 
-/** Name, tags and creator — the fields a person actually searches a card library by. */
+/** A search query split into its `#tag` filters and the remaining text. */
+export interface TagQuery {
+  text: string;
+  tags: string[];
+}
+
+/**
+ * `#vampire seraph` → `{ text: 'seraph', tags: ['vampire'] }`. A `#` makes a tag filter only
+ * at the start of a whitespace-delimited token with something after it — a bare `#`, or one
+ * mid-word (`C#`), is ordinary text. The tags keep their typed case; the matcher compares
+ * case-insensitively.
+ */
+export function parseTagQuery(query: string): TagQuery {
+  const tags: string[] = [];
+  const words: string[] = [];
+  for (const token of query.split(/\s+/)) {
+    if (token.length > 1 && token.startsWith('#')) tags.push(token.slice(1));
+    else if (token) words.push(token);
+  }
+  return { text: words.join(' '), tags };
+}
+
+/**
+ * Name, tags and creator — the fields a person actually searches a card library by.
+ *
+ * A `#` token narrows to tags: `#vampire seraph` is "some tag containing 'vampire'" AND the
+ * usual text match for "seraph". Substring, so a half-typed tag narrows the list live;
+ * scoped to tags, so a card merely *named* "Vampire" does not answer to `#vampire`. One tag
+ * is the intended use, but several `#` tokens all apply — silently dropping typed input
+ * would misreport the search.
+ */
 export function matchesQuery(character: CharacterSummary, query: string): boolean {
-  const q = query.trim().toLowerCase();
+  const { text, tags } = parseTagQuery(query);
+
+  if (tags.length > 0) {
+    const hasTag = (tag: string) =>
+      character.tags.some((entry) => entry.toLowerCase().includes(tag.toLowerCase()));
+    if (!tags.every(hasTag)) return false;
+  }
+
+  const q = text.toLowerCase();
   if (!q) return true;
   return (
     character.name.toLowerCase().includes(q) ||
