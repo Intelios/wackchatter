@@ -315,6 +315,23 @@ byte-identically. The quirks are load-bearing and each has a named test.
   returns exact → prefix → substring and stops at the first rung with *any* match, so two
   personas called "Wren" is an error naming both, never a guess. `/persona` reports it and
   keeps the draft — a wrong guess would be stamped onto every message sent afterwards.
+- **A variant is a whole persona, linked to its base by `variantOf` — one file, one id.**
+  The base stores nothing: grouping (`groupVariantsUnderBase`) is derived at render time
+  by scanning the list, so nothing cascades when a group changes. Because everything
+  persona-shaped keys the id (`ChatMetadata.persona`, `persona_id`, recents, stats), a
+  variant works everywhere a persona works with no other code knowing it exists, and each
+  message records the exact variant it was sent as. One level only — `createVariant`
+  flattens a variant-of-a-variant into a sibling — and deleting the base **severs** the
+  link rather than cascading: an unresolvable `variantOf` renders as a standalone persona
+  (`normalizePersona` drops garbage and self-references; a `null` patch unlinks).
+- **The label is UI-only.** `variantLabel` ("Fantasy") is a chip in the roster, the
+  composer's switcher and the trigger — never part of the name, never in a prompt
+  (`{{user}}` stays the clean shared name; pinned in `assemble.test.ts`). `personaDisplayName`
+  (`personaRoster.ts`) renders `Name (Label)` for the plain-text places a chip cannot go —
+  stats tables, the Arena's `<select>`, `/persona`'s ambiguity error — and must never feed
+  a prompt path. The label is also the disambiguator: `matchPersonaByName` matches a
+  variant on `name`, `name + label` and the bare label, so `/persona John Doe Fantasy`
+  resolves what `/persona John Doe` can only report as ambiguous.
 - **The derived persona's house format is one `Label: value` line per fact, a blank line
   between, appearance and identity only.** `renderPersonaDescription` (`shared/persona/derive.ts`)
   is the one place it is written and `derive.test.ts` pins it — deliberately against the

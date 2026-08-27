@@ -200,11 +200,39 @@
 }
 
 .persona-row__name {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
   font-size: var(--wc-text-sm);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.persona-row__name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * A variant sits inside its base's shadow: indented a step, and carrying the label chip
+ * that answers "which John Doe is this?" without opening anything. The chip, not a name
+ * suffix — the persona's name stays clean everywhere the model can read it.
+ */
+.persona-row[data-variant] .persona-row__pick {
+  padding-left: calc(var(--wc-space-2) + var(--wc-space-5));
+}
+
+.persona-row__variant {
+  flex-shrink: 0;
+  padding: 0 var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: 999px;
+  font-size: var(--wc-text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--wc-text-muted);
+  white-space: nowrap;
 }
 
 /* Answers "which Wren is this?" without opening anything. */
@@ -365,6 +393,16 @@
   display: block;
   font-size: var(--wc-text-xs);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The gallery cannot indent, so the label simply rides under the name. */
+.persona-cell__variant {
+  display: block;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -539,4 +577,66 @@
   color: var(--wc-accent);
   font-size: var(--wc-text-xs);
   font-weight: 600;
+}
+
+/* --- Variants ------------------------------------------------------------ */
+
+/* The link line under a variant's label field: who it is a flavour of, and the two things
+   you can do about it. */
+.persona-editor__variant-of {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-2);
+  flex-wrap: wrap;
+}
+
+.persona-editor__variant-actions {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-shrink: 0;
+}
+
+/* The base's list of its variants — a roster in miniature, one row per flavour. */
+.persona-editor__variants {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.persona-editor__variant-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  text-align: left;
+}
+
+.persona-editor__variant-row:hover {
+  background: var(--wc-surface-hover);
+}
+
+.persona-editor__variant-label {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.persona-editor__variant-desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

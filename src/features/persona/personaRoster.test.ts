@@ -1,14 +1,20 @@
 import { describe, expect, test } from 'bun:test';
 import type { Persona } from '@shared/types/chat.ts';
 import {
+  groupVariantsUnderBase,
   matchesPersonaQuery,
   matchPersonaByName,
   orderPersonas,
+  personaDisplayName,
   withRecentPersona,
 } from './personaRoster.ts';
 
 function persona(id: string, name: string, description = ''): Persona {
   return { id, name, description, avatar: null };
+}
+
+function variant(id: string, name: string, base: string, label: string): Persona {
+  return { ...persona(id, name), variantOf: base, variantLabel: label };
 }
 
 /** As the server hands them over: already sorted by name. */
@@ -30,6 +36,10 @@ describe('matchesPersonaQuery', () => {
 
   test('matches on description too — you remember the person, not the label', () => {
     expect(matchesPersonaQuery(LIBRARY[2]!, 'archaeolog')).toBe(true);
+  });
+
+  test('a variant is findable by its label, which is the part that differs', () => {
+    expect(matchesPersonaQuery(variant('v', 'John Doe', 'j', 'Fantasy'), 'fantas')).toBe(true);
   });
 
   test('no match is no match', () => {
@@ -150,5 +160,108 @@ describe('matchPersonaByName', () => {
 
   test('a blank query resolves nothing rather than the first persona', () => {
     expect(matchPersonaByName(LIBRARY, '   ')).toEqual({ ok: false, reason: 'none' });
+  });
+});
+
+describe('matchPersonaByName with variants', () => {
+  /** One group: John Doe, John Doe [Fantasy], John Doe [Sci-fi] — plus an unrelated persona. */
+  const GROUP: Persona[] = [
+    persona('j', 'John Doe', 'Accountant.'),
+    variant('jf', 'John Doe', 'j', 'Fantasy'),
+    variant('js', 'John Doe', 'j', 'Sci-fi'),
+    persona('k', 'Kestrel', 'Courier.'),
+  ];
+
+  test('the bare shared name is ambiguous — base and variants all match it exactly', () => {
+    const result = matchPersonaByName(GROUP, 'john doe');
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe('ambiguous');
+    expect(result.ok === false && result.reason === 'ambiguous' && result.candidates).toHaveLength(
+      3,
+    );
+  });
+
+  test('"name label" resolves the one variant it names', () => {
+    const result = matchPersonaByName(GROUP, 'John Doe Fantasy');
+    expect(result.ok && result.persona.id).toBe('jf');
+  });
+
+  test('the bare label resolves the variant, uniquely within the group', () => {
+    const result = matchPersonaByName(GROUP, 'sci-fi');
+    expect(result.ok && result.persona.id).toBe('js');
+  });
+
+  test('the same label on two groups is ambiguous, not a coin toss', () => {
+    const twice = [...GROUP, persona('w', 'Wren'), variant('wf', 'Wren', 'w', 'Fantasy')];
+    const result = matchPersonaByName(twice, 'fantasy');
+    expect(result.ok === false && result.reason).toBe('ambiguous');
+  });
+
+  test('an unrelated persona still resolves exactly, a group prefix is still ambiguous', () => {
+    const exact = matchPersonaByName(GROUP, 'kestrel');
+    expect(exact.ok && exact.persona.id).toBe('k');
+
+    const prefix = matchPersonaByName(GROUP, 'john');
+    expect(prefix.ok === false && prefix.reason).toBe('ambiguous');
+  });
+});
+
+describe('groupVariantsUnderBase', () => {
+  const rows: Persona[] = [
+    persona('a', 'Aria Vance'),
+    persona('j', 'John Doe'),
+    variant('jf', 'John Doe', 'j', 'Fantasy'),
+    variant('js', 'John Doe', 'j', 'Sci-fi'),
+    persona('k', 'Kestrel'),
+  ];
+
+  test('variants leave their alphabetical slot and follow their base', () => {
+    const ids = groupVariantsUnderBase(rows).map((p) => p.id);
+    expect(ids).toEqual(['a', 'j', 'jf', 'js', 'k']);
+  });
+
+  test('siblings are ordered by label, not by name or arrival', () => {
+    const scrambled: Persona[] = [
+      persona('j', 'John Doe'),
+      variant('jz', 'John Doe', 'j', 'Zombie'),
+      variant('jf', 'John Doe', 'j', 'Fantasy'),
+    ];
+    expect(groupVariantsUnderBase(scrambled).map((p) => p.id)).toEqual(['j', 'jf', 'jz']);
+  });
+
+  test('a base that is not in the list leaves its variant standing alone', () => {
+    // The base was hoisted into "Recent", or deleted: either way the list the roster
+    // renders does not contain it, and the variant must not vanish with it.
+    const withoutBase = rows.filter((p) => p.id !== 'j');
+    expect(groupVariantsUnderBase(withoutBase).map((p) => p.id)).toEqual(['a', 'jf', 'js', 'k']);
+  });
+
+  test('a chain — only possible through a hand edit — degrades to standalone rows', () => {
+    const chained: Persona[] = [
+      persona('j', 'John Doe'),
+      variant('j1', 'John Doe', 'j', 'Fantasy'),
+      variant('j2', 'John Doe', 'j1', 'Sci-fi'), // points at a variant, not a base
+    ];
+    expect(groupVariantsUnderBase(chained).map((p) => p.id)).toEqual(['j', 'j1', 'j2']);
+  });
+
+  test('no variants, no change — the input order is its own answer', () => {
+    expect(groupVariantsUnderBase(LIBRARY)).toEqual(LIBRARY);
+  });
+});
+
+describe('personaDisplayName', () => {
+  test('a plain persona is just its name', () => {
+    expect(personaDisplayName(persona('j', 'John Doe'))).toBe('John Doe');
+  });
+
+  test('a variant carries its label in brackets — the plain-text twin of the roster chip', () => {
+    expect(personaDisplayName(variant('jf', 'John Doe', 'j', 'Fantasy'))).toBe(
+      'John Doe (Fantasy)',
+    );
+  });
+
+  test('a variant without a label falls back to the bare name', () => {
+    expect(personaDisplayName({ ...persona('jf', 'John Doe'), variantOf: 'j' })).toBe('John Doe');
   });
 });

@@ -56,6 +56,14 @@ function normalizePersona(raw: unknown, id: string): Persona {
   if (typeof stored.lorebookId === 'string' && stored.lorebookId) {
     persona.lorebookId = stored.lorebookId;
   }
+  // A variant's link to its base. A self-reference is not a link (a hand edit can produce
+  // one); anything else that is not a non-empty string simply means "standalone persona".
+  if (typeof stored.variantOf === 'string' && stored.variantOf && stored.variantOf !== id) {
+    persona.variantOf = stored.variantOf;
+  }
+  if (typeof stored.variantLabel === 'string' && stored.variantLabel.trim()) {
+    persona.variantLabel = stored.variantLabel.trim();
+  }
 
   return persona;
 }
@@ -115,6 +123,60 @@ export async function createPersona(name: string): Promise<Persona> {
   // An opaque id, because the name is editable and must be free to collide.
   const id = crypto.randomUUID();
   return savePersona(id, { name: name.trim() || 'You', description: '', avatar: null }, true);
+}
+
+/**
+ * The first label a new variant can take, given its siblings'. "Variant", then "Variant 2",
+ * "Variant 3"…, skipping anything already in use (case-insensitively) and filling gaps.
+ */
+export function nextVariantLabel(existing: readonly string[]): string {
+  const taken = new Set(existing.map((label) => label.trim().toLowerCase()));
+  if (!taken.has('variant')) return 'Variant';
+  for (let n = 2; ; n++) {
+    const candidate = `Variant ${n}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+/**
+ * Create a variant of a persona: a full copy sharing the base's name, linked by `variantOf`.
+ *
+ * A variant is a whole persona of its own — its own file and id, so chats, messages and
+ * settings record exactly which one was used — grouped under the base only by this link.
+ * One level, always: a variant of a variant joins the same base, so a group can never grow
+ * into a chain. Deleting the base severs the link rather than cascading; the variant then
+ * stands alone, the same way an orphaned `ChatMetadata.persona` does.
+ */
+export async function createVariant(baseId: string, label?: string): Promise<Persona> {
+  const base = getPersona(baseId);
+  if (!base) throw new Error('Persona not found.');
+
+  const target = base.variantOf ?? base.id;
+  const siblings = listPersonas().filter((persona) => persona.variantOf === target);
+  const variantLabel =
+    typeof label === 'string' && label.trim()
+      ? label.trim()
+      : nextVariantLabel(siblings.map((persona) => persona.variantLabel ?? ''));
+
+  const id = crypto.randomUUID();
+
+  // The avatar is copied, not shared: an avatar file belongs to the id it is named for, and
+  // a variant replacing its face must not delete the base's. A missing file degrades to none.
+  let avatar: string | null = null;
+  if (base.avatar) {
+    const source = avatarPath(base.avatar);
+    if (source && existsSync(source)) {
+      const filename = `${id}${extname(base.avatar)}`;
+      const destination = avatarPath(filename);
+      if (destination) {
+        await Bun.write(destination, Bun.file(source));
+        avatar = filename;
+      }
+    }
+  }
+
+  const { id: _baseId, variantOf: _baseLink, variantLabel: _baseLabel, ...copy } = base;
+  return savePersona(id, { ...copy, avatar, variantOf: target, variantLabel }, true);
 }
 
 export function deletePersona(id: string): boolean {

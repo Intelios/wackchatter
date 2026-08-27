@@ -15,11 +15,19 @@
 
 import type { Persona } from '@shared/types/chat.ts';
 
-/** Name and description — the two fields a persona is actually recognised by. */
+/**
+ * Name and description — the two fields a persona is actually recognised by. A variant is
+ * also recognised by its label: within a group that shares one name, the label is the part
+ * that differs.
+ */
 export function matchesPersonaQuery(persona: Persona, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return persona.name.toLowerCase().includes(q) || persona.description.toLowerCase().includes(q);
+  return (
+    persona.name.toLowerCase().includes(q) ||
+    persona.description.toLowerCase().includes(q) ||
+    Boolean(persona.variantLabel?.toLowerCase().includes(q))
+  );
 }
 
 export interface OrderedPersonas {
@@ -74,11 +82,75 @@ export function withRecentPersona(
   return [id, ...recentIds.filter((entry) => entry !== id)].slice(0, limit);
 }
 
+/**
+ * Group variants under their base for a roster list.
+ *
+ * The base stores nothing — a group is whatever points at it — so grouping is a pure pass
+ * over the list, never a second copy of the truth. Variants leave their alphabetical slot
+ * and follow their base, label-first; a variant whose base is not in the same list (it was
+ * hoisted into "Recent", or deleted) keeps its own position and reads as the standalone row
+ * it effectively is. Recents are never grouped: that section exists to show recency, and a
+ * variant used a minute ago is its own entry there, told apart by its label chip.
+ */
+export function groupVariantsUnderBase(personas: readonly Persona[]): Persona[] {
+  const bases = new Set(personas.filter((persona) => !persona.variantOf).map((p) => p.id));
+  const grouped = new Map<string, Persona[]>();
+  const rows: Persona[] = [];
+
+  for (const persona of personas) {
+    if (persona.variantOf && bases.has(persona.variantOf)) {
+      const siblings = grouped.get(persona.variantOf);
+      if (siblings) siblings.push(persona);
+      else grouped.set(persona.variantOf, [persona]);
+      continue;
+    }
+    rows.push(persona);
+  }
+
+  // `rows` still holds the bases in their original order, so this is one ordered walk with
+  // the variants spliced in behind theirs — not a re-sort with a second opinion.
+  const out: Persona[] = [];
+  for (const persona of rows) {
+    out.push(persona);
+    const siblings = grouped.get(persona.id);
+    if (siblings) {
+      siblings.sort(
+        (a, b) =>
+          (a.variantLabel ?? a.name).localeCompare(b.variantLabel ?? b.name) ||
+          a.id.localeCompare(b.id),
+      );
+      out.push(...siblings);
+    }
+  }
+  return out;
+}
+
+/**
+ * The persona's name as plain text — `Name` or `Name (Label)` — for places that cannot show
+ * a label chip: a `<select>`, a stats table, an error message. Parenthesised here only;
+ * this must never feed a prompt, where the whole point of a variant is a clean name.
+ */
+export function personaDisplayName(persona: Persona): string {
+  return persona.variantLabel ? `${persona.name} (${persona.variantLabel})` : persona.name;
+}
+
 export type PersonaNameMatch =
   | { ok: true; persona: Persona }
   | { ok: false; reason: 'none' }
   /** Two or more equally good matches. The caller reports them rather than guessing. */
   | { ok: false; reason: 'ambiguous'; candidates: Persona[] };
+
+/**
+ * Every string a persona answers to: its name, and — for a variant — "name label" and the
+ * bare label. The label is what makes a group that shares one name addressable; without it
+ * `/persona John Doe` could never be anything but ambiguous.
+ */
+function matchKeys(persona: Persona): string[] {
+  const name = persona.name.toLowerCase();
+  if (!persona.variantLabel) return [name];
+  const label = persona.variantLabel.toLowerCase();
+  return [name, `${name} ${label}`, label];
+}
 
 /**
  * Resolve a typed name, for `/persona <name>`.
@@ -96,9 +168,9 @@ export function matchPersonaByName(personas: readonly Persona[], query: string):
   if (!q) return { ok: false, reason: 'none' };
 
   const rungs = [
-    personas.filter((persona) => persona.name.toLowerCase() === q),
-    personas.filter((persona) => persona.name.toLowerCase().startsWith(q)),
-    personas.filter((persona) => persona.name.toLowerCase().includes(q)),
+    personas.filter((persona) => matchKeys(persona).some((key) => key === q)),
+    personas.filter((persona) => matchKeys(persona).some((key) => key.startsWith(q))),
+    personas.filter((persona) => matchKeys(persona).some((key) => key.includes(q))),
   ];
 
   for (const matches of rungs) {

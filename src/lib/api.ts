@@ -308,6 +308,15 @@ export const personaApi = {
       body: JSON.stringify({ name }),
     }),
 
+  // A full copy of the persona, linked to it by `variantOf` — the label is optional and
+  // the server fills in "Variant"/"Variant 2"/… when blank.
+  createVariant: (id: string, label?: string) =>
+    request<Persona>(`/personas/${encodeURIComponent(id)}/variant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label }),
+    }),
+
   save: (id: string, patch: Partial<Persona>) =>
     request<Persona>(`/personas/${encodeURIComponent(id)}`, {
       method: 'PATCH',

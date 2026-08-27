@@ -31,7 +31,12 @@ import { personaApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
 import { PersonaConverter } from './PersonaConverter.tsx';
-import { matchesPersonaQuery, orderPersonas } from './personaRoster.ts';
+import {
+  groupVariantsUnderBase,
+  matchesPersonaQuery,
+  orderPersonas,
+  personaDisplayName,
+} from './personaRoster.ts';
 import './PersonaPanel.css';
 
 const SAVE_DELAY = 500;
@@ -127,6 +132,10 @@ export function PersonaPanel({
    */
   const focusNameOnOpen = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
+  /** Same idea as `focusNameOnOpen`, for a variant: it arrives labelled "Variant", which says nothing. */
+  const focusLabelOnOpen = useRef(false);
+  const labelRef = useRef<HTMLInputElement>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
   const draftAvatarUrl = draft?.avatar
     ? personaApi.avatarUrl(draft.id, avatarVersions[draft.id] ?? draft.avatar)
     : null;
@@ -204,6 +213,7 @@ export function PersonaPanel({
     draftId.current = editing;
     setDraft(found);
     setConfirmDelete(false);
+    setConfirmUnlink(false);
     queued.current = {};
   }, [editing, personas, queue]);
 
@@ -213,6 +223,16 @@ export function PersonaPanel({
     if (!draft || !focusNameOnOpen.current) return;
     focusNameOnOpen.current = false;
     const field = nameRef.current;
+    field?.focus({ preventScroll: true });
+    field?.select();
+  }, [draft]);
+
+  // Same argument, for a variant: it arrives labelled "Variant", and the label is the one
+  // thing that makes a group of same-named rows addressable.
+  useLayoutEffect(() => {
+    if (!draft || !focusLabelOnOpen.current) return;
+    focusLabelOnOpen.current = false;
+    const field = labelRef.current;
     field?.focus({ preventScroll: true });
     field?.select();
   }, [draft]);
@@ -249,6 +269,18 @@ export function PersonaPanel({
     try {
       const created = await personaApi.create('You');
       focusNameOnOpen.current = true;
+      onChanged();
+      await selectEditor(created.id);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  /** A variant is born a full copy; the editor opening on it is where the flavouring happens. */
+  async function handleAddVariant(baseId: string) {
+    try {
+      const created = await personaApi.createVariant(baseId);
+      focusLabelOnOpen.current = true;
       onChanged();
       await selectEditor(created.id);
     } catch (err) {
@@ -315,6 +347,31 @@ export function PersonaPanel({
     : 'None';
   const descriptionTokens = draft ? countTokens.countText(draft.description) : 0;
 
+  /*
+   * Variant wiring, resolved live from the list the way everything persona-shaped is — the
+   * base stores nothing, so there is no second copy of the group to keep in step. A base
+   * that no longer resolves leaves the variant editing as itself, not as something broken.
+   */
+  const draftBase = draft?.variantOf
+    ? (personas.find((persona) => persona.id === draft.variantOf) ?? null)
+    : null;
+  const draftVariants =
+    draft && !draft.variantOf
+      ? personas
+          .filter((persona) => persona.variantOf === draft.id)
+          .sort(
+            (a, b) =>
+              (a.variantLabel ?? a.name).localeCompare(b.variantLabel ?? b.name) ||
+              a.id.localeCompare(b.id),
+          )
+      : [];
+  const variantsSummary = draftVariants.length > 0 ? `${draftVariants.length}` : 'None';
+  const deleteTitle = confirmDelete
+    ? draftVariants.length > 0
+      ? `Click again to delete — ${draftVariants.length} variant${draftVariants.length === 1 ? '' : 's'} becomes standalone persona${draftVariants.length === 1 ? '' : 's'}`
+      : 'Click again to delete'
+    : 'Delete persona';
+
   const searching = query.trim().length > 0;
   const matches = personas.filter((persona) => matchesPersonaQuery(persona, query));
   const { recent, rest } = searching
@@ -366,12 +423,17 @@ export function PersonaPanel({
         key={persona.id}
         className="persona-row"
         data-active={activeId === persona.id || undefined}
+        data-variant={persona.variantOf || undefined}
       >
         <button
           type="button"
           className="persona-row__pick"
           onClick={() => onSelect(persona.id)}
-          title={`Write as ${persona.name}`}
+          title={
+            persona.variantLabel
+              ? `Write as ${personaDisplayName(persona)}`
+              : `Write as ${persona.name}`
+          }
         >
           <span className="persona-row__face">
             {persona.avatar ? (
@@ -381,7 +443,13 @@ export function PersonaPanel({
             )}
           </span>
           <span className="persona-row__text">
-            <span className="persona-row__name">{persona.name}</span>
+            <span className="persona-row__name">
+              <span className="persona-row__name-text">{persona.name}</span>
+              {persona.variantLabel ? (
+                // The one mark a group of same-named rows cannot be told apart without.
+                <span className="persona-row__variant">{persona.variantLabel}</span>
+              ) : null}
+            </span>
             <span className="persona-row__desc">
               {persona.description.trim() || 'No description'}
             </span>
@@ -393,8 +461,8 @@ export function PersonaPanel({
           type="button"
           className="persona-row__edit"
           onClick={() => void selectEditor(persona.id)}
-          title={`Edit ${persona.name}`}
-          aria-label={`Edit ${persona.name}`}
+          title={`Edit ${personaDisplayName(persona)}`}
+          aria-label={`Edit ${personaDisplayName(persona)}`}
         >
           <EditIcon />
         </button>
@@ -409,7 +477,11 @@ export function PersonaPanel({
           type="button"
           className="persona-cell__pick"
           onClick={() => onSelect(persona.id)}
-          title={`Write as ${persona.name}`}
+          title={
+            persona.variantLabel
+              ? `Write as ${personaDisplayName(persona)}`
+              : `Write as ${persona.name}`
+          }
         >
           <span className="persona-cell__face">
             {persona.avatar ? (
@@ -421,13 +493,16 @@ export function PersonaPanel({
             )}
           </span>
           <span className="persona-cell__name">{persona.name}</span>
+          {persona.variantLabel ? (
+            <span className="persona-cell__variant">{persona.variantLabel}</span>
+          ) : null}
         </button>
         <button
           type="button"
           className="persona-cell__edit"
           onClick={() => void selectEditor(persona.id)}
-          title={`Edit ${persona.name}`}
-          aria-label={`Edit ${persona.name}`}
+          title={`Edit ${personaDisplayName(persona)}`}
+          aria-label={`Edit ${personaDisplayName(persona)}`}
         >
           <EditIcon />
         </button>
@@ -475,13 +550,14 @@ export function PersonaPanel({
             </button>
             <span className="persona-editor__spacer" />
             {/* Up here rather than at the foot of a long scroll — a two-click confirm in
-                place, per the no-modals rule. */}
+                place, per the no-modals rule. The title says what the second click costs
+                when variants are riding on this persona. */}
             <button
               type="button"
               className="wc-button wc-button--ghost wc-button--danger"
               onClick={() => (confirmDelete ? void handleDelete(draft.id) : setConfirmDelete(true))}
               onBlur={() => setConfirmDelete(false)}
-              title={confirmDelete ? 'Click again to delete' : 'Delete persona'}
+              title={deleteTitle}
             >
               <TrashIcon />
               {confirmDelete ? 'Click again' : null}
@@ -541,6 +617,61 @@ export function PersonaPanel({
                 )}
               </div>
             </div>
+
+            {draft.variantOf ? (
+              /* A variant edits its own label and its link; a base lists what points at it. */
+              <div className="persona-editor__variant">
+                <TextField
+                  inputRef={labelRef}
+                  label="Variant label"
+                  value={draft.variantLabel ?? ''}
+                  onChange={(variantLabel) =>
+                    patch({ variantLabel: variantLabel.trim() ? variantLabel : null })
+                  }
+                  placeholder="e.g. Fantasy"
+                  hint="How lists tell this variant apart. Never sent to the model."
+                />
+                <div className="persona-editor__variant-of">
+                  <span className="wc-hint">
+                    Variant of {draftBase ? draftBase.name : 'a deleted persona'} — same name, a
+                    different flavour.
+                  </span>
+                  <span className="persona-editor__variant-actions">
+                    {draftBase ? (
+                      <button
+                        type="button"
+                        className="wc-button wc-button--ghost"
+                        onClick={() => void selectEditor(draftBase.id)}
+                      >
+                        Open base
+                      </button>
+                    ) : null}
+                    {/* Unlink is not reversible from here — there is no re-link control —
+                        so it earns the same two-click confirm as delete. */}
+                    <button
+                      type="button"
+                      className="wc-button wc-button--ghost"
+                      onClick={() => {
+                        if (confirmUnlink) {
+                          setConfirmUnlink(false);
+                          patch({ variantOf: null });
+                        } else {
+                          setConfirmUnlink(true);
+                        }
+                      }}
+                      onBlur={() => setConfirmUnlink(false)}
+                      title={
+                        confirmUnlink
+                          ? 'Click again — this variant becomes a standalone persona'
+                          : 'Make this a standalone persona'
+                      }
+                    >
+                      {confirmUnlink ? 'Click again to unlink' : 'Unlink'}
+                    </button>
+                  </span>
+                </div>
+              </div>
+            ) : null}
 
             <TextField
               label="Description"
@@ -608,6 +739,46 @@ export function PersonaPanel({
                 </p>
               ) : null}
             </Section>
+
+            {!draft.variantOf ? (
+              <Section title="Variants" badge={variantsSummary}>
+                {draftVariants.length === 0 ? (
+                  <p className="wc-hint">
+                    Alternate versions of this persona — the same name, a different flavour —
+                    grouped under it here and in the persona lists.
+                  </p>
+                ) : (
+                  <ul className="persona-editor__variants">
+                    {draftVariants.map((variant) => (
+                      <li key={variant.id}>
+                        <button
+                          type="button"
+                          className="persona-editor__variant-row"
+                          onClick={() => void selectEditor(variant.id)}
+                          title={`Edit ${personaDisplayName(variant)}`}
+                        >
+                          <span className="persona-editor__variant-label">
+                            {variant.variantLabel ?? 'Unlabelled'}
+                          </span>
+                          <span className="persona-editor__variant-desc">
+                            {variant.description.trim() || 'No description'}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost"
+                  onClick={() => void handleAddVariant(draft.id)}
+                  title="Create a copy of this persona that shares its name"
+                >
+                  <PlusIcon />
+                  Add variant
+                </button>
+              </Section>
+            ) : null}
           </div>
         </div>
       ) : (
@@ -661,7 +832,9 @@ export function PersonaPanel({
                   {grouped ? <p className="persona-roster__group">Recent</p> : null}
                   {recent.map(renderRow)}
                   {grouped ? <p className="persona-roster__group">All personas</p> : null}
-                  {rest.map(renderRow)}
+                  {/* A search flattens the grouping (see `matches` above): variants keep
+                      their chip, so they stay tellable-apart without the indentation. */}
+                  {(searching ? rest : groupVariantsUnderBase(rest)).map(renderRow)}
                 </div>
               )}
             </>

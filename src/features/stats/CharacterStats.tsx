@@ -3,6 +3,7 @@ import type { Persona } from '@shared/types/chat.ts';
 import type { CharacterStats as CardStats } from '@shared/types/stats.ts';
 import { useMemo } from 'react';
 import { characterApi } from '../../lib/api.ts';
+import { personaDisplayName } from '../persona/personaRoster.ts';
 import { activeDayCount, busiestDay, foldDays, foldHourOfDay, recentDays } from './buckets.ts';
 import { BarRows } from './charts/BarRows.tsx';
 import { ColumnChart } from './charts/ColumnChart.tsx';
@@ -32,7 +33,9 @@ export function CharacterStats({ stats, characters, personas }: CharacterStatsPr
   );
 
   const personaName = useMemo(() => {
-    const byId = new Map(personas.map((entry) => [entry.id, entry.name]));
+    // Variant labels included — same reason as the overview: two rows both reading
+    // "John Doe" would hide the one difference between them.
+    const byId = new Map(personas.map((entry) => [entry.id, personaDisplayName(entry)]));
     return (id: string) => (id === '' ? 'No persona' : (byId.get(id) ?? 'Deleted persona'));
   }, [personas]);
 

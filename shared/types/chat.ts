@@ -311,6 +311,14 @@ export interface Persona {
   role?: 'system' | 'user' | 'assistant';
   /** Standalone lorebook id activated whenever this persona is active. */
   lorebookId?: string | null;
+  /**
+   * Set on a variant: the id of the persona this one is a flavour of. UI-only grouping —
+   * never sent to the model, and a base that no longer resolves leaves the variant standing
+   * on its own rather than broken.
+   */
+  variantOf?: string | null;
+  /** The variant's label ("Fantasy"), shown beside the shared name in lists. UI-only. */
+  variantLabel?: string | null;
 }
 
 /** The message shape sent to the provider. */

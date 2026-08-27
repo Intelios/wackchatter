@@ -7,6 +7,7 @@ import {
   avatarContentType,
   avatarPath,
   createPersona,
+  createVariant,
   deletePersona,
   getPersona,
   listPersonas,
@@ -33,6 +34,21 @@ export async function handlePersonaRoute(
   }
 
   const id = decodeURIComponent(segments[0]!);
+
+  // /api/personas/:id/variant
+  if (segments[1] === 'variant') {
+    if (method === 'POST') {
+      if (!getPersona(id)) return notFound('Persona not found.');
+
+      const body = await readJson<{ label?: string }>(request);
+      try {
+        return json(await createVariant(id, body?.label), { status: 201 });
+      } catch (error) {
+        return errorResponse((error as Error).message);
+      }
+    }
+    return null;
+  }
 
   // /api/personas/:id/avatar
   if (segments[1] === 'avatar') {
