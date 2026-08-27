@@ -3,6 +3,7 @@ import type { Persona } from '@shared/types/chat.ts';
 import type { StatsOverview as Overview } from '@shared/types/stats.ts';
 import { useMemo } from 'react';
 import { characterApi } from '../../lib/api.ts';
+import { personaDisplayName } from '../persona/personaRoster.ts';
 import {
   activeDayCount,
   busiestDay,
@@ -51,7 +52,9 @@ export function StatsOverview({
   }, [characters]);
 
   const personaName = useMemo(() => {
-    const byId = new Map(personas.map((entry) => [entry.id, entry.name]));
+    // The display name carries a variant's label: base and variant are different ids, and
+    // a table that printed "John Doe" twice would be hiding the one difference there is.
+    const byId = new Map(personas.map((entry) => [entry.id, personaDisplayName(entry)]));
     return (id: string) => (id === '' ? 'No persona' : (byId.get(id) ?? 'Deleted persona'));
   }, [personas]);
 

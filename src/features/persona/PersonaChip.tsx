@@ -16,7 +16,12 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Popover } from '../../components/Popover.tsx';
 import { ChevronIcon, SearchIcon, UserIcon } from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
-import { matchesPersonaQuery, orderPersonas } from './personaRoster.ts';
+import {
+  groupVariantsUnderBase,
+  matchesPersonaQuery,
+  orderPersonas,
+  personaDisplayName,
+} from './personaRoster.ts';
 import './PersonaChip.css';
 
 /**
@@ -70,9 +75,13 @@ export function PersonaChip({
     ? { recent: [] as Persona[], rest: matches }
     : orderPersonas(matches, recentIds, RECENT_SHOWN);
 
+  // In the full list, variants tuck under their base — the same order the panel's roster
+  // shows, so the two lists never disagree about where a flavour lives.
+  const orderedRest = searching ? rest : groupVariantsUnderBase(rest);
+
   const options: Option[] = [
     ...recent.map((persona) => ({ kind: 'persona' as const, persona })),
-    ...rest.map((persona) => ({ kind: 'persona' as const, persona })),
+    ...orderedRest.map((persona) => ({ kind: 'persona' as const, persona })),
     ...(active && !searching ? [{ kind: 'none' as const }] : []),
   ];
 
@@ -162,6 +171,7 @@ export function PersonaChip({
         className="persona-chip__row"
         data-cursor={selected || undefined}
         data-current={(persona ? persona.id === active?.id : !active) || undefined}
+        data-variant={(persona ? persona.variantOf : undefined) || undefined}
         // Keep the search field focused so typing keeps filtering — the ordinary combobox
         // trick, without which a click would blur the list shut before it landed.
         onMouseDown={(event) => event.preventDefault()}
@@ -170,6 +180,9 @@ export function PersonaChip({
       >
         <PersonaFace persona={persona} url={url} />
         <span className="persona-chip__row-name">{isNone ? 'No persona' : persona!.name}</span>
+        {persona?.variantLabel ? (
+          <span className="persona-chip__variant">{persona.variantLabel}</span>
+        ) : null}
         {(persona ? persona.id === active?.id : !active) ? (
           <span className="persona-chip__you">You</span>
         ) : null}
@@ -181,7 +194,11 @@ export function PersonaChip({
 
   return (
     <Popover
-      label={active ? `Writing as ${active.name} — switch persona` : 'No persona — pick one'}
+      label={
+        active
+          ? `Writing as ${personaDisplayName(active)} — switch persona`
+          : 'No persona — pick one'
+      }
       icon={null}
       open={open}
       onOpenChange={setOpen}
@@ -201,6 +218,11 @@ export function PersonaChip({
         >
           <PersonaFace persona={active} url={activeUrl} />
           <span className="persona-chip__name">{active ? active.name : 'No persona'}</span>
+          {/* The chip answers "who am I right now" — with variants in play, that includes
+              which flavour, or three rows all say "John Doe". */}
+          {active?.variantLabel ? (
+            <span className="persona-chip__variant">{active.variantLabel}</span>
+          ) : null}
           <ChevronIcon className="persona-chip__chevron" />
         </button>
       )}
@@ -235,10 +257,10 @@ export function PersonaChip({
             {recent.length > 0 ? <p className="persona-chip__group">Recent</p> : null}
             {recent.map((persona, index) => renderRow({ kind: 'persona', persona }, index))}
 
-            {rest.length > 0 && !searching ? (
+            {orderedRest.length > 0 && !searching ? (
               <p className="persona-chip__group">All personas</p>
             ) : null}
-            {rest.map((persona, index) =>
+            {orderedRest.map((persona, index) =>
               renderRow({ kind: 'persona', persona }, recent.length + index),
             )}
 

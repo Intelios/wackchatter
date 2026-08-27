@@ -40,6 +40,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GripIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
 import { ModelCombobox } from '../connection/ModelCombobox.tsx';
+import { personaDisplayName } from '../persona/personaRoster.ts';
 import { CardPicker } from './CardPicker.tsx';
 import { CueField } from './CueField.tsx';
 import type { ResolvedContender } from './contenders.ts';
@@ -700,7 +701,9 @@ export function PoolPanel({
             <option value="">No persona</option>
             {personas.map((persona) => (
               <option key={persona.id} value={persona.id}>
-                {persona.name}
+                {/* The label in brackets — a <select> cannot show a chip, and two options
+                    both reading "John Doe" would be a menu that cannot be ordered from. */}
+                {personaDisplayName(persona)}
               </option>
             ))}
           </select>

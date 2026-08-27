@@ -25,7 +25,7 @@ import { RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
-import { matchPersonaByName } from '../persona/personaRoster.ts';
+import { matchPersonaByName, personaDisplayName } from '../persona/personaRoster.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
 import { BranchTree } from './BranchTree.tsx';
 import { CardReader, type CardReaderInit } from './CardReader.tsx';
@@ -487,7 +487,11 @@ export function ChatView({
             return null;
           }
           if (match.reason === 'ambiguous') {
-            const names = match.candidates.map((persona) => `"${persona.name}"`).join(', ');
+            // The label rides along, so a group sharing one name reads as answerable
+            // ("John Doe (Fantasy)") rather than as the same name three times.
+            const names = match.candidates
+              .map((persona) => `"${personaDisplayName(persona)}"`)
+              .join(', ');
             return `"${command.query}" matches ${match.candidates.length} personas — ${names}. Use the composer's persona chip to pick one.`;
           }
           return personas.length === 0

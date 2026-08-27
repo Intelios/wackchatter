@@ -64,6 +64,21 @@
   transform: rotate(-90deg);
 }
 
+/* The variant's label, on the trigger and on rows alike: the one mark that tells a group
+   of same-named rows apart. A chip, never part of the name — the name is what the model
+   reads, and the whole point of a variant is that it stays clean. */
+.persona-chip__variant {
+  flex-shrink: 0;
+  padding: 0 var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: 999px;
+  font-size: var(--wc-text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--wc-text-muted);
+  white-space: nowrap;
+}
+
 /* --- The face ----------------------------------------------------------- */
 
 .persona-chip__face {
@@ -205,6 +220,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A variant tucks one step in, under its base — the same shape the panel's roster shows. */
+.persona-chip__row[data-variant] {
+  padding-left: calc(var(--wc-space-2) + var(--wc-space-4));
 }
 
 .persona-chip__row[data-current] .persona-chip__row-name {

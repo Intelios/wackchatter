@@ -315,6 +315,34 @@ byte-identically. The quirks are load-bearing and each has a named test.
   returns exact → prefix → substring and stops at the first rung with *any* match, so two
   personas called "Wren" is an error naming both, never a guess. `/persona` reports it and
   keeps the draft — a wrong guess would be stamped onto every message sent afterwards.
+- **A variant is a whole persona, linked to its base by `variantOf` — one file, one id.**
+  The base stores nothing: grouping (`variantsByBase` in `personaRoster.ts`) is derived at
+  render time by scanning the list, so nothing cascades when a group changes. Because
+  everything persona-shaped keys the id (`ChatMetadata.persona`, `persona_id`, recents,
+  stats), a variant works everywhere a persona works with no other code knowing it exists,
+  and each message records the exact variant it was sent as. One level only —
+  `createVariant` flattens a variant-of-a-variant into a sibling — and deleting the base
+  **severs** the link rather than cascading: an unresolvable `variantOf` renders as a
+  standalone persona (`normalizePersona` drops garbage and self-references; a `null` patch
+  unlinks).
+- **The list collapses, the gallery and the switcher stay flat.** In the panel's list view
+  a base with variants is a disclosure row — clicking it expands the base itself (the
+  first entry, so expanding is also how you write as the plain persona) followed by its
+  variants, indented one step; the collapsed row carries the active flavour's label chip
+  so "which one am I" never needs opening. Search flattens to plain rows. The gallery and
+  the composer's switcher render every persona as its own row — the switcher stays the
+  one-click path to a flavour. Recents are **group-grain**: a variant's use records its
+  base (`recentPersonaId` — which falls back to the variant itself when the base is gone,
+  or a dead id would squat a capped slot), and the panel maps legacy variant ids the same
+  way for display (`recentGroupIds`).
+- **The label is UI-only.** `variantLabel` ("Fantasy") is a chip in the roster and the
+  composer's trigger — never part of the name, never in a prompt (`{{user}}` stays the
+  clean shared name; pinned in `assemble.test.ts`). `personaDisplayName`
+  (`personaRoster.ts`) renders `Name (Label)` for the plain-text places a chip cannot go —
+  stats tables, the Arena's `<select>`, `/persona`'s ambiguity error — and must never feed
+  a prompt path. The label is also the disambiguator: `matchPersonaByName` matches a
+  variant on `name`, `name + label` and the bare label, so `/persona John Doe Fantasy`
+  resolves what `/persona John Doe` can only report as ambiguous.
 - **The derived persona's house format is one `Label: value` line per fact, a blank line
   between, appearance and identity only.** `renderPersonaDescription` (`shared/persona/derive.ts`)
   is the one place it is written and `derive.test.ts` pins it — deliberately against the

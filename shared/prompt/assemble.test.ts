@@ -1524,6 +1524,27 @@ describe('persona position', () => {
     expect(assemble({ preset, persona }).messages[0]!.content).toBe('Talking to Ari');
   });
 
+  test('a variant keeps its clean name — the label never reaches the prompt', () => {
+    // The whole reason variants exist: "Ari (Fantasy)" as the persona name was the
+    // workaround, and the bracket rode into every {{user}} expansion. The label is a UI
+    // fact; assembly must not know it exists.
+    const fantasy = { ...persona, variantOf: 'base', variantLabel: 'Fantasy' };
+    const preset = updatePrompt(
+      setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'personaDescription', enabled: true },
+      ]),
+      'main',
+      { content: 'Talking to {{user}}' },
+    );
+
+    const text = assemble({ preset, persona: fantasy })
+      .messages.map((m) => m.content)
+      .join('\n');
+    expect(text).toContain('Talking to Ari');
+    expect(text).not.toContain('Fantasy');
+  });
+
   test('with no persona, {{user}} matches the default message label', () => {
     // These used to disagree: the transcript said "You" while {{user}} said "User", and
     // with names_behavior CONTENT the label lands in the prompt text.
