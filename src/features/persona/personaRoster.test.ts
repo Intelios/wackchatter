@@ -6,6 +6,9 @@ import {
   matchPersonaByName,
   orderPersonas,
   personaDisplayName,
+  recentGroupIds,
+  recentPersonaId,
+  variantsByBase,
   withRecentPersona,
 } from './personaRoster.ts';
 
@@ -247,6 +250,74 @@ describe('groupVariantsUnderBase', () => {
 
   test('no variants, no change — the input order is its own answer', () => {
     expect(groupVariantsUnderBase(LIBRARY)).toEqual(LIBRARY);
+  });
+});
+
+describe('variantsByBase', () => {
+  const rows: Persona[] = [
+    persona('a', 'Aria Vance'),
+    persona('j', 'John Doe'),
+    variant('jz', 'John Doe', 'j', 'Zombie'),
+    variant('jf', 'John Doe', 'j', 'Fantasy'),
+    persona('k', 'Kestrel'),
+  ];
+
+  test('groups each base\u2019s variants, label-sorted', () => {
+    const groups = variantsByBase(rows);
+    expect(groups.get('j')?.map((p) => p.id)).toEqual(['jf', 'jz']);
+  });
+
+  test('a base without variants has no entry', () => {
+    const groups = variantsByBase(rows);
+    expect(groups.has('a')).toBe(false);
+    expect(groups.has('k')).toBe(false);
+  });
+
+  test('a variant whose base is not in the list is nobody\u2019s child', () => {
+    const groups = variantsByBase(rows.filter((p) => p.id !== 'j'));
+    expect(groups.size).toBe(0);
+  });
+});
+
+describe('recentPersonaId', () => {
+  const library: Persona[] = [
+    persona('j', 'John Doe'),
+    variant('jf', 'John Doe', 'j', 'Fantasy'),
+    persona('k', 'Kestrel'),
+  ];
+
+  test('a variant bumps its base — recents list people, not flavours', () => {
+    expect(recentPersonaId(library, 'jf')).toBe('j');
+  });
+
+  test('a base is itself, an unknown id is itself', () => {
+    expect(recentPersonaId(library, 'j')).toBe('j');
+    expect(recentPersonaId(library, 'k')).toBe('k');
+    expect(recentPersonaId(library, 'ghost')).toBe('ghost');
+  });
+
+  test('a variant whose base is gone falls back to itself, not to a dead id', () => {
+    // Pushing a dead base id would waste a capped slot in settings that nothing renders
+    // and nothing cleans up — the same starvation cascadePersonaDelete exists to prevent.
+    const orphaned = [variant('jf', 'John Doe', 'j', 'Fantasy'), persona('k', 'Kestrel')];
+    expect(recentPersonaId(orphaned, 'jf')).toBe('jf');
+  });
+});
+
+describe('recentGroupIds', () => {
+  const library: Persona[] = [
+    persona('a', 'Aria Vance'),
+    persona('j', 'John Doe'),
+    variant('jf', 'John Doe', 'j', 'Fantasy'),
+    variant('js', 'John Doe', 'j', 'Sci-fi'),
+  ];
+
+  test('maps legacy variant ids onto their base and dedupes, keeping order', () => {
+    expect(recentGroupIds(library, ['jf', 'a', 'j', 'js'])).toEqual(['j', 'a']);
+  });
+
+  test('an empty list stays empty', () => {
+    expect(recentGroupIds(library, [])).toEqual([]);
   });
 });
 

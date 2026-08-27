@@ -215,12 +215,29 @@
 }
 
 /*
- * A variant sits inside its base's shadow: indented a step, and carrying the label chip
- * that answers "which John Doe is this?" without opening anything. The chip, not a name
- * suffix — the persona's name stays clean everywhere the model can read it.
+ * Rows inside a base's expansion: indented a step, and variants carry the label chip that
+ * answers "which John Doe is this?" without opening anything. The chip, not a name suffix
+ * — the persona's name stays clean everywhere the model can read it.
  */
-.persona-row[data-variant] .persona-row__pick {
+.persona-row--nested .persona-row__pick {
   padding-left: calc(var(--wc-space-2) + var(--wc-space-5));
+}
+
+/* The group row's disclosure affordance: right when closed, folding down when open. */
+.persona-row__chevron {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  transition: transform var(--wc-duration-fast) ease;
+}
+
+.persona-row__chevron svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+.persona-row__chevron[data-open] {
+  transform: rotate(90deg);
 }
 
 .persona-row__variant {

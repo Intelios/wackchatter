@@ -43,7 +43,7 @@ import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
-import { withRecentPersona } from './features/persona/personaRoster.ts';
+import { recentPersonaId, withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
 import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
 import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
@@ -1080,7 +1080,14 @@ export function App() {
   // writes no settings at all.
   const handleSelectPersona = useCallback(
     (id: string | null) => {
-      const recent = withRecentPersona(settings?.recentPersonaIds ?? [], id, MAX_RECENT_PERSONAS);
+      // Recents are recorded at group grain — a variant's use bumps its base, because the
+      // Recent section lists people and the base row is where its flavours are reached
+      // from. Switching flavours of the same person then moves nothing, correctly.
+      const recent = withRecentPersona(
+        settings?.recentPersonaIds ?? [],
+        id ? recentPersonaId(personas, id) : null,
+        MAX_RECENT_PERSONAS,
+      );
       void patchSettings(
         recent === (settings?.recentPersonaIds ?? [])
           ? { personaId: id }
@@ -1088,7 +1095,7 @@ export function App() {
       );
       if (chat.state.chatId) chat.setPersona(id);
     },
-    [chat, patchSettings, settings?.recentPersonaIds],
+    [chat, patchSettings, personas, settings?.recentPersonaIds],
   );
 
   const active = characters.find((c) => c.avatar === selected) ?? null;

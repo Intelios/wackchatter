@@ -14,12 +14,13 @@ import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type { DialogueColorOverride, DialogueColorSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DialogueColorField } from '../../components/DialogueColorField.tsx';
 import { NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import {
   BookIcon,
+  ChevronIcon,
   EditIcon,
   GridIcon,
   MenuIcon,
@@ -32,10 +33,11 @@ import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useAvatarColor } from '../chat/avatarColor.ts';
 import { PersonaConverter } from './PersonaConverter.tsx';
 import {
-  groupVariantsUnderBase,
   matchesPersonaQuery,
   orderPersonas,
   personaDisplayName,
+  recentGroupIds,
+  variantsByBase,
 } from './personaRoster.ts';
 import './PersonaPanel.css';
 
@@ -136,6 +138,8 @@ export function PersonaPanel({
   const focusLabelOnOpen = useRef(false);
   const labelRef = useRef<HTMLInputElement>(null);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  /** Which base personas stand expanded in the list view — their ids. Collapsed by default. */
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const draftAvatarUrl = draft?.avatar
     ? personaApi.avatarUrl(draft.id, avatarVersions[draft.id] ?? draft.avatar)
     : null;
@@ -352,19 +356,16 @@ export function PersonaPanel({
    * base stores nothing, so there is no second copy of the group to keep in step. A base
    * that no longer resolves leaves the variant editing as itself, not as something broken.
    */
+  const groups = variantsByBase(personas);
+  /** Ids that render inside a base's expansion, so the flat sections can skip them. */
+  const expandedIntoGroup = new Set<string>();
+  for (const siblings of groups.values()) {
+    for (const persona of siblings) expandedIntoGroup.add(persona.id);
+  }
   const draftBase = draft?.variantOf
     ? (personas.find((persona) => persona.id === draft.variantOf) ?? null)
     : null;
-  const draftVariants =
-    draft && !draft.variantOf
-      ? personas
-          .filter((persona) => persona.variantOf === draft.id)
-          .sort(
-            (a, b) =>
-              (a.variantLabel ?? a.name).localeCompare(b.variantLabel ?? b.name) ||
-              a.id.localeCompare(b.id),
-          )
-      : [];
+  const draftVariants = draft && !draft.variantOf ? (groups.get(draft.id) ?? []) : [];
   const variantsSummary = draftVariants.length > 0 ? `${draftVariants.length}` : 'None';
   const deleteTitle = confirmDelete
     ? draftVariants.length > 0
@@ -374,9 +375,11 @@ export function PersonaPanel({
 
   const searching = query.trim().length > 0;
   const matches = personas.filter((persona) => matchesPersonaQuery(persona, query));
+  // Recents display at group grain too: legacy entries that name a variant map onto its
+  // base, so the section always lists people and never a person twice.
   const { recent, rest } = searching
     ? { recent: [] as Persona[], rest: matches }
-    : orderPersonas(matches, recentIds);
+    : orderPersonas(matches, recentGroupIds(personas, recentIds));
   const grouped = recent.length > 0 && rest.length > 0;
 
   function avatarUrlFor(persona: Persona): string | null {
@@ -415,15 +418,15 @@ export function PersonaPanel({
     );
   }
 
-  function renderRow(persona: Persona) {
+  /** One pickable persona: the base inside its own expansion, a variant, or a plain row. */
+  function renderPickRow(persona: Persona, nested: boolean) {
     return (
       // A container rather than one big button: the row has two distinct actions, and a
       // button inside a button is invalid.
       <div
         key={persona.id}
-        className="persona-row"
+        className={nested ? 'persona-row persona-row--nested' : 'persona-row'}
         data-active={activeId === persona.id || undefined}
-        data-variant={persona.variantOf || undefined}
       >
         <button
           type="button"
@@ -467,6 +470,84 @@ export function PersonaPanel({
           <EditIcon />
         </button>
       </div>
+    );
+  }
+
+  /*
+   * A persona with variants renders as its group: the row opens a dropdown of the base and
+   * its flavours rather than picking, so the list stays one row per person at rest. The
+   * base is the dropdown's first entry — expanding is also how you write as the plain
+   * persona. While collapsed, the active flavour's label rides on the row, so "which one
+   * am I" never needs opening the group to answer.
+   */
+  function renderPersonaRow(persona: Persona) {
+    const variants = searching ? [] : (groups.get(persona.id) ?? []);
+    if (variants.length === 0) return renderPickRow(persona, false);
+
+    const open = expandedGroups.has(persona.id);
+    const activeVariant = variants.find((variant) => variant.id === activeId) ?? null;
+    return (
+      <Fragment key={persona.id}>
+        <div className="persona-row" data-active={activeId === persona.id || undefined}>
+          <button
+            type="button"
+            className="persona-row__pick"
+            aria-expanded={open}
+            onClick={() =>
+              setExpandedGroups((current) => {
+                const next = new Set(current);
+                if (next.has(persona.id)) next.delete(persona.id);
+                else next.add(persona.id);
+                return next;
+              })
+            }
+            title={
+              open ? 'Hide variants' : `Show the ${variants.length} variants of ${persona.name}`
+            }
+          >
+            <span className="persona-row__face">
+              {persona.avatar ? (
+                <img src={avatarUrlFor(persona) ?? ''} alt="" loading="lazy" />
+              ) : (
+                <span aria-hidden="true">{persona.name.slice(0, 1).toUpperCase()}</span>
+              )}
+            </span>
+            <span className="persona-row__text">
+              <span className="persona-row__name">
+                <span className="persona-row__name-text">{persona.name}</span>
+                {activeVariant ? (
+                  <span className="persona-row__variant" title="Writing as this variant">
+                    {activeVariant.variantLabel}
+                  </span>
+                ) : null}
+              </span>
+              <span className="persona-row__desc">
+                {persona.description.trim() || 'No description'}
+              </span>
+            </span>
+            <span className="persona-row__marks">{marksFor(persona)}</span>
+            <span className="persona-row__chevron" data-open={open || undefined}>
+              <ChevronIcon />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="persona-row__edit"
+            onClick={() => void selectEditor(persona.id)}
+            title={`Edit ${persona.name}`}
+            aria-label={`Edit ${persona.name}`}
+          >
+            <EditIcon />
+          </button>
+        </div>
+        {open ? (
+          <>
+            {renderPickRow(persona, true)}
+            {variants.map((variant) => renderPickRow(variant, true))}
+          </>
+        ) : null}
+      </Fragment>
     );
   }
 
@@ -830,11 +911,15 @@ export function PersonaPanel({
                       a small library every persona is recent, and "Recent" over the whole
                       list is a label that distinguishes nothing. */}
                   {grouped ? <p className="persona-roster__group">Recent</p> : null}
-                  {recent.map(renderRow)}
+                  {recent.map(renderPersonaRow)}
                   {grouped ? <p className="persona-roster__group">All personas</p> : null}
-                  {/* A search flattens the grouping (see `matches` above): variants keep
-                      their chip, so they stay tellable-apart without the indentation. */}
-                  {(searching ? rest : groupVariantsUnderBase(rest)).map(renderRow)}
+                  {/* A search flattens the groups (see `matches` above): every hit is a
+                      plain row, chip and all. Otherwise a base's variants live only inside
+                      its expansion — including when the base itself renders up in Recent —
+                      so no persona appears twice in the list. */}
+                  {(searching ? rest : rest.filter((p) => !expandedIntoGroup.has(p.id))).map(
+                    renderPersonaRow,
+                  )}
                 </div>
               )}
             </>

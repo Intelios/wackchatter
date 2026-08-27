@@ -82,45 +82,86 @@ export function withRecentPersona(
   return [id, ...recentIds.filter((entry) => entry !== id)].slice(0, limit);
 }
 
+/** Sibling order everywhere variants are listed: label first, id to break ties. */
+function compareVariants(a: Persona, b: Persona): number {
+  return (
+    (a.variantLabel ?? a.name).localeCompare(b.variantLabel ?? b.name) || a.id.localeCompare(b.id)
+  );
+}
+
 /**
- * Group variants under their base for a roster list.
+ * Each base persona's variants, keyed by base id — only for bases that exist in the list,
+ * since a group is what renders *under* a row, and a row that is not there cannot carry
+ * one. The base stores nothing; this is a pure pass, never a second copy of the truth.
  *
- * The base stores nothing — a group is whatever points at it — so grouping is a pure pass
- * over the list, never a second copy of the truth. Variants leave their alphabetical slot
- * and follow their base, label-first; a variant whose base is not in the same list (it was
- * hoisted into "Recent", or deleted) keeps its own position and reads as the standalone row
- * it effectively is. Recents are never grouped: that section exists to show recency, and a
- * variant used a minute ago is its own entry there, told apart by its label chip.
+ * One level: a variant pointing at another variant (only possible through a hand edit) or
+ * at a deleted persona belongs to no group and renders as a standalone row.
  */
-export function groupVariantsUnderBase(personas: readonly Persona[]): Persona[] {
-  const bases = new Set(personas.filter((persona) => !persona.variantOf).map((p) => p.id));
-  const grouped = new Map<string, Persona[]>();
-  const rows: Persona[] = [];
+export function variantsByBase(personas: readonly Persona[]): Map<string, Persona[]> {
+  const baseIds = new Set(personas.filter((persona) => !persona.variantOf).map((p) => p.id));
+  const groups = new Map<string, Persona[]>();
 
   for (const persona of personas) {
-    if (persona.variantOf && bases.has(persona.variantOf)) {
-      const siblings = grouped.get(persona.variantOf);
-      if (siblings) siblings.push(persona);
-      else grouped.set(persona.variantOf, [persona]);
-      continue;
-    }
-    rows.push(persona);
+    if (!persona.variantOf || !baseIds.has(persona.variantOf)) continue;
+    const siblings = groups.get(persona.variantOf);
+    if (siblings) siblings.push(persona);
+    else groups.set(persona.variantOf, [persona]);
+  }
+  for (const siblings of groups.values()) siblings.sort(compareVariants);
+
+  return groups;
+}
+
+/**
+ * The id a persona's use should record in the recents list: the persona's own — unless it
+ * is a variant whose base still exists, in which case the base's. The Recent section lists
+ * people, not flavours; the base row is where the flavours are reached from.
+ */
+export function recentPersonaId(personas: readonly Persona[], id: string): string {
+  const persona = personas.find((entry) => entry.id === id);
+  if (!persona?.variantOf) return id;
+  return personas.some((entry) => entry.id === persona.variantOf) ? persona.variantOf : id;
+}
+
+/**
+ * A stored recents list at group grain: every variant id mapped onto its base, deduped,
+ * order kept — so a base and its variant both recorded collapse to the one row that
+ * renders. Safe on ids that no longer resolve; they pass through for `orderPersonas` to
+ * drop.
+ */
+export function recentGroupIds(
+  personas: readonly Persona[],
+  recentIds: readonly string[],
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of recentIds) {
+    const mapped = recentPersonaId(personas, id);
+    if (seen.has(mapped)) continue;
+    seen.add(mapped);
+    out.push(mapped);
+  }
+  return out;
+}
+
+/**
+ * Group variants under their base for a flat list: variants leave their alphabetical slot
+ * and follow their base, label-first. A variant whose base is not in the same list keeps
+ * its own position and reads as the standalone row it effectively is.
+ */
+export function groupVariantsUnderBase(personas: readonly Persona[]): Persona[] {
+  const groups = variantsByBase(personas);
+  const absorbed = new Set<string>();
+  for (const siblings of groups.values()) {
+    for (const persona of siblings) absorbed.add(persona.id);
   }
 
-  // `rows` still holds the bases in their original order, so this is one ordered walk with
-  // the variants spliced in behind theirs — not a re-sort with a second opinion.
   const out: Persona[] = [];
-  for (const persona of rows) {
+  for (const persona of personas) {
+    if (absorbed.has(persona.id)) continue;
     out.push(persona);
-    const siblings = grouped.get(persona.id);
-    if (siblings) {
-      siblings.sort(
-        (a, b) =>
-          (a.variantLabel ?? a.name).localeCompare(b.variantLabel ?? b.name) ||
-          a.id.localeCompare(b.id),
-      );
-      out.push(...siblings);
-    }
+    const siblings = groups.get(persona.id);
+    if (siblings) out.push(...siblings);
   }
   return out;
 }
