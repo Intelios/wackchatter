@@ -232,6 +232,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
           },
           '',
           column.connection.id,
+          { feature: 'arena', sessionId: runId, countText: countTokens.countText },
         );
 
         // A non-streamed response can resolve in the same turn as an abort, so ownership is

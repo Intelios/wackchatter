@@ -666,6 +666,10 @@ export function useChat(options: UseChatOptions): UseChat {
 
       const controller = new AbortController();
       abortRef.current = controller;
+      // One identity for this attempt, settled before the request so every path out of
+      // it — settled, stopped, failed — records the same one. A re-roll is a new
+      // generation and gets a new id.
+      const generationId = crypto.randomUUID();
 
       // A navigation can leave this request alive while the hook is already rendering a
       // different chat. The controller ref is also the generation's ownership token: a
@@ -853,6 +857,13 @@ export function useChat(options: UseChatOptions): UseChat {
           },
           seed,
           requestConnection.id,
+          {
+            feature: 'chat',
+            generationId,
+            ...(started.chatId ? { sessionId: started.chatId } : {}),
+            ...(characterId ? { character: characterId } : {}),
+            countText: countTokens.countText,
+          },
         );
 
         // A non-streaming response can resolve in the same turn as an abort, so check
@@ -875,6 +886,8 @@ export function useChat(options: UseChatOptions): UseChat {
                     connection_id: requestConnection.id,
                     ...(presetId ? { preset_id: presetId } : {}),
                     ...(choice.reasoning ? { reasoning: choice.reasoning } : {}),
+                    // Deliberately never `usage_reported`: see the note on token_count
+                    // below — with alternates the reported figure covers all of them.
                     token_count: countTokens.countText(choice.content),
                   },
                 }))
@@ -901,6 +914,14 @@ export function useChat(options: UseChatOptions): UseChat {
             token_count: alternates.length
               ? countTokens.countText(final.content)
               : (final.usage?.completion_tokens ?? countTokens.countText(final.content)),
+            // Identity for this generation, shared with the usage log so the two can be
+            // reconciled without matching on text or timestamps.
+            generation_id: generationId,
+            // Only when this swipe's count is genuinely the provider's — which the
+            // alternates case above is not, for the reason stated there.
+            ...(!alternates.length && typeof final.usage?.completion_tokens === 'number'
+              ? { usage_reported: true }
+              : {}),
           },
           alternates,
         });
@@ -912,10 +933,11 @@ export function useChat(options: UseChatOptions): UseChat {
         if (ownsGeneration()) endStream();
         // Whatever arrived before the failure is kept, as SillyTavern does.
         if (ownsGeneration() && controller.signal.aborted)
-          dispatch({ type: 'gen/aborted', text, reasoning });
+          dispatch({ type: 'gen/aborted', text, reasoning, generationId });
         else if (ownsGeneration())
           dispatch({
             type: 'gen/failed',
+            generationId,
             message: (error as Error).message,
             text,
             reasoning,
@@ -932,6 +954,7 @@ export function useChat(options: UseChatOptions): UseChat {
     },
     [
       character,
+      characterId,
       preset,
       presetId,
       persona,
@@ -1278,6 +1301,12 @@ export function useChat(options: UseChatOptions): UseChat {
             { onTick: () => {} },
             '',
             summaryConnection.id,
+            {
+              feature: 'summary',
+              sessionId: current.chatId,
+              ...(characterId ? { character: characterId } : {}),
+              countText: summaryCountTokens.countText,
+            },
           );
           const nextSummary = result.content.trim();
           if (!nextSummary) throw new Error('The summary connection returned an empty response.');
@@ -1329,6 +1358,7 @@ export function useChat(options: UseChatOptions): UseChat {
     },
     [
       character,
+      characterId,
       preset,
       persona,
       summaryConnection,
@@ -1722,6 +1752,11 @@ export function useChat(options: UseChatOptions): UseChat {
             { onTick: () => {} },
             '',
             memoryConnection.id,
+            {
+              feature: 'memory',
+              sessionId: current.chatId,
+              ...(characterId ? { character: characterId } : {}),
+            },
           );
           if (controller.signal.aborted || stateRef.current.chatId !== current.chatId) return;
 
@@ -1806,6 +1841,7 @@ export function useChat(options: UseChatOptions): UseChat {
     },
     [
       character,
+      characterId,
       preset,
       memoryPreset,
       memoryConnection,

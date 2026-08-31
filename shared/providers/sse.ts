@@ -96,6 +96,13 @@ export interface StreamUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  /**
+   * Prompt tokens served from the provider's cache. OpenAI counts these *inside*
+   * `prompt_tokens`, so anything that bills cache separately has to subtract them.
+   */
+  cached_tokens?: number;
+  /** Thinking tokens. Part of `completion_tokens`, never additional to it. */
+  reasoning_tokens?: number;
 }
 
 /** One completion. With `n: 1` — the overwhelming case — there is only ever the first. */
@@ -112,6 +119,18 @@ export interface StreamState {
   reasoning: string;
   finishReason: string | null;
   model?: string;
+  /**
+   * The provider's response id. Kept because it is the only handle on a generation that
+   * outlives the request — usage reporting joins on it.
+   */
+  id?: string;
+  /**
+   * Stable identity for this generation: `id` when the provider gave one, otherwise a
+   * uuid minted before the request. Assigned by the transport (src/lib/api.ts), not by
+   * the parser, because only the transport knows a request was made at all — a body
+   * parsed straight out of a fixture has no generation behind it.
+   */
+  generationId?: string;
   usage?: StreamUsage;
   done: boolean;
   /** Set when the provider reported an error inside an otherwise-200 stream. */
@@ -164,6 +183,17 @@ function readUsage(value: unknown): StreamUsage | undefined {
     result.completion_tokens = usage.completion_tokens;
   }
   if (typeof usage.total_tokens === 'number') result.total_tokens = usage.total_tokens;
+
+  // Nested detail objects. Absent from plenty of OpenAI-compatible backends, so every
+  // read is guarded rather than assumed.
+  const promptDetails = asRecord(usage.prompt_tokens_details);
+  if (promptDetails && typeof promptDetails.cached_tokens === 'number') {
+    result.cached_tokens = promptDetails.cached_tokens;
+  }
+  const completionDetails = asRecord(usage.completion_tokens_details);
+  if (completionDetails && typeof completionDetails.reasoning_tokens === 'number') {
+    result.reasoning_tokens = completionDetails.reasoning_tokens;
+  }
   return Object.keys(result).length ? result : undefined;
 }
 
@@ -207,6 +237,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
   const choices: StreamChoice[] = [blankChoice(seed)];
   const state = {
     model: undefined as string | undefined,
+    id: undefined as string | undefined,
     usage: undefined as StreamUsage | undefined,
     done: false,
     error: undefined as string | undefined,
@@ -228,6 +259,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
       usage: state.usage ? { ...state.usage } : undefined,
     };
     if (state.model !== undefined) result.model = state.model;
+    if (state.id !== undefined) result.id = state.id;
     if (state.error !== undefined) result.error = state.error;
     if (choices.length > 1) result.alternates = choices.slice(1).map((choice) => ({ ...choice }));
     return result;
@@ -270,6 +302,12 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
 
       if (typeof root.model === 'string' && root.model !== state.model) {
         state.model = root.model;
+        changed = true;
+      }
+
+      // Every chunk repeats the same id; first one wins and later ones are a no-op.
+      if (typeof root.id === 'string' && root.id !== state.id) {
+        state.id = root.id;
         changed = true;
       }
 
@@ -350,6 +388,7 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   if (!root) return state;
 
   if (typeof root.model === 'string') state.model = root.model;
+  if (typeof root.id === 'string') state.id = root.id;
   const usage = readUsage(root.usage);
   if (usage) state.usage = usage;
 

@@ -158,6 +158,7 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
           { onTick: () => {} },
           '',
           connection.id,
+          { feature: 'persona' },
         );
         // A non-streaming reply can resolve in the same turn as the abort, so the signal is
         // re-read after the await rather than only before it.

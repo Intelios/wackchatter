@@ -369,6 +369,18 @@ byte-identically. The quirks are load-bearing and each has a named test.
   loop drops later rules for the same key).
 - A failed regenerate restores the original message **and its alternates**; ST destroys
   the swipe array before generating.
+- The **usage log** (`usageLog`, off by default) appends one versioned JSONL record per
+  generation to `~/.wackchatter/usage.jsonl`, beside a `library.json` pointer. Reported
+  from the single chokepoint in `src/lib/api.ts` — `accumulator.snapshot()`, which every
+  call site reaches — so summaries, memory extraction, persona derives and Arena rounds
+  are all covered, none of which become a stored message. `streamGenerate` mints a
+  `generation_id` per request and it is persisted into `extra` as well, so a reader can
+  reconcile a log line against the swipe that produced it rather than guessing. Aborted
+  generations are reported too: stopping one does not un-bill it. The setting is checked
+  server-side, not in the client, so turning it off is authoritative.
+- `extra.usage_reported` is what separates a provider's count from ours. `token_count`
+  has always been one or the other with nothing to tell them apart; without the flag an
+  estimate silently becomes a measurement downstream.
 - Real token usage is opt-in (`reportUsage`), falling back to the estimate when the
   provider says nothing; off by default for `custom` — some proxies reject unknown keys.
 - Unsupported World Info positions fold into before/after, flagged in the inspector,

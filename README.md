@@ -17,6 +17,7 @@ Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
 - **Providers** — any OpenAI-compatible endpoint plus OpenRouter; keys stored server-side (mode 0600), never sent to the browser
 - **User Settings** — backgrounds, glass effects, dialogue colors, all themable from one token file
 - **Movable library** — keep your data anywhere (external drive, synced folder), changed from the UI with no restart
+- **Usage log** — opt-in, one JSONL line per generation in `~/.wackchatter/`, for an external token accountant to read. A local file; nothing is sent anywhere
 
 ## Install
 
@@ -77,6 +78,14 @@ data/.wackchatter  Marks the folder as a library, so the app can tell it from an
 ```
 
 `data/` is gitignored, and everything in it is one portable unit.
+
+Two files live outside it, in `~/.wackchatter/`, because they are how something else finds
+the library at all — they cannot live inside the thing they point at:
+
+```
+~/.wackchatter/library.json  Where the library currently is. Rewritten on every launch.
+~/.wackchatter/usage.jsonl   One line per generation. Only written with the setting on.
+```
 
 ### Moving it somewhere else
 

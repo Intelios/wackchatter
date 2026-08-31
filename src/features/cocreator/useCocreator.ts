@@ -327,6 +327,10 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
 
       const controller = new AbortController();
       abortRef.current = controller;
+      // One identity for this attempt, settled before the request so every path out of
+      // it — settled, stopped, failed — records the same one. A re-roll is a new
+      // generation and gets a new id.
+      const generationId = crypto.randomUUID();
 
       // The controller ref is also the generation's ownership token: a newer generation
       // replaces it, so late callbacks from this one become inert rather than writing into
@@ -404,6 +408,12 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
           },
           '',
           requestConnection.id,
+          {
+            feature: 'cocreator',
+            generationId,
+            ...(started.sessionId ? { sessionId: started.sessionId } : {}),
+            countText: countTokens.countText,
+          },
         );
 
         // A non-streaming response can resolve in the same turn as an abort, so ownership is
@@ -421,15 +431,23 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
             model: final.model ?? requestConnection.model,
             ...(final.reasoning ? { reasoning: final.reasoning } : {}),
             token_count: final.usage?.completion_tokens ?? countTokens.countText(final.content),
+            generation_id: generationId,
+            ...(typeof final.usage?.completion_tokens === 'number' ? { usage_reported: true } : {}),
           },
         });
       } catch (error) {
         if (ownsGeneration()) endStream();
         // Whatever arrived before the failure is kept.
         if (ownsGeneration() && controller.signal.aborted) {
-          dispatch({ type: 'gen/aborted', text, reasoning });
+          dispatch({ type: 'gen/aborted', text, reasoning, generationId });
         } else if (ownsGeneration()) {
-          dispatch({ type: 'gen/failed', message: (error as Error).message, text, reasoning });
+          dispatch({
+            type: 'gen/failed',
+            message: (error as Error).message,
+            text,
+            reasoning,
+            generationId,
+          });
         }
       } finally {
         // An old request may settle after a newer generation replaced the ref. It must not

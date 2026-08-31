@@ -149,8 +149,14 @@ export type ChatAction =
   | { type: 'gen/inspected'; inspection: PromptInspection }
   | { type: 'gen/streaming' }
   | { type: 'gen/finished'; text: string; extra?: MessageExtra; alternates?: GeneratedAlternate[] }
-  | { type: 'gen/aborted'; text: string; reasoning?: string }
-  | { type: 'gen/failed'; message: string; text?: string; reasoning?: string }
+  | { type: 'gen/aborted'; text: string; reasoning?: string; generationId?: string }
+  | {
+      type: 'gen/failed';
+      message: string;
+      text?: string;
+      reasoning?: string;
+      generationId?: string;
+    }
   | { type: 'error/cleared' };
 
 function replaceMessage(
@@ -524,7 +530,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         state,
         action.text,
         action.text || action.reasoning
-          ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+          ? {
+              truncated: true,
+              ...(action.reasoning ? { reasoning: action.reasoning } : {}),
+              // An interrupted reply was still generated, and still billed. Recording the
+              // id here is what lets it be reconciled against the usage log rather than
+              // counted a second time as an unidentified swipe.
+              ...(action.generationId ? { generation_id: action.generationId } : {}),
+            }
           : undefined,
       );
 
@@ -536,7 +549,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           state,
           text,
           text || action.reasoning
-            ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+            ? {
+                truncated: true,
+                ...(action.reasoning ? { reasoning: action.reasoning } : {}),
+                ...(action.generationId ? { generation_id: action.generationId } : {}),
+              }
             : undefined,
         ),
         error: action.message,

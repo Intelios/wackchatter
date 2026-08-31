@@ -42,7 +42,9 @@ import type {
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
 import type { CharacterStats, StatsOverview } from '@shared/types/stats.ts';
+import type { UsageFeature, UsageReport } from '@shared/types/usage.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
+import { type EncodingName, encodingForModel, loadCounter } from './tokenizer.ts';
 
 export class ApiError extends Error {
   constructor(
@@ -600,6 +602,121 @@ export const locationApi = {
   browse: () => request<BrowseResult>('/location/browse', { method: 'POST' }),
 };
 
+/**
+ * What a call site knows about its own generation that the transport cannot infer.
+ *
+ * Everything else — model, tokens, timings — is read off the request and response here,
+ * so a new call site opts in by passing this and nothing more.
+ */
+export interface UsageMeta {
+  feature: UsageFeature;
+  /**
+   * Identity for this generation, when the call site needs to persist it alongside what
+   * the generation produced. Pass one from anywhere that writes a swipe: an interrupted
+   * reply reaches storage through a path that never sees the response, so an id minted
+   * in here could not reach it, and the same generation would be accounted for twice —
+   * once from the log and once from the transcript.
+   *
+   * The transport mints one when this is absent, which is right for the call sites that
+   * store nothing.
+   */
+  generationId?: string;
+  /** Chat id, arena round id, or co-creator session id. */
+  sessionId?: string;
+  character?: string;
+  /**
+   * The call site's own token counter, when it has one.
+   *
+   * Passing it keeps the logged estimate byte-identical to whatever that call site
+   * persisted alongside the message. Without it the transport loads an encoding from the
+   * model id — the same guess by a slightly different route, and the only option for the
+   * call sites that never count anything themselves.
+   */
+  countText?: (text: string) => number;
+}
+
+/**
+ * Count a completion locally, for the case where the provider reported nothing.
+ *
+ * Encodings are cached inside `loadCounter`, so this is one dynamic import on the first
+ * generation of a session and a synchronous table lookup after that.
+ */
+async function estimateOutputTokens(
+  text: string,
+  model: string,
+  countText?: (t: string) => number,
+) {
+  if (!text) return 0;
+  try {
+    if (countText) return countText(text);
+    const encoding: EncodingName = encodingForModel(model);
+    const counter = await loadCounter(encoding);
+    return counter.countText(text);
+  } catch {
+    // A failed estimate is not worth losing the record over — the event is still
+    // evidence that a generation happened, and it is flagged as estimated regardless.
+    return 0;
+  }
+}
+
+/**
+ * Post one generation's usage to the local server, which decides whether to log it.
+ *
+ * Deliberately fire-and-forget and deliberately unconditional: gating on the setting
+ * here would mean threading app settings into the transport, and the request is one
+ * small localhost POST per generation, not per token. Nothing it can do may disturb the
+ * generation that produced it, so every failure is swallowed.
+ */
+async function reportUsage(
+  state: StreamState,
+  body: ChatCompletionBody,
+  meta: UsageMeta,
+  connectionId: string | undefined,
+  timing: { id: string; startedAt: number; ttftMs?: number; aborted: boolean },
+): Promise<void> {
+  try {
+    // Nothing generated and nothing reported: a request that failed before it began.
+    if (!state.usage && !state.content.trim()) return;
+
+    const model = state.model ?? (typeof body.model === 'string' ? body.model : '');
+    const usage = state.usage;
+    const reported = typeof usage?.completion_tokens === 'number';
+    const cacheRead = usage?.cached_tokens ?? 0;
+
+    const report: UsageReport = {
+      id: timing.id,
+      ts: new Date().toISOString(),
+      feature: meta.feature,
+      ...(meta.sessionId ? { sessionId: meta.sessionId } : {}),
+      ...(meta.character ? { character: meta.character } : {}),
+      ...(connectionId ? { connectionId } : {}),
+      model,
+      // OpenAI counts cached tokens inside prompt_tokens. Subtracting here keeps input
+      // and cache additive for anyone summing the columns.
+      inputTokens: Math.max(0, (usage?.prompt_tokens ?? 0) - cacheRead),
+      outputTokens: reported
+        ? (usage?.completion_tokens ?? 0)
+        : await estimateOutputTokens(state.content, model, meta.countText),
+      reasoningTokens: usage?.reasoning_tokens ?? 0,
+      cacheReadTokens: cacheRead,
+      durationMs: Date.now() - timing.startedAt,
+      ...(timing.ttftMs !== undefined ? { ttftMs: timing.ttftMs } : {}),
+      estimated: !reported,
+      aborted: timing.aborted,
+    };
+
+    await fetch('/api/usage', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(report),
+      // Survives the tab closing mid-report; the server has nothing to say back.
+      keepalive: true,
+    });
+  } catch {
+    /* usage accounting must never break a generation */
+  }
+}
+
 export interface StreamHandlers {
   /** Called with the FULL accumulated state — never a delta. Assign, do not append. */
   onTick: (state: StreamState) => void;
@@ -622,7 +739,27 @@ export async function streamGenerate(
   handlers: StreamHandlers,
   seed = '',
   connectionId?: string,
+  meta?: UsageMeta,
 ): Promise<StreamState> {
+  // One id for this generation, settled before the request. Deliberately not the
+  // provider's response id even when there is one: that arrives too late for a call site
+  // that has to record the id on a reply the user stopped, and having two possible
+  // answers to "which generation was this" is how the double-count gets back in.
+  const generationId = meta?.generationId ?? crypto.randomUUID();
+  const startedAt = Date.now();
+  let ttftMs: number | undefined;
+
+  const identify = (state: StreamState): StreamState => ({ ...state, generationId });
+  const report = (state: StreamState, aborted: boolean) => {
+    if (!meta) return;
+    void reportUsage(identify(state), body, meta, connectionId, {
+      id: generationId,
+      startedAt,
+      ttftMs,
+      aborted,
+    });
+  };
+
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -643,11 +780,13 @@ export async function streamGenerate(
 
   // The server mirrors the upstream content-type, so this is how we learn which we got.
   if (!response.headers.get('content-type')?.includes('text/event-stream')) {
-    const state = parseCompletion(await response.json(), seed);
+    const state = identify(parseCompletion(await response.json(), seed));
     // A provider can report a failure inside an otherwise-200 body, same as a stream.
     if (state.error) throw new Error(state.error);
+    ttftMs = Date.now() - startedAt;
     handlers.onFirstToken?.();
     handlers.onTick(state);
+    report(state, false);
     return state;
   }
 
@@ -664,6 +803,7 @@ export async function streamGenerate(
     // StreamingText leaf, even though its store is receiving every reasoning delta.
     if (!sawToken && (state.content !== seed || state.reasoning)) {
       sawToken = true;
+      ttftMs = Date.now() - startedAt;
       handlers.onFirstToken?.();
     }
     handlers.onTick(state);
@@ -694,11 +834,17 @@ export async function streamGenerate(
     for (const frame of parser.flush()) {
       publish(accumulator.push(frame));
     }
+  } catch (error) {
+    // A stopped generation was still generated, and still billed. The caller keeps the
+    // partial text for that reason; the usage log keeps the partial count for the same one.
+    report(accumulator.snapshot(), true);
+    throw error;
   } finally {
     reader.cancel().catch(() => {});
   }
 
-  const final = accumulator.snapshot();
+  const final = identify(accumulator.snapshot());
+  report(final, false);
   // A provider can report a failure inside an otherwise-successful stream.
   if (final.error) throw new Error(final.error);
   return final;

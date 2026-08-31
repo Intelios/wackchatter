@@ -138,8 +138,14 @@ export type CocreatorAction =
   | { type: 'gen/started'; mode: CoGenMode; newId: string }
   | { type: 'gen/streaming' }
   | { type: 'gen/finished'; text: string; extra?: MessageExtra }
-  | { type: 'gen/aborted'; text: string; reasoning?: string }
-  | { type: 'gen/failed'; message: string; text?: string; reasoning?: string }
+  | { type: 'gen/aborted'; text: string; reasoning?: string; generationId?: string }
+  | {
+      type: 'gen/failed';
+      message: string;
+      text?: string;
+      reasoning?: string;
+      generationId?: string;
+    }
   | { type: 'stash/set'; slot: CardSlot; text: string; provenance: StashProvenance }
   | { type: 'stash/editSlot'; slot: SingleCardSlot; text: string }
   | { type: 'stash/editGreeting'; index: number; text: string }
@@ -364,7 +370,14 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         state,
         action.text,
         action.text || action.reasoning
-          ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+          ? {
+              truncated: true,
+              ...(action.reasoning ? { reasoning: action.reasoning } : {}),
+              // An interrupted reply was still generated, and still billed. Recording the
+              // id here is what lets it be reconciled against the usage log rather than
+              // counted a second time as an unidentified swipe.
+              ...(action.generationId ? { generation_id: action.generationId } : {}),
+            }
           : undefined,
       );
 
@@ -376,7 +389,11 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
           state,
           text,
           text || action.reasoning
-            ? { truncated: true, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }
+            ? {
+                truncated: true,
+                ...(action.reasoning ? { reasoning: action.reasoning } : {}),
+                ...(action.generationId ? { generation_id: action.generationId } : {}),
+              }
             : undefined,
         ),
         error: action.message,
