@@ -284,6 +284,48 @@ describe('sending', () => {
     assertConsistent(state);
   });
 
+  test('a stopped generation records its id, so the usage log can be reconciled', () => {
+    // Without this the same generation is accounted for twice: once from the log line
+    // written when it was stopped, and once as an unidentified swipe read back out of
+    // the transcript later.
+    const state = run(
+      loaded(),
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' },
+      { type: 'gen/streaming' },
+      { type: 'gen/aborted', text: 'The lantern gut', generationId: 'gen-7' },
+    );
+
+    expect(last(state).swipe_info[0]?.extra?.generation_id).toBe('gen-7');
+    expect(last(state).swipe_info[0]?.extra?.truncated).toBe(true);
+    assertConsistent(state);
+  });
+
+  test('a failed generation that kept partial text records its id too', () => {
+    const state = run(
+      loaded(),
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' },
+      { type: 'gen/streaming' },
+      { type: 'gen/failed', message: 'Upstream died.', text: 'Half a th', generationId: 'gen-8' },
+    );
+
+    expect(last(state).swipe_info[0]?.extra?.generation_id).toBe('gen-8');
+    expect(state.error).toBe('Upstream died.');
+    assertConsistent(state);
+  });
+
+  test('a generation that produced nothing records no extra at all', () => {
+    // No text and no reasoning means no swipe worth annotating — an id on an empty
+    // alternate would claim a generation that left nothing behind.
+    const state = run(
+      loaded(),
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' },
+      { type: 'gen/aborted', text: '', generationId: 'gen-9' },
+    );
+
+    expect(last(state).swipe_info[0]?.extra).toBeUndefined();
+    assertConsistent(state);
+  });
+
   test('a second generation cannot start while one is running', () => {
     const running = run(loaded(), { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' });
     const again = chatReducer(running, {

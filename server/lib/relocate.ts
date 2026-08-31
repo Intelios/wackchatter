@@ -28,6 +28,7 @@ import { ensureDataDirs, PATHS, setDataDir } from './paths.ts';
 import { ensureDefaultPreset } from './presets.ts';
 import { resetSettingsCache } from './settings.ts';
 import { moveLibrary, type TransferOutcome } from './transfer.ts';
+import { publishLibraryPointer } from './usage.ts';
 
 export interface SwitchResult {
   root: string;
@@ -167,6 +168,9 @@ export async function switchDataDir(input: string, expect: LocationKind): Promis
       setDataDir(destination);
       ensureDataDirs();
       await ensureDefaultPreset();
+      // The pointer names the old root until this runs; a reader following it would open
+      // a library the app has stopped writing to.
+      publishLibraryPointer();
     } catch (error) {
       degraded =
         `Your library moved to ${destination}, but the server could not open it there: ` +

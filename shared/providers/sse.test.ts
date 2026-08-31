@@ -395,3 +395,92 @@ describe('non-streamed completions', () => {
     expect(state.alternates?.[0]?.content).toBe(' back.');
   });
 });
+
+describe('usage detail and generation identity', () => {
+  test('nested cached and reasoning counts are read off a usage-only final chunk', () => {
+    const accumulator = createStreamAccumulator();
+    const state = accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [],
+          usage: {
+            prompt_tokens: 8421,
+            completion_tokens: 612,
+            total_tokens: 9033,
+            prompt_tokens_details: { cached_tokens: 4096 },
+            completion_tokens_details: { reasoning_tokens: 200 },
+          },
+        }),
+      ),
+    );
+    expect(state?.usage).toEqual({
+      prompt_tokens: 8421,
+      completion_tokens: 612,
+      total_tokens: 9033,
+      cached_tokens: 4096,
+      reasoning_tokens: 200,
+    });
+  });
+
+  test('missing detail objects leave the counts absent rather than zero', () => {
+    // Zero and "not reported" are different claims, and only one of them is billable.
+    const accumulator = createStreamAccumulator();
+    const state = accumulator.push(
+      frame(JSON.stringify({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 3 } })),
+    );
+    expect(state?.usage).toEqual({ prompt_tokens: 10, completion_tokens: 3 });
+    expect(state?.usage?.cached_tokens).toBeUndefined();
+    expect(state?.usage?.reasoning_tokens).toBeUndefined();
+  });
+
+  test('a detail object carrying junk is ignored, not coerced', () => {
+    const accumulator = createStreamAccumulator();
+    const state = accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [],
+          usage: {
+            completion_tokens: 3,
+            prompt_tokens_details: { cached_tokens: 'lots' },
+            completion_tokens_details: null,
+          },
+        }),
+      ),
+    );
+    expect(state?.usage).toEqual({ completion_tokens: 3 });
+  });
+
+  test('the response id is captured from the first chunk that carries one', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(JSON.stringify({ id: 'gen-abc', choices: [{ delta: { content: 'h' } }] })),
+    );
+    accumulator.push(
+      frame(JSON.stringify({ id: 'gen-abc', choices: [{ delta: { content: 'i' } }] })),
+    );
+    const state = accumulator.snapshot();
+    expect(state.id).toBe('gen-abc');
+    expect(state.content).toBe('hi');
+  });
+
+  test('a stream with no id leaves it absent for the transport to fill in', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })));
+    expect(accumulator.snapshot().id).toBeUndefined();
+  });
+
+  test('parseCompletion captures the id and the detail counts too', () => {
+    const state = parseCompletion({
+      id: 'cmpl-42',
+      model: 'glm-5.2',
+      choices: [{ message: { content: 'done' }, finish_reason: 'stop' }],
+      usage: {
+        prompt_tokens: 40,
+        completion_tokens: 4,
+        prompt_tokens_details: { cached_tokens: 8 },
+      },
+    });
+    expect(state.id).toBe('cmpl-42');
+    expect(state.usage?.cached_tokens).toBe(8);
+  });
+});

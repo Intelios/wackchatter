@@ -41,6 +41,18 @@ export interface MessageExtra {
    * a local count would miss whatever world info and injections the request really carried.
    */
   prompt_tokens?: number;
+  /**
+   * True when `token_count` (and `prompt_tokens`, when present) came from the provider's
+   * own usage report. Absent means `token_count` is our local estimate — the two must stay
+   * distinguishable, because a tokenizer guess and a billed number are not the same claim.
+   */
+  usage_reported?: boolean;
+  /**
+   * Identity for this generation, minted before the request and reused as the provider's
+   * response id when one comes back. The join key for anything outside this app that
+   * accounts for the same generation, so it must never be regenerated on save.
+   */
+  generation_id?: string;
   /** Reasoning / thinking text, shown collapsed. */
   reasoning?: string;
   /** Set when generation was interrupted. */

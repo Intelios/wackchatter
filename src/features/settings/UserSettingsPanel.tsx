@@ -332,6 +332,16 @@ export function UserSettingsPanel({
           onChange={(value) => onPatch({ tokenizerEncoding: value })}
           hint="Counts are exact for OpenAI models and an estimate everywhere else."
         />
+        <CheckField
+          label="Write a usage log"
+          checked={Boolean(settings?.usageLog)}
+          onChange={(checked) => onPatch({ usageLog: checked })}
+          hint={
+            'Appends one line per generation to ~/.wackchatter/usage.jsonl, for a token ' +
+            'accountant to read. Stays on this machine — nothing is sent anywhere. Turn on ' +
+            '"Report real token usage" per connection too, or the counts are our estimate.'
+          }
+        />
       </Section>
 
       <RecentlyDeletedSection

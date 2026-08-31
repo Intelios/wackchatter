@@ -15,6 +15,7 @@ import { initDataLocation } from './lib/location.ts';
 import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { degradedReason, isSwitching } from './lib/relocate.ts';
+import { publishLibraryPointer } from './lib/usage.ts';
 import { handleArenaRoute } from './routes/arena.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';
@@ -28,6 +29,7 @@ import { handlePersonaRoute } from './routes/personas.ts';
 import { handlePresetRoute } from './routes/presets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
 import { handleStatsRoute } from './routes/stats.ts';
+import { handleUsageRoute } from './routes/usage.ts';
 import { handleVersionRoute } from './routes/version.ts';
 
 const PORT = Number(process.env.WC_PORT ?? 8787);
@@ -58,6 +60,9 @@ function forbiddenOrigin(request: Request): boolean {
 const dataLocation = initDataLocation();
 ensureDataDirs();
 await ensureDefaultPreset();
+// Says where the library is, for anything accounting for what it cost. Written whether or
+// not the usage log is on — see publishLibraryPointer.
+publishLibraryPointer();
 
 type RouteHandler = (request: Request, segments: string[]) => Promise<Response | null>;
 
@@ -75,6 +80,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   generate: handleGenerateRoute,
   settings: handleSettingsRoute,
   stats: handleStatsRoute,
+  usage: handleUsageRoute,
   version: handleVersionRoute,
 };
 
