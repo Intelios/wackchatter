@@ -1,0 +1,28 @@
+.backup__summary {
+  margin: 0 0 var(--wc-space-3);
+}
+
+.backup__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin: var(--wc-space-3) 0 var(--wc-space-2);
+}
+
+/* The restore path has no UI of its own, so this is the only place anyone learns it. It
+   stays visible rather than appearing after a download: the moment you need it, this app
+   is on a machine that has lost the library, and you are reading the zip's own folder. */
+.backup__restore {
+  margin: var(--wc-space-3) 0 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid var(--wc-border);
+  font-size: var(--wc-text-xs);
+  line-height: 1.5;
+  color: var(--wc-text-faint);
+}
+
+.backup__restore strong {
+  color: var(--wc-text);
+  font-weight: 500;
+}

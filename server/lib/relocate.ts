@@ -23,6 +23,7 @@ import { resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { drainLocks } from './fs.ts';
 import { activeGenerations } from './generate.ts';
+import { activeBackups } from './library.ts';
 import { inspectLocation, resolveDataDir, writePointer } from './location.ts';
 import { ensureDataDirs, PATHS, setDataDir } from './paths.ts';
 import { ensureDefaultPreset } from './presets.ts';
@@ -109,6 +110,15 @@ export async function switchDataDir(input: string, expect: LocationKind): Promis
   if (activeGenerations() > 0) {
     throw new RelocateError(
       'A reply is still streaming. Wait for it to finish, then try again.',
+      409,
+    );
+  }
+  // A backup reads the library a file at a time while it builds its archive, so moving it
+  // underneath one truncates the result. Only that window is guarded — once the archive is
+  // a finished file a move cannot hurt it. Refused before anything has been mutated.
+  if (activeBackups() > 0) {
+    throw new RelocateError(
+      'A library backup is still being prepared. Wait for it to finish, then try again.',
       409,
     );
   }

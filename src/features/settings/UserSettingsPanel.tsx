@@ -10,6 +10,7 @@ import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
 import { EFFECTS } from '../backgrounds/effects.ts';
 import { pairBackgroundEffect } from '../backgrounds/resolve.ts';
 import { RegexScriptSection } from '../regex/RegexScriptList.tsx';
+import { BackupSection } from './BackupSection.tsx';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
 import { DataLocationSection } from './DataLocationSection.tsx';
 import { RecentlyDeletedSection } from './RecentlyDeletedSection.tsx';
@@ -351,6 +352,8 @@ export function UserSettingsPanel({
         onPurge={onPurgeBackup}
         onPurgeAll={onPurgeAllBackups}
       />
+
+      <BackupSection />
 
       <DataLocationSection unsavedPreset={unsavedPreset} />
     </div>

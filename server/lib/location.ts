@@ -146,10 +146,15 @@ const IGNORED_ENTRIES = new Set([
   '.icloud',
 ]);
 
+/** True for the file-manager and sync-client droppings above. */
+export function isIgnoredEntry(name: string): boolean {
+  return IGNORED_ENTRIES.has(name);
+}
+
 /** Directory contents, ignoring the droppings above. Unreadable reads as empty. */
 export function meaningfulEntries(dir: string): string[] {
   try {
-    return readdirSync(dir).filter((name) => !IGNORED_ENTRIES.has(name));
+    return readdirSync(dir).filter((name) => !isIgnoredEntry(name));
   } catch {
     return [];
   }

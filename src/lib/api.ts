@@ -13,6 +13,7 @@ import type {
   ProviderModel,
 } from '@shared/providers/types.ts';
 import type { ArenaRound, RoundSide, Verdict } from '@shared/types/arena.ts';
+import type { BackupPlan } from '@shared/types/backup.ts';
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type {
   Chat,
@@ -574,6 +575,19 @@ export const settingsApi = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(connection),
     }),
+};
+
+export const libraryApi = {
+  /**
+   * What a backup would contain. Walked with the export's own exclusion rules, so the count
+   * the button shows is the count the archive holds — and so the failures worth reporting
+   * land somewhere the panel can render them, which a download itself never does.
+   */
+  check: (secrets: boolean) =>
+    request<BackupPlan>(`/library/export/check${secrets ? '?secrets=1' : ''}`),
+
+  /** An href, not a fetch: the archive streams to disk instead of through browser memory. */
+  exportUrl: (secrets: boolean) => `/api/library/export${secrets ? '?secrets=1' : ''}`,
 };
 
 export const locationApi = {

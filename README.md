@@ -17,6 +17,7 @@ Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
 - **Providers** — any OpenAI-compatible endpoint plus OpenRouter; keys stored server-side (mode 0600), never sent to the browser
 - **User Settings** — backgrounds, glass effects, dialogue colors, all themable from one token file
 - **Movable library** — keep your data anywhere (external drive, synced folder), changed from the UI with no restart
+- **Library backup** — the whole data directory as one zip, from User Settings; restore by unzipping it and pointing the app at the folder
 - **Usage log** — opt-in, one JSONL line per generation in `~/.wackchatter/`, for an external token accountant to read. A local file; nothing is sent anywhere
 
 ## Install
@@ -86,6 +87,23 @@ the library at all — they cannot live inside the thing they point at:
 ~/.wackchatter/library.json  Where the library currently is. Rewritten on every launch.
 ~/.wackchatter/usage.jsonl   One line per generation. Only written with the setting on.
 ```
+
+### Backing it up
+
+**User Settings → Backup** writes the whole library to a single zip. Everything in the tree
+above goes in — characters and the folders you filed them under, chats, presets, personas,
+lorebooks, backgrounds and the deleted-chat bin — alongside a `backup.json` recording what the
+archive is and which database schema it came from.
+
+Two choices are deliberate. `secrets.json` is **left out** unless you tick the box: the zip
+lands in your downloads folder without the `0600` the original has, so anyone who opens it can
+read your keys. And `chats.db` goes in as a `VACUUM INTO` snapshot rather than a copy of the
+file — in WAL mode most of the database can be sitting in `chats.db-wal`, so copying the one
+file would lose nearly everything.
+
+There is no restore button, because there is nothing for one to do. Unzip the archive anywhere
+and the folder inside it *is* a library, marker and all — point **Data location** at it and the
+app adopts it exactly as it would any other.
 
 ### Moving it somewhere else
 
