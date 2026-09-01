@@ -96,9 +96,15 @@ export async function handlePresetRoute(
     }
 
     if (method === 'DELETE') {
-      const deleted = deletePreset(id);
-      if (deleted) cascadePresetDelete(id);
-      return deleted ? json({ ok: true }) : notFound('Preset not found.');
+      try {
+        const deleted = deletePreset(id);
+        if (deleted) cascadePresetDelete(id);
+        return deleted ? json({ ok: true }) : notFound('Preset not found.');
+      } catch (error) {
+        // deletePreset throws when the preset is the last one — a policy refusal, not a
+        // missing file, so it reads as an error message rather than a 404.
+        return errorResponse((error as Error).message);
+      }
     }
   }
 

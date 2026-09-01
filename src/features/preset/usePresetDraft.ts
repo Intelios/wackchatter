@@ -45,6 +45,7 @@ export interface PresetDraft {
   revert: () => void;
   rename: (next: string) => Promise<void>;
   duplicate: () => Promise<void>;
+  remove: () => Promise<void>;
   importPreset: (file: File | undefined) => Promise<void>;
 }
 
@@ -135,6 +136,23 @@ export function usePresetDraft({
     }
   }, [dirty, onPresetsChanged, onSelectPreset, preset, presetId]);
 
+  /**
+   * Delete the active preset. The toolbar only offers this while clean, so there is no
+   * working copy to reconcile. If the deleted preset was the active one, the server's
+   * cascade has already cleared `settings.presetId` and `onPresetsChanged` falls back to
+   * the first remaining preset — no success status, same rule as rename: the picker
+   * moving is the confirmation, and the fresh load clears the status line anyway.
+   */
+  const remove = useCallback(async () => {
+    if (!presetId) return;
+    try {
+      await presetApi.remove(presetId);
+      onPresetsChanged();
+    } catch (err) {
+      setStatus((err as Error).message);
+    }
+  }, [onPresetsChanged, presetId]);
+
   const importPreset = useCallback(
     async (file: File | undefined) => {
       if (!file) return;
@@ -169,6 +187,7 @@ export function usePresetDraft({
     revert: onRevertPreset,
     rename,
     duplicate,
+    remove,
     importPreset,
   };
 }

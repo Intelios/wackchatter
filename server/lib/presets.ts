@@ -49,9 +49,17 @@ export async function savePreset(id: string, preset: Preset): Promise<void> {
   await Bun.write(path, serializePreset(preset));
 }
 
+/**
+ * Delete a preset. The last one is refused: prompt assembly needs a preset and the
+ * default is only re-seeded at boot (`ensureDefaultPreset`), so an empty directory
+ * would leave the app unable to generate until a restart.
+ */
 export function deletePreset(id: string): boolean {
   const path = presetPath(id);
   if (!path || !existsSync(path)) return false;
+  if (listPresets().length <= 1) {
+    throw new Error('The last preset cannot be deleted — duplicate or import another first.');
+  }
   unlinkSync(path);
   return true;
 }
