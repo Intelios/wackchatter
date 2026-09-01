@@ -39,6 +39,7 @@ import {
   setSlot,
   stashedSlotCount,
 } from '@shared/cocreator/stash.ts';
+import { isLengthCutoff } from '@shared/providers/sse.ts';
 import type { ChatMessage, MessageExtra } from '@shared/types/chat.ts';
 import {
   type CardSlot,
@@ -137,7 +138,16 @@ export type CocreatorAction =
   | { type: 'swipe/select'; id: string; index: number }
   | { type: 'gen/started'; mode: CoGenMode; newId: string }
   | { type: 'gen/streaming' }
-  | { type: 'gen/finished'; text: string; extra?: MessageExtra }
+  | {
+      type: 'gen/finished';
+      text: string;
+      extra?: MessageExtra;
+      /**
+       * The provider's finish_reason. Only 'length' acts — it folds `truncated` into extra
+       * here, the same place abort and failure mark theirs.
+       */
+      finishReason?: string | null;
+    }
   | { type: 'gen/aborted'; text: string; reasoning?: string; generationId?: string }
   | {
       type: 'gen/failed';
@@ -362,7 +372,11 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
 
     case 'gen/finished':
       if (state.status === 'idle') return state;
-      return settle(state, action.text, action.extra);
+      return settle(
+        state,
+        action.text,
+        isLengthCutoff(action.finishReason) ? { ...action.extra, truncated: true } : action.extra,
+      );
 
     case 'gen/aborted':
       if (state.status === 'idle') return state;

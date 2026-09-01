@@ -335,6 +335,26 @@ describe('generation: the failure paths', () => {
     expect(reply.swipe_info[0]!.extra?.truncated).toBe(true);
   });
 
+  test('a finish_reason of length marks the reply truncated', () => {
+    // The provider cut the take at its token limit — the badge is the only thing telling
+    // it apart from a complete one.
+    const after = run(
+      run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' }),
+      { type: 'gen/started', mode: 'send', newId: 'a1' },
+      {
+        type: 'gen/finished',
+        text: 'The lamp room is',
+        finishReason: 'length',
+        extra: { model: 'gpt-5.6-sol' },
+      },
+    );
+    const reply = after.messages[1]!;
+
+    expect(currentText(reply)).toBe('The lamp room is');
+    expect(reply.swipe_info[0]!.extra?.truncated).toBe(true);
+    expect(reply.swipe_info[0]!.extra?.model).toBe('gpt-5.6-sol');
+  });
+
   test('reasoning with no content is still a result, so it is kept', () => {
     const after = run(
       run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' }),

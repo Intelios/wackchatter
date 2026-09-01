@@ -424,6 +424,9 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         dispatch({
           type: 'gen/finished',
           text: final.content,
+          // 'length' becomes the truncated badge in the reducer; a Stop click or a
+          // failure marks its own.
+          finishReason: final.finishReason,
           extra: {
             api: requestConnection.provider,
             // Recorded per swipe, so a card assembled across three model swaps can still

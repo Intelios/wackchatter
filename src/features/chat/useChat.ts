@@ -883,6 +883,7 @@ export function useChat(options: UseChatOptions): UseChat {
                 .filter((choice) => choice.content.trim())
                 .map((choice) => ({
                   text: choice.content,
+                  finishReason: choice.finishReason,
                   extra: {
                     api: requestConnection.provider,
                     model: final.model ?? requestConnection.model,
@@ -899,6 +900,9 @@ export function useChat(options: UseChatOptions): UseChat {
         dispatch({
           type: 'gen/finished',
           text: final.content,
+          // The provider's own verdict on how the reply ended. 'length' becomes the
+          // truncated badge in the reducer; a Stop click or a failure marks its own.
+          finishReason: final.finishReason,
           extra: {
             api: requestConnection.provider,
             model: final.model ?? requestConnection.model,

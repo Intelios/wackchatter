@@ -284,6 +284,43 @@ describe('sending', () => {
     assertConsistent(state);
   });
 
+  test('a finish_reason of length marks the reply truncated', () => {
+    // The provider cut the reply at openai_max_tokens. Without the badge it is visually
+    // identical to a complete reply, and "should I press Continue?" is unanswerable.
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Go on.' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      {
+        type: 'gen/finished',
+        text: 'and so the lantern',
+        finishReason: 'length',
+        extra: { model: 'gpt-4o' },
+      },
+    );
+
+    expect(currentText(last(state))).toBe('and so the lantern');
+    expect(last(state).swipe_info[0]?.extra?.truncated).toBe(true);
+    // The badge rides beside the rest of the swipe's extra, not instead of it.
+    expect(last(state).swipe_info[0]?.extra?.model).toBe('gpt-4o');
+    assertConsistent(state);
+  });
+
+  test('a clean finish is never marked truncated', () => {
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Hi' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      { type: 'gen/finished', text: 'Eldoria.', finishReason: 'stop', extra: { model: 'gpt-4o' } },
+    );
+
+    expect(last(state).swipe_info[0]?.extra?.truncated).toBeUndefined();
+    expect(last(state).swipe_info[0]?.extra?.model).toBe('gpt-4o');
+    assertConsistent(state);
+  });
+
   test('a stopped generation records its id, so the usage log can be reconciled', () => {
     // Without this the same generation is accounted for twice: once from the log line
     // written when it was stopped, and once as an unidentified swipe read back out of
@@ -692,6 +729,25 @@ describe('multiple completions', () => {
 
     expect(genStarted).toBeTruthy();
     expect(state.messages[0]!.swipe_info[4]?.gen_started).toBe(genStarted!);
+  });
+
+  test('a length-cut alternate wears the truncated badge too', () => {
+    // Each choice carries its own finish_reason: a spare stopped at the token limit must
+    // not present as a clean take once the reader swipes to it.
+    const state = run(
+      loaded(),
+      { type: 'gen/started', mode: 'swipe', newId: 'x', name: 'S' },
+      {
+        type: 'gen/finished',
+        text: 'Fourth.',
+        finishReason: 'stop',
+        alternates: [{ text: 'A fifth take, cut sh', finishReason: 'length' }],
+      },
+    );
+
+    expect(state.messages[0]!.swipe_info[3]?.extra?.truncated).toBeUndefined();
+    expect(state.messages[0]!.swipe_info[4]?.extra?.truncated).toBe(true);
+    assertConsistent(state);
   });
 
   test('a failed multi-choice swipe leaves no alternates behind', () => {

@@ -369,6 +369,18 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
   };
 }
 
+/**
+ * Whether a settled reply was cut short at its token limit.
+ *
+ * 'length' is the one finish reason that must reach the reader (`extra.truncated`): a
+ * reply stopped at `openai_max_tokens` is visually identical to a complete one, so
+ * "should I press Continue?" is unanswerable without it. Abort and failure mark their own
+ * truncation; this is the clean-settle path that could otherwise end in a silent cut.
+ */
+export function isLengthCutoff(finishReason: string | null | undefined): boolean {
+  return finishReason === 'length';
+}
+
 /** Turn a non-streamed completion body into the same shape. */
 export function parseCompletion(body: unknown, seed = ''): StreamState {
   const state: StreamState = {
