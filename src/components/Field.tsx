@@ -2,6 +2,7 @@ import { joinKeys, splitKeys } from '@shared/worldinfo/keys.ts';
 import { type Ref, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ExpandIcon } from '../layout/icons.tsx';
 import { FullscreenText } from './FullscreenText.tsx';
+import { MacroCompletionList, macroComboboxProps, useMacroCompletion } from './MacroCompletion.tsx';
 import './Field.css';
 
 interface TextFieldProps {
@@ -32,6 +33,12 @@ interface TextFieldProps {
    * persona puts the caret in its Name field. Ignored when `multiline` is set.
    */
   inputRef?: Ref<HTMLInputElement>;
+  /**
+   * Offer the `{{` completion box. Multiline only, and opt-in: a field whose value is a
+   * name or a URL is not a place macros run, and suggesting them there would teach a
+   * syntax that gets stored verbatim.
+   */
+  macros?: boolean;
 }
 
 export function TextField({
@@ -48,10 +55,17 @@ export function TextField({
   expandable,
   autoGrow,
   inputRef,
+  macros,
 }: TextFieldProps) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const macro = useMacroCompletion({
+    value,
+    onChange,
+    textareaRef,
+    enabled: Boolean(macros && multiline && !disabled),
+  });
 
   // Measured rather than computed from the text: only layout knows how the value wraps at
   // the field's current width. Collapsing to `auto` first is what lets it shrink again.
@@ -87,18 +101,34 @@ export function TextField({
       </div>
 
       {multiline ? (
-        <textarea
-          id={id}
-          ref={textareaRef}
-          className="wc-textarea"
-          data-autogrow={autoGrow || undefined}
-          value={value}
-          rows={rows}
-          placeholder={placeholder}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onCommit}
-        />
+        // Wrapped rather than bare: the completion box is absolutely positioned and needs
+        // a containing block that is exactly the input, not the whole labelled field.
+        <div className="field__area">
+          <textarea
+            id={id}
+            ref={textareaRef}
+            className="wc-textarea"
+            data-autogrow={autoGrow || undefined}
+            value={value}
+            rows={rows}
+            placeholder={placeholder}
+            disabled={disabled}
+            onChange={(e) => {
+              onChange(e.target.value);
+              macro.sync();
+            }}
+            onSelect={macro.sync}
+            onKeyDown={(e) => {
+              macro.handleKeyDown(e);
+            }}
+            onBlur={() => {
+              macro.dismiss();
+              onCommit?.();
+            }}
+            {...(macro.open ? macroComboboxProps(macro) : {})}
+          />
+          <MacroCompletionList handle={macro} placement="below" />
+        </div>
       ) : (
         <input
           id={id}

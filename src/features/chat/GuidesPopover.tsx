@@ -156,7 +156,8 @@ export function GuidesPopover({
           multiline
           rows={3}
           onChange={(template) => onGuidanceChange({ template })}
-          hint="{{input}} is replaced with what you typed. Other macros work too."
+          macros
+          hint="{{input}} is replaced with what you typed. Type {{ for the rest of the macros."
         />
         <div className="guides__row">
           <NumberField

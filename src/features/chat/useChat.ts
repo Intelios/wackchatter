@@ -22,6 +22,7 @@ import {
 import type { MemoryRecall } from '@shared/memory/source.ts';
 import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/assemble.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
+import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
@@ -160,6 +161,8 @@ export interface UseChat {
   loadError: string | null;
 
   send(text: string): Promise<void>;
+  /** Append a message and ask for nothing. `/roll`'s write path. */
+  appendUserMessage(text: string): void;
   regenerate(): Promise<void>;
   /** -1 shows a cached swipe; +1 past the end generates a new one. */
   swipe(direction: -1 | 1): Promise<void>;
@@ -974,6 +977,51 @@ export function useChat(options: UseChatOptions): UseChat {
     ],
   );
 
+  /**
+   * Resolve macros in something the user just typed, and commit what they did.
+   *
+   * The composer's one macro chokepoint: a draft passes through here on its way to becoming
+   * a message or a guidance instruction, and never again. Assembly re-substitutes stored
+   * text on every request, so a `{{roll:1d20}}` left in the transcript is a fresh number in
+   * every swipe with nothing on screen to say which one shipped. Resolving once makes it a
+   * fact about the turn. This is SillyTavern's `sendMessageAsUser`.
+   *
+   * Returns the resolved text and the state to assemble from — folded rather than read back
+   * from `stateRef`, because a variable write dispatched here has not re-rendered yet and
+   * assembly would otherwise read the values from before the turn.
+   */
+  const resolveDraft = useCallback(
+    async (text: string): Promise<{ text: string; state: ChatState }> => {
+      const current = stateRef.current;
+      // Half-resolved is worse than raw: without a character there is no {{char}} to expand.
+      if (!character || !preset) return { text, state: current };
+
+      const resolved = resolveOutgoingMacros(text, {
+        character,
+        preset,
+        persona,
+        messages: toChatMessages(current),
+        metadata: current.metadata,
+        globalVariables,
+        seed: current.chatId ?? '',
+      });
+
+      let next = current;
+      if (resolved.localChanged) {
+        const action: ChatAction = {
+          type: 'chat/metadata',
+          patch: { variables: resolved.local },
+        };
+        dispatch(action);
+        next = chatReducer(next, action);
+      }
+      if (resolved.globalChanged) await onGlobalVariablesChange(resolved.global);
+
+      return { text: resolved.text, state: next };
+    },
+    [character, preset, persona, globalVariables, onGlobalVariablesChange],
+  );
+
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -986,6 +1034,18 @@ export function useChat(options: UseChatOptions): UseChat {
         return;
       }
 
+      const draft = await resolveDraft(trimmed);
+      const resolved = draft.text.trim();
+
+      /*
+       * A draft whose macros left nothing behind — `{{setvar::hp::10}}` on its own.
+       *
+       * The variables are already committed above, so the gesture worked; what is refused is
+       * the empty bubble and the generation it would trigger. This is what makes the
+       * composer a usable place to set a variable rather than only a place to say something.
+       */
+      if (!resolved) return;
+
       const userAction: ChatAction = {
         // The name becomes message.name, which names_behavior can put into the prompt
         // text — so it has to be the same name {{user}} expands to, not a friendlier
@@ -995,15 +1055,37 @@ export function useChat(options: UseChatOptions): UseChat {
         id: crypto.randomUUID(),
         name: persona?.name ?? DEFAULT_USER_NAME,
         personaId: persona?.id ?? null,
-        text: trimmed,
+        text: resolved,
       };
 
       dispatch(userAction);
       // Hand the folded state forward: the user's message must be in the history the
       // reply is assembled from, and dispatch has not re-rendered yet.
-      await generate('send', chatReducer(stateRef.current, userAction));
+      await generate('send', chatReducer(draft.state, userAction));
     },
-    [generate, persona],
+    [generate, persona, resolveDraft],
+  );
+
+  /**
+   * `/roll`'s write path: a message, with no reply asked for.
+   *
+   * Text that is already resolved — the command rolled the dice itself — so it does not go
+   * back through `resolveDraft`. Not generating matches every other slash command, and a
+   * transcript left on the user's turn already offers retry.
+   */
+  const appendUserMessage = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || stateRef.current.status !== 'idle') return;
+      dispatch({
+        type: 'message/appendUser',
+        id: crypto.randomUUID(),
+        name: persona?.name ?? DEFAULT_USER_NAME,
+        personaId: persona?.id ?? null,
+        text: trimmed,
+      });
+    },
+    [persona],
   );
 
   const regenerate = useCallback(() => generate('regenerate'), [generate]);
@@ -1064,20 +1146,31 @@ export function useChat(options: UseChatOptions): UseChat {
    * other generation — mode `send` drops the placeholder, mode `swipe` drops the blank
    * alternate — so a guided attempt that goes nowhere leaves nothing behind.
    */
+  /*
+   * Guidance is typed in the same composer, so it resolves in the same place.
+   *
+   * This does not weaken assembly's rule that macros inside `{{input}}` stay literal — that
+   * rule is what stops one pass from becoming two. The text simply arrives already resolved,
+   * so `{{roll:1d20}}` in a guide means a number here exactly as it does in a message.
+   */
   const guidedRespond = useCallback(
     async (guidance: string) => {
       if (!guidance.trim() || stateRef.current.status !== 'idle') return;
-      await generate('send', undefined, guidance);
+      const draft = await resolveDraft(guidance);
+      if (!draft.text.trim()) return;
+      await generate('send', draft.state, draft.text);
     },
-    [generate],
+    [generate, resolveDraft],
   );
 
   const guidedSwipe = useCallback(
     async (guidance: string) => {
       if (!guidance.trim() || stateRef.current.status !== 'idle') return;
-      await generate('swipe', undefined, guidance);
+      const draft = await resolveDraft(guidance);
+      if (!draft.text.trim()) return;
+      await generate('swipe', draft.state, draft.text);
     },
-    [generate],
+    [generate, resolveDraft],
   );
 
   const abort = useCallback(() => {
@@ -1884,6 +1977,7 @@ export function useChat(options: UseChatOptions): UseChat {
     saveError,
     loadError,
     send,
+    appendUserMessage,
     regenerate,
     swipe,
     swipeTo,

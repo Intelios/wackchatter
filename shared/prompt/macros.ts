@@ -1,4 +1,5 @@
 import type { MacroValue, MacroVariableMap, MacroWarning } from '../types/chat.ts';
+import { rollDice } from './dice.ts';
 
 /**
  * Macro substitution.
@@ -200,21 +201,14 @@ const MONTHS = [
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-/** Roll NdM or a flat 1..N. Mirrors SillyTavern's {{roll}}. */
+/**
+ * Mirrors SillyTavern's {{roll}}: the total alone, and an empty string for a formula droll
+ * would reject. The grammar lives in `dice.ts`, which `/roll` shares — one place decides
+ * what `3d6+4` means, so the command and the macro can never disagree about a card.
+ */
 function roll(spec: string): string {
-  const dice = /^(\d*)d(\d+)$/i.exec(spec.trim());
-  if (dice) {
-    const count = Number(dice[1] || 1);
-    const sides = Number(dice[2]);
-    if (!Number.isFinite(count) || !Number.isFinite(sides) || sides < 1) return '';
-    let total = 0;
-    for (let i = 0; i < count; i++) total += Math.floor(Math.random() * sides) + 1;
-    return String(total);
-  }
-
-  const max = Number(spec.trim());
-  if (!Number.isFinite(max) || max < 1) return '';
-  return String(Math.floor(Math.random() * max) + 1);
+  const result = rollDice(spec);
+  return result === null ? '' : String(result.total);
 }
 
 /** Split a {{random}}/{{pick}} argument list on :: or , as SillyTavern accepts both. */
@@ -240,36 +234,15 @@ export function hashString(value: string): number {
 }
 
 /**
- * Substitute macros in `text`.
+ * The macros whose value is simply read out of the environment, resolved lazily so nothing
+ * is computed for a macro the text does not use.
  *
- * @param seed Stabilises {{pick}}. Pass something chat-scoped so a pick stays put.
+ * A module-level builder rather than a literal inside `substituteMacros` for one reason:
+ * `CORE_MACRO_NAMES` below is derived from it, so the macro reference cannot drift from the
+ * engine by forgetting to document a name. Keep it that way.
  */
-export function substituteMacros(
-  text: string,
-  env: MacroEnvironment,
-  seed = '',
-  options: MacroSubstitutionOptions = {},
-): string {
-  if (!text) return '';
-
-  const runtime = options.runtime ?? createMacroRuntime();
-  const diagnosticSource = options.source ?? 'unknown';
-
-  // SillyTavern's pre-curly legacy identity tokens are still common in older cards.
-  const withLegacyNames = text.replace(
-    /<(USER|BOT|CHAR|GROUP|CHARIFNOTGROUP)>/gi,
-    (_match, name: string) => (name.toLowerCase() === 'user' ? env.user : env.char),
-  );
-
-  // {{trim}} eats the whitespace around its own position. Handled up front, on its own,
-  // so the general pass never needs a sentinel value that could collide with real text.
-  const source = withLegacyNames.replace(/\s*\{\{trim\}\}\s*/gi, '');
-  if (!source) return '';
-
-  const now = new Date();
-
-  // Values resolved lazily so we never compute a macro the text doesn't use.
-  const values: Record<string, () => string> = {
+function coreValues(env: MacroEnvironment, now: Date): Record<string, () => string> {
+  return {
     char: () => env.char,
     bot: () => env.char,
     user: () => env.user,
@@ -307,6 +280,84 @@ export function substituteMacros(
     newline: () => '\n',
     noop: () => '',
   };
+}
+
+/** Every environment-backed macro name, derived rather than listed. */
+export const CORE_MACRO_NAMES: readonly string[] = Object.keys(
+  coreValues({ char: '', user: '' }, new Date()),
+);
+
+/**
+ * Every macro handled by the resolver's switch — the ones that take arguments and do
+ * something rather than read a value.
+ *
+ * This one IS a hand-kept list, because a `switch` has no keys to enumerate. Adding a case
+ * below without adding it here is the one way the reference can fall behind the engine, and
+ * `macroCatalog.test.ts` will not catch it. Add both, or neither.
+ */
+export const KEYWORD_MACROS: readonly string[] = [
+  'roll',
+  'random',
+  'pick',
+  'reverse',
+  'setvar',
+  'setglobalvar',
+  'addvar',
+  'addglobalvar',
+  'incvar',
+  'incglobalvar',
+  'decvar',
+  'decglobalvar',
+  'getvar',
+  'getglobalvar',
+  'hasvar',
+  'varexists',
+  'hasglobalvar',
+  'globalvarexists',
+  'deletevar',
+  'flushvar',
+  'deleteglobalvar',
+  'flushglobalvar',
+];
+
+/**
+ * Everything the engine resolves, for the macro reference and its completion box.
+ *
+ * `{{trim}}` and `{{//}}` are absent on purpose: both are stripped before the resolver ever
+ * sees them, so neither has a name here. The catalogue documents them separately.
+ */
+export const KNOWN_MACROS: readonly string[] = [...CORE_MACRO_NAMES, ...KEYWORD_MACROS];
+
+/**
+ * Substitute macros in `text`.
+ *
+ * @param seed Stabilises {{pick}}. Pass something chat-scoped so a pick stays put.
+ */
+export function substituteMacros(
+  text: string,
+  env: MacroEnvironment,
+  seed = '',
+  options: MacroSubstitutionOptions = {},
+): string {
+  if (!text) return '';
+
+  const runtime = options.runtime ?? createMacroRuntime();
+  const diagnosticSource = options.source ?? 'unknown';
+
+  // SillyTavern's pre-curly legacy identity tokens are still common in older cards.
+  const withLegacyNames = text.replace(
+    /<(USER|BOT|CHAR|GROUP|CHARIFNOTGROUP)>/gi,
+    (_match, name: string) => (name.toLowerCase() === 'user' ? env.user : env.char),
+  );
+
+  // {{trim}} eats the whitespace around its own position. Handled up front, on its own,
+  // so the general pass never needs a sentinel value that could collide with real text.
+  const source = withLegacyNames.replace(/\s*\{\{trim\}\}\s*/gi, '');
+  if (!source) return '';
+
+  const now = new Date();
+
+  const values = coreValues(env, now);
 
   for (const [key, value] of Object.entries(env.extra ?? {})) {
     values[key.toLowerCase()] = typeof value === 'function' ? value : () => value;

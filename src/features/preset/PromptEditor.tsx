@@ -180,7 +180,8 @@ export function PromptEditor({
             multiline
             expandable
             rows={12}
-            hint="Supports {{char}}, {{user}}, {{persona}} and the rest of the macro set."
+            macros
+            hint="Type {{ for the macro list — {{char}}, {{roll::1d20}}, {{random::a::b}} and the rest."
           />
         )}
 

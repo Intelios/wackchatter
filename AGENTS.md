@@ -47,7 +47,7 @@ shared/          Pure, no I/O. Imported by both server and client.
   cocreator/     CardStash — the filed-card model.
   memory/        Id-based memory list ops + the extraction prompt and reply contract.
   persona/       derive.ts — card-to-persona: the prompt, the reply contract, the house format.
-  prompt/        Assembly engine, macros, preset I/O, defaults, token cache.
+  prompt/        Assembly engine, macros, dice, preset I/O, defaults, token cache.
   providers/     Request building + SSE parsing. looseJson.ts is shared by both extractors.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine.
@@ -139,10 +139,36 @@ users' libraries silently.
   built-in prompts must be present. Marker prompts carry no `content` on disk. Unknown
   keys are preserved on save.
 
+**Macros** (`shared/prompt/`)
+- Three entry points, three runtime rules, and they are not interchangeable.
+  `assemble.ts` uses **one runtime for the whole request** and commits it — a `{{setvar}}`
+  in a prompt writes. `greeting.ts` builds a **fresh runtime per call and throws it away**
+  — rendering must never write, or scrolling would rewrite the chat's variables.
+  `outgoing.ts` is the send path: **one pass, committed by the caller**, which is the only
+  one that returns the new maps instead of persisting them itself.
+- **Text the user typed resolves once, at the composer chokepoint** (`useChat.resolveDraft`,
+  reached by `send`, `guidedRespond` and `guidedSwipe`) — ST's `sendMessageAsUser`. Never
+  on edit: an edit is repair, and it is the one place `{{char}}` has to survive as text.
+  A draft whose macros leave nothing behind commits its variables and appends no message.
+- The variable write is **folded into the state handed to `generate`**, not left to
+  dispatch. Reading `stateRef` after dispatching would assemble from the values from
+  before the turn, and `{{incvar}}` would be off by one on the turn that ran it.
+- `{{roll}}` is **droll's grammar** (`NdM±K`, count optional, a bare number as `1dN`) in
+  `dice.ts`, shared with `/roll`. Two things droll lacks: a dice cap and a sides cap, which
+  are not optional — the same text now runs on every send, and a card carrying
+  `{{roll:99999999d6}}` would otherwise hang the loop.
+- `macroCatalog.ts` is the reference the `{{` box lists, and it is **test-locked to the
+  engine**: every documented usage must resolve without a warning, and every name in
+  `KNOWN_MACROS` must be documented. `CORE_MACRO_NAMES` is derived from `coreValues` so it
+  cannot drift; `KEYWORD_MACROS` is hand-kept beside the switch and is the one place a new
+  macro can go undocumented.
+
 **Assembly** (`shared/prompt/assemble.ts`)
 - Macros substitute **per prompt object and per message at materialisation time**, never
   one pass over a joined string; `{{random}}` re-rolls per occurrence and token counts
-  are only right post-substitution.
+  are only right post-substitution. Preset prompts are re-materialised every request, so a
+  `{{roll}}` in one is fresh each turn — `{{pick}}` is the seeded macro for a choice that
+  should stick.
 - Budget is `openai_max_context - openai_max_tokens`. History packs **newest-first** and
   stops hard at the first message that doesn't fit.
 - `injection_position: ABSOLUTE` splices into history at `injection_depth` (0 = after the

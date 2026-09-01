@@ -1,0 +1,92 @@
+/*
+ * The `{{` completion box.
+ *
+ * Deliberately the composer's slash box in a second skin: the same surface, the same
+ * shadow, the same row shape. Two autocompletes on one screen that look different read as
+ * two features, and this is one gesture — "the app knows what goes here".
+ *
+ * Absolutely positioned, so every host must give it a positioned ancestor.
+ */
+.wc-macro-box {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: var(--wc-space-1);
+  max-height: min(40vh, var(--wc-scroll-cap));
+  overflow-y: auto;
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+  animation: wc-macro-in var(--wc-duration) var(--wc-ease);
+}
+
+.wc-macro-box[data-placement="above"] {
+  bottom: 100%;
+  margin-bottom: var(--wc-space-2);
+}
+
+.wc-macro-box[data-placement="below"] {
+  top: 100%;
+  margin-top: var(--wc-space-1);
+}
+
+@keyframes wc-macro-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wc-macro-box {
+    animation: none;
+  }
+}
+
+.wc-macro-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: none;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.wc-macro-item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.wc-macro-item--active {
+  background: var(--wc-accent-subtle);
+}
+
+.wc-macro-name {
+  flex-shrink: 0;
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-accent);
+}
+
+.wc-macro-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.wc-macro-cat {
+  flex-shrink: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
