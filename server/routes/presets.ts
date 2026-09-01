@@ -2,7 +2,7 @@
 
 import { serializePreset } from '../../shared/prompt/preset-io.ts';
 import type { Preset } from '../../shared/types/preset.ts';
-import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
+import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import {
   deletePreset,
   duplicatePreset,
@@ -61,7 +61,7 @@ export async function handlePresetRoute(
     return new Response(serializePreset(preset), {
       headers: {
         'content-type': 'application/json',
-        'content-disposition': `attachment; filename="${id.replace(/[^\w\-. ]/g, '')}.json"`,
+        'content-disposition': contentDisposition(`${id}.json`),
       },
     });
   }

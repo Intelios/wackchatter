@@ -1,7 +1,7 @@
 /** Standalone lorebook CRUD + import/export. */
 
 import type { WorldInfoBook } from '../../shared/types/worldinfo.ts';
-import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
+import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import {
   createLorebook,
   deleteLorebook,
@@ -56,7 +56,7 @@ export async function handleLorebookRoute(
     return new Response(`${JSON.stringify({ ...rest, name: id }, null, 4)}\n`, {
       headers: {
         'content-type': 'application/json',
-        'content-disposition': `attachment; filename="${id.replace(/[^\w\-. ]/g, '')}.json"`,
+        'content-disposition': contentDisposition(`${id}.json`),
       },
     });
   }

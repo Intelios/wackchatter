@@ -8,7 +8,7 @@ import type {
 } from '../../shared/types/chat.ts';
 import { parseChatExport } from '../lib/backups.ts';
 import { chatStore } from '../lib/chats.ts';
-import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
+import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
 
 interface CreateBody {
   characterId?: string;
@@ -102,11 +102,11 @@ export async function handleChatRoute(
     const chat = store.getChat(id);
     if (!chat) return notFound('Chat not found.');
 
-    const base = chat.title.replace(/[^\w\-. ]/g, '') || 'chat';
+    const base = chat.title || 'chat';
     return new Response(JSON.stringify(chat, null, 4), {
       headers: {
         'content-type': 'application/json',
-        'content-disposition': `attachment; filename="${base}.json"`,
+        'content-disposition': contentDisposition(`${base}.json`),
       },
     });
   }

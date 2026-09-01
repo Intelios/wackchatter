@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { handleCharacterRoute } from '../routes/characters.ts';
 import {
   createBlankCard,
   createCharacter,
@@ -113,5 +114,26 @@ describe('updateWorldLinks', () => {
 
     expect(await updateWorldLinks('Doomed', null)).toBe(1);
     expect(getCharacter('Alice.png')?.card.data.extensions.world).toBeUndefined();
+  });
+
+  test('export character sets RFC 5987 Content-Disposition header for png and json', async () => {
+    const char = await create('Café Waitress');
+    const pngReq = new Request(`http://localhost/api/characters/${char.avatar}/export?format=png`);
+    const pngRes = await handleCharacterRoute(pngReq, [char.avatar, 'export']);
+    expect(pngRes).not.toBeNull();
+    expect(pngRes?.status).toBe(200);
+    expect(pngRes?.headers.get('content-disposition')).toBe(
+      'attachment; filename="Caf Waitress.png"; filename*=UTF-8\'\'Caf%C3%A9%20Waitress.png',
+    );
+
+    const jsonReq = new Request(
+      `http://localhost/api/characters/${char.avatar}/export?format=json`,
+    );
+    const jsonRes = await handleCharacterRoute(jsonReq, [char.avatar, 'export']);
+    expect(jsonRes).not.toBeNull();
+    expect(jsonRes?.status).toBe(200);
+    expect(jsonRes?.headers.get('content-disposition')).toBe(
+      'attachment; filename="Caf Waitress.json"; filename*=UTF-8\'\'Caf%C3%A9%20Waitress.json',
+    );
   });
 });
