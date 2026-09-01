@@ -1,16 +1,28 @@
 import { join } from 'node:path';
 import { json } from '../lib/http.ts';
 import { PROJECT_ROOT } from '../lib/paths.ts';
+import { createBehindChecker } from '../lib/updates.ts';
 
-interface VersionInfo {
+interface LocalVersion {
   version: string;
   branch: string | null;
   revision: string | null;
 }
 
-let cached: VersionInfo | null = null;
+interface VersionInfo extends LocalVersion {
+  commitsBehind: number | null;
+}
 
-async function resolveVersion(): Promise<VersionInfo> {
+/*
+ * The local facts are cached for the process lifetime: an update via update.sh restarts
+ * the server, so they cannot change under a running one. The behind count is the one
+ * field that moves on its own — it lives in the TTL-gated checker instead.
+ */
+let cached: LocalVersion | null = null;
+
+const behind = createBehindChecker(PROJECT_ROOT);
+
+async function resolveVersion(): Promise<LocalVersion> {
   if (cached) return cached;
 
   let version = '0.0.0';
@@ -41,7 +53,12 @@ export async function handleVersionRoute(
   segments: string[],
 ): Promise<Response | null> {
   if (segments.length === 0 && request.method === 'GET') {
-    return json(await resolveVersion());
+    // Not awaited: the refresh is a network fetch, and the count is a hint, not a fact
+    // this response needs. The first requester sees null; the next one the number.
+    void behind.maybeRefresh();
+    const local = await resolveVersion();
+    const payload: VersionInfo = { ...local, commitsBehind: behind.current()?.value ?? null };
+    return json(payload);
   }
   return null;
 }

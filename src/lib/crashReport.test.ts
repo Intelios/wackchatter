@@ -60,7 +60,7 @@ describe('formatCrashReport', () => {
     const report = formatCrashReport({
       error: new TypeError('boom'),
       where: 'the chat',
-      version: { version: '0.19.0', branch: 'dev', revision: 'ad0a6e2' },
+      version: { version: '0.19.0', branch: 'dev', revision: 'ad0a6e2', commitsBehind: null },
       url: 'http://localhost:5173/',
       userAgent: 'TestBrowser/1.0',
       at: AT,

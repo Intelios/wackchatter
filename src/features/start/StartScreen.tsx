@@ -10,6 +10,7 @@ import {
   TrashIcon,
 } from '../../layout/icons.tsx';
 import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
+import { versionString } from './versionString.ts';
 import './StartScreen.css';
 
 const COLLAPSED_COUNT = 3;
@@ -33,7 +34,7 @@ interface RecentChat extends ChatSummary {
 function relativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
+  const minutes = Math.floor(seconds / 1000);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -44,14 +45,6 @@ function relativeTime(timestamp: number): string {
     month: 'short',
     year: days >= 365 ? 'numeric' : undefined,
   });
-}
-
-function versionString(info: VersionInfo): string {
-  let display = `WackChatter ${info.version}`;
-  if (info.branch && info.revision) {
-    display += ` '${info.branch}' (${info.revision})`;
-  }
-  return display;
 }
 
 export function StartScreen({
@@ -78,12 +71,21 @@ export function StartScreen({
 
   useEffect(() => {
     let cancelled = false;
-    void versionApi
-      .get()
-      .then((info) => {
-        if (!cancelled) setVersion(info);
-      })
-      .catch(() => {});
+    const refreshVersion = () => {
+      void versionApi
+        .get()
+        .then((info) => {
+          if (!cancelled) setVersion(info);
+        })
+        .catch(() => {});
+    };
+    refreshVersion();
+    // The Start screen can sit mounted for days; refetching when the window comes back
+    // gives the server's TTL a chance to matter. It decides whether work happens.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshVersion();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     void chatApi
       .recent(MAX_RECENT)
       .then((chats) => {
@@ -92,6 +94,7 @@ export function StartScreen({
       .catch(() => {});
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -134,7 +137,14 @@ export function StartScreen({
         <h1 className="start-screen__title">
           Wack<span className="start-screen__title-accent">Chatter</span>
         </h1>
-        {version ? <span className="start-screen__version">{versionString(version)}</span> : null}
+        {version ? (
+          <span
+            className="start-screen__version"
+            title={version.commitsBehind ? 'Run ./update.sh to update' : undefined}
+          >
+            {versionString(version)}
+          </span>
+        ) : null}
       </div>
 
       <div className="start-screen__recent">

@@ -854,6 +854,8 @@ export interface VersionInfo {
   version: string;
   branch: string | null;
   revision: string | null;
+  /** How far upstream is ahead, or null before the first background check lands. */
+  commitsBehind: number | null;
 }
 
 export const versionApi = {
