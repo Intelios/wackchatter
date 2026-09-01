@@ -44,8 +44,6 @@ export const LEFT_PANELS: readonly PanelSpec<LeftPanelId>[] = [
 export const RIGHT_PANELS: readonly PanelSpec<RightPanelId>[] = [
   { id: 'characters', label: 'Characters', icon: <UsersIcon /> },
   { id: 'lorebooks', label: 'Lorebooks', icon: <BookIcon /> },
-  // The id stays 'summary' while the label does not: it is what persisted panel state and
-  // the keyboard shortcuts address, and renaming it would reopen everyone's sidebar blank.
   { id: 'summary', label: 'Memory', icon: <SummaryIcon /> },
   { id: 'persona', label: 'Persona', icon: <UserIcon /> },
   { id: 'settings', label: 'User Settings', icon: <GearIcon /> },
