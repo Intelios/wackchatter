@@ -1128,6 +1128,28 @@ export function reassignCharacterExampleSets(
 }
 
 /**
+ * Re-key or remove the card's slot in the Arena blind-draw pool. The pool stores the same
+ * PNG filenames everything else keys on, so a rename carries the slot to the new identity —
+ * the draw filters the pool against the library, and a stale entry would silently drop the
+ * renamed card from every future round — and a delete takes it out rather than leaving a
+ * dead id squatting in the list. Returns null when the pool never named the card — no save
+ * needed.
+ */
+export function reassignArenaCardPool(
+  current: AppSettings,
+  oldAvatar: string,
+  newAvatar: string | null,
+): AppSettings | null {
+  if (!current.arena.cardPool.includes(oldAvatar)) return null;
+
+  const cardPool =
+    newAvatar === null
+      ? current.arena.cardPool.filter((id) => id !== oldAvatar)
+      : current.arena.cardPool.map((id) => (id === oldAvatar ? newAvatar : id));
+  return { ...current, arena: { ...current.arena, cardPool } };
+}
+
+/**
  * Repoint or clear preset references when a preset is renamed or deleted.
  * Updates `AppSettings.presetId`, `AppSettings.memory.presetId`,
  * `AppSettings.coCreator.presetId`, and `AppSettings.arena.presetId` — on delete the

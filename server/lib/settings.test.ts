@@ -25,6 +25,7 @@ import {
   mergeSettings,
   migrateLegacyConnection,
   nextConnectionName,
+  reassignArenaCardPool,
   reassignCharacterDialogueColor,
   reassignCharacterExampleSets,
   reassignCharacterRating,
@@ -878,6 +879,36 @@ describe('character rating identity changes', () => {
     const current = mergeSettings(base(), { characterRatings: { rated: 3 } });
     expect(reassignCharacterRating(current, 'rated', null)).not.toBeNull();
     expect(reassignCharacterRating(current, 'absent', null)).toBeNull();
+  });
+});
+
+describe('arena card pool identity changes', () => {
+  test('a character rename carries its pool slot to the new identity, in place', () => {
+    const current = mergeSettings(base(), {
+      arena: { ...base().arena, cardPool: ['Old.png', 'Middle.png', 'Other.png'] },
+    });
+    const next = reassignArenaCardPool(current, 'Old.png', 'New.png');
+
+    expect(next?.arena.cardPool).toEqual(['New.png', 'Middle.png', 'Other.png']);
+    // A pool that never named the card is nothing to persist.
+    expect(reassignArenaCardPool(current, 'Missing.png', 'New.png')).toBeNull();
+  });
+
+  test('deleting a character removes only its pool slot', () => {
+    const current = mergeSettings(base(), {
+      arena: { ...base().arena, cardPool: ['Doomed.png', 'Kept.png'] },
+    });
+    expect(reassignArenaCardPool(current, 'Doomed.png', null)?.arena.cardPool).toEqual([
+      'Kept.png',
+    ]);
+  });
+
+  test('an unlisted card is indistinguishable from an empty pool', () => {
+    const current = mergeSettings(base(), {
+      arena: { ...base().arena, cardPool: ['Other.png'] },
+    });
+    expect(reassignArenaCardPool(current, 'absent', null)).toBeNull();
+    expect(reassignArenaCardPool(current, 'absent', 'Renamed.png')).toBeNull();
   });
 });
 

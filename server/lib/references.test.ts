@@ -175,6 +175,22 @@ describe('character cascades', () => {
     expect(getSettings().dialogueColors.characters).toEqual({});
   });
 
+  test('a rename carries the blind pool slot to the new identity, a delete drops it', async () => {
+    saveSettings({
+      arena: { ...getSettings().arena, cardPool: ['Old.png', 'Other.png'] },
+    });
+
+    const rollback = cascadeCharacterRename('Old.png', 'New.png');
+    expect(getSettings().arena.cardPool).toEqual(['New.png', 'Other.png']);
+
+    await rollback();
+    expect(getSettings().arena.cardPool).toEqual(['Old.png', 'Other.png']);
+
+    cascadeCharacterDelete('Old.png');
+    // A dead id must not squat a slot in the pool forever.
+    expect(getSettings().arena.cardPool).toEqual(['Other.png']);
+  });
+
   test('a rename repoints sessions seeded from the card, and a delete detaches them', () => {
     const seeded = cocreatorStore().createSession({ seedAvatar: 'Old.png' }).id;
 
