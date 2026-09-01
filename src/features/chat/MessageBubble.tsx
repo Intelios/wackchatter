@@ -313,6 +313,12 @@ export const MessageBubble = memo(function MessageBubble({
                   branch: () => onBranch(message.id),
                   delete: () => (confirmDelete ? onDelete(message.id) : setConfirmDelete(true)),
                 }}
+                // The delete confirm is armed inside the menu, so the menu's own close is
+                // the hook that must disarm it — a dismissal without confirming must not
+                // leave the next open one click away from deleting.
+                onOpenChange={(open) => {
+                  if (!open) setConfirmDelete(false);
+                }}
               />
             </div>
           ) : null}

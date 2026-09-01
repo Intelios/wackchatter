@@ -55,7 +55,11 @@ export interface MessageExtra {
   generation_id?: string;
   /** Reasoning / thinking text, shown collapsed. */
   reasoning?: string;
-  /** Set when generation was interrupted. */
+  /**
+   * Set when generation was interrupted, or the provider ended the reply at its token
+   * limit (`finish_reason: 'length'`) — a cut reply is otherwise indistinguishable from
+   * a complete one.
+   */
   truncated?: boolean;
   /** Co-Creator-only provenance for user actions whose wording is editable. */
   coCreatorAction?: 'analyseExamples';

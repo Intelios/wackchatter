@@ -129,9 +129,15 @@ export function buildMessageMenu(
 interface MessageMenuProps {
   state: MessageMenuState;
   actions: MessageMenuActions;
+  /**
+   * Told when the menu opens or closes. The menu owns its open state; this exists so a
+   * caller holding state about an entry — the two-click delete — can disarm it when the
+   * menu is dismissed without confirming.
+   */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function MessageMenu({ state, actions }: MessageMenuProps) {
+export function MessageMenu({ state, actions, onOpenChange }: MessageMenuProps) {
   return (
     <Menu
       label="More actions"
@@ -139,6 +145,7 @@ export function MessageMenu({ state, actions }: MessageMenuProps) {
       placement="bottom-end"
       className="message__menu"
       entries={buildMessageMenu(state, actions)}
+      onOpenChange={onOpenChange}
     />
   );
 }

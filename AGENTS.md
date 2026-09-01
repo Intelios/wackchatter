@@ -99,6 +99,22 @@ User Settings and the server repoints itself without restarting. Three invariant
    changes where the data physically is. Before it, unwind. After it, never unwind —
    report the failure and ask for a restart.
 
+**Backups walk the same directory** (`lib/library.ts`). `switchDataDir` refuses while one is
+being built, and the backup refuses while `drainLocks` is unsettled. The guarded window is
+generation only: once the archive is a finished temp file a move can no longer corrupt it, so
+holding the slot through the download would refuse moves for nothing. Two entries are
+synthesised rather than walked — `chats.db` (a `VACUUM INTO` snapshot, because `settle()`
+would flip the *live* database to `journal_mode = DELETE`) and `backup.json` — and **both must
+stay excluded at the root**: restoring is unzip-and-adopt, so a restored library carries
+`backup.json` forever and backing it up again would write the name twice.
+
+**Bun.serve buffers a JS `ReadableStream` body in full** — measured at 2.1 GB of RSS for a
+400 MB library, with the producer finishing twelve times faster than delivery. `desiredSize`
+never drops, so there is no backpressure to lean on, and async generators and `type: 'direct'`
+behave the same. That is why the archive is drained into a `FileSink` (where `await
+sink.flush()` *does* apply backpressure) and served with `Bun.file`, which streams in constant
+memory and supplies a `content-length`. Do not "simplify" it back to returning the stream.
+
 Supporting rules: the database moves as one file (`closeDatabase()` checkpoints with
 `TRUNCATE` and leaves WAL — a `-wal` with content is never deleted); a synced folder gets
 `journal_mode = DELETE`. `lib/backgrounds.ts` refuses caller-supplied directories while

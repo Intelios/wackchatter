@@ -162,7 +162,12 @@ export function parseSlashCommand(input: string): SlashParseResult | null {
     return { ok: false, error: 'Enter a command after the slash, e.g. /hide 0-150.' };
   }
 
-  switch (firstWord) {
+  /*
+   * Case-insensitive to match `slashCompletion`, which suggests on a lowercased token —
+   * the box must never advertise a name the parser then refuses. The unknown-command
+   * error below still echoes the spelling that was typed.
+   */
+  switch (firstWord.toLowerCase()) {
     case 'hide':
       return parseRange('hide', arg);
     case 'unhide':

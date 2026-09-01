@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDefaultPreset } from '../../shared/prompt/defaults.ts';
+import { handlePresetRoute } from '../routes/presets.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
 import {
   deletePreset,
@@ -127,5 +128,16 @@ describe('presets', () => {
     const imported = await importPreset(createDefaultPreset(), 'My Imported Preset.json');
     expect(imported.id).toBe('My Imported Preset');
     expect(getPreset('My Imported Preset')).not.toBeNull();
+  });
+
+  test('export preset sets RFC 5987 Content-Disposition header', async () => {
+    await savePreset('Café Preset', createDefaultPreset());
+    const req = new Request('http://localhost/api/presets/Caf%C3%A9%20Preset/export');
+    const res = await handlePresetRoute(req, ['Café Preset', 'export']);
+    expect(res).not.toBeNull();
+    expect(res?.status).toBe(200);
+    expect(res?.headers.get('content-disposition')).toBe(
+      'attachment; filename="Caf Preset.json"; filename*=UTF-8\'\'Caf%C3%A9%20Preset.json',
+    );
   });
 });

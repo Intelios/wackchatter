@@ -28,6 +28,7 @@ import {
 } from '@shared/chat/message.ts';
 import { markMemoriesStale } from '@shared/memory/memories.ts';
 import type { ContextOverflow } from '@shared/prompt/assemble.ts';
+import { isLengthCutoff } from '@shared/providers/sse.ts';
 import type { ChatCompletionBody } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
@@ -75,6 +76,11 @@ const MAX_INSPECTIONS = 10;
 export interface GeneratedAlternate {
   text: string;
   extra?: MessageExtra;
+  /**
+   * The choice's own finish_reason. A spare the provider cut at its token limit gets the
+   * same truncated badge as the reply above it, not a clean-looking half-take.
+   */
+  finishReason?: string | null;
 }
 
 export interface ChatState {
@@ -148,7 +154,18 @@ export type ChatAction =
   | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
   | { type: 'gen/inspected'; inspection: PromptInspection }
   | { type: 'gen/streaming' }
-  | { type: 'gen/finished'; text: string; extra?: MessageExtra; alternates?: GeneratedAlternate[] }
+  | {
+      type: 'gen/finished';
+      text: string;
+      extra?: MessageExtra;
+      alternates?: GeneratedAlternate[];
+      /**
+       * The provider's finish_reason for the primary choice. Only 'length' acts — it is
+       * the one clean-settle path that can end in a silent cut, and it folds `truncated`
+       * into extra here, the same place abort and failure mark theirs.
+       */
+      finishReason?: string | null;
+    }
   | { type: 'gen/aborted'; text: string; reasoning?: string; generationId?: string }
   | {
       type: 'gen/failed';
@@ -219,15 +236,21 @@ function settle(
 
         return appendAlternates(
           written,
-          alternates.map((alternate) => ({
-            text: alternate.text,
-            info: {
-              send_date: finished,
-              ...(started ? { gen_started: started } : {}),
-              gen_finished: finished,
-              ...(alternate.extra ? { extra: alternate.extra } : {}),
-            },
-          })),
+          alternates.map((alternate) => {
+            // A cut spare wears the same badge as the cut reply above it.
+            const alternateExtra = isLengthCutoff(alternate.finishReason)
+              ? { ...alternate.extra, truncated: true }
+              : alternate.extra;
+            return {
+              text: alternate.text,
+              info: {
+                send_date: finished,
+                ...(started ? { gen_started: started } : {}),
+                gen_finished: finished,
+                ...(alternateExtra ? { extra: alternateExtra } : {}),
+              },
+            };
+          }),
         );
       }),
     };
@@ -522,7 +545,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'gen/finished':
       if (state.status === 'idle') return state;
-      return settle(state, action.text, action.extra, action.alternates);
+      return settle(
+        state,
+        action.text,
+        isLengthCutoff(action.finishReason) ? { ...action.extra, truncated: true } : action.extra,
+        action.alternates,
+      );
 
     case 'gen/aborted':
       if (state.status === 'idle') return state;

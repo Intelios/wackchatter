@@ -16,6 +16,26 @@ export function notFound(message = 'Not found'): Response {
 }
 
 /**
+ * Format a Content-Disposition header with an ASCII fallback and an RFC 5987 / RFC 6266
+ * UTF-8 encoded filename (`filename*=UTF-8''...`).
+ */
+export function contentDisposition(
+  filename: string,
+  type: 'attachment' | 'inline' = 'attachment',
+): string {
+  const cleanAscii = filename.replace(/[^\w\-. ]/g, '').trim();
+  const asciiFallback =
+    !cleanAscii || /^\.[^.]*$/.test(cleanAscii)
+      ? `export${cleanAscii.startsWith('.') ? cleanAscii : ''}`
+      : cleanAscii;
+  const encoded = encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
  * Wrap a handler so an unexpected throw becomes a 500 with a readable message
  * rather than taking the process down or hanging the request.
  */

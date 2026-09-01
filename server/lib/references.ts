@@ -19,6 +19,7 @@ import { updatePersonaLorebookReferences } from './personas.ts';
 import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
+  reassignArenaCardPool,
   reassignCharacterDialogueColor,
   reassignCharacterExampleSets,
   reassignCharacterRating,
@@ -39,6 +40,8 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
   const updatedSets = reassignCharacterExampleSets(current, oldAvatar, newAvatar);
   if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
+  const updatedPool = reassignArenaCardPool(current, oldAvatar, newAvatar);
+  if (updatedPool) saveSettings({ arena: updatedPool.arena });
 
   try {
     chatStore().reassignCharacter(oldAvatar, newAvatar);
@@ -50,6 +53,7 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
     if (updatedSets) saveSettings({ coCreator: current.coCreator });
+    if (updatedPool) saveSettings({ arena: current.arena });
     throw error;
   }
 
@@ -74,6 +78,13 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
           ? [
               () => {
                 saveSettings({ coCreator: current.coCreator });
+              },
+            ]
+          : []),
+        ...(updatedPool
+          ? [
+              () => {
+                saveSettings({ arena: current.arena });
               },
             ]
           : []),
@@ -104,6 +115,8 @@ export function cascadeCharacterDelete(avatar: string): void {
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
   const updatedSets = reassignCharacterExampleSets(current, avatar, null);
   if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
+  const updatedPool = reassignArenaCardPool(current, avatar, null);
+  if (updatedPool) saveSettings({ arena: updatedPool.arena });
 
   try {
     chatStore().deleteChatsForCharacter(avatar);
@@ -117,6 +130,7 @@ export function cascadeCharacterDelete(avatar: string): void {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
     if (updatedSets) saveSettings({ coCreator: current.coCreator });
+    if (updatedPool) saveSettings({ arena: current.arena });
     throw error;
   }
 }
