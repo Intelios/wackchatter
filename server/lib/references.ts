@@ -203,6 +203,7 @@ export function cascadePresetRename(oldId: string, newId: string): Rollback {
     presetId: updated.presetId,
     memory: updated.memory,
     coCreator: updated.coCreator,
+    arena: updated.arena,
   });
 
   return () => {
@@ -210,6 +211,7 @@ export function cascadePresetRename(oldId: string, newId: string): Rollback {
       presetId: current.presetId,
       memory: current.memory,
       coCreator: current.coCreator,
+      arena: current.arena,
     });
   };
 }
@@ -224,6 +226,7 @@ export function cascadePresetDelete(id: string): Rollback {
     presetId: updated.presetId,
     memory: updated.memory,
     coCreator: updated.coCreator,
+    arena: updated.arena,
   });
 
   return () => {
@@ -231,6 +234,7 @@ export function cascadePresetDelete(id: string): Rollback {
       presetId: current.presetId,
       memory: current.memory,
       coCreator: current.coCreator,
+      arena: current.arena,
     });
   };
 }

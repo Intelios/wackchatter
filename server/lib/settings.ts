@@ -1129,7 +1129,9 @@ export function reassignCharacterExampleSets(
 
 /**
  * Repoint or clear preset references when a preset is renamed or deleted.
- * Updates `AppSettings.presetId`, `AppSettings.memory.presetId`, and `AppSettings.coCreator.presetId`.
+ * Updates `AppSettings.presetId`, `AppSettings.memory.presetId`,
+ * `AppSettings.coCreator.presetId`, and `AppSettings.arena.presetId` — on delete the
+ * arena's null means "follow the active preset", which is exactly the degradation wanted.
  */
 export function reassignPreset(
   current: AppSettings,
@@ -1152,11 +1154,17 @@ export function reassignPreset(
     coCreatorPresetId = newId;
     changed = true;
   }
+  let arenaPresetId = current.arena.presetId;
+  if (arenaPresetId === oldId) {
+    arenaPresetId = newId;
+    changed = true;
+  }
   if (!changed) return null;
   return {
     ...current,
     presetId,
     memory: { ...current.memory, presetId: memoryPresetId },
     coCreator: { ...current.coCreator, presetId: coCreatorPresetId },
+    arena: { ...current.arena, presetId: arenaPresetId },
   };
 }

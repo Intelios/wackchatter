@@ -110,10 +110,17 @@ describe('presets', () => {
   });
 
   test('delete preset removes file', async () => {
+    await savePreset('Keeper', createDefaultPreset());
     await savePreset('ToDelete', createDefaultPreset());
     expect(deletePreset('ToDelete')).toBe(true);
     expect(getPreset('ToDelete')).toBeNull();
     expect(deletePreset('ToDelete')).toBe(false);
+  });
+
+  test('the last preset cannot be deleted', async () => {
+    await savePreset('OnlyOne', createDefaultPreset());
+    expect(() => deletePreset('OnlyOne')).toThrow(/last preset/i);
+    expect(getPreset('OnlyOne')).not.toBeNull();
   });
 
   test('import preset saves under sanitized unique name', async () => {
