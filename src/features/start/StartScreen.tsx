@@ -10,6 +10,7 @@ import {
   TrashIcon,
 } from '../../layout/icons.tsx';
 import { characterApi, chatApi, type VersionInfo, versionApi } from '../../lib/api.ts';
+import { relativeTime } from './relativeTime.ts';
 import { versionString } from './versionString.ts';
 import './StartScreen.css';
 
@@ -29,22 +30,6 @@ interface StartScreenProps {
 interface RecentChat extends ChatSummary {
   characterName: string;
   characterAvatar: string;
-}
-
-function relativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 1000);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: days >= 365 ? 'numeric' : undefined,
-  });
 }
 
 export function StartScreen({
