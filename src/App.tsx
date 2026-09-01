@@ -323,6 +323,10 @@ export function App() {
     ? (settings?.connections.find((entry) => entry.id === memorySettings.connectionId) ??
       connection)
     : connection;
+  const memoryCountTokens = useTokenizer(
+    memoryConnection?.model ?? '',
+    settings?.tokenizerEncoding,
+  );
   const memoryPresetId =
     memorySettings.presetId && presets.some((entry) => entry.id === memorySettings.presetId)
       ? memorySettings.presetId
@@ -611,6 +615,7 @@ export function App() {
     memorySettings,
     memoryConnection,
     memoryPreset,
+    memoryCountTokens,
     globalVariables: settings?.variables ?? {},
     regexScripts,
     onGlobalVariablesChange: commitGlobalVariables,

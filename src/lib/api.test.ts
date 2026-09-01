@@ -131,4 +131,31 @@ describe('streamGenerate', () => {
     expect(ticks).toEqual([]);
     expect(firstToken).toBe(false);
   });
+
+  test('usage reporting uses meta.countText for estimated output tokens', async () => {
+    const posted: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/usage')) {
+        posted.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({ choices: [{ message: { content: 'hello world' } }] });
+    }) as unknown as typeof fetch;
+
+    await streamGenerate({}, signal, noop, '', 'test-connection', {
+      feature: 'memory',
+      sessionId: 'chat-1',
+      countText: (text) => text.split(' ').length * 10,
+    });
+
+    expect(posted.length).toBe(1);
+    expect(posted[0]).toMatchObject({
+      feature: 'memory',
+      sessionId: 'chat-1',
+      connectionId: 'test-connection',
+      outputTokens: 20,
+      estimated: true,
+    });
+  });
 });

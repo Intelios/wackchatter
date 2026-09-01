@@ -134,6 +134,7 @@ export interface UseChatOptions {
   /** Resolved memory connection and preset. See `MemorySettings` for why a preset. */
   memoryConnection?: Connection | null;
   memoryPreset?: Preset | null;
+  memoryCountTokens?: TokenCounter;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
@@ -294,6 +295,7 @@ export function useChat(options: UseChatOptions): UseChat {
     memorySettings,
     memoryConnection,
     memoryPreset,
+    memoryCountTokens,
     globalVariables,
     regexScripts,
     onGlobalVariablesChange,
@@ -1853,6 +1855,7 @@ export function useChat(options: UseChatOptions): UseChat {
               feature: 'memory',
               sessionId: current.chatId,
               ...(characterId ? { character: characterId } : {}),
+              ...(memoryCountTokens?.countText ? { countText: memoryCountTokens.countText } : {}),
             },
           );
           if (controller.signal.aborted || stateRef.current.chatId !== current.chatId) return;
@@ -1942,6 +1945,7 @@ export function useChat(options: UseChatOptions): UseChat {
       preset,
       memoryPreset,
       memoryConnection,
+      memoryCountTokens,
       persona,
       globalVariables,
       captureSnapshot,
