@@ -24,6 +24,29 @@ describe('parseSlashCommand', () => {
     expect(result?.ok).toBe(false);
   });
 
+  /*
+   * `slashCompletion` lowercases its token (pinned above), so the box suggests `roll` for
+   * `/Roll` the whole time the name is being typed. Recognition here must agree, or the
+   * autocomplete advertises a command the parser then refuses.
+   */
+  test('recognition is case-insensitive, matching the autocomplete', () => {
+    expect(parseSlashCommand('/Roll 2d6')).toEqual({
+      ok: true,
+      command: { type: 'roll', formula: '2d6' },
+    });
+    expect(parseSlashCommand('/HIDE 0-3')).toEqual({
+      ok: true,
+      command: { type: 'hide', start: 0, end: 3 },
+    });
+  });
+
+  // The unknown-command error reports the user's spelling, not our lowercased one.
+  test('an unknown command reports the spelling that was typed', () => {
+    const result = parseSlashCommand('/Giggle');
+    expect(result?.ok).toBe(false);
+    if (result?.ok === false) expect(result.error).toContain('/Giggle');
+  });
+
   describe('/hide', () => {
     test('a single index hides that one message', () => {
       expect(parseSlashCommand('/hide 4')).toEqual({
