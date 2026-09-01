@@ -108,6 +108,35 @@ describe('randomness', () => {
     }
   });
 
+  // droll's grammar, which is what ST hands {{roll}} to. Before this, a modifier made the
+  // whole macro resolve to an empty string — silently, in the middle of an imported card.
+  test('{{roll}} accepts a flat modifier', () => {
+    for (let i = 0; i < 20; i++) {
+      const value = Number(substituteMacros('{{roll:3d6+4}}', env));
+      expect(value).toBeGreaterThanOrEqual(7);
+      expect(value).toBeLessThanOrEqual(22);
+    }
+  });
+
+  test('{{roll:d20}} treats the count as one', () => {
+    for (let i = 0; i < 20; i++) {
+      const value = Number(substituteMacros('{{roll:d20}}', env));
+      expect(value).toBeGreaterThanOrEqual(1);
+      expect(value).toBeLessThanOrEqual(20);
+    }
+  });
+
+  test('{{roll}} accepts a space instead of a colon, as ST does', () => {
+    const value = Number(substituteMacros('{{roll 2d6}}', env));
+    expect(value).toBeGreaterThanOrEqual(2);
+    expect(value).toBeLessThanOrEqual(12);
+  });
+
+  test('an unrollable formula resolves to empty rather than hanging', () => {
+    expect(substituteMacros('[{{roll:2x6}}]', env)).toBe('[]');
+    expect(substituteMacros('[{{roll:99999999d6}}]', env)).toBe('[]');
+  });
+
   test('{{pick}} is stable for the same text and seed, unlike {{random}}', () => {
     const text = '{{pick::one::two::three::four::five}}';
     const first = substituteMacros(text, env, 'chat-1');

@@ -10,51 +10,15 @@
 
 import type { RegexMacros } from '../regex/engine.ts';
 import { sanitizeRegexMacro } from '../regex/engine.ts';
-import type { CardDataV2 } from '../types/card.ts';
-import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '../types/chat.ts';
-import type { Preset } from '../types/preset.ts';
-import { DEFAULT_USER_NAME } from './assemble.ts';
-import { createMacroRuntime, type MacroEnvironment, substituteMacros } from './macros.ts';
+import { type ChatMacroOptions, chatEnvironment } from './environment.ts';
+import { createMacroRuntime, substituteMacros } from './macros.ts';
 
-export interface GreetingMacroOptions {
-  character: CardDataV2;
-  preset: Preset;
-  persona?: Persona | null;
-  messages: ChatMessage[];
-  metadata?: ChatMetadata;
-  globalVariables?: MacroVariableMap;
-  seed?: string;
-}
-
-/** The same environment assembly builds, minus anything that only a prompt has. */
-function displayEnvironment(options: GreetingMacroOptions): MacroEnvironment {
-  const { character, preset, persona, messages, metadata = {} } = options;
-  const effectiveScenario =
-    typeof metadata.scenario === 'string' ? metadata.scenario : character.scenario;
-
-  return {
-    char: character.name,
-    user: persona?.name ?? DEFAULT_USER_NAME,
-    description: character.description,
-    personality: character.personality,
-    scenario: effectiveScenario,
-    persona: persona?.description ?? '',
-    mesExamples: character.mes_example,
-    charVersion: character.character_version,
-    charPrompt: character.system_prompt,
-    charJailbreak: character.post_history_instructions,
-    creatorNotes: character.creator_notes,
-    maxContext: preset.openai_max_context ?? 4095,
-    maxResponse: preset.openai_max_tokens ?? 300,
-    lastMessage: messages.at(-1)?.mes ?? '',
-    lastUserMessage: [...messages].reverse().find((message) => message.is_user)?.mes ?? '',
-    lastCharMessage: [...messages].reverse().find((message) => !message.is_user)?.mes ?? '',
-  };
-}
+/** Kept as the display path's own name for the shared options; see `environment.ts`. */
+export type GreetingMacroOptions = ChatMacroOptions;
 
 /** Resolve a greeting for display while leaving its stored text and all variable maps untouched. */
 export function resolveGreetingMacros(text: string, options: GreetingMacroOptions): string {
-  return substituteMacros(text, displayEnvironment(options), options.seed ?? '', {
+  return substituteMacros(text, chatEnvironment(options), options.seed ?? '', {
     runtime: createMacroRuntime(options.metadata?.variables ?? {}, options.globalVariables ?? {}),
     source: 'greeting',
   });
@@ -69,7 +33,7 @@ export function resolveGreetingMacros(text: string, options: GreetingMacroOption
  * behaviour and the reason these two are built in different places.
  */
 export function createDisplayRegexMacros(options: GreetingMacroOptions): RegexMacros {
-  const env = displayEnvironment(options);
+  const env = chatEnvironment(options);
   const seed = options.seed ?? '';
   const local = options.metadata?.variables ?? {};
   const global = options.globalVariables ?? {};

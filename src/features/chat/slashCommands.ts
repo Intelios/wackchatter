@@ -15,6 +15,8 @@
  * against the actual transcript are the executor's job — this module only recognises.
  */
 
+import { parseDiceFormula } from '@shared/prompt/dice.ts';
+
 export type SlashCommand =
   | { type: 'hide'; start: number | null; end: number | null }
   | { type: 'unhide'; start: number | null; end: number | null }
@@ -28,12 +30,15 @@ export type SlashCommand =
    * persona. Resolving the name against the library is the executor's job — this module
    * only recognises.
    */
-  | { type: 'persona'; query: string };
+  | { type: 'persona'; query: string }
+  /** The formula is already normalised and known to roll — see `parseDiceFormula`. */
+  | { type: 'roll'; formula: string };
 
 export type SlashParseResult = { ok: true; command: SlashCommand } | { ok: false; error: string };
 
 const JUMP_USAGE = 'Usage: /jump <message index> (indices start at 0).';
 const RENAME_USAGE = 'Usage: /rename <new title>.';
+const ROLL_USAGE = 'Usage: /roll <formula>, e.g. /roll 2d6+3. On its own it rolls 1d20.';
 
 /** The shipped commands, as shown in the composer's autocomplete box. */
 export interface SlashCommandHelp {
@@ -78,6 +83,11 @@ export const SLASH_COMMANDS: readonly SlashCommandHelp[] = [
     name: 'persona',
     usage: '/persona <name>, /persona none, or /persona',
     description: 'Switch who you are writing as. On its own, opens the persona panel.',
+  },
+  {
+    name: 'roll',
+    usage: '/roll 2d6+3, or /roll for 1d20',
+    description: 'Roll dice into the chat, where the character can read the result.',
   },
 ];
 
@@ -195,6 +205,20 @@ export function parseSlashCommand(input: string): SlashParseResult | null {
      */
     case 'persona':
       return { ok: true, command: { type: 'persona', query: arg } };
+    /*
+     * Validated here rather than by the executor, because this module's rule is that a
+     * command-shaped line that fails to parse is an error and never a send. `/roll 2x6` is a
+     * typo; letting it through would put "2x6" in front of the model as dialogue.
+     *
+     * Empty means 1d20 — the die you reach for when you did not say which one.
+     */
+    case 'roll': {
+      const parsed = parseDiceFormula(arg || '1d20');
+      if (!parsed) {
+        return { ok: false, error: `Could not read "${arg}" as a dice formula. ${ROLL_USAGE}` };
+      }
+      return { ok: true, command: { type: 'roll', formula: parsed.formula } };
+    }
     default:
       return { ok: false, error: `Unknown command "/${firstWord}".` };
   }

@@ -1,4 +1,5 @@
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import { formatRoll, rollDice } from '@shared/prompt/dice.ts';
 import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
@@ -454,6 +455,23 @@ export function ChatView({
           jumpTo(command.index);
           return null;
         }
+        /*
+         * The dice land in the transcript, not in a tooltip, because the point is that the
+         * character can read them. It is a message like any other from there on: it packs
+         * into the prompt, it can be hidden, and it leaves the chat owed a reply — which is
+         * what makes "roll, then say what you do" work as two separate beats.
+         *
+         * No generation, matching every other command here.
+         */
+        case 'roll': {
+          if (!state.chatId) return 'Open a chat before rolling.';
+          if (generationBlocked) return 'Wait for the current reply to finish before rolling.';
+          const rolled = rollDice(command.formula);
+          if (!rolled) return `Could not roll "${command.formula}".`;
+          snapToEnd();
+          chat.appendUserMessage(formatRoll(rolled));
+          return null;
+        }
         case 'rename': {
           if (!state.chatId) return 'No chat is open to rename.';
           chat.renameChat(command.title);
@@ -524,6 +542,7 @@ export function ChatView({
       onOpenPanel,
       onSelectPersona,
       personas,
+      snapToEnd,
     ],
   );
 

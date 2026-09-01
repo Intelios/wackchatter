@@ -215,6 +215,42 @@ describe('/persona', () => {
   });
 });
 
+describe('/roll', () => {
+  test('normalises the formula it hands the executor', () => {
+    expect(parseSlashCommand('/roll 2d6+3')).toEqual({
+      ok: true,
+      command: { type: 'roll', formula: '2d6+3' },
+    });
+    expect(parseSlashCommand('/roll d20')).toEqual({
+      ok: true,
+      command: { type: 'roll', formula: '1d20' },
+    });
+  });
+
+  // The die you reach for when you did not say which one.
+  test('a bare /roll is 1d20', () => {
+    expect(parseSlashCommand('/roll')).toEqual({
+      ok: true,
+      command: { type: 'roll', formula: '1d20' },
+    });
+  });
+
+  /*
+   * Validated at parse time, unlike `/persona`, because there is nothing to resolve later:
+   * the grammar is the whole of it. Letting `2x6` through would put it in front of the
+   * model as dialogue, which is exactly the failure this module exists to prevent.
+   */
+  test('an unrollable formula is an error, not a message', () => {
+    const result = parseSlashCommand('/roll 2x6');
+    expect(result?.ok).toBe(false);
+    expect(result?.ok === false && result.error).toContain('2x6');
+  });
+
+  test('a formula past the dice cap is refused rather than rolled', () => {
+    expect(parseSlashCommand('/roll 99999999d6')?.ok).toBe(false);
+  });
+});
+
 describe('slashCompletion', () => {
   test('a plain message is not a command', () => {
     expect(slashCompletion('hello')).toBeNull();
@@ -232,6 +268,7 @@ describe('slashCompletion', () => {
       'reload',
       'card',
       'persona',
+      'roll',
     ]);
   });
 
@@ -240,6 +277,11 @@ describe('slashCompletion', () => {
     expect(slashCompletion('/u')?.suggestions.map((c) => c.name)).toEqual(['unhide']);
     expect(slashCompletion('/un')?.suggestions.map((c) => c.name)).toEqual(['unhide']);
     // Two commands share the "re" prefix, so it narrows without resolving.
+    expect(slashCompletion('/r')?.suggestions.map((c) => c.name)).toEqual([
+      'rename',
+      'reload',
+      'roll',
+    ]);
     expect(slashCompletion('/re')?.suggestions.map((c) => c.name)).toEqual(['rename', 'reload']);
     expect(slashCompletion('/rel')?.suggestions.map((c) => c.name)).toEqual(['reload']);
     expect(slashCompletion('/c')?.suggestions.map((c) => c.name)).toEqual(['card']);

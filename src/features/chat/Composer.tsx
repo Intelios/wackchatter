@@ -8,6 +8,11 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  MacroCompletionList,
+  macroComboboxProps,
+  useMacroCompletion,
+} from '../../components/MacroCompletion.tsx';
 import { GuidedSwipeIcon, SendIcon, StopIcon, WandIcon } from '../../layout/icons.tsx';
 import { composerMaxHeight, rowCap } from './composerGrowth.ts';
 import { type SlashCommandHelp, slashCompletion } from './slashCommands.ts';
@@ -149,10 +154,25 @@ export function Composer({
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
 
+  /*
+   * The `{{` box, declared ahead of the slash box because it outranks it.
+   *
+   * Both can be live at once — `/rename {{ch` is a command with a macro in its argument —
+   * and two popovers stacked over the transcript is worse than either. The macro box wins
+   * because it is the one still asking a question: by the time a macro is being typed the
+   * command name is long settled, so the slash box is only restating what you already wrote.
+   */
+  const macro = useMacroCompletion({
+    value: text,
+    onChange: setText,
+    textareaRef: textarea,
+    enabled: !disabled && !busy,
+  });
+
   const completion = slashCompletion(text);
   const suggestions = completion?.suggestions ?? [];
   const slashOpen = Boolean(
-    completion && suggestions.length > 0 && !slashDismissed && !disabled && !busy,
+    completion && suggestions.length > 0 && !slashDismissed && !disabled && !busy && !macro.open,
   );
   const completing = Boolean(completion?.completing && slashOpen);
   const activeIndex = completing ? Math.min(slashIndex, suggestions.length - 1) : -1;
@@ -191,12 +211,15 @@ export function Composer({
         });
         setSlashDismissed(false);
         setSlashIndex(0);
+        // The caret the macro box last saw points into the text this just replaced. Closing
+        // it costs nothing: the next keystroke syncs the caret and opens it again.
+        macro.dismiss();
         // A menu selection restores focus to the menu's trigger AFTER `onSelect` runs, so
         // the focus waits one tick to win — "ready to send" means the cursor is here.
         setTimeout(() => textarea.current?.focus({ preventScroll: true }), 0);
       },
     }),
-    [],
+    [macro.dismiss],
   );
 
   /**
@@ -401,6 +424,8 @@ export function Composer({
       ) : null}
 
       <div className="composer__field">
+        <MacroCompletionList handle={macro} />
+
         {slashOpen ? (
           <div
             ref={listboxRef}
@@ -457,21 +482,35 @@ export function Composer({
             setSlashDismissed(false);
             setSlashIndex(0);
             setRounded(true);
+            macro.sync();
           }}
+          // Caret moves as well as edits: `{{ro` is only a question while the caret is
+          // still inside those braces, and clicking away from them has to close the box.
+          onSelect={macro.sync}
           onBlur={() => {
             setSlashDismissed(true);
+            macro.dismiss();
             setRounded(false);
           }}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={slashOpen}
-          aria-controls={slashOpen ? listboxId : undefined}
-          aria-activedescendant={
-            activeIndex >= 0 && suggestions[activeIndex]
-              ? `${listboxId}-${suggestions[activeIndex].name}`
-              : undefined
-          }
+          // One control, two possible listboxes — so it describes whichever is open, and
+          // never both. `macro.open` already suppresses `slashOpen`, so the branch is safe.
+          {...(macro.open
+            ? macroComboboxProps(macro)
+            : {
+                role: 'combobox' as const,
+                'aria-autocomplete': 'list' as const,
+                'aria-expanded': slashOpen,
+                'aria-controls': slashOpen ? listboxId : undefined,
+                'aria-activedescendant':
+                  activeIndex >= 0 && suggestions[activeIndex]
+                    ? `${listboxId}-${suggestions[activeIndex].name}`
+                    : undefined,
+              })}
           onKeyDown={(event) => {
+            // First refusal, before Enter can mean send: an open macro box owns Enter,
+            // Tab, the arrows and Escape.
+            if (macro.handleKeyDown(event)) return;
+
             // Enter sends; Shift+Enter is a newline. While the command name is still
             // being typed, Enter completes it instead — running `/h` because you were
             // about to pick `/hide` is how a keystroke becomes the wrong command.

@@ -181,3 +181,12 @@
 .tag-field__input:focus {
   outline: none;
 }
+
+/* The containing block for a multiline field's macro completion box. Laid out as the
+   textarea itself was, so wrapping it changes nothing about how the field sizes. */
+.field__area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
