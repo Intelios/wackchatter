@@ -21,64 +21,6 @@ real paid generations. No source files changed.
 
 ## Findings
 
-### N-06 · Map wastes most of its canvas — **VIS**
-
-The map `<svg>` is `457 × 787` CSS px with `viewBox="0 0 1000 700"`. With the default
-`preserveAspectRatio`, the 1.43 : 1 viewBox is letterboxed into a 0.58 : 1 box, so roughly half
-the visible height is permanently empty and every node is squeezed into a central band. On first
-open the nodes occupy about a fifth of the pane.
-
-*Fix:* auto-**Fit** on first open (the button exists and works), or compute the viewBox from the
-node bounding box instead of hard-coding 1000×700.
-
-### N-07 · Panel shows plumbing, not a knowledge summary — **VIS / GAP**
-
-The Memory panel's Nexus section shows `0 messages awaiting collection` and
-`Local index: 26 / 26`, and nothing about what is actually remembered. The explorer's status bar
-already computes the useful line — `3 people · 5 places · 4 objects · 0 events`, `12 memories` —
-but that never surfaces in the panel, which is where a user decides whether memory is working.
-
-Also: `Local index: 26 / 26` is an embedding-cache counter shown to end users with no
-explanation, while the number of memories (12) is nowhere in the panel.
-
-*Fix:* lead the panel with "12 memories · 3 people · 5 places · 4 objects", and demote the index
-counter to a subtitle or only show it while indexing is incomplete.
-
-### N-08 · Paused collection has no state, only a verb — **GAP**
-
-When collection is paused, the only signal is that the toggle reads **Resume collection**
-([NexusActivity.tsx:52](src/features/nexus/NexusActivity.tsx:52)). There is no "Paused" badge,
-no changed styling, and the status line still reads the neutral
-`N messages awaiting collection`. A user who paused a week ago and comes back sees a panel that
-looks like it is working and silently is not.
-
-*Fix:* when `data.paused`, make the status line say `Paused · N messages awaiting collection`
-and mark the section header.
-
-### N-09 · Unpluralised counter — **VIS**
-
-`0 messages awaiting collection` / `1 messages awaiting collection`
-([NexusActivity.tsx:11](src/features/nexus/NexusActivity.tsx:11)). Everything else in this
-feature is carefully written, so this one stands out.
-
----
-
-### N-10 · Nexus has no injection controls at all, while Summary has four — **GAP**
-
-`nexusSettings.template`, `.position`, `.depth` and `.role` are persisted, normalised
-([settings.ts:20](shared/nexus/settings.ts:20)) and *used* — `useChat.ts:789` passes
-`memoryMode === 'nexus' ? nexusSettings : memoryConfigRef.current` straight into
-`assemble()`, which resolves the story-memory slot from them
-([assemble.ts:487](shared/prompt/assemble.ts:487)).
-
-But `NexusSettings.tsx` renders none of them. Summary mode gets **Injection template /
-Position / Role** in the same panel; Nexus mode gets nothing. A user who wants Nexus knowledge
-at depth 4 as a `user` message, or who wants to change the
-`[Story knowledge. Respect chronology…]` wrapper, has to hand-edit `data/settings.json`.
-
-*Fix:* reuse the same placement block the Summary panel already renders, with `{{memories}}`
-as the macro.
-
 ### N-11 · No "Restore default prompt" for the extraction guidance — **GAP**
 
 The Summary panel has a **Restore default prompt** button. The Nexus **Extraction guidance**
