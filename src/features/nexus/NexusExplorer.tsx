@@ -18,6 +18,7 @@ import type {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { UseChat } from '../chat/useChat.ts';
+import { type Camera, fitCamera, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
 import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusReport } from './NexusReport.tsx';
@@ -35,7 +36,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const [kind, setKind] = useState<NexusNodeKind | 'all'>('all');
   const [view, setView] = useState<'map' | 'list'>('map');
   const [selected, setSelected] = useState<string | null>(null);
-  const [camera, setCamera] = useState({ x: 0, y: 0, z: 1 });
+  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, z: 1 });
   const [archived, setArchived] = useState(false);
   const [limit, setLimit] = useState(80);
   const [newName, setNewName] = useState('');
@@ -149,6 +150,19 @@ export function NexusExplorer({ chat, ...config }: Props) {
     )
     .slice(0, 180);
   const drawnIds = new Set(drawn.map((v) => v.id));
+  // Fit once per open, when the map is actually on screen: show() can open
+  // straight to Recall or Settings, and the map renders only in Explore.
+  const fittedOpen = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fit runs once per open, over that render's nodes
+  useEffect(() => {
+    if (!n.open) {
+      fittedOpen.current = false;
+      return;
+    }
+    if (fittedOpen.current || n.section !== 'explore' || view !== 'map') return;
+    fittedOpen.current = true;
+    fit();
+  }, [n.open, n.section, view]);
   const recalled = new Set(
     n.recall?.hits.filter((h) => h.included).flatMap((h) => h.nodeIds) ?? [],
   );
@@ -190,20 +204,16 @@ export function NexusExplorer({ chat, ...config }: Props) {
   }
   function centre() {
     const p = selected && positions.get(selected);
-    if (p) setCamera((c) => ({ ...c, x: 500 - p.x * c.z, y: 350 - p.y * c.z }));
+    if (p) setCamera((c) => ({ ...c, x: VIEW_W / 2 - p.x * c.z, y: VIEW_H / 2 - p.y * c.z }));
   }
   function fit() {
-    if (!drawn.length) {
-      setCamera({ x: 0, y: 0, z: 1 });
-      return;
-    }
-    const ps = drawn.map((v) => positions.get(v.id)!);
-    const xmin = Math.min(...ps.map((p) => p.x)) - 100,
-      xmax = Math.max(...ps.map((p) => p.x)) + 100,
-      ymin = Math.min(...ps.map((p) => p.y)) - 60,
-      ymax = Math.max(...ps.map((p) => p.y)) + 60;
-    const z = Math.min(2, 900 / (xmax - xmin), 600 / (ymax - ymin));
-    setCamera({ z, x: 500 - ((xmax + xmin) / 2) * z, y: 350 - ((ymax + ymin) / 2) * z });
+    const rect = svg.current?.getBoundingClientRect();
+    setCamera(
+      fitCamera(
+        drawn.map((v) => positions.get(v.id)!),
+        rect ? { width: rect.width, height: rect.height } : { width: VIEW_W, height: VIEW_H },
+      ),
+    );
   }
   if (!n.open) return null;
   return createPortal(
@@ -394,11 +404,14 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     aria-label="Connected memory map. Use Tab to select nodes, or switch to List view."
                     onWheel={(e) => {
                       setCamera((c) => {
-                        const z = Math.max(0.15, Math.min(4, c.z * (e.deltaY > 0 ? 0.9 : 1.1)));
+                        const z = Math.max(
+                          Z_MIN,
+                          Math.min(Z_MAX, c.z * (e.deltaY > 0 ? 0.9 : 1.1)),
+                        );
                         return {
                           z,
-                          x: 500 - ((500 - c.x) * z) / c.z,
-                          y: 350 - ((350 - c.y) * z) / c.z,
+                          x: VIEW_W / 2 - ((VIEW_W / 2 - c.x) * z) / c.z,
+                          y: VIEW_H / 2 - ((VIEW_H / 2 - c.y) * z) / c.z,
                         };
                       });
                     }}
@@ -410,7 +423,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     onPointerMove={(e) => {
                       if (!drag.current) return;
                       const rect = e.currentTarget.getBoundingClientRect();
-                      const scale = Math.min(rect.width / 1000, rect.height / 700);
+                      const scale = Math.min(rect.width / VIEW_W, rect.height / VIEW_H);
                       const d = drag.current;
                       setCamera((c) => ({
                         ...c,
@@ -543,7 +556,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       type="button"
                       className="wc-button"
                       aria-label="Zoom in"
-                      onClick={() => setCamera((c) => ({ ...c, z: Math.min(4, c.z * 1.2) }))}
+                      onClick={() => setCamera((c) => ({ ...c, z: Math.min(Z_MAX, c.z * 1.2) }))}
                     >
                       +
                     </button>
@@ -551,7 +564,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       type="button"
                       className="wc-button"
                       aria-label="Zoom out"
-                      onClick={() => setCamera((c) => ({ ...c, z: Math.max(0.15, c.z / 1.2) }))}
+                      onClick={() => setCamera((c) => ({ ...c, z: Math.max(Z_MIN, c.z / 1.2) }))}
                     >
                       −
                     </button>
