@@ -11,6 +11,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { normalizeNexusSettings } from '../../shared/nexus/settings.ts';
 import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
@@ -296,10 +297,11 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
   };
 }
 
-const MEMORY_MODES: MemoryMode[] = ['classic', 'memories', 'off'];
+const MEMORY_MODES: MemoryMode[] = ['classic', 'memories', 'nexus', 'off'];
 
 /** Coerce the memory feature selector. Anything unrecognised falls back to the summary. */
 function normalizeMemoryMode(value: unknown): MemoryMode {
+  if (value === 'memories') return 'nexus';
   return MEMORY_MODES.includes(value as MemoryMode) ? (value as MemoryMode) : 'classic';
 }
 
@@ -703,6 +705,7 @@ export function getSettings(): AppSettings {
     guidance: normalizeGuidance(stored.guidance),
     summary: normalizeSummary(stored.summary, connections),
     memoryMode: normalizeMemoryMode(stored.memoryMode),
+    nexus: normalizeNexusSettings(stored.nexus),
     memory: normalizeMemory(stored.memory, connections),
     coCreator: normalizeCoCreator(stored.coCreator, connections),
     arena: normalizeArena(stored.arena),
@@ -766,6 +769,7 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       : normalizeSummary(current.summary, current.connections),
     memoryMode:
       patch.memoryMode === undefined ? current.memoryMode : normalizeMemoryMode(patch.memoryMode),
+    nexus: normalizeNexusSettings({ ...current.nexus, ...patch.nexus }),
     memory: patch.memory
       ? normalizeMemory({ ...current.memory, ...patch.memory }, current.connections)
       : normalizeMemory(current.memory, current.connections),

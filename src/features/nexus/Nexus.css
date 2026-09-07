@@ -1,0 +1,303 @@
+.nexus {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font-family: var(--wc-font-sans);
+}
+.nexus-top,
+.nexus-toolbar,
+.nexus-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3) var(--wc-space-5);
+  border-bottom: 1px solid var(--wc-border);
+  flex-shrink: 0;
+}
+.nexus-top {
+  background: var(--wc-surface);
+}
+.nexus-top > div {
+  display: grid;
+  gap: var(--wc-space-1);
+  min-width: 180px;
+}
+.nexus-top span,
+.nexus-muted,
+.nexus-kicker,
+.nexus-footer,
+.nexus-map-controls span {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.nexus-top nav,
+.nexus-actions {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.nexus-top-status {
+  flex: 1;
+  text-align: right;
+  font-size: var(--wc-text-sm);
+}
+.nexus-toolbar input[type="search"] {
+  flex: 1;
+}
+.nexus-toolbar select {
+  width: auto;
+}
+.nexus-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.nexus-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.nexus-detail {
+  width: var(--wc-nexus-detail);
+  flex-shrink: 0;
+  border-left: 1px solid var(--wc-border);
+  padding: var(--wc-space-4);
+  overflow: auto;
+  background: var(--wc-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-4);
+}
+.nexus-page {
+  overflow: auto;
+  width: min(100%, var(--wc-nexus-page));
+  align-self: center;
+  padding: var(--wc-space-5);
+}
+.nexus-settings {
+  display: grid;
+  gap: var(--wc-space-4);
+}
+.nexus-field-label {
+  display: block;
+  margin-bottom: var(--wc-space-2);
+}
+.nexus-activity {
+  margin-top: var(--wc-space-4);
+}
+.nexus p {
+  line-height: 1.6;
+}
+.nexus h2 {
+  font-size: var(--wc-text-lg);
+}
+.nexus details > summary {
+  cursor: pointer;
+  padding-block: var(--wc-space-2);
+}
+.nexus input,
+.nexus textarea,
+.nexus select {
+  max-width: 100%;
+}
+.nexus textarea {
+  resize: vertical;
+}
+.nexus label {
+  font-size: var(--wc-text-sm);
+}
+.nexus-card {
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+  border-radius: var(--wc-radius-lg);
+  padding: var(--wc-space-3);
+  display: grid;
+  gap: var(--wc-space-3);
+  margin-block: var(--wc-space-3);
+}
+.nexus-card[data-disabled="true"] {
+  opacity: 0.65;
+}
+.nexus-card .nexus-actions select {
+  width: auto;
+  flex: 1;
+  min-width: 90px;
+}
+.nexus-card textarea {
+  width: 100%;
+}
+.nexus-source {
+  padding: var(--wc-space-3);
+  border-left: 2px solid var(--wc-border);
+  margin-block: var(--wc-space-2);
+  overflow-wrap: anywhere;
+}
+.nexus-attachments {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-wrap: wrap;
+  max-height: 180px;
+  overflow: auto;
+}
+.nexus-list {
+  overflow: auto;
+  height: 100%;
+  padding: var(--wc-space-5);
+}
+.nexus-map {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, var(--wc-accent-subtle), transparent 70%);
+}
+.nexus-map svg {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.nexus-map-controls {
+  position: absolute;
+  bottom: var(--wc-space-4);
+  left: var(--wc-space-4);
+  display: flex;
+  gap: var(--wc-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.nexus-edge line {
+  stroke: var(--wc-border);
+  stroke-width: 1.5;
+}
+.nexus-edge[data-lit="true"] line,
+.nexus-edge[data-recalled="true"] line {
+  stroke: var(--wc-accent);
+  stroke-dasharray: 5 8;
+}
+.nexus-edge text {
+  font-size: 11px;
+  text-anchor: middle;
+  fill: var(--wc-text-muted);
+  paint-order: stroke;
+  stroke: var(--wc-bg);
+  stroke-width: 3px;
+}
+.nexus-node {
+  cursor: pointer;
+  --nexus-color: var(--wc-series-1);
+  outline: none;
+}
+.nexus-node[data-kind="place"] {
+  --nexus-color: var(--wc-series-2);
+}
+.nexus-node[data-kind="object"] {
+  --nexus-color: var(--wc-series-3);
+}
+.nexus-node[data-kind="event"] {
+  --nexus-color: var(--wc-series-4);
+}
+.nexus-node circle {
+  fill: var(--wc-surface-raised);
+  stroke: var(--nexus-color);
+  stroke-width: 2px;
+}
+.nexus-node .nexus-halo {
+  stroke: none;
+  fill: var(--nexus-color);
+  opacity: 0.08;
+}
+.nexus-node text {
+  text-anchor: middle;
+  fill: var(--wc-text);
+  font-size: 13px;
+}
+.nexus-node .nexus-symbol {
+  fill: var(--nexus-color);
+  font-size: 19px;
+}
+.nexus-node .nexus-node-label {
+  paint-order: stroke;
+  stroke: var(--wc-bg);
+  stroke-width: 4px;
+}
+.nexus-node:hover .nexus-halo,
+.nexus-node:focus .nexus-halo,
+.nexus-node[data-selected="true"] .nexus-halo {
+  opacity: 0.3;
+}
+.nexus-node:focus circle,
+.nexus-node[data-selected="true"] circle {
+  stroke-width: 3;
+}
+.nexus-node[data-recalled="true"] .nexus-halo {
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nexus[data-motion="true"]
+    .nexus-node:not(:hover):not(:focus):not([data-selected="true"])
+    .nexus-halo {
+    animation: nexus-breathe 7s ease-in-out infinite alternate;
+  }
+  .nexus[data-motion="true"] .nexus-edge[data-recalled="true"] line {
+    animation: nexus-pulse 4s linear infinite;
+  }
+}
+.nexus-empty {
+  position: absolute;
+  top: 40%;
+  left: 15%;
+  right: 15%;
+  text-align: center;
+  pointer-events: none;
+}
+.nexus-footer {
+  justify-content: space-between;
+  border-top: 1px solid var(--wc-border);
+  border-bottom: 0;
+}
+@keyframes nexus-breathe {
+  to {
+    opacity: 0.22;
+    r: 29;
+  }
+}
+@keyframes nexus-pulse {
+  to {
+    stroke-dashoffset: -52;
+  }
+}
+
+.nexus-top button[aria-pressed="true"] {
+  color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+}
+
+.nexus-card > .nexus-actions:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+}
+.nexus-card > .nexus-actions:first-child .nexus-kicker {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nexus[data-motion="true"] .nexus-node {
+    animation: nexus-arrival 900ms ease-out;
+  }
+}
+@keyframes nexus-arrival {
+  from {
+    opacity: 0.1;
+    filter: brightness(3);
+  }
+  to {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}

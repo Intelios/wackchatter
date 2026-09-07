@@ -11,6 +11,7 @@ Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
 - **Streaming** — SSE with live markdown emphasis rendering, stop that actually aborts upstream (no more billing while you wait)
 - **Chats** — SQLite storage, multiple chats per character, branching, swipes/regenerate/continue/edit/delete/hide, deleted-chat backups (restorable trash bin), chat export/import
 - **World Info** — standalone lorebooks and embedded `character_book` editing, full conversion between both formats, ST-compatible activation engine (budget, recursion, groups, regex keys)
+- **Memory Nexus** — connected, sourced story knowledge; local semantic recall, a separate memory model, reviewed deeper searches, and a full-screen map/list editor. Choose Summary, Nexus or Off per chat. [Usage and implementation notes](docs/MEMORY_NEXUS.md).
 - **Personas** with avatars, per-chat persona binding
 - **Author's Note** and **guided generations** (ST's Guided Generations extension reimplemented: one-shot steering, persistent per-chat guides)
 - **Prompt Manager** — drag-reorder, marker prompts, depth injection, real tokenizer

@@ -48,6 +48,7 @@ export interface ChatMenuState {
 
 export interface ChatMenuActions {
   newChat: () => void;
+  openNexus?: () => void;
   checkpoint: (messageId: string) => void;
   regenerate: () => void;
   continueLast: () => void;
@@ -85,6 +86,9 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       : BUSY;
 
   return [
+    ...(actions.openNexus
+      ? [{ label: 'Memory Nexus', onSelect: actions.openNexus, disabled: !chatId }]
+      : []),
     {
       label: 'New chat',
       icon: <PlusIcon />,
@@ -248,6 +252,7 @@ export function ChatMenu({
       closeChat: onCloseChat,
       openCard: onOpenCard,
       openBranchTree: onOpenBranchTree,
+      openNexus: () => chat.nexus.show(),
       importChat: () => importInput.current?.click(),
       exportChat: () => {
         const chatId = chat.state.chatId;

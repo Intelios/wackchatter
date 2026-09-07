@@ -1,0 +1,141 @@
+import { expect, test } from 'bun:test';
+import type { ChatMessage } from '../types/chat.ts';
+import { applyExtraction, buildNexusExtraction, parseExtraction } from './extract.ts';
+import { emptyNexus, messageFingerprint } from './state.ts';
+import { DEFAULT_NEXUS } from './types.ts';
+
+const msg: ChatMessage = {
+  id: 'm',
+  name: 'Joe',
+  mes: 'I am from London.',
+  is_system: false,
+  is_user: true,
+  send_date: '',
+};
+const counter = {
+  countText: (s: string) => s.length,
+  countChat: (m: readonly { content: string }[]) => m.reduce((n, s) => n + s.content.length, 0),
+};
+test('extraction accepts overlapping facts, validates all source references, and checkpoints empty results', () => {
+  const n = emptyNexus();
+  const batch = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, 'Joe');
+  const raw = {
+    nodes: [{ ref: 'joe', name: 'Joe', kind: 'person', aliases: [], sources: [0] }],
+    records: [
+      {
+        text: 'Joe is from London.',
+        kind: 'fact',
+        assertion: 'claim',
+        status: 'active',
+        nodeRefs: ['joe'],
+        sources: [0],
+        cues: ['hometown'],
+      },
+    ],
+  };
+  const parsed = parseExtraction(JSON.stringify(raw), batch, n);
+  const result = applyExtraction(n, parsed, batch, 'test');
+  expect(result.records).toHaveLength(1);
+  expect(result.processed.m).toBe(messageFingerprint(msg));
+  raw.records[0]!.sources = [9];
+  expect(() => parseExtraction(JSON.stringify(raw), batch, n)).toThrow();
+  const empty = applyExtraction(
+    n,
+    parseExtraction('{"nodes":[],"records":[]}', batch, n),
+    batch,
+    'test',
+  );
+  expect(empty.processed.m).toBe(messageFingerprint(msg));
+});
+test('oversized message packs in pieces without claiming the unseen end was read', () => {
+  const m = { ...msg, mes: 'Long story. '.repeat(4000) };
+  const batch = buildNexusExtraction(
+    emptyNexus(),
+    [m],
+    { ...DEFAULT_NEXUS, inputTokens: 5000, outputTokens: 256 },
+    counter,
+    'Joe',
+  );
+  expect(counter.countChat(batch.messages)).toBeLessThanOrEqual(5000 - 256 - 128);
+  expect(batch.progress.m).not.toBe(messageFingerprint(m));
+  expect(batch.items[0]!.end).toBeLessThan(m.mes.length);
+});
+
+test('malformed, truncated, oversized and conflicting extraction cannot advance checkpoints', () => {
+  const n = emptyNexus();
+  const batch = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
+  for (const raw of ['', '{"nodes":[],"records":[', '{}', '{"nodes":{},"records":[]}'])
+    expect(() => parseExtraction(raw, batch, n)).toThrow();
+  const parsed = parseExtraction('{"nodes":[],"records":[]}', batch, n);
+  expect(() => applyExtraction({ ...n, paused: true }, parsed, batch, 'test')).toThrow('edited');
+  expect(n.processed).toEqual({});
+});
+test('duplicate output cannot resurrect a manual edit, disabled record, or tombstone', () => {
+  const text = 'Joe is from London.';
+  const raw = {
+    nodes: [],
+    records: [
+      {
+        text,
+        kind: 'fact',
+        assertion: 'claim',
+        status: 'active',
+        nodeRefs: [],
+        sources: [0],
+        cues: [],
+      },
+    ],
+  };
+  const initial = emptyNexus();
+  const batch = buildNexusExtraction(initial, [msg], DEFAULT_NEXUS, counter, '');
+  const extracted = applyExtraction(
+    initial,
+    parseExtraction(JSON.stringify(raw), batch, initial),
+    batch,
+    'test',
+  );
+  for (const flags of [{ manual: true }, { enabled: false }, { deleted: true }]) {
+    const n = structuredClone(extracted);
+    Object.assign(n.records[0]!.revisions[0]!, flags);
+    n.processed = {};
+    const retry = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
+    const after = applyExtraction(n, parseExtraction(JSON.stringify(raw), retry, n), retry, 'test');
+    expect(after.records[0]!.revisions).toEqual(n.records[0]!.revisions);
+    expect(after.records).toHaveLength(1);
+  }
+});
+
+test('a paraphrase over curated source and identity is disabled for review', () => {
+  const initial = emptyNexus();
+  const batch = buildNexusExtraction(initial, [msg], DEFAULT_NEXUS, counter, '');
+  const raw = {
+    nodes: [],
+    records: [
+      {
+        text: 'Joe is from London.',
+        kind: 'fact',
+        assertion: 'claim',
+        status: 'active',
+        nodeRefs: [],
+        sources: [0],
+        cues: [],
+      },
+    ],
+  };
+  const n = applyExtraction(
+    initial,
+    parseExtraction(JSON.stringify(raw), batch, initial),
+    batch,
+    'test',
+  );
+  n.records[0]!.revisions[0]!.deleted = true;
+  n.processed = {};
+  raw.records[0]!.text = 'London is where Joe says he comes from.';
+  const retry = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
+  const after = applyExtraction(n, parseExtraction(JSON.stringify(raw), retry, n), retry, 'test');
+  expect(after.records[1]!.revisions[0]).toMatchObject({
+    enabled: false,
+    status: 'conflict',
+    conflicts: [n.records[0]!.id],
+  });
+});

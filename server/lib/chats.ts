@@ -20,7 +20,9 @@ import type {
 } from '../../shared/types/chat.ts';
 import { writeChatBackup } from './backups.ts';
 import { getDb } from './db.ts';
+import { migrateNexusLibrary } from './nexus.ts';
 import { PATHS } from './paths.ts';
+import { getSettings } from './settings.ts';
 
 interface ChatRow {
   id: string;
@@ -474,7 +476,11 @@ let store: ChatStore | null = null;
 
 /** The application chat store. Tests build their own against an in-memory database. */
 export function chatStore(): ChatStore {
-  store ??= createChatStore(getDb());
+  if (!store) {
+    const next = createChatStore(getDb());
+    migrateNexusLibrary(getDb(), next, getSettings().memoryMode);
+    store = next;
+  }
   return store;
 }
 

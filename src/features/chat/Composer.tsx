@@ -46,6 +46,8 @@ interface ComposerProps {
    * Absent means the button is not rendered at all, so the composer works unguided.
    */
   onGuide?: (text: string) => void;
+  onRecall?: (text: string) => void;
+  onDraftChange?: (text: string) => void;
   onGuidedSwipe?: (text: string) => void;
   /** Why guided swipe is unavailable. Becomes its title — disabled beats refused. */
   guidedSwipeDisabledReason?: string;
@@ -76,6 +78,8 @@ interface ComposerProps {
 
 export function Composer({
   onSend,
+  onRecall,
+  onDraftChange,
   onGuide,
   onGuidedSwipe,
   guidedSwipeDisabledReason,
@@ -89,6 +93,9 @@ export function Composer({
   ref,
 }: ComposerProps) {
   const [text, setText] = useState('');
+  useEffect(() => {
+    onDraftChange?.(text);
+  }, [text, onDraftChange]);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -567,6 +574,15 @@ export function Composer({
         <span className="composer__tray-spacer" />
 
         {trailing}
+        {onRecall ? (
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            onClick={() => onRecall(text)}
+          >
+            Recall more
+          </button>
+        ) : null}
 
         {/* Hidden mid-generation rather than disabled: Send has already become Stop, and two
             dead buttons beside it is noise where the row should read as one action. */}

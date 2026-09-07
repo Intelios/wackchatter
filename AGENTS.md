@@ -25,6 +25,11 @@ long-running server keeps serving the memoised chat store's *old* prepared state
 changed `summarySelect` ships the old summary shape until restart (observed with
 `branchedFrom`: every branch was recorded, none of them reached the timeline).
 
+**Testing against real LLMs:** the connection **"For Agents to Use"** in `data/settings.json`
+(custom provider) exists so agents working on this repo can run real generations. Route test
+traffic through it, not the user's other connections, and don't rename or delete it — its
+key lives in `data/secrets.json` like any other and never leaves the machine.
+
 ## Layout
 
 ```
@@ -45,7 +50,8 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant; branch.ts — branch-time id repair.
   cocreator/     CardStash — the filed-card model.
-  memory/        Id-based memory list ops + the extraction prompt and reply contract.
+  nexus/         Versioned knowledge, provenance, extraction contract and hybrid retrieval.
+  memory/        Legacy memory conversion and hide provenance.
   persona/       derive.ts — card-to-persona: the prompt, the reply contract, the house format.
   prompt/        Assembly engine, macros, dice, preset I/O, defaults, token cache.
   providers/     Request building + SSE parsing. looseJson.ts is shared by both extractors.
@@ -236,39 +242,45 @@ byte-identically. The quirks are load-bearing and each has a named test.
   enabled non-blank guide is its own injection. Guides and guidance are pushed **last**
   into `depthInjections`; `tokenCounts.guides` / `.guidance` are their own keys.
 
-**Story memory** (`shared/memory/`, `src/features/memory/`, `src/features/summary/`)
-- **One story-memory slot, three modes** (`AppSettings.memoryMode`): `'classic'` rolling
-  summary, `'memories'` discrete recalls, `'off'`. A chat may carry both
-  `metadata.summary` and `metadata.memories`, but assembly injects one or neither —
-  never both, which would tell the model the same events twice in two voices.
-- **Memories are id-based, never index-based** (`Memory.range` names message ids;
-  indices shift under delete, branch and swipe). `memoryWatermark` (last covered
-  message) is the extraction checkpoint — the counterpart of
-  `summary.checkpointMessageId`.
-- **The extractor never sees a global message index and never names a destructive
-  action.** It is shown a window numbered from zero and answers in those local numbers,
-  mapped to real ids in `extract.ts`. Which messages get hidden is derived from the
-  ranges it wrote, by code — a malformed reply can produce a bad memory but cannot hide
-  the wrong thing. Extraction (`useChat.extractMemories`) builds its own request: no
-  `assemblePrompt`, no preset prompts, no jailbreak. It checkpoints after every window
-  and never overwrites a memory the user edited (`edited`). `autoHide` — the one
-  destructive switch — is always read live from saved settings, never a panel snapshot.
-- **Recall is the activation engine.** A memory's keywords become `WorldInfoEntry.key`
-  (so `/pattern/flags` keys work exactly as in a lorebook); `pinned` becomes `constant`.
-- **Hiding carries provenance.** A memory hides its covered range minus the verbatim
-  tail (enforced in `hideableMessageIds` — recent prose stays word-for-word) by setting
-  `is_system` + `hiddenBy`. A memory may only reveal what it stamped: a manual hide
-  survives its deletion, and one memory cannot reveal another's hides. Editing a
-  message marks covering memories `stale` (`markMemoriesStale`).
-- **Branching repairs the ids** (`shared/chat/branch.ts`). A branch copies the prefix
-  with fresh message ids, so `remapBranchMetadata` rewrites every range, the watermark
-  and the summary checkpoint onto the branch's ids, clamps ranges that straddle the
-  fork, and drops memories written from transcript past it. `branchedFrom.messageId`
-  still names the parent's message, on purpose.
-- Classic summarising chunks the backlog with estimate-then-verify packing
-  (`packClassicSummaryChunk`): one cheap token walk picks a prefix, a few full
-  assemblies verify it, and the accepted assembly is returned verbatim so dynamic lore
-  and macros are not rerun.
+**Story memory** (`shared/nexus/`, `src/features/nexus/`, `src/features/summary/`)
+- **One per-chat slot:** `ChatMetadata.memoryMode` is `classic` (Summary), `nexus`, or `off`.
+  App settings provide the default for new chats only. Migration stamps existing chats once
+  using their previous effective app setting. Summary and Nexus never inject together.
+- **Canonical knowledge lives in `ChatMetadata.nexus`**, saved through the revision queue.
+  Nodes have opaque identities and versioned names/aliases. Facts, events, situations and
+  threads have append-only revisions, source message fingerprints, attribution and state.
+  Tombstones, disabled records and manual edits survive later extraction. Equal names alone
+  never merge identities. Edges come from supported relationships/event participation.
+- **Evidence is checked against the selected transcript version at recall time.** Hidden,
+  deleted and abandoned swipe sources are excluded. Earlier valid revisions can be selected
+  when their source version is restored. Manual corrections never fall back to generated text.
+  Historical revisions are explicitly labelled; manual corrections suppress historical recall.
+- **Branching never clamps a Nexus description.** Every source and the manual-edit anchor
+  must be within the copied prefix; surviving versions have all message IDs remapped.
+  Later node aliases and merges are revisions too. Parent IDs in `branchedFrom` stay untouched.
+- **The memory model is independent:** an explicit saved connection ID and independent model
+  string, dedicated samplers, fixed validated JSON contract. Missing configuration pauses
+  paid operations without borrowing the chat model. Collection batches source-local indices,
+  verifies live source/record versions and flushes every accepted batch. Empty valid output
+  advances; invalid/truncated output does not. Errors stop, no automatic paid retry loops.
+  Chat generation remains available. Extraction never changes transcript visibility.
+- **Local recall uses the shared retrieval/renderer**, both for preview and requests. BGE-small
+  q8, tokenizer, manifest and licence are vendored under `public/models`; WASM runtime assets
+  ship locally. The worker forbids remote model fetching. Query jobs take priority. Cache
+  failures retain text/graph search. Cache entries include content and model fingerprints.
+- **`nexus_embeddings` is a disposable SQLite cache**, separate from canonical story records.
+  `/api/chats/:id/nexus-index` does not advance chat revisions. The cache shares the library
+  database lifecycle (backup, relocation, cascade deletion), without another memoised handle.
+- **Reviewed Recall more findings are one-request context, never transcript messages.**
+  Dispatch consumes them; source/draft changes invalidate them. Save to Nexus is separate.
+  Frozen per-request reports distinguish selection from actual injection and preview.
+- **Nexus is the explicit full-screen explorer exception.** It preserves the mounted chat,
+  draft, scroll, source-jump selection and camera, restores focus, and has a complete List
+  alternative. Motion respects reduced motion and pauses while hidden. No proximity knowledge.
+- Legacy `shared/memory/` code remains for conversion, legacy tests and old hide provenance.
+  Scene memories migrate to labelled legacy events without revealing hidden messages.
+- Classic summarising keeps estimate-then-verify `packClassicSummaryChunk`; accepted assembly
+  is returned verbatim so dynamic lore and macros are not rerun.
 
 **Messages** (`shared/chat/message.ts`)
 - **`mes` is derived, never stored**: text from `swipes[swipe_id]`, metadata from

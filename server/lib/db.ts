@@ -15,7 +15,7 @@ import { PATHS } from './paths.ts';
  * an upgraded database is stamped with the CURRENT version — a literal in each test would
  * only pin that someone remembered to edit three files.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS nexus_embeddings (
+  chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  document_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  vector BLOB NOT NULL,
+  PRIMARY KEY(chat_id, document_id, model)
+) WITHOUT ROWID;
 
 -- Character Co-Creator: a design conversation and the card fields stashed out of it.
 -- Deliberately NOT the chats table: a session has no character, is never backed up on

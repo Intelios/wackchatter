@@ -10,6 +10,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { chatStore } from './lib/chats.ts';
 import { errorResponse, handle, notFound } from './lib/http.ts';
 import { initDataLocation } from './lib/location.ts';
 import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
@@ -61,6 +62,8 @@ function forbiddenOrigin(request: Request): boolean {
 const dataLocation = initDataLocation();
 ensureDataDirs();
 await ensureDefaultPreset();
+// Freeze legacy per-chat modes before the user can change the new app default.
+chatStore();
 // Says where the library is, for anything accounting for what it cost. Written whether or
 // not the usage log is on — see publishLibraryPointer.
 publishLibraryPointer();

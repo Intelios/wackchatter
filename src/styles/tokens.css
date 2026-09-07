@@ -315,3 +315,9 @@
     --wc-bubble: #16161a;
   }
 }
+
+:root {
+  /* Nexus is the explicit full-viewport explorer exception. */
+  --wc-nexus-detail: 360px;
+  --wc-nexus-page: 780px;
+}

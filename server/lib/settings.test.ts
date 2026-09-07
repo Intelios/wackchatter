@@ -192,12 +192,12 @@ describe('mergeSettings', () => {
   test('the memory mode defaults to the summary, so an upgrade changes nothing', () => {
     expect(base().memoryMode).toBe('classic');
     expect(mergeSettings(base(), { memoryMode: 'nonsense' as never }).memoryMode).toBe('classic');
-    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('memories');
+    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('nexus');
   });
 
   test('omitting the memory mode leaves it untouched', () => {
     const current = mergeSettings(base(), { memoryMode: 'memories' });
-    expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('memories');
+    expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('nexus');
   });
 
   test('memory preferences merge field-wise and clamp every numeric field', () => {

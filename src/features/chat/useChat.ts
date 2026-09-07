@@ -1,3 +1,6 @@
+import { reportNexusAssembly } from '@shared/nexus/report.ts';
+import { DEFAULT_NEXUS, type NexusSettings } from '@shared/nexus/types.ts';
+import { type NexusController, useNexus } from '../nexus/useNexus.ts';
 /**
  * Chat orchestration: assembly, streaming, and persistence.
  *
@@ -65,7 +68,7 @@ import {
   useState,
 } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
-import { memoryRecallForChat, worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
   packClassicSummaryChunk,
   resolveSummaryPrompt,
@@ -135,6 +138,9 @@ export interface UseChatOptions {
   memoryConnection?: Connection | null;
   memoryPreset?: Preset | null;
   memoryCountTokens?: TokenCounter;
+  nexusSettings?: NexusSettings;
+  nexusConnection?: Connection | null;
+  nexusCountTokens?: TokenCounter;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
@@ -146,6 +152,8 @@ export interface UseChatOptions {
 }
 
 export interface UseChat {
+  nexus: NexusController;
+  memoryMode: MemoryMode;
   state: ChatState;
   /** The transcript in wire form. Feeds both the UI and assemblePrompt. */
   messages: ChatMessage[];
@@ -291,7 +299,10 @@ export function useChat(options: UseChatOptions): UseChat {
     summaryConnection,
     summarySettings,
     summaryCountTokens,
-    memoryMode = 'classic',
+    memoryMode: defaultMemoryMode = 'classic',
+    nexusSettings = DEFAULT_NEXUS,
+    nexusConnection,
+    nexusCountTokens,
     memorySettings,
     memoryConnection,
     memoryPreset,
@@ -302,6 +313,8 @@ export function useChat(options: UseChatOptions): UseChat {
   } = options;
 
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
+  const selectedMode = state.metadata.memoryMode ?? defaultMemoryMode;
+  const memoryMode = selectedMode === 'memories' ? 'nexus' : selectedMode;
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -440,6 +453,27 @@ export function useChat(options: UseChatOptions): UseChat {
     // persona, rather than borrowing the app-wide current one.
     return null;
   }, [state.metadata.persona, personas]);
+
+  const nexus = useNexus({
+    state,
+    stateRef,
+    dispatch,
+    settings: nexusSettings,
+    connection: nexusConnection ?? null,
+    counter: nexusCountTokens ?? countTokens,
+    enabled: memoryMode === 'nexus',
+    profile: [character?.name, character?.description, persona?.name, persona?.description]
+      .filter(Boolean)
+      .join('\n'),
+    captureSnapshot,
+    persistence,
+  });
+  const {
+    preview: prepareNexus,
+    setRecall: setNexusRecall,
+    consume: consumeNexus,
+    stageForSend,
+  } = nexus;
 
   const setPersona = useCallback((personaId: string | null) => {
     dispatch({ type: 'chat/metadata', patch: { persona: personaId } });
@@ -729,19 +763,17 @@ export function useChat(options: UseChatOptions): UseChat {
 
         // Recall runs over the same post-fold transcript, so a memory keyed on a word in
         // the message just typed fires for the reply it triggered rather than the next one.
-        const recall =
-          memoryMode === 'memories'
-            ? memoryRecallForChat({
-                memories: started.metadata.memories,
-                messages: chatMessages,
-                settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
-                budget: memoryConfigRef.current.budgetTokens,
-                preset,
-                chatId: started.chatId,
+        setMemoryRecall(null);
+        let nexusRecall =
+          memoryMode === 'nexus'
+            ? await prepareNexus(
+                chatMessages,
+                nexusSettings.budgetTokens,
                 countTokens,
-              })
-            : null;
-        setMemoryRecall(recall);
+                'Request',
+                controller.signal,
+              )
+            : undefined;
 
         const assembled = assemblePrompt({
           preset,
@@ -753,8 +785,8 @@ export function useChat(options: UseChatOptions): UseChat {
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
           memoryMode,
-          memoryText: recall?.text,
-          memorySettings: memoryConfigRef.current,
+          memoryText: nexusRecall?.text,
+          memorySettings: memoryMode === 'nexus' ? nexusSettings : memoryConfigRef.current,
           scenarioOverride:
             typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
           authorNote: started.metadata.authorNote,
@@ -773,11 +805,13 @@ export function useChat(options: UseChatOptions): UseChat {
           regexScripts,
         });
 
+        nexusRecall = reportNexusAssembly(nexusRecall, assembled);
         if (!assembled.ok) {
           dispatch({
             type: 'gen/inspected',
             inspection: {
               at: Date.now(),
+              nexusRecall,
               generationType,
               messages: assembled.messages,
               tokenCounts: assembled.tokenCounts,
@@ -811,6 +845,7 @@ export function useChat(options: UseChatOptions): UseChat {
         });
 
         const inspection: PromptInspection = {
+          nexusRecall,
           at: Date.now(),
           generationType,
           messages: assembled.messages,
@@ -840,6 +875,10 @@ export function useChat(options: UseChatOptions): UseChat {
         // after its owner has moved on or its Stop/transition abort has already fired.
         if (!ensureGenerationActive()) return;
 
+        if (nexusRecall) {
+          setNexusRecall(nexusRecall);
+          consumeNexus();
+        }
         stream.begin(seed, streamed);
         streamStarted = true;
         text = seed;
@@ -887,6 +926,7 @@ export function useChat(options: UseChatOptions): UseChat {
                   text: choice.content,
                   finishReason: choice.finishReason,
                   extra: {
+                    nexusRecall,
                     api: requestConnection.provider,
                     model: final.model ?? requestConnection.model,
                     connection_id: requestConnection.id,
@@ -906,6 +946,7 @@ export function useChat(options: UseChatOptions): UseChat {
           // truncated badge in the reducer; a Stop click or a failure marks its own.
           finishReason: final.finishReason,
           extra: {
+            nexusRecall,
             api: requestConnection.provider,
             model: final.model ?? requestConnection.model,
             connection_id: requestConnection.id,
@@ -977,6 +1018,10 @@ export function useChat(options: UseChatOptions): UseChat {
       guidanceSettings,
       summarySettings,
       memoryMode,
+      nexusSettings,
+      prepareNexus,
+      setNexusRecall,
+      consumeNexus,
       globalVariables,
       regexScripts,
       onGlobalVariablesChange,
@@ -1040,6 +1085,7 @@ export function useChat(options: UseChatOptions): UseChat {
         return;
       }
 
+      stageForSend();
       const draft = await resolveDraft(trimmed);
       const resolved = draft.text.trim();
 
@@ -1069,7 +1115,7 @@ export function useChat(options: UseChatOptions): UseChat {
       // reply is assembled from, and dispatch has not re-rendered yet.
       await generate('send', chatReducer(draft.state, userAction));
     },
-    [generate, persona, resolveDraft],
+    [generate, persona, resolveDraft, stageForSend],
   );
 
   /**
@@ -1975,6 +2021,8 @@ export function useChat(options: UseChatOptions): UseChat {
   }, [state, memoryMode, memoryPending, extractMemories]);
 
   return {
+    nexus,
+    memoryMode,
     state,
     messages,
     stream,

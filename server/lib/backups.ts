@@ -1,3 +1,5 @@
+import { migrateMemories } from '../../shared/nexus/state.ts';
+import type { MemoryMode } from '../../shared/types/settings.ts';
 /**
  * Chat backups — the trash bin deleted chats land in.
  *
@@ -150,13 +152,23 @@ export function restoreChatBackup(
   backupId: string,
   store: ChatStore,
   dir: string = PATHS.backups,
+  defaultMode: MemoryMode = 'classic',
 ): Chat | null {
   const backup = readChatBackup(backupId, dir);
   if (!backup) return null;
   const chat = store.createChat({
     characterId: backup.characterId,
     title: backup.title,
-    metadata: backup.metadata,
+    metadata: {
+      ...backup.metadata,
+      memoryMode:
+        backup.metadata.memoryMode === 'memories'
+          ? 'nexus'
+          : (backup.metadata.memoryMode ?? defaultMode),
+      ...(backup.metadata.memories?.length && !backup.metadata.nexus
+        ? { nexus: migrateMemories(backup.metadata.memories, backup.messages) }
+        : {}),
+    },
     messages: backup.messages,
   });
   deleteChatBackup(backupId, dir);

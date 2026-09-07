@@ -1,3 +1,4 @@
+import type { NexusRecall } from '@shared/nexus/types.ts';
 /**
  * Chat state.
  *
@@ -46,6 +47,7 @@ export type ChatStatus = 'idle' | 'connecting' | 'streaming';
 
 /** A record of one generation, for the "what was actually sent" inspector. */
 export interface PromptInspection {
+  nexusRecall?: NexusRecall;
   at: number;
   generationType: GenerationType;
   messages: ApiMessage[];

@@ -6,6 +6,7 @@
  * else's preset cannot silently repoint your endpoint, and exporting yours cannot leak it.
  */
 
+import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { ArenaSettings } from './arena.ts';
@@ -106,6 +107,7 @@ export interface AppSettings {
   memoryMode: MemoryMode;
   /** Discrete memories: extraction source, prompt, hiding and injection preferences. */
   memory: MemorySettings;
+  nexus: NexusSettings;
   coCreator: CoCreatorSettings;
   /**
    * Model Arena: the contender pool, the blind draw's card and probe pools, and how a
@@ -276,7 +278,8 @@ export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
  * different `ChatMetadata` fields, so switching mode is reversible and loses nothing: the
  * old rolling summary is still sitting there when you switch back.
  */
-export type MemoryMode = 'classic' | 'memories' | 'off';
+/** `memories` is accepted only for legacy data and format tests. UI uses `nexus`. */
+export type MemoryMode = 'classic' | 'memories' | 'nexus' | 'off';
 
 /**
  * Discrete memory extraction and recall.
@@ -500,6 +503,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   summary: { ...DEFAULT_SUMMARY },
   memoryMode: 'classic',
   memory: { ...DEFAULT_MEMORY },
+  nexus: { ...DEFAULT_NEXUS },
   coCreator: {
     ...DEFAULT_COCREATOR,
     exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },

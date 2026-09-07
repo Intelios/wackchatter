@@ -1,5 +1,8 @@
+import { NEXUS_MODEL_FINGERPRINT } from '../../shared/nexus/model.ts';
+
 /** Chat CRUD. Storage is ours, so there is no external format to honour here. */
 
+import { emptyNexus, migrateMemories } from '../../shared/nexus/state.ts';
 import type {
   Chat,
   ChatMessage,
@@ -8,7 +11,10 @@ import type {
 } from '../../shared/types/chat.ts';
 import { parseChatExport } from '../lib/backups.ts';
 import { chatStore } from '../lib/chats.ts';
+import { getDb } from '../lib/db.ts';
 import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
+import { readNexusIndex, validEmbedding, writeNexusIndex } from '../lib/nexus.ts';
+import { getSettings } from '../lib/settings.ts';
 
 interface CreateBody {
   characterId?: string;
@@ -56,7 +62,11 @@ export async function handleChatRoute(
       store.createChat({
         characterId: body.characterId,
         title: body.title,
-        metadata: body.metadata,
+        metadata: {
+          memoryMode: getSettings().memoryMode,
+          nexus: { ...emptyNexus(), initialized: true },
+          ...body.metadata,
+        },
         messages: body.messages,
       }),
       { status: 201 },
@@ -90,12 +100,42 @@ export async function handleChatRoute(
       store.createChat({
         characterId: characterId.trim(),
         ...exported,
+        metadata: {
+          ...exported.metadata,
+          memoryMode:
+            exported.metadata?.memoryMode === 'memories'
+              ? 'nexus'
+              : (exported.metadata?.memoryMode ?? getSettings().memoryMode),
+          ...(exported.metadata?.memories?.length && !exported.metadata.nexus
+            ? { nexus: migrateMemories(exported.metadata.memories, exported.messages) }
+            : {}),
+        },
       }),
       { status: 201 },
     );
   }
 
   const id = decodeURIComponent(segments[0]!);
+
+  if (segments.length === 2 && segments[1] === 'nexus-index') {
+    if (!store.getChat(id)) return notFound('Chat not found.');
+    if (method === 'GET')
+      return json({ model: NEXUS_MODEL_FINGERPRINT, entries: readNexusIndex(getDb(), id) });
+    if (method === 'PUT') {
+      const body = await readJson<{ entries?: unknown; model?: string }>(request);
+      if (body?.model !== NEXUS_MODEL_FINGERPRINT)
+        return errorResponse('Nexus model version changed. Reload the application.');
+      if (
+        !Array.isArray(body?.entries) ||
+        body.entries.length > 64 ||
+        !body.entries.every(validEmbedding)
+      )
+        return errorResponse('Expected up to 64 valid Nexus embeddings.');
+      writeNexusIndex(getDb(), id, body.entries);
+      return json({ ok: true });
+    }
+    return null;
+  }
 
   // /api/chats/:id/export
   if (segments[1] === 'export' && method === 'GET') {

@@ -486,7 +486,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
    */
   const memoryConfig: MemorySettings = { ...DEFAULT_MEMORY, ...memorySettings };
   const summarySettingsResolved = { ...DEFAULT_SUMMARY, ...summarySettings };
-  const usingMemories = memoryMode === 'memories';
+  const usingMemories = memoryMode === 'memories' || memoryMode === 'nexus';
   const summaryConfig: StoryMemoryPlacement = usingMemories
     ? memoryConfig
     : summarySettingsResolved;

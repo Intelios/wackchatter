@@ -1,4 +1,5 @@
 import { greetingTexts } from '@shared/chat/message.ts';
+import { DEFAULT_NEXUS } from '@shared/nexus/types.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
 import type { ArenaSettings } from '@shared/types/arena.ts';
@@ -42,6 +43,7 @@ import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
+import { NexusExplorer } from './features/nexus/NexusExplorer.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { recentPersonaId, withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
@@ -317,6 +319,13 @@ export function App() {
     settings?.tokenizerEncoding,
   );
 
+  const nexusSettings = settings?.nexus ?? DEFAULT_NEXUS;
+  const nexusBase = settings?.connections.find((c) => c.id === nexusSettings.connectionId);
+  const nexusConnection =
+    nexusBase && nexusSettings.model
+      ? { ...nexusBase, model: nexusSettings.model, showReasoning: false }
+      : null;
+  const nexusCountTokens = useTokenizer(nexusSettings.model, settings?.tokenizerEncoding);
   const memoryMode: MemoryMode = settings?.memoryMode ?? 'classic';
   const memorySettings: MemorySettings = settings?.memory ?? DEFAULT_MEMORY;
   const memoryConnection = memorySettings.connectionId
@@ -616,6 +625,9 @@ export function App() {
     memoryConnection,
     memoryPreset,
     memoryCountTokens,
+    nexusSettings,
+    nexusConnection,
+    nexusCountTokens,
     globalVariables: settings?.variables ?? {},
     regexScripts,
     onGlobalVariablesChange: commitGlobalVariables,
@@ -642,8 +654,11 @@ export function App() {
           chatMetadata: chat.state.metadata,
           guidanceSettings,
           summarySettings,
-          memoryMode,
+          memoryMode: chat.memoryMode,
           memorySettings,
+          nexusSettings,
+          prepareNexus: chat.nexus.preview,
+          nexusVersion: chat.nexus.indexVersion,
           globalVariables: settings?.variables ?? {},
           regexScripts,
         }
@@ -1290,6 +1305,8 @@ export function App() {
             worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
             memoryRecall={chat.memoryRecall ?? preview?.memoryRecall ?? null}
             inspection={chat.inspection}
+            nexusRecall={chat.inspection?.nexusRecall ?? chat.nexus.recall}
+            nexusPreview={preview?.nexusRecall}
           />
         </ErrorBoundary>
       }
@@ -1372,11 +1389,13 @@ export function App() {
               {rightPanel === 'summary' ? (
                 <MemoryPanel
                   chat={chat}
-                  mode={memoryMode}
-                  onModeChange={(nextMode) => void patchSettings({ memoryMode: nextMode })}
-                  settings={memorySettings}
+                  mode={chat.memoryMode}
+                  onModeChange={chat.nexus.setMode}
+                  defaultMode={memoryMode}
+                  onDefaultChange={(memoryMode) => void patchSettings({ memoryMode })}
+                  settings={nexusSettings}
                   onSettingsChange={(patch) =>
-                    void patchSettings({ memory: { ...memorySettings, ...patch } })
+                    void patchSettings({ nexus: { ...nexusSettings, ...patch } })
                   }
                   summarySettings={summarySettings}
                   onSummarySettingsChange={(patch) =>
@@ -1385,9 +1404,6 @@ export function App() {
                   connections={settings?.connections ?? []}
                   activeConnection={connection}
                   summaryConnection={summaryConnection}
-                  memoryConnection={memoryConnection}
-                  presets={presets}
-                  activePresetId={presetId}
                 />
               ) : null}
 
@@ -1481,6 +1497,16 @@ export function App() {
             onOpenArena={() => void enterArena()}
           />
         )}
+      </ErrorBoundary>
+      <ErrorBoundary where="Memory Nexus" resetKeys={[chat.state.chatId, chat.nexus.open]}>
+        <NexusExplorer
+          chat={chat}
+          settings={nexusSettings}
+          connections={settings?.connections ?? []}
+          onSettingsChange={(patch) =>
+            void patchSettings({ nexus: { ...nexusSettings, ...patch } })
+          }
+        />
       </ErrorBoundary>
     </AppShell>
   );

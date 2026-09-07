@@ -245,6 +245,14 @@ export function ChatView({
     [state.chatId, state.messages, stopFollowing],
   );
 
+  useEffect(() => {
+    const id = chat.nexus.jumpId;
+    if (!id) return;
+    const index = chat.messages.findIndex((m) => m.id === id);
+    if (index >= 0) jumpTo(index);
+    chat.nexus.setJumpId(null);
+  }, [chat.nexus.jumpId, chat.nexus.setJumpId, chat.messages, jumpTo]);
+
   // The target only exists in the DOM once the new window has committed, so the scroll
   // waits for this layout effect. Centred, not snapped to the top: the reader lands with
   // context above and below, and a jump to the very start still shows the first message.
@@ -895,6 +903,10 @@ export function ChatView({
 
         <Composer
           ref={composerRef}
+          onRecall={
+            chat.memoryMode === 'nexus' ? (text) => chat.nexus.show('recall', text) : undefined
+          }
+          onDraftChange={chat.nexus.draftChanged}
           onSend={handleSend}
           // The other two composer submits. Both put new text at the end of the transcript,
           // so both earn the same snap as an ordinary send.

@@ -1,0 +1,1145 @@
+import {
+  canonicalNode,
+  latest,
+  liveRecords,
+  mergeNodes,
+  nodeVersion,
+  reviseNode,
+  reviseRecord,
+  validEvidence,
+} from '@shared/nexus/state.ts';
+import type {
+  NexusEvidence,
+  NexusKind,
+  NexusNodeKind,
+  NexusRecord,
+  NexusRevision,
+} from '@shared/nexus/types.ts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import type { UseChat } from '../chat/useChat.ts';
+import { nexusGraph, nodePosition } from './graph.ts';
+import { NexusActivity } from './NexusActivity.tsx';
+import { NexusReport } from './NexusReport.tsx';
+import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
+import './Nexus.css';
+
+type Props = NexusSettingsProps & { chat: UseChat };
+const KINDS = ['person', 'place', 'object', 'event'] as const;
+const RECORD_KINDS = ['fact', 'event', 'situation', 'thread'] as const;
+const TITLE = { person: 'People', place: 'Places', object: 'Objects', event: 'Events' };
+const SYMBOL = { person: '◎', place: '⌖', object: '◇', event: '✦' };
+export function NexusExplorer({ chat, ...config }: Props) {
+  const n = chat.nexus;
+  const [search, setSearch] = useState('');
+  const [kind, setKind] = useState<NexusNodeKind | 'all'>('all');
+  const [view, setView] = useState<'map' | 'list'>('map');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [camera, setCamera] = useState({ x: 0, y: 0, z: 1 });
+  const [archived, setArchived] = useState(false);
+  const [limit, setLimit] = useState(80);
+  const [newName, setNewName] = useState('');
+  const [newKind, setNewKind] = useState<NexusNodeKind>('person');
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [hidden, setHidden] = useState(document.hidden);
+  const root = useRef<HTMLDivElement>(null);
+  const svg = useRef<SVGSVGElement>(null);
+  const drag = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
+  const anchor = chat.messages.at(-1)?.id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: camera and selection belong to the chat identity
+  useEffect(() => {
+    setSelected(null);
+    setCamera({ x: 0, y: 0, z: 1 });
+    setSearch('');
+    setConfirm('');
+  }, [chat.state.chatId]);
+  useEffect(() => {
+    const listener = () => setHidden(document.hidden);
+    document.addEventListener('visibilitychange', listener);
+    return () => document.removeEventListener('visibilitychange', listener);
+  }, []);
+  useEffect(() => {
+    if (!n.open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const shell = document.getElementById('root');
+    const wasInert = shell?.inert;
+    if (shell) shell.inert = true;
+    root.current?.querySelector<HTMLButtonElement>('[data-close]')?.focus({ preventScroll: true });
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        n.setOpen(false);
+      }
+      if (e.key === 'Tab') {
+        const controls = [
+          ...(root.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
+          ) ?? []),
+        ].filter((el) => el.getClientRects().length);
+        const first = controls[0],
+          last = controls.at(-1);
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('keydown', key);
+      if (shell) shell.inert = wasInert ?? false;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [n.open, n.setOpen]);
+  const graph = useMemo(() => nexusGraph(n.data, chat.messages), [n.data, chat.messages]);
+  const positions = useMemo(
+    () => new Map(n.data.nodes.map((v, i) => [v.id, nodePosition(i)])),
+    [n.data.nodes],
+  );
+  const active = useMemo(
+    () => new Set(liveRecords(n.data, chat.messages).map((r) => r.record.id)),
+    [n.data, chat.messages],
+  );
+  const nodeById = useMemo(() => new Map(n.data.nodes.map((v) => [v.id, v])), [n.data.nodes]);
+  const selectedNode = selected ? nodeById.get(selected) : undefined;
+  const node = selectedNode && nodeVersion(selectedNode);
+  const matches = (text: string) => text.toLocaleLowerCase().includes(search.toLocaleLowerCase());
+  const matchingRecords = n.data.records.filter((r) => {
+    const v = latest(r);
+    return (
+      (archived || !v.deleted) &&
+      (!selected || v.nodeIds.some((id) => canonicalNode(n.data, id) === selected)) &&
+      (kind === 'all' ||
+        v.nodeIds.some(
+          (id) => nodeById.get(canonicalNode(n.data, id))?.versions.at(-1)?.kind === kind,
+        )) &&
+      matches(
+        `${v.text} ${v.cues.join(' ')} ${v.nodeIds.map((id) => nodeById.get(id)?.versions.at(-1)?.name).join(' ')}`,
+      )
+    );
+  });
+  const matchedIds = new Set(
+    matchingRecords.flatMap((r) => latest(r).nodeIds.map((id) => canonicalNode(n.data, id))),
+  );
+  const visibleNodes = (
+    archived ? n.data.nodes.filter((v) => !nodeVersion(v).mergedInto) : graph.nodes
+  ).filter(
+    (v) =>
+      (kind === 'all' || nodeVersion(v).kind === kind) &&
+      (!search ||
+        matches(nodeVersion(v).name) ||
+        nodeVersion(v).aliases.some(matches) ||
+        matchedIds.has(v.id)),
+  );
+  const neighbours = new Set(
+    graph.edges
+      .filter((e) => e.from === selected || e.to === selected)
+      .flatMap((e) => [e.from, e.to]),
+  );
+  const drawn = [...visibleNodes]
+    .sort(
+      (a, b) =>
+        Number(b.id === selected || neighbours.has(b.id)) -
+        Number(a.id === selected || neighbours.has(a.id)),
+    )
+    .slice(0, 180);
+  const drawnIds = new Set(drawn.map((v) => v.id));
+  const recalled = new Set(
+    n.recall?.hits.filter((h) => h.included).flatMap((h) => h.nodeIds) ?? [],
+  );
+  const configured = Boolean(
+    config.connections.some((c) => c.id === config.settings.connectionId) && config.settings.model,
+  );
+  function changeNode(patch: Partial<NonNullable<typeof node>>) {
+    if (selected) n.update((s) => reviseNode(s, selected, patch, anchor));
+  }
+  function addRecord(kind: NexusKind) {
+    const id = crypto.randomUUID();
+    n.update((s) => ({
+      ...s,
+      records: [
+        ...s.records,
+        {
+          id,
+          revisions: [
+            {
+              text: '',
+              kind,
+              assertion: kind === 'event' ? 'event' : 'fact',
+              status: 'active',
+              nodeIds: selected ? [selected] : [],
+              evidence: [],
+              anchorId: anchor,
+              created: Date.now(),
+              enabled: true,
+              pinned: false,
+              deleted: false,
+              manual: true,
+              cues: [],
+            },
+          ],
+        },
+      ],
+    }));
+    setView('list');
+  }
+  function centre() {
+    const p = selected && positions.get(selected);
+    if (p) setCamera((c) => ({ ...c, x: 500 - p.x * c.z, y: 350 - p.y * c.z }));
+  }
+  function fit() {
+    if (!drawn.length) {
+      setCamera({ x: 0, y: 0, z: 1 });
+      return;
+    }
+    const ps = drawn.map((v) => positions.get(v.id)!);
+    const xmin = Math.min(...ps.map((p) => p.x)) - 100,
+      xmax = Math.max(...ps.map((p) => p.x)) + 100,
+      ymin = Math.min(...ps.map((p) => p.y)) - 60,
+      ymax = Math.max(...ps.map((p) => p.y)) + 60;
+    const z = Math.min(2, 900 / (xmax - xmin), 600 / (ymax - ymin));
+    setCamera({ z, x: 500 - ((xmax + xmin) / 2) * z, y: 350 - ((ymax + ymin) / 2) * z });
+  }
+  if (!n.open) return null;
+  return createPortal(
+    <div
+      ref={root}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Memory Nexus"
+      className="nexus"
+      data-motion={config.settings.motion && !hidden}
+    >
+      <header className="nexus-top">
+        <div>
+          <strong>Memory Nexus</strong>
+          <span>{chat.state.title || 'This conversation'}</span>
+        </div>
+        <nav aria-label="Nexus sections">
+          {(['explore', 'recall', 'settings'] as const).map((v) => (
+            <button
+              key={v}
+              className="wc-button wc-button--ghost"
+              type="button"
+              aria-pressed={n.section === v}
+              onClick={() => n.setSection(v)}
+            >
+              {v === 'explore' ? 'Explore' : v === 'recall' ? 'Recall more' : 'Settings'}
+            </button>
+          ))}
+        </nav>
+        <span className="nexus-top-status" role="status">
+          {n.run.running
+            ? 'Memory model working…'
+            : `${n.data.records.filter((r) => !latest(r).deleted).length} memories`}
+        </span>
+        <button
+          type="button"
+          className="wc-button"
+          data-close
+          onClick={() => n.setOpen(false)}
+          aria-label="Close Memory Nexus"
+        >
+          Close ×
+        </button>
+      </header>
+      {n.section === 'settings' ? (
+        <div className="nexus-page">
+          <h2>Nexus settings</h2>
+          <NexusSettings {...config} />
+          <NexusActivity chat={chat} configured={configured} />
+        </div>
+      ) : n.section === 'recall' ? (
+        <div className="nexus-page">
+          <h2>Recall more</h2>
+          <p>
+            Search story memories and eligible older conversation passages. Review the findings
+            before including them in your next request.
+          </p>
+          <label>
+            Search for
+            <textarea
+              className="wc-input"
+              value={n.query}
+              onChange={(e) => n.setQuery(e.target.value)}
+              rows={3}
+            />
+          </label>
+          <div className="nexus-actions">
+            <button
+              type="button"
+              className="wc-button wc-button--primary"
+              disabled={
+                !configured || n.run.running || chat.memoryMode !== 'nexus' || !n.query.trim()
+              }
+              onClick={() => void n.deeper(n.query)}
+            >
+              Search with memory model
+            </button>
+            {n.run.running ? (
+              <button type="button" className="wc-button" onClick={n.cancel}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
+          {!configured ? <p>Configure a connection and model in Settings first.</p> : null}
+          {n.run.error ? <p role="status">{n.run.error}</p> : null}
+          {n.findings.map((f) => (
+            <article className="nexus-card" key={f.id}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={f.selected}
+                  onChange={(e) =>
+                    n.setFindings((fs) =>
+                      fs.map((v) => (v.id === f.id ? { ...v, selected: e.target.checked } : v)),
+                    )
+                  }
+                />{' '}
+                Include in next request
+              </label>
+              <p>{f.text}</p>
+              <Sources evidence={f.evidence} chat={chat} />
+              <button
+                type="button"
+                className="wc-button"
+                disabled={n.data.records.some(
+                  (r) => latest(r).text === f.text && !latest(r).deleted,
+                )}
+                onClick={() => n.saveFinding(f)}
+              >
+                Save to Nexus
+              </button>
+            </article>
+          ))}
+          {n.findings.length ? (
+            <button
+              type="button"
+              className="wc-button wc-button--primary"
+              onClick={() => n.setOpen(false)}
+            >
+              Use selected findings ({n.findings.filter((f) => f.selected).length})
+            </button>
+          ) : null}
+          <p>
+            Findings stay outside the transcript and are consumed on dispatch. Editing the draft or
+            changing source context clears them. Saving permanently is a separate action.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="nexus-toolbar">
+            <input
+              className="wc-input"
+              type="search"
+              aria-label="Search Nexus"
+              placeholder="Search names, aliases, memories…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setLimit(80);
+              }}
+            />
+            <select
+              className="wc-input"
+              aria-label="Category"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as typeof kind)}
+            >
+              <option value="all">All categories</option>
+              {KINDS.map((v) => (
+                <option key={v} value={v}>
+                  {TITLE[v]}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="wc-button"
+              onClick={() => setView((v) => (v === 'map' ? 'list' : 'map'))}
+            >
+              {view === 'map' ? 'List view' : 'Map view'}
+            </button>
+            <label>
+              <input
+                type="checkbox"
+                checked={archived}
+                onChange={(e) => setArchived(e.target.checked)}
+              />{' '}
+              Deleted
+            </label>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={() => config.onSettingsChange({ motion: !config.settings.motion })}
+              aria-pressed={config.settings.motion}
+            >
+              Motion
+            </button>
+          </div>
+          <div className="nexus-body">
+            <main className="nexus-main">
+              {view === 'map' ? (
+                <div className="nexus-map">
+                  {/* biome-ignore lint/a11y/useSemanticElements: SVG map contains keyboard-accessible interactive nodes */}
+                  <svg
+                    ref={svg}
+                    viewBox="0 0 1000 700"
+                    role="group"
+                    aria-label="Connected memory map. Use Tab to select nodes, or switch to List view."
+                    onWheel={(e) => {
+                      setCamera((c) => {
+                        const z = Math.max(0.15, Math.min(4, c.z * (e.deltaY > 0 ? 0.9 : 1.1)));
+                        return {
+                          z,
+                          x: 500 - ((500 - c.x) * z) / c.z,
+                          y: 350 - ((350 - c.y) * z) / c.z,
+                        };
+                      });
+                    }}
+                    onPointerDown={(e) => {
+                      if ((e.target as Element).closest('[data-node]')) return;
+                      drag.current = { x: e.clientX, y: e.clientY, cx: camera.x, cy: camera.y };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={(e) => {
+                      if (!drag.current) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const scale = Math.min(rect.width / 1000, rect.height / 700);
+                      const d = drag.current;
+                      setCamera((c) => ({
+                        ...c,
+                        x: d.cx + (e.clientX - d.x) / scale,
+                        y: d.cy + (e.clientY - d.y) / scale,
+                      }));
+                    }}
+                    onPointerUp={() => {
+                      drag.current = null;
+                    }}
+                    onPointerCancel={() => {
+                      drag.current = null;
+                    }}
+                  >
+                    <title>Memory Nexus map</title>
+                    <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}>
+                      {graph.edges
+                        .filter((e) => drawnIds.has(e.from) && drawnIds.has(e.to))
+                        .slice(0, 500)
+                        .map((e) => {
+                          const a = positions.get(e.from)!,
+                            b = positions.get(e.to)!;
+                          return (
+                            <g
+                              key={e.id}
+                              className="nexus-edge"
+                              data-lit={e.from === selected || e.to === selected}
+                              data-recalled={recalled.has(e.from) && recalled.has(e.to)}
+                            >
+                              <title>{e.label}</title>
+                              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+                              {(e.from === selected || e.to === selected) && camera.z > 0.6 ? (
+                                <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 5}>
+                                  {e.label}
+                                </text>
+                              ) : null}
+                            </g>
+                          );
+                        })}
+                      {drawn.map((v) => {
+                        const p = positions.get(v.id)!,
+                          info = nodeVersion(v);
+                        return (
+                          // biome-ignore lint/a11y/useSemanticElements: SVG nodes cannot be HTML buttons
+                          <g
+                            key={v.id}
+                            data-node
+                            data-kind={info.kind}
+                            data-selected={v.id === selected}
+                            data-recalled={recalled.has(v.id)}
+                            className="nexus-node"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`${info.name}, ${info.kind}`}
+                            aria-pressed={v.id === selected}
+                            transform={`translate(${p.x} ${p.y})`}
+                            onClick={() => {
+                              setSelected(v.id);
+                              setConfirm('');
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelected(v.id);
+                              }
+                            }}
+                          >
+                            <circle className="nexus-halo" r="25" />
+                            <circle r="17" />
+                            <text className="nexus-symbol" y="5">
+                              {SYMBOL[info.kind]}
+                            </text>
+                            <text className="nexus-node-label" y="40">
+                              {info.name.length > 24 ? `${info.name.slice(0, 23)}…` : info.name}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </g>
+                  </svg>
+                  {!drawn.length ? (
+                    <div className="nexus-empty">
+                      <h2>
+                        {n.data.nodes.length ? 'No matching nodes' : 'A story worth remembering'}
+                      </h2>
+                      <p>
+                        Add a person, place, object or event, or build memories from the
+                        conversation.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="nexus-map-controls">
+                    <button type="button" className="wc-button" onClick={fit}>
+                      Fit
+                    </button>
+                    <button
+                      type="button"
+                      className="wc-button"
+                      disabled={!selected}
+                      onClick={centre}
+                    >
+                      Centre selection
+                    </button>
+                    <button
+                      type="button"
+                      className="wc-button"
+                      onClick={() => setCamera({ x: 0, y: 0, z: 1 })}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      className="wc-button"
+                      aria-label="Zoom in"
+                      onClick={() => setCamera((c) => ({ ...c, z: Math.min(4, c.z * 1.2) }))}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className="wc-button"
+                      aria-label="Zoom out"
+                      onClick={() => setCamera((c) => ({ ...c, z: Math.max(0.15, c.z / 1.2) }))}
+                    >
+                      −
+                    </button>
+                    <span>
+                      {drawn.length}/{graph.nodes.length} nodes
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="nexus-list">
+                  <div className="nexus-actions">
+                    <button className="wc-button" type="button" onClick={() => setSelected(null)}>
+                      All memories
+                    </button>
+                    {visibleNodes.slice(limit - 80, limit).map((v) => (
+                      <button
+                        className="wc-button wc-button--ghost"
+                        type="button"
+                        key={v.id}
+                        aria-pressed={selected === v.id}
+                        onClick={() => setSelected(v.id)}
+                      >
+                        {SYMBOL[nodeVersion(v).kind]} {nodeVersion(v).name}
+                      </button>
+                    ))}
+                  </div>
+                  {matchingRecords.slice(limit - 80, limit).map((r) => (
+                    <RecordEditor key={r.id} record={r} chat={chat} valid={active.has(r.id)} />
+                  ))}
+                  {limit > 80 ? (
+                    <button
+                      type="button"
+                      className="wc-button"
+                      onClick={() => setLimit((l) => Math.max(80, l - 80))}
+                    >
+                      Previous page
+                    </button>
+                  ) : null}
+                  {matchingRecords.length > limit || visibleNodes.length > limit ? (
+                    <button
+                      type="button"
+                      className="wc-button"
+                      onClick={() => setLimit((l) => l + 80)}
+                    >
+                      Next page
+                    </button>
+                  ) : null}
+                  {!matchingRecords.length ? (
+                    <p>No matching memories. Add one or build from this conversation.</p>
+                  ) : null}
+                </div>
+              )}
+            </main>
+            <aside className="nexus-detail">
+              {node ? (
+                <>
+                  <div className="nexus-actions">
+                    <span className="nexus-kicker">{node.kind}</span>
+                    <button
+                      type="button"
+                      className="wc-button wc-button--ghost"
+                      onClick={() => setSelected(null)}
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                  <input
+                    key={`${selected}:${node.name}`}
+                    className="wc-input nexus-name"
+                    aria-label="Node name"
+                    defaultValue={node.name}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && e.target.value !== node.name)
+                        changeNode({ name: e.target.value.trim() });
+                    }}
+                  />
+                  <label>
+                    Aliases
+                    <input
+                      key={`${selected}:${node.aliases.join()}`}
+                      className="wc-input"
+                      defaultValue={node.aliases.join(', ')}
+                      onBlur={(e) => {
+                        const aliases = e.target.value
+                          .split(',')
+                          .map((x) => x.trim())
+                          .filter(Boolean);
+                        if (aliases.join() !== node.aliases.join()) changeNode({ aliases });
+                      }}
+                    />
+                  </label>
+                  <select
+                    aria-label="Node category"
+                    className="wc-input"
+                    value={node.kind}
+                    onChange={(e) => changeNode({ kind: e.target.value as NexusNodeKind })}
+                  >
+                    {KINDS.map((k) => (
+                      <option key={k}>{k}</option>
+                    ))}
+                  </select>
+                  <details>
+                    <summary>Merge duplicate</summary>
+                    <p>
+                      Only merge identities you know are the same. Their facts and revision history
+                      are retained.
+                    </p>
+                    <select
+                      className="wc-input"
+                      aria-label="Merge into"
+                      value={mergeTarget}
+                      onChange={(e) => {
+                        setMergeTarget(e.target.value);
+                        setConfirm('');
+                      }}
+                    >
+                      <option value="">Choose identity</option>
+                      {graph.nodes
+                        .filter((v) => v.id !== selected)
+                        .map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {nodeVersion(v).name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="wc-button"
+                      disabled={!mergeTarget}
+                      onClick={() => {
+                        if (confirm === 'merge') {
+                          n.update((s) => mergeNodes(s, selected!, mergeTarget, anchor));
+                          setSelected(mergeTarget);
+                          setMergeTarget('');
+                          setConfirm('');
+                        } else setConfirm('merge');
+                      }}
+                    >
+                      {confirm === 'merge' ? 'Confirm merge' : 'Merge'}
+                    </button>
+                  </details>
+                  <button
+                    type="button"
+                    className="wc-button wc-button--ghost"
+                    onClick={() => {
+                      if (node.deleted) {
+                        changeNode({ deleted: false });
+                        setConfirm('');
+                      } else if (confirm === 'delete-node') {
+                        changeNode({ deleted: true });
+                        setConfirm('');
+                        setView('list');
+                        setArchived(true);
+                      } else setConfirm('delete-node');
+                    }}
+                  >
+                    {node.deleted
+                      ? 'Restore node'
+                      : confirm === 'delete-node'
+                        ? 'Confirm node deletion'
+                        : 'Delete node'}
+                  </button>
+                  {confirm === 'delete-node' ? (
+                    <p>
+                      The node leaves the map. Its memories and history stay available in List view.
+                    </p>
+                  ) : null}
+                  {!validEvidence(node.evidence, chat.messages) ||
+                  (node.anchorId && !chat.messages.some((m) => m.id === node.anchorId)) ? (
+                    <p>
+                      Node evidence needs review.{' '}
+                      <button
+                        type="button"
+                        className="wc-button"
+                        onClick={() => changeNode({ evidence: [] })}
+                      >
+                        Keep as user-authored identity
+                      </button>
+                    </p>
+                  ) : null}
+                  <Sources evidence={node.evidence} chat={chat} />
+                  {view === 'map'
+                    ? matchingRecords
+                        .slice(0, 40)
+                        .map((r) => (
+                          <RecordEditor
+                            key={r.id}
+                            record={r}
+                            chat={chat}
+                            valid={active.has(r.id)}
+                          />
+                        ))
+                    : null}
+                  {view === 'map' && matchingRecords.length > 40 ? (
+                    <button type="button" className="wc-button" onClick={() => setView('list')}>
+                      See all in List view
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <span className="nexus-kicker">Your story, connected</span>
+                  <h2>Explore the Nexus</h2>
+                  <p>
+                    Select a node to see what is known, how it connects, and where it came from.
+                  </p>
+                  <NexusActivity chat={chat} configured={configured} />
+                </>
+              )}
+              <details open={!n.data.nodes.length}>
+                <summary>Add to Nexus</summary>
+                <form
+                  className="nexus-settings"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!newName.trim()) return;
+                    const id = crypto.randomUUID();
+                    n.update((s) => ({
+                      ...s,
+                      nodes: [
+                        ...s.nodes,
+                        {
+                          id,
+                          versions: [
+                            {
+                              name: newName.trim(),
+                              kind: newKind,
+                              aliases: [],
+                              manual: true,
+                              evidence: [],
+                              anchorId: anchor,
+                            },
+                          ],
+                        },
+                      ],
+                    }));
+                    setNewName('');
+                    setSelected(id);
+                  }}
+                >
+                  <input
+                    className="wc-input"
+                    aria-label="New node name"
+                    placeholder="Name…"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                  />
+                  <select
+                    className="wc-input"
+                    aria-label="New node category"
+                    value={newKind}
+                    onChange={(e) => setNewKind(e.target.value as NexusNodeKind)}
+                  >
+                    {KINDS.map((k) => (
+                      <option key={k}>{k}</option>
+                    ))}
+                  </select>
+                  <button type="submit" className="wc-button" disabled={!newName.trim()}>
+                    Add node
+                  </button>
+                </form>
+                <div className="nexus-actions">
+                  {RECORD_KINDS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className="wc-button"
+                      onClick={() => addRecord(k)}
+                    >
+                      Add {k}
+                    </button>
+                  ))}
+                </div>
+              </details>
+              <details>
+                <summary>Latest request memories</summary>
+                <NexusReport recall={n.recall} />
+              </details>
+            </aside>
+          </div>
+          <footer className="nexus-footer">
+            <span>
+              {KINDS.map(
+                (k) =>
+                  `${graph.nodes.filter((v) => nodeVersion(v).kind === k).length} ${TITLE[k].toLowerCase()}`,
+              ).join(' · ')}
+            </span>
+            <span role="status">
+              {chat.saveError
+                ? `Save failed: ${chat.saveError}`
+                : chat.saving
+                  ? 'Saving…'
+                  : n.indexStatus.error
+                    ? 'Text and graph search'
+                    : `Index ${n.indexStatus.done}/${n.indexStatus.total}`}{' '}
+              · {n.recall?.hits.filter((h) => h.included).length ?? 0} memories in latest request
+            </span>
+          </footer>
+        </>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+function Sources({ evidence, chat }: { evidence: NexusEvidence[]; chat: UseChat }) {
+  if (!evidence.length) return <p className="nexus-muted">No transcript source attached</p>;
+  return (
+    <details>
+      <summary>Sources ({evidence.length})</summary>
+      {evidence.map((e) => (
+        <div key={`${e.messageId}:${e.fingerprint}:${e.excerpt}`} className="nexus-source">
+          <p>{e.excerpt}</p>
+          <p>
+            {validEvidence([e], chat.messages)
+              ? 'Source matches'
+              : 'Source changed, hidden or removed'}
+          </p>
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            disabled={!chat.messages.some((m) => m.id === e.messageId)}
+            onClick={() => {
+              chat.nexus.setJumpId(e.messageId);
+              chat.nexus.setOpen(false);
+            }}
+          >
+            Jump to message
+          </button>
+        </div>
+      ))}
+    </details>
+  );
+}
+function RecordEditor({
+  record,
+  chat,
+  valid,
+}: {
+  record: NexusRecord;
+  chat: UseChat;
+  valid: boolean;
+}) {
+  const r = latest(record);
+  const [text, setText] = useState(r.text);
+  const [confirm, setConfirm] = useState<'delete' | 'reassert' | null>(null);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [historyLimit, setHistoryLimit] = useState(20);
+  const [relation, setRelation] = useState(r.relation ?? { from: '', to: '', label: '' });
+  useEffect(() => setText(r.text), [r.text]);
+  useEffect(() => setRelation(r.relation ?? { from: '', to: '', label: '' }), [r.relation]);
+  const patch = (p: Partial<NexusRevision>) =>
+    chat.nexus.update((s) => reviseRecord(s, record.id, p, chat.messages.at(-1)?.id));
+  const nodes = chat.nexus.data.nodes
+    .filter(
+      (n) =>
+        !nodeVersion(n).mergedInto &&
+        !nodeVersion(n).deleted &&
+        (n.id === relation.from ||
+          n.id === relation.to ||
+          nodeVersion(n).name.toLowerCase().includes(nodeSearch.toLowerCase()) ||
+          nodeVersion(n).aliases.some((a) => a.toLowerCase().includes(nodeSearch.toLowerCase()))),
+    )
+    .sort(
+      (a, b) =>
+        Number(r.nodeIds.includes(b.id) || b.id === relation.from || b.id === relation.to) -
+        Number(r.nodeIds.includes(a.id) || a.id === relation.from || a.id === relation.to),
+    )
+    .slice(0, 100);
+  return (
+    <article className="nexus-card" data-disabled={!r.enabled || r.deleted}>
+      <div className="nexus-actions">
+        <span className="nexus-kicker">
+          {r.kind}
+          {r.legacy ? ' · Legacy event' : ''}
+          {r.manual ? ' · Edited' : ''}
+        </span>
+        <label>
+          <input
+            type="checkbox"
+            checked={r.pinned}
+            onChange={(e) => patch({ pinned: e.target.checked })}
+          />{' '}
+          Pin
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={r.enabled}
+            onChange={(e) => patch({ enabled: e.target.checked })}
+          />{' '}
+          Enabled
+        </label>
+      </div>
+      {!valid && r.enabled && !r.deleted ? (
+        <p role="status">Evidence is outdated or unavailable. Review before recall.</p>
+      ) : null}
+      <textarea
+        className="wc-input"
+        aria-label="Memory text"
+        maxLength={2000}
+        rows={3}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          if (text !== r.text) patch({ text });
+        }}
+      />
+      <div className="nexus-actions">
+        <select
+          className="wc-input"
+          aria-label="Memory kind"
+          value={r.kind}
+          onChange={(e) => patch({ kind: e.target.value as NexusKind })}
+        >
+          {RECORD_KINDS.map((k) => (
+            <option key={k}>{k}</option>
+          ))}
+        </select>
+        <select
+          className="wc-input"
+          aria-label="Memory state"
+          value={r.status}
+          onChange={(e) => patch({ status: e.target.value as NexusRevision['status'] })}
+        >
+          {['active', 'resolved', 'historical', 'conflict'].map((k) => (
+            <option key={k}>{k}</option>
+          ))}
+        </select>
+        <select
+          className="wc-input"
+          aria-label="Evidence attribution"
+          value={r.assertion}
+          onChange={(e) => patch({ assertion: e.target.value as NexusRevision['assertion'] })}
+        >
+          {['fact', 'claim', 'intention', 'event'].map((k) => (
+            <option key={k}>{k}</option>
+          ))}
+        </select>
+      </div>
+      <details onToggle={(e) => setConnectionsOpen(e.currentTarget.open)}>
+        <summary>People, places and connections</summary>
+        {connectionsOpen ? (
+          <>
+            <input
+              className="wc-input"
+              aria-label="Find identities"
+              placeholder="Search all names and aliases…"
+              value={nodeSearch}
+              onChange={(e) => setNodeSearch(e.target.value)}
+            />
+            <p>Showing up to 100 matching identities.</p>
+            <div className="nexus-attachments">
+              {nodes.map((n) => (
+                <label key={n.id}>
+                  <input
+                    type="checkbox"
+                    checked={r.nodeIds.some((id) => canonicalNode(chat.nexus.data, id) === n.id)}
+                    onChange={(e) =>
+                      patch({
+                        nodeIds: e.target.checked
+                          ? [...r.nodeIds, n.id]
+                          : r.nodeIds.filter((id) => canonicalNode(chat.nexus.data, id) !== n.id),
+                      })
+                    }
+                  />
+                  {nodeVersion(n).name}
+                </label>
+              ))}
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (
+                  relation.from &&
+                  relation.to &&
+                  relation.from !== relation.to &&
+                  relation.label.trim()
+                )
+                  patch({
+                    relation,
+                    nodeIds: [...new Set([...r.nodeIds, relation.from, relation.to])],
+                  });
+              }}
+            >
+              {(['from', 'to'] as const).map((k) => (
+                <select
+                  key={k}
+                  className="wc-input"
+                  aria-label={`Connection ${k}`}
+                  value={relation[k]}
+                  onChange={(e) => setRelation((v) => ({ ...v, [k]: e.target.value }))}
+                >
+                  <option value="">{k}</option>
+                  {nodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {nodeVersion(n).name}
+                    </option>
+                  ))}
+                </select>
+              ))}
+              <input
+                className="wc-input"
+                aria-label="Connection label"
+                placeholder="Relationship, e.g. is from"
+                value={relation.label}
+                onChange={(e) => setRelation((v) => ({ ...v, label: e.target.value }))}
+              />
+              <button type="submit" className="wc-button">
+                Save connection
+              </button>
+              {r.relation ? (
+                <button
+                  type="button"
+                  className="wc-button"
+                  onClick={() => patch({ relation: undefined })}
+                >
+                  Remove connection
+                </button>
+              ) : null}
+            </form>
+          </>
+        ) : null}
+      </details>
+      <Sources evidence={r.evidence} chat={chat} />
+      {r.conflicts?.length ? (
+        <p>
+          Conflicts with:{' '}
+          {r.conflicts
+            .map(
+              (id) =>
+                chat.nexus.data.records.find((v) => v.id === id)?.revisions.at(-1)?.text ?? id,
+            )
+            .join(' · ')}
+        </p>
+      ) : null}
+      <details onToggle={(e) => setHistoryOpen(e.currentTarget.open)}>
+        <summary>History ({record.revisions.length})</summary>
+        {historyOpen
+          ? [...record.revisions]
+              .reverse()
+              .slice(0, historyLimit)
+              .map((v) => (
+                <div
+                  className="nexus-source"
+                  key={`${v.created}:${v.text}:${JSON.stringify(v.evidence)}`}
+                >
+                  <p>
+                    {new Date(v.created).toLocaleString()} · {v.manual ? 'User edit' : 'Generated'}{' '}
+                    · {v.status}
+                  </p>
+                  <p>{v.text}</p>
+                  <Sources evidence={v.evidence} chat={chat} />
+                </div>
+              ))
+          : null}
+        {historyOpen && record.revisions.length > historyLimit ? (
+          <button
+            type="button"
+            className="wc-button"
+            onClick={() => setHistoryLimit((l) => l + 20)}
+          >
+            Earlier revisions
+          </button>
+        ) : null}
+      </details>
+      {!valid && r.enabled && !r.deleted ? (
+        <button
+          type="button"
+          className="wc-button"
+          onClick={() => {
+            if (confirm) {
+              patch({ evidence: [], needsReview: false });
+              setConfirm(null);
+            } else setConfirm('delete');
+          }}
+        >
+          {confirm ? 'Confirm this as my own statement' : 'Reassert as user-authored'}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="wc-button wc-button--ghost"
+        onClick={() => {
+          if (r.deleted) {
+            patch({ deleted: false });
+            setConfirm(null);
+          } else if (confirm === 'delete') {
+            patch({ deleted: true });
+            setConfirm(null);
+          } else setConfirm('delete');
+        }}
+      >
+        {r.deleted ? 'Restore' : confirm === 'delete' ? 'Confirm deletion' : 'Delete'}
+      </button>
+      {confirm ? (
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          onClick={() => setConfirm(null)}
+        >
+          Cancel
+        </button>
+      ) : null}
+    </article>
+  );
+}

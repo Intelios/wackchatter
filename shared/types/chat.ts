@@ -6,6 +6,9 @@
  * a swipe is an alternate take on the same turn, not a separate message.
  */
 
+import type { NexusRecall, NexusState } from '../nexus/types.ts';
+import type { MemoryMode } from './settings.ts';
+
 export interface SwipeInfo {
   send_date: string;
   gen_started?: string;
@@ -14,6 +17,8 @@ export interface SwipeInfo {
 }
 
 export interface MessageExtra {
+  /** Frozen selection for this exact response/swipe. */
+  nexusRecall?: NexusRecall;
   /**
    * Provider id used to generate this message. A ProviderId, never a connection name —
    * see `connection_id` for which endpoint it actually was.
@@ -134,6 +139,9 @@ export interface ChatMetadata {
    * yet, so the backlog starts at the top.
    */
   memoryWatermark?: string;
+  /** Copied from the app default at chat creation; never follows later default changes. */
+  memoryMode?: MemoryMode;
+  nexus?: NexusState;
   /** Provenance recorded when this chat was created as a branch of another chat. */
   branchedFrom?: BranchOrigin;
   [key: string]: unknown;
