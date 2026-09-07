@@ -441,7 +441,15 @@ export function NexusExplorer({ chat, ...config }: Props) {
                               data-recalled={recalled.has(e.from) && recalled.has(e.to)}
                             >
                               <title>{e.label}</title>
-                              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+                              {/* Non-scaling: the camera zooms 0.15–4, and a 1.5px stroke
+                                  shared with the min zoom renders at ~0.23px — invisible. */}
+                              <line
+                                x1={a.x}
+                                y1={a.y}
+                                x2={b.x}
+                                y2={b.y}
+                                vectorEffect="non-scaling-stroke"
+                              />
                               {(e.from === selected || e.to === selected) && camera.z > 0.6 ? (
                                 <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 5}>
                                   {e.label}

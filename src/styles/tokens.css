@@ -320,4 +320,7 @@
   /* Nexus is the explicit full-viewport explorer exception. */
   --wc-nexus-detail: 360px;
   --wc-nexus-page: 780px;
+  /* Map edges on --wc-bg (#0e0e0f): ≥3:1 as a non-text UI component. --wc-border
+     measured 1.35:1 there — the connections were the one thing you could not see. */
+  --wc-nexus-edge: #6b6b73;
 }

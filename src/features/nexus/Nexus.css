@@ -170,7 +170,7 @@
   flex-wrap: wrap;
 }
 .nexus-edge line {
-  stroke: var(--wc-border);
+  stroke: var(--wc-nexus-edge);
   stroke-width: 1.5;
 }
 .nexus-edge[data-lit="true"] line,
