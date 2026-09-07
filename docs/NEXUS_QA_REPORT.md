@@ -21,66 +21,6 @@ real paid generations. No source files changed.
 
 ## Findings
 
-### N-11 · No "Restore default prompt" for the extraction guidance — **GAP**
-
-The Summary panel has a **Restore default prompt** button. The Nexus **Extraction guidance**
-box — a ~1,300-character prompt that is much easier to wreck and much harder to retype — has
-none. `NEXUS_PROMPT` is exported from `shared/nexus/types.ts` and already sitting there ready
-to be used.
-
-### N-12 · Global settings presented as if they were per-chat — **GAP**
-
-The explorer header reads **Memory Nexus / Nexus verification** (the chat name), and its
-**Settings** tab then edits `settings.nexus`, which is **app-wide**. Changing the model or the
-recall allowance there silently changes every other Nexus chat. Nothing on the page says so.
-
-*Fix:* a one-line "These apply to every chat that uses Nexus" under the heading.
-
-### N-13 · Explorer's "Recall more" tab starts with an empty search box — **BUG (minor)**
-
-The documented behaviour is that Recall more "starts from the composer draft or recent
-conversation". That only happens on the `show('recall', draft)` path used by the composer
-button ([useNexus.ts:126](src/features/nexus/useNexus.ts:126)). Clicking the **Recall more**
-*tab* inside the explorer calls `n.setSection(v)` directly
-([NexusExplorer.tsx:230](src/features/nexus/NexusExplorer.tsx:230)), so the query is left at
-whatever it was — empty on a fresh open. Two doors into the same feature, two different
-behaviours.
-
-*Fix:* have the tab handler seed the query the same way when moving into `recall` with an
-empty query.
-
-### N-14 · Selected findings are silently destroyed by typing — **BUG (high impact)**
-
-Reproduced end to end:
-
-1. Open Recall more, search, get 3 findings, all checked.
-2. Press **Use selected findings (3)** — the explorer closes and returns to the chat.
-3. Type a message in the composer.
-4. Reopen Recall more → **the findings are gone.**
-
-`draftChanged` clears them on any draft change with non-empty text
-([useNexus.ts:133](src/features/nexus/useNexus.ts:133)). The staging guard
-(`if (!staged.current || text.trim())`) only protects findings *after* `stageForSend()`, which
-runs at dispatch.
-
-The natural user flow is "look things up → then write the message that uses them", and that
-flow throws the work away. The rule is documented in one line of small print at the bottom of
-the Recall panel, and there is no toast, no confirmation, and no undo.
-
-*Fix (any of):* keep findings until the draft changes *materially* (e.g. clear only if the
-draft that seeded the search is edited); or stage on **Use selected findings** rather than on
-dispatch; or, at minimum, warn ("Typing will clear your 3 selected findings") and offer to
-re-run.
-
-### N-15 · No indication that findings are attached to the next request — **GAP**
-
-After **Use selected findings (3)** the composer looks exactly as it did before. The
-**Recall more** button carries no count, there is no chip, and nothing in the composer tray
-changes ([Composer.tsx:577](src/features/chat/Composer.tsx:577)). Combined with N-14 the user
-can neither tell that findings are armed nor that they were just discarded.
-
-*Fix:* badge the button — `Recall more · 3` — and make clicking the badge clear them.
-
 ### N-16 · "Save to Nexus" disables itself with no explanation — **GAP**
 
 For a finding whose text exactly matches an existing record, the button is `disabled` with no
