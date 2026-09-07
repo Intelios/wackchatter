@@ -7,7 +7,7 @@ export function NexusActivity({ chat, configured }: { chat: UseChat; configured:
       <p role="status">
         {n.run.running
           ? `${n.run.kind === 'collection' ? 'Remembering' : 'Searching'}… ${n.run.processed} / ${n.run.total}`
-          : `${n.pending} messages awaiting collection`}
+          : `${n.pending} ${n.pending === 1 ? 'message' : 'messages'} awaiting collection`}
       </p>
       {n.run.error ? <p role="alert">{n.run.error}</p> : null}
       {!configured ? (
