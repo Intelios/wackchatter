@@ -83,6 +83,9 @@
   display: grid;
   gap: var(--wc-space-4);
 }
+.nexus-settings__reset {
+  justify-self: start;
+}
 .nexus-field-label {
   display: block;
   margin-bottom: var(--wc-space-2);

@@ -1,9 +1,10 @@
-import type { NexusSettings as Settings } from '@shared/nexus/types.ts';
+import { NEXUS_PROMPT, type NexusSettings as Settings } from '@shared/nexus/types.ts';
 import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import { useEffect, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { StoryMemoryPlacementFields } from '../../components/StoryMemoryPlacementFields.tsx';
+import { RefreshIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
 import { ModelCombobox } from '../connection/ModelCombobox.tsx';
 
@@ -130,6 +131,18 @@ export function NexusSettings({
         rows={8}
         hint="The sourced JSON response contract is fixed and validated separately."
       />
+      <button
+        type="button"
+        className="wc-button wc-button--ghost nexus-settings__reset"
+        disabled={prompt === NEXUS_PROMPT}
+        onClick={() => {
+          setPrompt(NEXUS_PROMPT);
+          patch({ extractPrompt: NEXUS_PROMPT });
+        }}
+      >
+        <RefreshIcon />
+        Restore default guidance
+      </button>
       <CheckField
         label="Living map motion"
         checked={settings.motion}
