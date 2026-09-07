@@ -159,6 +159,9 @@ test('co-mention counts aggregate per pair and explicit connections never double
           }),
         ],
       },
+      // A different record co-mentioning anna+london: the pair is already joined
+      // by r3's relation, so this must not draw a second, dotted line over it.
+      { id: 'r5', revisions: [revision({ nodeIds: ['anna', 'london'], evidence })] },
     ],
   };
   const graph = nexusGraph(nexus, [message]);
