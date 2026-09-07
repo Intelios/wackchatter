@@ -15,6 +15,13 @@ export const Z_MAX = 4;
 const MARGIN = 0.9;
 
 /**
+ * The drawn node is wider than its centre point: a halo above, and the name
+ * label hanging ~50 units below. The fit bounds the centres, so it must make
+ * room for the extents or the lowest node's label lands off the canvas.
+ */
+export const PAD = { top: 30, bottom: 60, x: 50 };
+
+/**
  * Fits the camera to the given positions so they fill the rendered element,
  * not the letterboxed viewBox: `preserveAspectRatio="xMidYMid meet"` scales the
  * 1000×700 box by min(w/1000, h/700), so a tall pane shows the same box smaller
@@ -38,8 +45,8 @@ export function fitCamera(
     if (p.y > maxY) maxY = p.y;
   }
   // A single node has no extent; floor the span so the zoom maths stays finite.
-  const spanX = Math.max(maxX - minX, 1);
-  const spanY = Math.max(maxY - minY, 1);
+  const spanX = Math.max(maxX - minX + 2 * PAD.x, 1);
+  const spanY = Math.max(maxY - minY + PAD.top + PAD.bottom, 1);
   const scale = Math.min(width / VIEW_W, height / VIEW_H);
   const z = Math.max(
     Z_MIN,
@@ -48,9 +55,8 @@ export function fitCamera(
       Math.min((MARGIN * width) / (spanX * scale), (MARGIN * height) / (spanY * scale)),
     ),
   );
-  return {
-    z,
-    x: VIEW_W / 2 - ((minX + maxX) / 2) * z,
-    y: VIEW_H / 2 - ((minY + maxY) / 2) * z,
-  };
+  // Centre the padded box, not the bare points: the label skirt is part of
+  // the content, so the cluster sits slightly high of centre on purpose.
+  const cy = (minY - PAD.top + maxY + PAD.bottom) / 2;
+  return { z, x: VIEW_W / 2 - ((minX + maxX) / 2) * z, y: VIEW_H / 2 - cy * z };
 }

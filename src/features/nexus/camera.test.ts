@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { fitCamera, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
+import { fitCamera, PAD, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
 
 describe('fitCamera', () => {
   test('no points resets to the identity camera', () => {
@@ -13,7 +13,7 @@ describe('fitCamera', () => {
     expect(Number.isFinite(c.z)).toBe(true);
   });
 
-  test('centres the bounds midpoint on the viewBox centre', () => {
+  test('centres the content on the viewBox centre, label skirt included', () => {
     const c = fitCamera(
       [
         { x: 200, y: 100 },
@@ -22,7 +22,8 @@ describe('fitCamera', () => {
       { width: 1000, height: 700 },
     );
     expect(c.x + 400 * c.z).toBe(VIEW_W / 2);
-    expect(c.y + 300 * c.z).toBe(VIEW_H / 2);
+    const cy = (100 - PAD.top + 500 + PAD.bottom) / 2;
+    expect(c.y + cy * c.z).toBe(VIEW_H / 2);
   });
 
   test('a wide graph on a tall pane is limited by the pane width, not the box height', () => {
@@ -36,8 +37,8 @@ describe('fitCamera', () => {
       { width: 457, height: 787 },
     );
     const scale = Math.min(457 / VIEW_W, 787 / VIEW_H);
-    expect(c.z).toBeCloseTo((0.9 * 457) / (1000 * scale));
-    expect(c.z).toBeGreaterThan(0.88);
+    expect(c.z).toBeCloseTo((0.9 * 457) / ((1000 + 2 * PAD.x) * scale));
+    expect(c.z).toBeGreaterThan(0.75);
     expect(c.z).toBeLessThan(1);
   });
 
