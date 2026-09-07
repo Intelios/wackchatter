@@ -2,6 +2,8 @@ import type { NexusSettings as Settings } from '@shared/nexus/types.ts';
 import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import { useEffect, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
+import { Section } from '../../components/Section.tsx';
+import { StoryMemoryPlacementFields } from '../../components/StoryMemoryPlacementFields.tsx';
 import { settingsApi } from '../../lib/api.ts';
 import { ModelCombobox } from '../connection/ModelCombobox.tsx';
 
@@ -18,7 +20,9 @@ export function NexusSettings({
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [error, setError] = useState('');
   const [prompt, setPrompt] = useState(settings.extractPrompt);
+  const [template, setTemplate] = useState(settings.template);
   useEffect(() => setPrompt(settings.extractPrompt), [settings.extractPrompt]);
+  useEffect(() => setTemplate(settings.template), [settings.template]);
   const connection = connections.find((c) => c.id === settings.connectionId);
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +136,16 @@ export function NexusSettings({
         onChange={(motion) => patch({ motion })}
         hint="Your system’s reduced-motion preference takes priority."
       />
+      <Section title="Injection" defaultOpen>
+        <StoryMemoryPlacementFields
+          settings={settings}
+          onSettingsChange={patch}
+          templateDraft={template}
+          onTemplateDraftChange={setTemplate}
+          onTemplateCommit={() => patch({ template })}
+          macro="memories"
+        />
+      </Section>
     </div>
   );
 }
