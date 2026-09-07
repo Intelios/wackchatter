@@ -337,14 +337,20 @@ export function NexusExplorer({ chat, ...config }: Props) {
             <button
               type="button"
               className="wc-button wc-button--primary"
-              onClick={() => n.setOpen(false)}
+              disabled={!n.findings.some((f) => f.selected)}
+              onClick={() => {
+                n.stageForSend();
+                n.setOpen(false);
+              }}
             >
               Use selected findings ({n.findings.filter((f) => f.selected).length})
             </button>
           ) : null}
           <p>
-            Findings stay outside the transcript and are consumed on dispatch. Editing the draft or
-            changing source context clears them. Saving permanently is a separate action.
+            Findings stay outside the transcript and attach to your next request. Use selected
+            findings keeps them attached while you write; sending consumes them. A new search, the
+            count beside Recall more, or a change to the conversation clears them. Saving
+            permanently is a separate action.
           </p>
         </div>
       ) : (

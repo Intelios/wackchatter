@@ -274,8 +274,11 @@ byte-identically. The quirks are load-bearing and each has a named test.
   `/api/chats/:id/nexus-index` does not advance chat revisions. The cache shares the library
   database lifecycle (backup, relocation, cascade deletion), without another memoised handle.
 - **Reviewed Recall more findings are one-request context, never transcript messages.**
-  Dispatch consumes them; source/draft changes invalidate them. Save to Nexus is separate.
-  Frozen per-request reports distinguish selection from actual injection and preview.
+  `Use selected findings` arms them: armed findings survive draft edits — the natural flow is
+  look things up, then write the message that uses them — and are consumed on dispatch.
+  Unstaged search results clear on typing; a new search or the composer's armed-count badge
+  (its click) clears either; transcript/evidence changes invalidate both. Save to Nexus is
+  separate. Frozen per-request reports distinguish selection from actual injection and preview.
 - **Nexus is the explicit full-screen explorer exception.** It preserves the mounted chat,
   draft, scroll, source-jump selection and camera, restores focus, and has a complete List
   alternative. Motion respects reduced motion and pauses while hidden. No proximity knowledge.

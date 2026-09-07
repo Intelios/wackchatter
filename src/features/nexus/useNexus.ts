@@ -147,17 +147,22 @@ export function useNexus(options: Options) {
   const draftChanged = useCallback((text: string) => {
     if (text !== draftRef.current) {
       draftRef.current = text;
-      // Composer clears optimistically during send; keep its already reviewed selection until dispatch.
-      if (!staged.current || text.trim()) {
-        setFindings([]);
-        staged.current = null;
-      }
+      // Armed findings (Use selected findings) survive writing the message. Unstaged
+      // search results were never confirmed, and a draft that moved on makes them stale.
+      if (!staged.current && text.trim()) setFindings([]);
     }
   }, []);
   const stageForSend = useCallback(() => {
     staged.current = structuredClone(findingsRef.current);
+    // Same content, new identity: the composer's armed-count badge must render on the
+    // arm itself, and a ref write alone schedules no render.
+    setFindings(staged.current);
   }, []);
   const consume = useCallback(() => {
+    staged.current = null;
+    setFindings([]);
+  }, []);
+  const clearFindings = useCallback(() => {
     staged.current = null;
     setFindings([]);
   }, []);
@@ -474,6 +479,9 @@ export function useNexus(options: Options) {
       );
       const controller = new AbortController();
       abort.current = controller;
+      // A new search disarms the previous selection — the composer badge drops with it,
+      // and Use selected findings arms the fresh results instead.
+      staged.current = null;
       setFindings([]);
       setRun({ running: true, processed: 0, total: 1, error: null, kind: 'recall' });
       try {
@@ -624,6 +632,11 @@ export function useNexus(options: Options) {
     draftChanged,
     stageForSend,
     consume,
+    clearFindings,
+    // Reading the staged ref during render is safe only because every write to it
+    // (stage, consume, clear, search, chat/mode reset) co-occurs with a setFindings
+    // that schedules the render reading it. Mirrors preview's staged-??-live choice.
+    armed: (staged.current ?? findings).filter((f) => f.selected).length,
     pending: pendingMessages(nexus, messages).length,
   };
 }
