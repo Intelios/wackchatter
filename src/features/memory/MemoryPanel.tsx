@@ -35,6 +35,7 @@ export function MemoryPanel(props: Props) {
             type="button"
             className="memory-panel__mode"
             data-active={mode === id || undefined}
+            aria-pressed={mode === id}
             onClick={() => onModeChange(id)}
           >
             {id === 'classic' ? 'Summary' : id === 'nexus' ? 'Nexus' : 'Off'}
