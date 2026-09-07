@@ -433,6 +433,11 @@ export function NexusExplorer({ chat, ...config }: Props) {
                         .map((e) => {
                           const a = positions.get(e.from)!,
                             b = positions.get(e.to)!;
+                          // Perpendicular offset: centred on the line it names, the label
+                          // collides with both the line and the node captions.
+                          const dx = b.x - a.x,
+                            dy = b.y - a.y,
+                            len = Math.hypot(dx, dy) || 1;
                           return (
                             <g
                               key={e.id}
@@ -451,7 +456,11 @@ export function NexusExplorer({ chat, ...config }: Props) {
                                 vectorEffect="non-scaling-stroke"
                               />
                               {(e.from === selected || e.to === selected) && camera.z > 0.6 ? (
-                                <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 5}>
+                                <text
+                                  x={(a.x + b.x) / 2 + (-dy / len) * 12}
+                                  y={(a.y + b.y) / 2 + (dx / len) * 12}
+                                  dominantBaseline="middle"
+                                >
                                   {e.label}
                                 </text>
                               ) : null}
