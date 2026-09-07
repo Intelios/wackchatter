@@ -4,12 +4,12 @@ export function NexusActivity({ chat, configured }: { chat: UseChat; configured:
   const n = chat.nexus;
   const enabled = chat.memoryMode === 'nexus';
   return (
-    <div className="nexus-activity">
+    <div className="nexus-activity" data-paused={n.data.paused || undefined}>
       <p role="status">{nexusSummaryLine(nexusCounts(n.data))}</p>
-      <p role="status">
+      <p role="status" className="nexus-activity__state">
         {n.run.running
           ? `${n.run.kind === 'collection' ? 'Remembering' : 'Searching'}… ${n.run.processed} / ${n.run.total}`
-          : `${plural(n.pending, 'message')} awaiting collection`}
+          : `${n.data.paused ? 'Paused · ' : ''}${plural(n.pending, 'message')} awaiting collection`}
       </p>
       {n.run.error ? <p role="alert">{n.run.error}</p> : null}
       {!configured ? (

@@ -90,6 +90,10 @@
 .nexus-activity {
   margin-top: var(--wc-space-4);
 }
+/* Pausing is deliberate, but weeks later the panel must not read as working. */
+.nexus-activity[data-paused] .nexus-activity__state {
+  color: var(--wc-warning);
+}
 .nexus p {
   line-height: 1.6;
 }

@@ -23,7 +23,7 @@ import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusReport } from './NexusReport.tsx';
 import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
-import { nexusCounts, nexusSummaryLine } from './summaryLine.ts';
+import { nexusCounts, nexusSummaryLine, plural } from './summaryLine.ts';
 import './Nexus.css';
 
 type Props = NexusSettingsProps & { chat: UseChat };
@@ -247,7 +247,11 @@ export function NexusExplorer({ chat, ...config }: Props) {
         <span className="nexus-top-status" role="status">
           {n.run.running
             ? 'Memory model working…'
-            : `${n.data.records.filter((r) => !latest(r).deleted).length} memories`}
+            : `${n.data.paused ? 'Paused · ' : ''}${plural(
+                nexusCounts(n.data).memories,
+                'memory',
+                'memories',
+              )}`}
         </span>
         <button
           type="button"

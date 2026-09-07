@@ -55,7 +55,11 @@ export function MemoryPanel(props: Props) {
           onSettingsChange={props.onSummarySettingsChange}
         />
       ) : (
-        <Section title="Memory Nexus" defaultOpen>
+        <Section
+          title="Memory Nexus"
+          badge={chat.nexus.data.paused ? 'Paused' : undefined}
+          defaultOpen
+        >
           <p>
             {mode === 'off'
               ? 'Story memory is off. Stored knowledge remains available.'
