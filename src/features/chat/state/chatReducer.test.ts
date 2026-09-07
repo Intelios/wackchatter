@@ -1029,6 +1029,17 @@ describe('late and stray actions', () => {
     expect(state.inspections.length).toBe(1);
   });
 
+  test('a metadata patch with no chat open is swallowed whole', () => {
+    // The Memory panel's mode selector dispatches chat/metadata with no chat loaded.
+    // The patch must change nothing — banking it on the closed state would leak it
+    // into whichever chat opens next.
+    const closed = run(loaded(), { type: 'chat/closed' });
+    const next = chatReducer(closed, { type: 'chat/metadata', patch: { memoryMode: 'nexus' } });
+
+    expect(next).toBe(closed);
+    expect(next.metadata).toEqual({});
+  });
+
   test('the inspection history is bounded', () => {
     let state = loaded();
     for (let i = 0; i < 25; i++) {

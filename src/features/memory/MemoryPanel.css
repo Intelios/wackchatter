@@ -30,7 +30,7 @@
   cursor: pointer;
 }
 
-.memory-panel__mode:hover {
+.memory-panel__mode:hover:not(:disabled) {
   color: var(--wc-text);
   background: var(--wc-surface-hover);
 }
@@ -38,6 +38,11 @@
 .memory-panel__mode[data-active] {
   color: var(--wc-accent-text);
   background: var(--wc-accent);
+}
+
+.memory-panel__modes:disabled .memory-panel__mode {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* --- Shared panel furniture ---------------------------------------- */

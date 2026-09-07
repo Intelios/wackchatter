@@ -113,9 +113,10 @@ export function useNexus(options: Options) {
     o.dispatch(action);
   }, []);
   const setMode = useCallback((mode: 'classic' | 'nexus' | 'off') => {
-    if (mode !== 'nexus') abort.current?.abort();
     const o = opts.current;
     const current = o.stateRef.current;
+    if (!current.chatId) return;
+    if (mode !== 'nexus') abort.current?.abort();
     const action: ChatAction = { type: 'chat/metadata', patch: { memoryMode: mode } };
     o.stateRef.current = chatReducer(current, action);
     o.dispatch(action);

@@ -20,9 +20,14 @@ interface Props extends NexusSettingsProps {
 }
 export function MemoryPanel(props: Props) {
   const { chat, mode, onModeChange } = props;
+  const chatOpen = chat.state.chatId !== null;
   return (
     <div className="memory-panel">
-      <fieldset className="memory-panel__modes">
+      <fieldset
+        className="memory-panel__modes"
+        disabled={!chatOpen}
+        title={chatOpen ? undefined : 'Open a chat to choose its memory mode'}
+      >
         <legend className="wc-visually-hidden">Story memory for this chat</legend>
         {(['classic', 'nexus', 'off'] as const).map((id) => (
           <button
@@ -36,6 +41,9 @@ export function MemoryPanel(props: Props) {
           </button>
         ))}
       </fieldset>
+      {!chatOpen ? (
+        <p className="memory-panel__note">Open a chat to choose its memory mode.</p>
+      ) : null}
       {mode === 'classic' ? (
         <SummaryPanel
           chat={chat}
@@ -55,7 +63,8 @@ export function MemoryPanel(props: Props) {
           <button
             type="button"
             className="wc-button wc-button--primary"
-            disabled={!chat.state.chatId}
+            disabled={!chatOpen}
+            title={chatOpen ? undefined : 'Open a chat first — its Nexus is stored with the chat.'}
             onClick={() => chat.nexus.show()}
           >
             Explore Nexus
