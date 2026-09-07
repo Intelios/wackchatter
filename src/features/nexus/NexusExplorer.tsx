@@ -266,6 +266,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
       {n.section === 'settings' ? (
         <div className="nexus-page">
           <h2>Nexus settings</h2>
+          <p>These settings apply to every chat that uses Nexus, not just this conversation.</p>
           <NexusSettings {...config} />
           <NexusActivity chat={chat} configured={configured} />
         </div>
