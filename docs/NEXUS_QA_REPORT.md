@@ -21,66 +21,6 @@ real paid generations. No source files changed.
 
 ## Findings
 
-### N-01 · Memory mode selector is a dead control with no chat open — **GAP**
-
-Open the right-rail **Memory** panel from the start screen (no chat loaded). The
-`Summary / Nexus / Off` segmented control renders normally and is not disabled, but clicking
-any segment does nothing — `data-active` never moves.
-
-`MemoryPanel.tsx:33` calls `onModeChange` → `useNexus.setMode`
-([useNexus.ts:115](src/features/nexus/useNexus.ts:115)), which dispatches `chat/metadata`;
-with no chat loaded there is nothing to patch, so the click is silently swallowed.
-
-*Fix:* disable the fieldset (and say "Open a chat to choose its memory mode") when
-`chat.chatId` is null, or hide the per-chat block and show only **New chats** / **Nexus
-settings** on the start screen.
-
-### N-02 · Mode selector exposes no accessible state — **GAP**
-
-The three buttons carry only `data-active="true"`; there is no `aria-pressed`, no
-`role="radio"`/`aria-checked`, and no `role="tablist"`. A screen-reader user cannot tell
-which memory mode is active. The `<legend class="wc-visually-hidden">` is there, so the
-intent to be accessible exists — the state just never reaches the a11y tree.
-
-### N-03 · Graph edges are effectively invisible — **VIS**
-
-`.nexus-edge line` uses `stroke: var(--wc-border)` = `#2a2a2e` against the map background
-`#0e0e0f` ([Nexus.css:172](src/features/nexus/Nexus.css:172)). That is a contrast ratio of
-roughly **1.35:1**. In the *Nexus verification* chat the graph does contain one real edge
-(`Joe —is from→ London`, confirmed in the DOM), and it is not perceivable in a screenshot at
-default zoom. The headline feature of the view — that knowledge is *connected* — is rendered
-in a colour the user cannot see.
-
-*Fix:* use `--wc-text-muted` or a dedicated `--wc-nexus-edge` token at ~3:1, and consider
-scaling stroke width with zoom so edges do not vanish when zoomed out.
-
-### N-04 · Edge labels only exist on hover until something is selected — **VIS**
-
-With nothing selected, an edge is `<g class="nexus-edge"><title>is from</title><line/></g>` —
-the label is reachable only as a native SVG tooltip, which has no keyboard path. Selecting a
-node lights its edges and *then* a `<text>` label appears (verified in the DOM), which is a
-sensible anti-clutter rule. Two problems remain:
-
-- the label is placed at the exact segment midpoint with no perpendicular offset, so on short
-  edges it sits on top of the line and the node caption;
-- because of N-03 the line under it is invisible, so the label reads as a floating word.
-
-### N-05 · Records that link several nodes produce no edge — **GAP / VIS**
-
-`nexusGraph` ([graph.ts:8](src/features/nexus/graph.ts:8)) only emits an edge when a revision
-has an explicit `relation`, or when it is an `event` node's participation list. But a very
-common extraction result links three entities through `nodeIds` alone. In this chat:
-
-> "Anna promised Joe to keep his departure secret from Mary." → `nodeIds: [Anna, Joe, Mary]`,
-> no `relation`
-
-That memory draws **zero** edges. Result: 12 memories, 12 nodes, **1** edge — the map is a
-scatter of unconnected dots, which undercuts the product promise ("Connected story knowledge").
-
-*Fix:* derive an implicit co-mention edge from shared `nodeIds` (drawn thinner/dimmer, labelled
-by shared-memory count, and excluded from graph *expansion* during retrieval so it cannot widen
-the recall neighbourhood). This is a pure view-layer addition — canonical records are unchanged.
-
 ### N-06 · Map wastes most of its canvas — **VIS**
 
 The map `<svg>` is `457 × 787` CSS px with `viewBox="0 0 1000 700"`. With the default
