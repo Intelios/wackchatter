@@ -906,6 +906,8 @@ export function ChatView({
           onRecall={
             chat.memoryMode === 'nexus' ? (text) => chat.nexus.show('recall', text) : undefined
           }
+          recallCount={chat.memoryMode === 'nexus' ? chat.nexus.armed : undefined}
+          onClearRecall={chat.memoryMode === 'nexus' ? chat.nexus.clearFindings : undefined}
           onDraftChange={chat.nexus.draftChanged}
           onSend={handleSend}
           // The other two composer submits. Both put new text at the end of the transcript,

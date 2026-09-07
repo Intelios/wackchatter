@@ -58,6 +58,35 @@
   min-width: 0;
 }
 
+/* Recall-more's armed count. A separate button over the corner rather than text inside
+   the trigger: clicking the count disarms, and an absolute pill cannot change the row's
+   width when it appears — the same rule popover__badge exists for. */
+.composer__recall {
+  position: relative;
+  display: inline-flex;
+}
+.composer__recall-badge {
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  z-index: 1;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--wc-accent);
+  color: var(--wc-accent-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  /* Separates the pill from the button it overlaps. */
+  border: 1px solid var(--wc-bg);
+  cursor: pointer;
+}
+.composer__recall-badge:hover {
+  background: var(--wc-accent-hover);
+}
+
 /*
  * The textarea and its slash-command autocomplete share one box, so the dropdown can
  * anchor to the input's exact edges with no measuring: the field is the flex item that
