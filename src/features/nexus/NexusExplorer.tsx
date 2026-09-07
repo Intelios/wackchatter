@@ -442,6 +442,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                             <g
                               key={e.id}
                               className="nexus-edge"
+                              data-implicit={e.implicit || undefined}
                               data-lit={e.from === selected || e.to === selected}
                               data-recalled={recalled.has(e.from) && recalled.has(e.to)}
                             >

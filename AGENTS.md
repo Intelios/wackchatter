@@ -250,7 +250,9 @@ byte-identically. The quirks are load-bearing and each has a named test.
   Nodes have opaque identities and versioned names/aliases. Facts, events, situations and
   threads have append-only revisions, source message fingerprints, attribution and state.
   Tombstones, disabled records and manual edits survive later extraction. Equal names alone
-  never merge identities. Edges come from supported relationships/event participation.
+  never merge identities. Edges come from supported relationships/event participation, plus
+  view-only co-mention pairs derived from shared `nodeIds` (aggregated per pair, dotted in the
+  map) — a projection in `graph.ts` that retrieval never reads.
 - **Evidence is checked against the selected transcript version at recall time.** Hidden,
   deleted and abandoned swipe sources are excluded. Earlier valid revisions can be selected
   when their source version is restored. Manual corrections never fall back to generated text.

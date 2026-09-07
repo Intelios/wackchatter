@@ -173,6 +173,12 @@
   stroke: var(--wc-nexus-edge);
   stroke-width: 1.5;
 }
+/* Dotted and thin: derived from shared mentions, not asserted by a relation.
+   Kept above the token's 3:1 floor — dimming would re-create the invisible edge. */
+.nexus-edge[data-implicit] line {
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+}
 .nexus-edge[data-lit="true"] line,
 .nexus-edge[data-recalled="true"] line {
   stroke: var(--wc-accent);
