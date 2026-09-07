@@ -1,13 +1,15 @@
 import type { UseChat } from '../chat/useChat.ts';
+import { nexusCounts, nexusSummaryLine, plural } from './summaryLine.ts';
 export function NexusActivity({ chat, configured }: { chat: UseChat; configured: boolean }) {
   const n = chat.nexus;
   const enabled = chat.memoryMode === 'nexus';
   return (
     <div className="nexus-activity">
+      <p role="status">{nexusSummaryLine(nexusCounts(n.data))}</p>
       <p role="status">
         {n.run.running
           ? `${n.run.kind === 'collection' ? 'Remembering' : 'Searching'}… ${n.run.processed} / ${n.run.total}`
-          : `${n.pending} ${n.pending === 1 ? 'message' : 'messages'} awaiting collection`}
+          : `${plural(n.pending, 'message')} awaiting collection`}
       </p>
       {n.run.error ? <p role="alert">{n.run.error}</p> : null}
       {!configured ? (
@@ -57,12 +59,10 @@ export function NexusActivity({ chat, configured }: { chat: UseChat; configured:
           )}
         </div>
       )}
-      {n.indexStatus.total > 0 ? (
+      {n.indexStatus.done < n.indexStatus.total ? (
         <p role="status">
-          Local index: {n.indexStatus.done} / {n.indexStatus.total}
-          {n.indexStatus.done < n.indexStatus.total
-            ? ' · Text and graph search remain available.'
-            : ''}
+          Local index: {n.indexStatus.done} / {n.indexStatus.total} · Text and graph search remain
+          available.
         </p>
       ) : null}
       {n.indexStatus.error ? (

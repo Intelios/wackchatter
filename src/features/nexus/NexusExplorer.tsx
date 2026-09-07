@@ -23,6 +23,7 @@ import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusReport } from './NexusReport.tsx';
 import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
+import { nexusCounts, nexusSummaryLine } from './summaryLine.ts';
 import './Nexus.css';
 
 type Props = NexusSettingsProps & { chat: UseChat };
@@ -846,12 +847,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
             </aside>
           </div>
           <footer className="nexus-footer">
-            <span>
-              {KINDS.map(
-                (k) =>
-                  `${graph.nodes.filter((v) => nodeVersion(v).kind === k).length} ${TITLE[k].toLowerCase()}`,
-              ).join(' · ')}
-            </span>
+            <span>{nexusSummaryLine(nexusCounts(n.data))}</span>
             <span role="status">
               {chat.saveError
                 ? `Save failed: ${chat.saveError}`
