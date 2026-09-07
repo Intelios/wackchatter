@@ -238,7 +238,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
               className="wc-button wc-button--ghost"
               type="button"
               aria-pressed={n.section === v}
-              onClick={() => n.setSection(v)}
+              onClick={() => n.enterSection(v)}
             >
               {v === 'explore' ? 'Explore' : v === 'recall' ? 'Recall more' : 'Settings'}
             </button>

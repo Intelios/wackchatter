@@ -121,15 +121,28 @@ export function useNexus(options: Options) {
     o.stateRef.current = chatReducer(current, action);
     o.dispatch(action);
   }, []);
+  const seedRecallQuery = useCallback(
+    () => setQuery(draftRef.current || recallQuery(toChatMessages(opts.current.stateRef.current))),
+    [],
+  );
   const show = useCallback(
     (part: 'explore' | 'recall' | 'settings' = 'explore', draft?: string) => {
       if (draft !== undefined) draftRef.current = draft;
-      if (part === 'recall')
-        setQuery(draftRef.current || recallQuery(toChatMessages(opts.current.stateRef.current)));
+      if (part === 'recall') seedRecallQuery();
       setSection(part);
       setOpen(true);
     },
-    [],
+    [seedRecallQuery],
+  );
+  const enterSection = useCallback(
+    (part: 'explore' | 'recall' | 'settings') => {
+      // The explorer tab is the second door into recall (show() is the composer's, and
+      // always reseeds): fill the query only when it is empty, so switching tabs never
+      // clobbers a search already typed.
+      if (part === 'recall' && !query) seedRecallQuery();
+      setSection(part);
+    },
+    [query, seedRecallQuery],
   );
   const draftChanged = useCallback((text: string) => {
     if (text !== draftRef.current) {
@@ -586,7 +599,7 @@ export function useNexus(options: Options) {
     open,
     setOpen,
     section,
-    setSection,
+    enterSection,
     show,
     jumpId,
     setJumpId,
