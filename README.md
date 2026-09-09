@@ -1,163 +1,124 @@
-# WackChatter
+# Wack**Chatter**
 
-A lightweight chat frontend for cloud LLMs. **Data-compatible with SillyTavern** — character cards and chat-completion presets move between the two apps untouched. Chats and app settings are ours and deliberately not portable.
+A chat frontend for cloud LLMs with character cards, lorebooks, personas, and long-term story memory — all running locally in your browser. Uses your own API keys; nothing is sent anywhere except the model you pick.
 
-Built with Bun (server) + React 19 + TypeScript + Vite (client). Desktop only.
+Your existing character cards and presets from [SillyTavern](https://github.com/SillyTavern/SillyTavern) work here without conversion.
 
-## Features
+![Chat view](images/chat.jpeg)
 
-- **SillyTavern format compatibility** — reads and writes V1/V2/V3 character cards (PNG `tEXt` chunks), including preservation of unknown keys; full chat-completion preset support (prompt ordering, depth injection, marker prompts, migrations)
-- **Prompt assembly runs client-side** — live per-prompt token counts, and an inspector showing the exact wire payload
-- **Streaming** — SSE with live markdown emphasis rendering, stop that actually aborts upstream (no more billing while you wait)
-- **Chats** — SQLite storage, multiple chats per character, branching, swipes/regenerate/continue/edit/delete/hide, deleted-chat backups (restorable trash bin), chat export/import
-- **World Info** — standalone lorebooks and embedded `character_book` editing, full conversion between both formats, ST-compatible activation engine (budget, recursion, groups, regex keys)
-- **Memory Nexus** — connected, sourced story knowledge; local semantic recall, a separate memory model, reviewed deeper searches, and a full-screen map/list editor. Choose Summary, Nexus or Off per chat. [Usage and implementation notes](docs/MEMORY_NEXUS.md).
-- **Personas** with avatars, per-chat persona binding
-- **Author's Note** and **guided generations** (ST's Guided Generations extension reimplemented: one-shot steering, persistent per-chat guides)
-- **Prompt Manager** — drag-reorder, marker prompts, depth injection, real tokenizer
-- **Providers** — any OpenAI-compatible endpoint plus OpenRouter; keys stored server-side (mode 0600), never sent to the browser
-- **User Settings** — backgrounds, glass effects, dialogue colors, all themable from one token file
-- **Movable library** — keep your data anywhere (external drive, synced folder), changed from the UI with no restart
-- **Library backup** — the whole data directory as one zip, from User Settings; restore by unzipping it and pointing the app at the folder
-- **Usage log** — opt-in, one JSONL line per generation in `~/.wackchatter/`, for an external token accountant to read. A local file; nothing is sent anywhere
+## Getting started
 
-## Install
+You'll need [Bun](https://bun.sh) installed — it takes a few seconds:
 
-Requires [Bun](https://bun.sh) 1.2 or newer — `curl -fsSL https://bun.sh/install | bash`, or
-`brew install oven-sh/bun/bun`. On Windows: `winget install Oven-sh.Bun`.
+| | |
+|---|---|
+| **macOS / Linux** | `curl -fsSL https://bun.sh/install \| bash` or `brew install oven-sh/bun/bun` |
+| **Windows** | `winget install Oven-sh.Bun` |
+
+Then:
 
 ```sh
 git clone https://github.com/Intelios/wackchatter.git
 cd wackchatter
-./start.sh
+./start.sh          # Start.bat on Windows
 ```
 
-On Windows, run `Start.bat` instead.
+That's it. The launcher handles dependencies, builds the app, and opens your browser. It does this on every launch (takes about a second), so there's never a stale build or a step you need to remember.
 
-The launcher installs dependencies, builds the frontend and opens the app. It does both on
-every launch — together they take about a second — so there is never a build step to remember
-and never a stale bundle to explain.
-
-On first run, add a provider API key in **Connection** (left panel) and pick a model. Character
-cards (`.png`) drop into `data/characters/` or import via the Characters panel.
+Once it's open, head to **Connection** in the left panel, add your API key and pick a model. Drop character cards (`.png` files) into `data/characters/` or import them from the Characters panel.
 
 ### Updating
 
 ```sh
-./update.sh
+./update.sh          # Update.bat on Windows
 ```
 
-`Update.bat` on Windows. It is `git pull` followed by `./start.sh`, and doing those two by hand
-is exactly equivalent. Your library is gitignored, so characters, chats, presets and API keys
-are invisible to git and survive every update.
+Your characters, chats, presets, and keys are all in `data/`, which git ignores — updates never touch your stuff.
 
-Environment variables: `WC_PORT` (port, default 8787), `WC_DATA_DIR` (pins the data folder and
-locks the in-app setting), `WC_NO_OPEN=1` (don't launch the browser).
+## Features
 
-## Development
+![Home screen with characters](images/character-panel.jpeg)
+
+**Chat** — Multiple chats per character. Swipes, branching, regenerate, continue, edit, delete, hide messages. Deleted chats go to a trash bin you can restore from.
+
+**Characters** — SillyTavern-compatible V1/V2/V3 cards. Organise them into folders. Import, export, or build new ones in the Character Creator Studio and Co-Creator.
+
+**Prompt Manager** — Drag to reorder prompts, set depth injections, use marker prompts. Shows live token counts using a real tokenizer so you can see exactly how your context budget is being spent.
+
+**Lorebooks** — Standalone World Info books and embedded character books, with a full activation engine (keyword matching, regex, budget, recursion, groups).
+
+**Personas** — Create personas with avatars and bind them per-chat. Each message remembers which persona sent it.
+
+**Guided Generations** — Steer replies with one-shot instructions or persistent per-chat guides, without cluttering the transcript.
+
+**Memory Nexus** — The app tracks characters, places, events, and relationships as the story unfolds and recalls them when relevant. Uses a separate, cheaper model so it doesn't eat into your chat context. Includes a full-screen graph view for exploring what the story knows. You can also use classic summarisation, or turn memory off entirely — it's per-chat. [More details →](docs/MEMORY_NEXUS.md)
+
+![Memory Nexus graph view](images/memory-nexus.jpeg)
+
+**Model Arena** — Blind side-by-side comparisons between models so you can figure out which one actually writes better for your use case.
+
+**Connections** — Works with any OpenAI-compatible endpoint plus OpenRouter. API keys are stored server-side and never reach your browser.
+
+**Themeable** — Custom backgrounds, glass effects, dialogue colours. The whole look is driven by a single token file.
+
+**Portable library** — Your entire library (characters, chats, presets, lorebooks, personas, keys) lives in one folder. Move it to an external drive, a synced folder, or wherever you like — change the location from User Settings without restarting.
+
+**Backups** — One-click backup of your whole library to a zip file from User Settings. Restore by unzipping anywhere and pointing the app at that folder.
+
+## Your data
+
+Everything lives in the `data/` folder by default. You can move it from **User Settings → Data location** — the app follows it with no restart needed.
+
+If you put it in a cloud-synced folder (Dropbox, iCloud, OneDrive, etc.), just be aware:
+- Run the app on **one machine at a time** to avoid database conflicts
+- Your API keys travel with the library — they'll be in whatever service syncs the folder
+
+### Backups
+
+**User Settings → Backup** zips your entire library — characters, folders, chats, presets, personas, lorebooks, backgrounds, and deleted chats. API keys are left out by default (the zip won't have the same file permissions as the original), but you can include them if you want.
+
+There's no restore button because there's nothing for it to do. The unzipped folder *is* a library — point the app at it and you're back.
+
+## Environment variables
+
+| Variable | What it does |
+|---|---|
+| `WC_PORT` | Override the port (default 8787) |
+| `WC_DATA_DIR` | Pin the data folder and lock the in-app setting |
+| `WC_NO_OPEN=1` | Don't open the browser on launch |
+
+---
+
+<details>
+<summary><strong>For developers</strong></summary>
+
+### Running in dev mode
 
 ```sh
 bun install
-bun run dev          # API on :8787 + Vite on :5173 (open this URL)
+bun run dev          # API on :8787 + Vite on :5173 (open :5173)
 ```
 
-`bun run dev:server` and `bun run dev:client` run the two halves separately. `bun run build`
-typechecks and builds; `bun run start` serves the built app the way `start.sh` does. The
-launcher deliberately uses `build:app`, which skips `tsc --noEmit` — a type error should stop
-a commit, not stop a user from opening the app.
+`bun run dev:server` and `bun run dev:client` run the halves separately. `bun run build` typechecks and builds. `bun run start` serves the production build.
 
-## Data
-
-```
-data/characters/   Character cards (PNG). Filename is the identity.
-data/presets/      Chat-completion presets (JSON, ST-compatible).
-data/lorebooks/    Standalone World Info books.
-data/personas/     Personas + avatars.
-data/chats.db      Chat history (SQLite).
-data/backups/      Deleted chats, restorable.
-data/settings.json App settings. data/secrets.json API keys (never sent to browser).
-data/.wackchatter  Marks the folder as a library, so the app can tell it from any other.
-```
-
-`data/` is gitignored, and everything in it is one portable unit.
-
-Two files live outside it, in `~/.wackchatter/`, because they are how something else finds
-the library at all — they cannot live inside the thing they point at:
-
-```
-~/.wackchatter/library.json  Where the library currently is. Rewritten on every launch.
-~/.wackchatter/usage.jsonl   One line per generation. Only written with the setting on.
-```
-
-### Backing it up
-
-**User Settings → Backup** writes the whole library to a single zip. Everything in the tree
-above goes in — characters and the folders you filed them under, chats, presets, personas,
-lorebooks, backgrounds and the deleted-chat bin — alongside a `backup.json` recording what the
-archive is and which database schema it came from.
-
-Two choices are deliberate. `secrets.json` is **left out** unless you tick the box: the zip
-lands in your downloads folder without the `0600` the original has, so anyone who opens it can
-read your keys. And `chats.db` goes in as a `VACUUM INTO` snapshot rather than a copy of the
-file — in WAL mode most of the database can be sitting in `chats.db-wal`, so copying the one
-file would lose nearly everything.
-
-There is no restore button, because there is nothing for one to do. Unzip the archive anywhere
-and the folder inside it *is* a library, marker and all — point **Data location** at it and the
-app adopts it exactly as it would any other.
-
-### Moving it somewhere else
-
-`<repo>/data` is the default, not a requirement. **User Settings → Data location** moves the whole
-library anywhere — an external drive, a synced folder, wherever you actually keep things — and
-the app repoints itself without a restart. Point it at a folder that already holds a library and
-it adopts that one instead, moving nothing, which is also how you switch back.
-
-Where it lands is remembered outside the library (it cannot live inside the folder it names):
-
-```
-macOS    ~/Library/Application Support/WackChatter/location.json
-Windows  %APPDATA%\WackChatter\location.json
-Linux    ${XDG_CONFIG_HOME:-~/.config}/wackchatter/location.json
-```
-
-`WC_DATA_DIR` overrides that file and locks the setting in the UI. If the configured folder is
-missing at startup — an unplugged drive, a folder that hasn't synced yet — the app says so and
-falls back to `<repo>/data` **without changing the setting**, so reconnecting the folder and
-restarting is all it takes.
-
-### Cloud folders
-
-Putting the library in Dropbox, iCloud Drive, OneDrive or Google Drive works, with two caveats
-worth knowing before you do it:
-
-- **SQLite and sync clients disagree.** A sync client can upload `chats.db` mid-write, or let two
-  machines write it at once, and either corrupts it. WackChatter detects a synced folder and turns
-  off SQLite's write-ahead log there, which removes the sidecar files that cause most of this —
-  but run it from **one machine at a time**, and let the folder finish syncing before you quit.
-- **Your API keys go with it.** `secrets.json` lives in the library, so moving it to a synced
-  folder uploads your keys to that service. They are no longer only on your machine.
-
-## Testing
+### Testing
 
 ```sh
-bun test        # full suite
-bun run lint    # Biome
+bun test             # full suite
+bun run lint         # Biome
+npx tsc --noEmit     # type check
 ```
 
-The suite pins format compatibility: byte-for-byte card round-trips against SillyTavern's shipped files, preset serialisation format, the swipe invariant, SSE streaming edge cases, World Info conversion and activation, and guided-generation injection rules. When a format changes, the test comes first.
-
-## Project layout
+### Project layout
 
 ```
-server/    Thin Bun server: files, DB, streaming proxy. Never builds a prompt.
-shared/    Pure TypeScript, no I/O: prompt assembly, providers, World Info engine, chat types.
-src/       React app: three-column layout, panels for Connection/Prompts/Inspect and
-           Characters/Lorebooks/Persona/User Settings.
+server/    Bun server: files, DB, streaming proxy. Never builds a prompt.
+shared/    Pure TypeScript, no I/O: prompt assembly, providers, World Info, chat types.
+src/       React app.
 ```
 
-## Design notes
+Prompt assembly runs client-side (like SillyTavern) — the server only proxies requests. This keeps the server simple and means the prompt inspector shows the exact payload that was sent.
 
-- **The server never builds a prompt.** Assembly happens in the browser (like SillyTavern), so the server stays dumb and fast and the prompt inspector shows exactly what was sent.
-- **No blocking modals.** The chat stays live while anything else is open.
-- **Deliberate divergences from SillyTavern** (documented in `AGENTS.md`): failed regenerates restore alternates instead of destroying the swipe array, real token usage is available opt-in, migration rules all run, and unsupported World Info positions are folded rather than dropped.
+See [AGENTS.md](AGENTS.md) for detailed architecture and format rules.
+
+</details>
