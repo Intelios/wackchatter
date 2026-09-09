@@ -20,6 +20,7 @@ import {
   EditIcon,
   MenuIcon,
   MessagesIcon,
+  NexusIcon,
   PlusIcon,
   RefreshIcon,
   UploadIcon,
@@ -87,7 +88,15 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
 
   return [
     ...(actions.openNexus
-      ? [{ label: 'Memory Nexus', onSelect: actions.openNexus, disabled: !chatId }]
+      ? [
+          {
+            label: 'Memory Nexus',
+            icon: <NexusIcon />,
+            disabled: !chatId,
+            disabledReason: 'No chat is open.',
+            onSelect: actions.openNexus,
+          },
+        ]
       : []),
     {
       label: 'New chat',

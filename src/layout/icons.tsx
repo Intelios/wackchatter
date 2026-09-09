@@ -509,3 +509,22 @@ export function GridIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * Memory Nexus — an interconnected graph constellation of story knowledge.
+ */
+export function NexusIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="9" cy="8" r="2.5" />
+      <circle cx="18" cy="5" r="2" />
+      <circle cx="17" cy="18" r="2" />
+      <circle cx="5" cy="17" r="2" />
+      <line x1="11.4" y1="7.2" x2="16.1" y2="5.6" />
+      <line x1="10.6" y1="10" x2="15.7" y2="16.4" />
+      <line x1="8" y1="10.3" x2="5.8" y2="15.2" />
+      <line x1="17.9" y1="7" x2="17.1" y2="16" />
+      <line x1="7" y1="17.1" x2="15" y2="17.9" />
+    </svg>
+  );
+}

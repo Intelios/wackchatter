@@ -243,6 +243,25 @@ describe('buildChatMenu', () => {
     );
   });
 
+  test('Memory Nexus entry has an icon and triggers openNexus when selected', () => {
+    const { calls, actions } = spies();
+    const actionsWithNexus: ChatMenuActions = {
+      ...actions,
+      openNexus: () => calls.push('openNexus'),
+    };
+    const entries = build({}, actionsWithNexus);
+    const nexusEntry = item(entries, 'Memory Nexus');
+    expect(nexusEntry.icon).toBeDefined();
+    expect(nexusEntry.disabled).toBeFalsy();
+    nexusEntry.onSelect();
+    expect(calls).toContain('openNexus');
+
+    const disabledEntries = build({ chatId: null }, actionsWithNexus);
+    const disabledNexusEntry = item(disabledEntries, 'Memory Nexus');
+    expect(disabledNexusEntry.disabled).toBe(true);
+    expect(disabledNexusEntry.disabledReason).toBe('No chat is open.');
+  });
+
   test('separators only ever sit between groups', () => {
     for (const state of [{}, { busy: true }, { messageCount: 0, lastMessageId: null }]) {
       const entries = build(state);
