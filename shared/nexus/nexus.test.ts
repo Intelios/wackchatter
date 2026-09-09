@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { ChatMessage } from '../types/chat.ts';
 import {
   branchNexus,
+  describeRevisionChange,
   emptyNexus,
   evidenceFor,
   liveRecords,
@@ -122,4 +123,49 @@ test('spanning descriptions are excluded at a fork, and manual corrections never
     'b',
   );
   expect(liveRecords(corrected, [messages[0]!, message('b', 'Another swipe')])).toHaveLength(0);
+});
+
+describe('describeRevisionChange', () => {
+  const base = { ...version(0, 'Joe said he grew up in London.'), created: 100 };
+  test('labels each flag toggle instead of repeating unchanged text', () => {
+    expect(describeRevisionChange(base, { ...base, pinned: true })).toEqual(['Pinned']);
+    expect(describeRevisionChange({ ...base, pinned: true }, { ...base })).toEqual(['Unpinned']);
+    expect(describeRevisionChange(base, { ...base, enabled: false })).toEqual(['Disabled']);
+    expect(describeRevisionChange({ ...base, deleted: true }, { ...base })).toEqual(['Restored']);
+    expect(describeRevisionChange(base, { ...base, deleted: true })).toEqual(['Deleted']);
+    expect(describeRevisionChange(base, { ...base, kind: 'event' })).toEqual(['Kind → event']);
+    expect(describeRevisionChange(base, { ...base, status: 'resolved' })).toEqual([
+      'Status → resolved',
+    ]);
+    expect(describeRevisionChange(base, { ...base, assertion: 'fact' })).toEqual([
+      'Attribution → fact',
+    ]);
+  });
+  test('labels multi-field patches together', () => {
+    expect(describeRevisionChange(base, { ...base, pinned: true, kind: 'event' })).toEqual([
+      'Pinned',
+      'Kind → event',
+    ]);
+  });
+  test('labels identity, connection and evidence changes', () => {
+    expect(describeRevisionChange(base, { ...base, nodeIds: ['n1'] })).toEqual([
+      'Identities changed',
+    ]);
+    const relation = { from: 'a', to: 'b', label: 'is from' };
+    expect(describeRevisionChange(base, { ...base, relation })).toEqual(['Connection changed']);
+    expect(describeRevisionChange({ ...base, relation }, { ...base })).toEqual([
+      'Connection removed',
+    ]);
+    expect(describeRevisionChange(base, { ...base, evidence: [], needsReview: false })).toEqual([
+      'Reasserted',
+    ]);
+    expect(
+      describeRevisionChange(base, { ...base, evidence: [evidenceFor(messages[1]!)] }),
+    ).toEqual(['Evidence changed']);
+  });
+  test('text edits, first revisions and no-op patches fall back to the text row', () => {
+    expect(describeRevisionChange(base, { ...base, text: 'Joe grew up in London.' })).toBeNull();
+    expect(describeRevisionChange(undefined, base)).toBeNull();
+    expect(describeRevisionChange(base, { ...base })).toBeNull();
+  });
 });

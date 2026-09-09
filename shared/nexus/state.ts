@@ -157,6 +157,43 @@ export function reviseRecord(
     ),
   };
 }
+const sameIds = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((id) => b.includes(id));
+const sameEvidence = (a: readonly NexusEvidence[], b: readonly NexusEvidence[]) =>
+  a.length === b.length &&
+  a.every((e, i) => e.messageId === b[i]!.messageId && e.fingerprint === b[i]!.fingerprint);
+/**
+ * What a revision changed, for the history audit trail. Toggles append full revisions,
+ * so the rows that repeat byte-identical text are state changes; the label says which.
+ * Text edits, first revisions and unrecognised patches return null — render the text.
+ */
+export function describeRevisionChange(
+  prev: NexusRevision | undefined,
+  current: NexusRevision,
+): string[] | null {
+  if (!prev || prev.text !== current.text) return null;
+  const labels: string[] = [];
+  if (prev.pinned !== current.pinned) labels.push(current.pinned ? 'Pinned' : 'Unpinned');
+  if (prev.enabled !== current.enabled) labels.push(current.enabled ? 'Enabled' : 'Disabled');
+  if (prev.deleted !== current.deleted) labels.push(current.deleted ? 'Deleted' : 'Restored');
+  if (prev.kind !== current.kind) labels.push(`Kind → ${current.kind}`);
+  if (prev.status !== current.status) labels.push(`Status → ${current.status}`);
+  if (prev.assertion !== current.assertion) labels.push(`Attribution → ${current.assertion}`);
+  if (!sameIds(prev.nodeIds, current.nodeIds)) labels.push('Identities changed');
+  if (Boolean(prev.relation) !== Boolean(current.relation))
+    labels.push(current.relation ? 'Connection changed' : 'Connection removed');
+  else if (
+    prev.relation &&
+    current.relation &&
+    (prev.relation.from !== current.relation.from ||
+      prev.relation.to !== current.relation.to ||
+      prev.relation.label !== current.relation.label)
+  )
+    labels.push('Connection changed');
+  if (!sameEvidence(prev.evidence, current.evidence))
+    labels.push(current.evidence.length ? 'Evidence changed' : 'Reasserted');
+  return labels.length ? labels : null;
+}
 export function reviseNode(
   nexus: NexusState,
   id: string,

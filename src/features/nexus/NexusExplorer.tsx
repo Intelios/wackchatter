@@ -1,5 +1,6 @@
 import {
   canonicalNode,
+  describeRevisionChange,
   latest,
   liveRecords,
   mergeNodes,
@@ -1124,20 +1125,26 @@ function RecordEditor({
       <details onToggle={(e) => setHistoryOpen(e.currentTarget.open)}>
         <summary>History ({record.revisions.length})</summary>
         {historyOpen
-          ? [...record.revisions]
+          ? record.revisions
+              .map((v, i) => ({ v, change: describeRevisionChange(record.revisions[i - 1], v) }))
+              .slice(-historyLimit)
               .reverse()
-              .slice(0, historyLimit)
-              .map((v) => (
+              .map(({ v, change }) => (
                 <div
                   className="nexus-source"
-                  key={`${v.created}:${v.text}:${JSON.stringify(v.evidence)}`}
+                  key={`${v.created}:${v.status}:${v.pinned}:${v.enabled}:${v.deleted}:${v.text}:${JSON.stringify(v.evidence)}`}
                 >
                   <p>
                     {new Date(v.created).toLocaleString()} · {v.manual ? 'User edit' : 'Generated'}{' '}
-                    · {v.status}
+                    · {change ? change.join(' · ') : v.status}
                   </p>
-                  <p>{v.text}</p>
-                  <Sources evidence={v.evidence} chat={chat} />
+                  {/* A state change repeats the previous text and sources; the label is the row. */}
+                  {change ? null : (
+                    <>
+                      <p>{v.text}</p>
+                      <Sources evidence={v.evidence} chat={chat} />
+                    </>
+                  )}
                 </div>
               ))
           : null}
