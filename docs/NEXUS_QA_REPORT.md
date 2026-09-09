@@ -21,25 +21,6 @@ real paid generations. No source files changed.
 
 ## Findings
 
-### N-24 · Following the error message's advice produces a second, unrelated error — **BUG**
-
-The transcript budget is `inputTokens − outputTokens − 128`
-([extract.ts:87](shared/nexus/extract.ts:87)). Both defaults are in the same panel with no
-stated relationship, and the field validation lets output ≥ context.
-
-Do exactly what the first error says — leave **Memory model context** at its default 8192 and
-raise **Memory model output** to 8192 — and the budget goes to **−128**, producing:
-
-> *Nexus instructions and existing context exceed the configured context limit. Increase the
-> limit or shorten the extraction prompt.*
-
-Two errors, neither mentioning the other field, and a user following the instructions
-faithfully lands in the second.
-
-*Fix:* clamp `outputTokens` to leave a workable transcript budget (or validate on entry), and
-have the first error name both numbers: *"Output allowance 2048 of a 8192 context leaves 6064
-for the transcript."*
-
 ### N-29 · Progress reads `0 / 5` for the entire run — **VIS**
 
 `Remembering… 0 / 5` is shown for the whole extraction — 30–60 s against a real model — because
