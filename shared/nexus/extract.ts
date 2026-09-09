@@ -19,10 +19,11 @@ import type {
   NexusState,
 } from './types.ts';
 
-const CONTRACT = `Return only a JSON object: {"nodes":[],"records":[]}.
+export const CONTRACT = `Return only a JSON object: {"nodes":[],"records":[]}.
 nodes: {"ref":"local-identifier-or-existing-node-id","name":"Joe","kind":"person|place|object|event","aliases":[],"sources":[0]}.
 records: {"id":"existing-record-id ONLY when updating it; otherwise omit", "text":"one concise standalone memory", "kind":"fact|event|situation|thread", "assertion":"fact|claim|intention|event", "status":"active|resolved|historical|conflict", "nodeRefs":["local-identifier-or-existing-node-id"], "relation":{"from":"node-ref","to":"node-ref","label":"is from"}, "sources":[0], "cues":["hometown"], "conflicts":["existing-record-id"]}.
-relation and conflicts are optional. Sources are the zero-based line numbers in this excerpt, required on every node and record. Multiple records may cite the same line. Use only evidence actually in the excerpt. Up to 48 nodes/records each; record text up to 2000 characters. An empty result is valid. Do not emit control fields, deletions, or changes to manually curated records.`;
+Worked example: {"nodes":[{"ref":"tomas","name":"Tomas","kind":"person","aliases":[],"sources":[0]},{"ref":"vellmoor","name":"Vellmoor","kind":"place","aliases":[],"sources":[1]}],"records":[{"text":"Tomas is from Vellmoor.","kind":"fact","assertion":"fact","status":"active","nodeRefs":["tomas","vellmoor"],"relation":{"from":"tomas","to":"vellmoor","label":"is from"},"sources":[0],"cues":["origin","hometown"]}]}
+conflicts is optional. Emit a relation whenever the excerpt states how two entities stand to each other — kinship, origin, employment, ownership, location — using a short verb-phrase label such as "is sister of", "is from", "works for" or "lies under". Create an event node for a named or referable happening that several memories will point at (a battle, a bargain, a journey) and attach its participants through nodeRefs. Sources are the zero-based line numbers in this excerpt, required on every node and record. Multiple records may cite the same line. Use only evidence actually in the excerpt. Up to 48 nodes/records each; record text up to 2000 characters. An empty result is valid. Do not emit control fields, deletions, or changes to manually curated records.`;
 
 interface WindowItem {
   message: ChatMessage;

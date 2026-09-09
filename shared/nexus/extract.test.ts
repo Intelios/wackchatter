@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { ChatMessage } from '../types/chat.ts';
-import { applyExtraction, buildNexusExtraction, parseExtraction } from './extract.ts';
+import { applyExtraction, buildNexusExtraction, CONTRACT, parseExtraction } from './extract.ts';
 import { emptyNexus, messageFingerprint } from './state.ts';
 import { DEFAULT_NEXUS } from './types.ts';
 
@@ -103,6 +103,54 @@ test('duplicate output cannot resurrect a manual edit, disabled record, or tombs
     expect(after.records[0]!.revisions).toEqual(n.records[0]!.revisions);
     expect(after.records).toHaveLength(1);
   }
+});
+
+test('the contract’s worked example is valid against its own parser', () => {
+  const second: ChatMessage = {
+    ...msg,
+    id: 'm2',
+    name: 'Tomas',
+    mes: 'The Vellmoor guild raised me.',
+  };
+  const batch = buildNexusExtraction(emptyNexus(), [msg, second], DEFAULT_NEXUS, counter, '');
+  const example = CONTRACT.split('\n').find((l) => l.startsWith('Worked example: '));
+  const parsed = parseExtraction(example!.slice('Worked example: '.length), batch, emptyNexus());
+  expect(parsed.nodes.map((n) => n.ref)).toEqual(['tomas', 'vellmoor']);
+  expect(parsed.records[0]!.revision.relation).toEqual({
+    from: 'tomas',
+    to: 'vellmoor',
+    label: 'is from',
+  });
+});
+
+test('a relation between new nodes survives the apply-time id remap', () => {
+  const n = emptyNexus();
+  const batch = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
+  const raw = {
+    nodes: [
+      { ref: 'joe', name: 'Joe', kind: 'person', aliases: [], sources: [0] },
+      { ref: 'london', name: 'London', kind: 'place', aliases: [], sources: [0] },
+    ],
+    records: [
+      {
+        text: 'Joe is from London.',
+        kind: 'fact',
+        assertion: 'fact',
+        status: 'active',
+        nodeRefs: ['joe', 'london'],
+        relation: { from: 'joe', to: 'london', label: 'is from' },
+        sources: [0],
+        cues: ['hometown'],
+      },
+    ],
+  };
+  const after = applyExtraction(n, parseExtraction(JSON.stringify(raw), batch, n), batch, 'test');
+  const [joe, london] = after.nodes;
+  expect(after.records[0]!.revisions[0]!.relation).toEqual({
+    from: joe!.id,
+    to: london!.id,
+    label: 'is from',
+  });
 });
 
 test('a paraphrase over curated source and identity is disabled for review', () => {
