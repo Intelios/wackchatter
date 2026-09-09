@@ -230,6 +230,97 @@ export function NexusExplorer({ chat, ...config }: Props) {
       ),
     );
   }
+  // Collection ("Add to Nexus", "Latest request memories") lives in the detail pane on
+  // the map and at the top of the list — the pane is absent from List view until an
+  // identity is picked, so this is the one copy, rendered wherever the view puts it.
+  const collection = (
+    <>
+      <details open={!n.data.nodes.length}>
+        <summary>Add to Nexus</summary>
+        {!nexusMode ? (
+          <p role="status">
+            Switch this chat to Nexus memory before adding by hand — records here are only recalled
+            in Nexus mode.
+          </p>
+        ) : null}
+        <form
+          className="nexus-settings"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newName.trim() || !nexusMode) return;
+            const id = crypto.randomUUID();
+            n.update((s) => ({
+              ...s,
+              nodes: [
+                ...s.nodes,
+                {
+                  id,
+                  versions: [
+                    {
+                      name: newName.trim(),
+                      kind: newKind,
+                      aliases: [],
+                      manual: true,
+                      evidence: [],
+                      anchorId: anchor,
+                    },
+                  ],
+                },
+              ],
+            }));
+            setNewName('');
+            setSelected(id);
+          }}
+        >
+          <input
+            className="wc-input"
+            aria-label="New node name"
+            placeholder="Name…"
+            value={newName}
+            disabled={!nexusMode}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+          <select
+            className="wc-input"
+            aria-label="New node category"
+            value={newKind}
+            disabled={!nexusMode}
+            onChange={(e) => setNewKind(e.target.value as NexusNodeKind)}
+          >
+            {KINDS.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="wc-button"
+            disabled={!newName.trim() || !nexusMode}
+            title={nexusMode ? undefined : 'Switch this chat to Nexus memory first.'}
+          >
+            Add node
+          </button>
+        </form>
+        <div className="nexus-actions">
+          {RECORD_KINDS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              className="wc-button"
+              disabled={!nexusMode}
+              title={nexusMode ? undefined : 'Switch this chat to Nexus memory first.'}
+              onClick={() => addRecord(k)}
+            >
+              Add {k}
+            </button>
+          ))}
+        </div>
+      </details>
+      <details>
+        <summary>Latest request memories</summary>
+        <NexusReport recall={n.recall} />
+      </details>
+    </>
+  );
   if (!n.open) return null;
   return createPortal(
     <div
@@ -635,6 +726,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       );
                     })}
                   </div>
+                  {collection}
                   {matchingRecords.slice(limit - 80, limit).map((r) => (
                     <RecordEditor
                       key={r.id}
@@ -668,248 +760,170 @@ export function NexusExplorer({ chat, ...config }: Props) {
                 </div>
               )}
             </main>
-            <aside className="nexus-detail">
-              {node ? (
-                <>
-                  <div className="nexus-actions">
-                    <span className="nexus-kicker">{node.kind}</span>
-                    <button
-                      type="button"
-                      className="wc-button wc-button--ghost"
-                      onClick={() => setSelected(null)}
-                    >
-                      Clear selection
-                    </button>
-                  </div>
-                  <input
-                    key={`${selected}:${node.name}`}
-                    className="wc-input nexus-name"
-                    aria-label="Node name"
-                    defaultValue={node.name}
-                    onBlur={(e) => {
-                      if (e.target.value.trim() && e.target.value !== node.name)
-                        changeNode({ name: e.target.value.trim() });
-                    }}
-                  />
-                  <label>
-                    Aliases
+            {/* The pane is the map's inspector; List view only borrows it for the selected
+                identity's editor, so the cards get the full width until one is picked. */}
+            {view === 'map' || selected ? (
+              <aside className="nexus-detail">
+                {node ? (
+                  <>
+                    <div className="nexus-actions">
+                      <span className="nexus-kicker">{node.kind}</span>
+                      <button
+                        type="button"
+                        className="wc-button wc-button--ghost"
+                        onClick={() => setSelected(null)}
+                      >
+                        Clear selection
+                      </button>
+                    </div>
                     <input
-                      key={`${selected}:${node.aliases.join()}`}
-                      className="wc-input"
-                      defaultValue={node.aliases.join(', ')}
+                      key={`${selected}:${node.name}`}
+                      className="wc-input nexus-name"
+                      aria-label="Node name"
+                      defaultValue={node.name}
                       onBlur={(e) => {
-                        const aliases = e.target.value
-                          .split(',')
-                          .map((x) => x.trim())
-                          .filter(Boolean);
-                        if (aliases.join() !== node.aliases.join()) changeNode({ aliases });
+                        if (e.target.value.trim() && e.target.value !== node.name)
+                          changeNode({ name: e.target.value.trim() });
                       }}
                     />
-                  </label>
-                  <select
-                    aria-label="Node category"
-                    className="wc-input"
-                    value={node.kind}
-                    onChange={(e) => changeNode({ kind: e.target.value as NexusNodeKind })}
-                  >
-                    {KINDS.map((k) => (
-                      <option key={k}>{k}</option>
-                    ))}
-                  </select>
-                  <details>
-                    <summary>Merge duplicate</summary>
-                    <p>
-                      Only merge identities you know are the same. Their facts and revision history
-                      are retained.
-                    </p>
+                    <label>
+                      Aliases
+                      <input
+                        key={`${selected}:${node.aliases.join()}`}
+                        className="wc-input"
+                        defaultValue={node.aliases.join(', ')}
+                        onBlur={(e) => {
+                          const aliases = e.target.value
+                            .split(',')
+                            .map((x) => x.trim())
+                            .filter(Boolean);
+                          if (aliases.join() !== node.aliases.join()) changeNode({ aliases });
+                        }}
+                      />
+                    </label>
                     <select
+                      aria-label="Node category"
                       className="wc-input"
-                      aria-label="Merge into"
-                      value={mergeTarget}
-                      onChange={(e) => {
-                        setMergeTarget(e.target.value);
-                        setConfirm('');
-                      }}
+                      value={node.kind}
+                      onChange={(e) => changeNode({ kind: e.target.value as NexusNodeKind })}
                     >
-                      <option value="">Choose identity</option>
-                      {graph.nodes
-                        .filter((v) => v.id !== selected)
-                        .map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {nodeVersion(v).name}
-                          </option>
-                        ))}
+                      {KINDS.map((k) => (
+                        <option key={k}>{k}</option>
+                      ))}
                     </select>
-                    <button
-                      type="button"
-                      className="wc-button"
-                      disabled={!mergeTarget}
-                      onClick={() => {
-                        if (confirm === 'merge') {
-                          n.update((s) => mergeNodes(s, selected!, mergeTarget, anchor));
-                          setSelected(mergeTarget);
-                          setMergeTarget('');
+                    <details>
+                      <summary>Merge duplicate</summary>
+                      <p>
+                        Only merge identities you know are the same. Their facts and revision
+                        history are retained.
+                      </p>
+                      <select
+                        className="wc-input"
+                        aria-label="Merge into"
+                        value={mergeTarget}
+                        onChange={(e) => {
+                          setMergeTarget(e.target.value);
                           setConfirm('');
-                        } else setConfirm('merge');
-                      }}
-                    >
-                      {confirm === 'merge' ? 'Confirm merge' : 'Merge'}
-                    </button>
-                  </details>
-                  <button
-                    type="button"
-                    className="wc-button wc-button--ghost"
-                    onClick={() => {
-                      if (node.deleted) {
-                        changeNode({ deleted: false });
-                        setConfirm('');
-                      } else if (confirm === 'delete-node') {
-                        changeNode({ deleted: true });
-                        setConfirm('');
-                        setView('list');
-                        setArchived(true);
-                      } else setConfirm('delete-node');
-                    }}
-                  >
-                    {node.deleted
-                      ? 'Restore node'
-                      : confirm === 'delete-node'
-                        ? 'Confirm node deletion'
-                        : 'Delete node'}
-                  </button>
-                  {confirm === 'delete-node' ? (
-                    <p>
-                      The node leaves the map. Its memories and history stay available in List view.
-                    </p>
-                  ) : null}
-                  {!validEvidence(node.evidence, chat.messages) ||
-                  (node.anchorId && !chat.messages.some((m) => m.id === node.anchorId)) ? (
-                    <p>
-                      Node evidence needs review.{' '}
+                        }}
+                      >
+                        <option value="">Choose identity</option>
+                        {graph.nodes
+                          .filter((v) => v.id !== selected)
+                          .map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {nodeVersion(v).name}
+                            </option>
+                          ))}
+                      </select>
                       <button
                         type="button"
                         className="wc-button"
-                        onClick={() => changeNode({ evidence: [] })}
+                        disabled={!mergeTarget}
+                        onClick={() => {
+                          if (confirm === 'merge') {
+                            n.update((s) => mergeNodes(s, selected!, mergeTarget, anchor));
+                            setSelected(mergeTarget);
+                            setMergeTarget('');
+                            setConfirm('');
+                          } else setConfirm('merge');
+                        }}
                       >
-                        Keep as user-authored identity
+                        {confirm === 'merge' ? 'Confirm merge' : 'Merge'}
                       </button>
-                    </p>
-                  ) : null}
-                  <Sources evidence={node.evidence} chat={chat} />
-                  {view === 'map'
-                    ? matchingRecords
-                        .slice(0, 40)
-                        .map((r) => (
-                          <RecordEditor
-                            key={r.id}
-                            record={r}
-                            chat={chat}
-                            valid={active.has(r.id)}
-                            query={search}
-                          />
-                        ))
-                    : null}
-                  {view === 'map' && matchingRecords.length > 40 ? (
-                    <button type="button" className="wc-button" onClick={() => setView('list')}>
-                      See all in List view
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <span className="nexus-kicker">Your story, connected</span>
-                  <h2>Explore the Nexus</h2>
-                  <p>
-                    Select a node to see what is known, how it connects, and where it came from.
-                  </p>
-                  <NexusActivity chat={chat} configured={configured} />
-                </>
-              )}
-              <details open={!n.data.nodes.length}>
-                <summary>Add to Nexus</summary>
-                {!nexusMode ? (
-                  <p role="status">
-                    Switch this chat to Nexus memory before adding by hand — records here are only
-                    recalled in Nexus mode.
-                  </p>
-                ) : null}
-                <form
-                  className="nexus-settings"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!newName.trim() || !nexusMode) return;
-                    const id = crypto.randomUUID();
-                    n.update((s) => ({
-                      ...s,
-                      nodes: [
-                        ...s.nodes,
-                        {
-                          id,
-                          versions: [
-                            {
-                              name: newName.trim(),
-                              kind: newKind,
-                              aliases: [],
-                              manual: true,
-                              evidence: [],
-                              anchorId: anchor,
-                            },
-                          ],
-                        },
-                      ],
-                    }));
-                    setNewName('');
-                    setSelected(id);
-                  }}
-                >
-                  <input
-                    className="wc-input"
-                    aria-label="New node name"
-                    placeholder="Name…"
-                    value={newName}
-                    disabled={!nexusMode}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                  <select
-                    className="wc-input"
-                    aria-label="New node category"
-                    value={newKind}
-                    disabled={!nexusMode}
-                    onChange={(e) => setNewKind(e.target.value as NexusNodeKind)}
-                  >
-                    {KINDS.map((k) => (
-                      <option key={k}>{k}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    className="wc-button"
-                    disabled={!newName.trim() || !nexusMode}
-                    title={nexusMode ? undefined : 'Switch this chat to Nexus memory first.'}
-                  >
-                    Add node
-                  </button>
-                </form>
-                <div className="nexus-actions">
-                  {RECORD_KINDS.map((k) => (
+                    </details>
                     <button
-                      key={k}
                       type="button"
-                      className="wc-button"
-                      disabled={!nexusMode}
-                      title={nexusMode ? undefined : 'Switch this chat to Nexus memory first.'}
-                      onClick={() => addRecord(k)}
+                      className="wc-button wc-button--ghost"
+                      onClick={() => {
+                        if (node.deleted) {
+                          changeNode({ deleted: false });
+                          setConfirm('');
+                        } else if (confirm === 'delete-node') {
+                          changeNode({ deleted: true });
+                          setConfirm('');
+                          setView('list');
+                          setArchived(true);
+                        } else setConfirm('delete-node');
+                      }}
                     >
-                      Add {k}
+                      {node.deleted
+                        ? 'Restore node'
+                        : confirm === 'delete-node'
+                          ? 'Confirm node deletion'
+                          : 'Delete node'}
                     </button>
-                  ))}
-                </div>
-              </details>
-              <details>
-                <summary>Latest request memories</summary>
-                <NexusReport recall={n.recall} />
-              </details>
-            </aside>
+                    {confirm === 'delete-node' ? (
+                      <p>
+                        The node leaves the map. Its memories and history stay available in List
+                        view.
+                      </p>
+                    ) : null}
+                    {!validEvidence(node.evidence, chat.messages) ||
+                    (node.anchorId && !chat.messages.some((m) => m.id === node.anchorId)) ? (
+                      <p>
+                        Node evidence needs review.{' '}
+                        <button
+                          type="button"
+                          className="wc-button"
+                          onClick={() => changeNode({ evidence: [] })}
+                        >
+                          Keep as user-authored identity
+                        </button>
+                      </p>
+                    ) : null}
+                    <Sources evidence={node.evidence} chat={chat} />
+                    {view === 'map'
+                      ? matchingRecords
+                          .slice(0, 40)
+                          .map((r) => (
+                            <RecordEditor
+                              key={r.id}
+                              record={r}
+                              chat={chat}
+                              valid={active.has(r.id)}
+                              query={search}
+                            />
+                          ))
+                      : null}
+                    {view === 'map' && matchingRecords.length > 40 ? (
+                      <button type="button" className="wc-button" onClick={() => setView('list')}>
+                        See all in List view
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <span className="nexus-kicker">Your story, connected</span>
+                    <h2>Explore the Nexus</h2>
+                    <p>
+                      Select a node to see what is known, how it connects, and where it came from.
+                    </p>
+                    <NexusActivity chat={chat} configured={configured} />
+                  </>
+                )}
+                {view === 'map' ? collection : null}
+              </aside>
+            ) : null}
           </div>
           <footer className="nexus-footer">
             <span>{nexusSummaryLine(nexusCounts(n.data))}</span>

@@ -256,6 +256,12 @@
   height: 100%;
   padding: var(--wc-space-5);
 }
+/* The full width is the point of List view, but an uncapped line length is not
+   readable: the page token caps and centres each row, as .nexus-page does elsewhere. */
+.nexus-list > * {
+  max-width: var(--wc-nexus-page);
+  margin-inline: auto;
+}
 .nexus-map {
   height: 100%;
   position: relative;
