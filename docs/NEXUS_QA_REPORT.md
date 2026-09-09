@@ -21,24 +21,6 @@ real paid generations. No source files changed.
 
 ## Findings
 
-### N-29 · Progress reads `0 / 5` for the entire run — **VIS**
-
-`Remembering… 0 / 5` is shown for the whole extraction — 30–60 s against a real model — because
-`processed` only advances when a batch is accepted, and a 5-message excerpt is one batch. There
-is no spinner, no elapsed time, and no phase ("sending", "waiting", "checking"). During the
-failed reasoning runs it sat at `0 / 5` for a minute and then produced an error, which reads
-exactly like a hang.
-
-*Fix:* show an indeterminate state while a batch is in flight, and name the phase.
-
-### N-30 · No legend for node colour, and 7px labels — **VIS**
-
-Nodes are ringed green / blue / orange by kind, which is genuinely useful, but nothing on the
-page says what the colours mean. The status bar has the counts
-(`4 people · 3 places · 3 objects · 0 events`) and is the obvious place to carry the swatches.
-Node captions render at roughly 7 px at the default zoom and are hard to read on a normal
-display.
-
 ### N-31 · Suggested contract/prompt changes to help the memory model — **LLM (summary)**
 
 Items 1–5 (demand relations, event-node rule, require cues, the `group` kind, the excerpt
