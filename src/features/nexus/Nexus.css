@@ -694,10 +694,8 @@
     animation: nexus-pulse 10s linear infinite;
   }
 
-  /* When the grand entrance is not active (normal mount/filter updates), use subtle arrival */
-  .nexus[data-motion="true"]:not([data-intro="true"]) .nexus-node {
-    animation: nexus-arrival 900ms ease-out;
-  }
+  /* Nodes stay settled when data-intro clears; a non-intro arrival animation
+     would restart their opacity after the cosmic entrance has already landed. */
 
   /* Grand entrance: Staggered node outward blast & elastic lock */
   .nexus[data-motion="true"][data-intro="true"] .nexus-node-blossom {
@@ -729,16 +727,6 @@
     stroke-dasharray: var(--edge-len, 1000);
     stroke-dashoffset: var(--edge-len, 1000);
     animation: nexus-beam-strike 650ms cubic-bezier(0.16, 1, 0.3, 1) var(--intro-delay, 0ms) both;
-  }
-}
-
-@keyframes nexus-arrival {
-  from {
-    opacity: 0.1;
-    filter: brightness(3);
-  }
-  to {
-    opacity: 1;
   }
 }
 
