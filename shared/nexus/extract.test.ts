@@ -105,6 +105,18 @@ test('duplicate output cannot resurrect a manual edit, disabled record, or tombs
   }
 });
 
+test('the excerpt is labelled as the only evidence the model may cite', () => {
+  const batch = buildNexusExtraction(emptyNexus(), [msg], DEFAULT_NEXUS, counter, '');
+  const user = batch.messages.at(-1)!;
+  expect(user.role).toBe('user');
+  expect(
+    user.content.startsWith(
+      'TRANSCRIPT EXCERPT — the only evidence. Cite line numbers from this block only.\n',
+    ),
+  ).toBe(true);
+  expect(user.content).toContain('[0] Joe: I am from London.');
+});
+
 test('a record without search cues is rejected, not silently accepted', () => {
   const n = emptyNexus();
   const batch = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
