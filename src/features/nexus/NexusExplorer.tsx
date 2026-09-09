@@ -19,12 +19,14 @@ import type {
 } from '@shared/nexus/types.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { type HighlightPart, highlightParts } from '../chat/cardSearch.ts';
 import type { UseChat } from '../chat/useChat.ts';
 import { type Camera, fitCamera, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
 import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusReport } from './NexusReport.tsx';
 import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
+import { MIN_HIGHLIGHT_QUERY, matchRanges } from './searchHighlight.ts';
 import { nexusCounts, nexusSummaryLine, plural, revisionDateLabel } from './summaryLine.ts';
 import './Nexus.css';
 
@@ -617,20 +619,30 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     <button className="wc-button" type="button" onClick={() => setSelected(null)}>
                       All memories
                     </button>
-                    {visibleNodes.slice(limit - 80, limit).map((v) => (
-                      <button
-                        className="wc-button wc-button--ghost"
-                        type="button"
-                        key={v.id}
-                        aria-pressed={selected === v.id}
-                        onClick={() => setSelected(v.id)}
-                      >
-                        {SYMBOL[nodeVersion(v).kind]} {nodeVersion(v).name}
-                      </button>
-                    ))}
+                    {visibleNodes.slice(limit - 80, limit).map((v) => {
+                      const name = nodeVersion(v).name;
+                      return (
+                        <button
+                          className="wc-button wc-button--ghost"
+                          type="button"
+                          key={v.id}
+                          aria-pressed={selected === v.id}
+                          onClick={() => setSelected(v.id)}
+                        >
+                          {SYMBOL[nodeVersion(v).kind]}{' '}
+                          <Marked parts={highlightParts(name, matchRanges(name, search))} />
+                        </button>
+                      );
+                    })}
                   </div>
                   {matchingRecords.slice(limit - 80, limit).map((r) => (
-                    <RecordEditor key={r.id} record={r} chat={chat} valid={active.has(r.id)} />
+                    <RecordEditor
+                      key={r.id}
+                      record={r}
+                      chat={chat}
+                      valid={active.has(r.id)}
+                      query={search}
+                    />
                   ))}
                   {limit > 80 ? (
                     <button
@@ -793,6 +805,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                             record={r}
                             chat={chat}
                             valid={active.has(r.id)}
+                            query={search}
                           />
                         ))
                     : null}
@@ -947,14 +960,35 @@ function Sources({ evidence, chat }: { evidence: NexusEvidence[]; chat: UseChat 
     </details>
   );
 }
+/** `highlightParts` runs as plain spans and `<mark>`s — one renderer so every search
+ * surface (memory text, identity chips) marks the query identically. */
+function Marked({ parts }: { parts: HighlightPart[] }) {
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.hit ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: text runs have no other identity
+          <mark key={index}>{part.text}</mark>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: text runs have no other identity
+          <span key={index}>{part.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 function RecordEditor({
   record,
   chat,
   valid,
+  query,
 }: {
   record: NexusRecord;
   chat: UseChat;
   valid: boolean;
+  /** The toolbar search, so live matches are marked in the memory text. */
+  query: string;
 }) {
   const r = latest(record);
   // A tombstone is closed for editing: any control left live here would append revisions
@@ -969,6 +1003,10 @@ function RecordEditor({
   const [nodeSearch, setNodeSearch] = useState('');
   const [historyLimit, setHistoryLimit] = useState(20);
   const [relation, setRelation] = useState(r.relation ?? { from: '', to: '', label: '' });
+  // The mirror is a second copy of the text; it must scroll with the control over it.
+  const mirrorRef = useRef<HTMLDivElement>(null);
+  const searching = query.trim().length >= MIN_HIGHLIGHT_QUERY;
+  const parts = highlightParts(text, matchRanges(text, query));
   useEffect(() => setText(r.text), [r.text]);
   useEffect(() => setRelation(r.relation ?? { from: '', to: '', label: '' }), [r.relation]);
   const patch = (p: Partial<NexusRevision>) =>
@@ -994,6 +1032,7 @@ function RecordEditor({
       className="nexus-card"
       data-disabled={!r.enabled || r.deleted}
       data-deleted={r.deleted || undefined}
+      data-searching={searching || undefined}
     >
       <div className="nexus-actions">
         <span className="nexus-kicker">
@@ -1024,18 +1063,31 @@ function RecordEditor({
       {!valid && r.enabled && !r.deleted ? (
         <p role="status">Evidence is outdated or unavailable. Review before recall.</p>
       ) : null}
-      <textarea
-        className="wc-input"
-        aria-label="Memory text"
-        maxLength={2000}
-        rows={3}
-        value={text}
-        readOnly={locked}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          if (text !== r.text) patch({ text });
-        }}
-      />
+      <div className="nexus-card__field">
+        {searching ? (
+          <div ref={mirrorRef} className="nexus-card__text nexus-card__mirror" aria-hidden="true">
+            <Marked parts={parts} />
+            {/* A trailing newline has no height of its own in a block, so without this
+                the mirror scrolls one line shorter than the textarea it must match. */}
+            {text.endsWith('\n') ? ' ' : null}
+          </div>
+        ) : null}
+        <textarea
+          className="nexus-card__text nexus-card__input"
+          aria-label="Memory text"
+          maxLength={2000}
+          rows={3}
+          value={text}
+          readOnly={locked}
+          onChange={(e) => setText(e.target.value)}
+          onScroll={(e) => {
+            if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+          }}
+          onBlur={() => {
+            if (text !== r.text) patch({ text });
+          }}
+        />
+      </div>
       <div className="nexus-actions">
         <label className="nexus-select">
           <span className="nexus-select__label">Kind</span>

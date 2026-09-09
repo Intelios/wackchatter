@@ -152,6 +152,92 @@
 .nexus-card textarea {
   width: 100%;
 }
+/* --- Search highlight mirror ----------------------------------------------
+ *
+ * The CueField technique: a textarea cannot carry markup, so while a search query is
+ * live a marked copy of the text is painted underneath and the real control sits on top
+ * with transparent glyphs and a visible caret ([data-searching] below). The layers only
+ * stay aligned if they wrap identically, which is why every metric that affects wrapping
+ * lives on `.nexus-card__text` — shared by both layers — and never on one of them alone.
+ * See ArenaShell.css for the original.
+ */
+.nexus-card__field {
+  position: relative;
+  display: grid;
+}
+
+.nexus-card__text {
+  grid-area: 1 / 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font-family: var(--wc-font);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+/* Out of flow, unlike the arena's: a memory can be 2000 characters, and an in-flow
+   mirror would stretch the field to the whole text. The wrapper is sized by the textarea
+   alone; the mirror clips to that box and follows its scroll (onScroll in RecordEditor). */
+.nexus-card__mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+/* Colour and radius only — never a metric: padding or a different font on a mark would
+   make the mirror wrap differently from the textarea, and it fails silently. */
+.nexus-card__mirror mark {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  border-radius: var(--wc-radius-sm);
+}
+
+.nexus-card__input {
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  resize: vertical;
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.nexus-card__input:hover {
+  border-color: var(--wc-border-strong);
+}
+
+.nexus-card__input:focus {
+  border-color: var(--wc-accent);
+  outline: none;
+}
+
+.nexus-card[data-searching] .nexus-card__input {
+  background: transparent;
+  /* Transparent glyphs over the mirror, but a caret and a selection you can still see. */
+  color: transparent;
+  caret-color: var(--wc-text);
+}
+
+.nexus-card[data-searching] .nexus-card__input::selection {
+  background: var(--wc-accent-selection);
+}
+
+/* Identity chips mark the same query the memory text does. */
+.nexus-actions mark {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  border-radius: var(--wc-radius-sm);
+}
 .nexus-source {
   padding: var(--wc-space-3);
   border-left: 2px solid var(--wc-border);
