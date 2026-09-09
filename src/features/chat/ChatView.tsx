@@ -223,6 +223,12 @@ export function ChatView({
   // --- /jump -----------------------------------------------------------------
 
   const pendingJumpRef = useRef<string | null>(null);
+  // Every jump bumps this counter, and the centring effect below is keyed on it — not on
+  // the window bounds. A target already inside the current window leaves the bounds
+  // unchanged, so an effect keyed on them never ran: the jump set the target, the overlay
+  // closed, and nothing scrolled. That is the common case for Nexus — memories are
+  // extracted from recent messages, the ones already loaded.
+  const [jumpSeq, setJumpSeq] = useState(0);
   // After a jump, the load-ahead must stand down until the reader actually scrolls: the
   // jump's own centering scroll lands inside the load-ahead band, and letting the band
   // logic fire there would cascade page loads and restores that walk the viewport away
@@ -241,6 +247,7 @@ export function ChatView({
       suppressLoadAheadRef.current = true;
       stopFollowing();
       setWindow({ chatId: state.chatId, start: win.start, end: win.end });
+      setJumpSeq((s) => s + 1);
     },
     [state.chatId, state.messages, stopFollowing],
   );
@@ -259,8 +266,9 @@ export function ChatView({
   // Declared before the load-ahead effects so their scroll captures happen after the
   // centering — otherwise a prepend queued by the same commit would restore the viewport
   // to the pre-jump position and the jump would land somewhere else entirely.
-  // Keyed on the window bounds, by design — a jump is a window change.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the window is the trigger
+  // Keyed on the jump sequence, not the window bounds — see `jumpSeq` for why identical
+  // bounds must still run this.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the sequence is the trigger
   useLayoutEffect(() => {
     const id = pendingJumpRef.current;
     if (!id) return;
@@ -279,7 +287,7 @@ export function ChatView({
     requestAnimationFrame(() => {
       programmaticScrollRef.current = false;
     });
-  }, [window.start, window.end]);
+  }, [jumpSeq]);
 
   // --- Sending ---------------------------------------------------------------
 
