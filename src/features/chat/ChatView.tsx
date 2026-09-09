@@ -22,7 +22,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { RefreshIcon } from '../../layout/icons.tsx';
+import { NexusIcon, RefreshIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, personaApi } from '../../lib/api.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
@@ -978,6 +978,17 @@ export function ChatView({
                 onInsertCommand={(text) => composerRef.current?.insert(text)}
                 onQuickCommandsChange={onQuickCommandsChange}
               />
+              {chat.memoryMode === 'nexus' ? (
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost composer__icon"
+                  aria-label="Memory Nexus"
+                  title="Memory Nexus"
+                  onClick={() => chat.nexus.show('explore')}
+                >
+                  <NexusIcon />
+                </button>
+              ) : null}
             </>
           }
           // Persistent guides sits with the draft actions, not with the menus: it and the
