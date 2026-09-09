@@ -9,6 +9,7 @@ import {
   messageFingerprint,
   nodeVersion,
   pendingMessages,
+  textKey,
 } from './state.ts';
 import type {
   NexusEvidence,
@@ -289,7 +290,6 @@ export function applyExtraction(
           }
         : undefined,
     };
-    const textKey = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
     const current =
       next.records.find((x) => x.id === r.id) ??
       next.records.find((x) => x.revisions.some((v) => textKey(v.text) === textKey(revision.text)));

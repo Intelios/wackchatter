@@ -6,6 +6,7 @@ import {
   latest,
   liveRecords,
   supportedNodeVersion,
+  textKey,
   validEvidence,
 } from './state.ts';
 import type {
@@ -256,7 +257,7 @@ export function retrieveNexus(options: {
     const totalCost = countTokens(
       [...included.map((r) => `• ${r.doc.text}`), `• ${doc.text}`].join('\n'),
     );
-    const key = doc.text.toLowerCase().replace(/\s+/g, ' ').trim();
+    const key = textKey(doc.text);
     const fits = !used.has(key) && totalCost <= Math.max(0, options.budget);
     if (fits) {
       used.add(key);

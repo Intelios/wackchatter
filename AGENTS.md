@@ -279,6 +279,12 @@ byte-identically. The quirks are load-bearing and each has a named test.
   Unstaged search results clear on typing; a new search or the composer's armed-count badge
   (its click) clears either; transcript/evidence changes invalidate both. Save to Nexus is
   separate. Frozen per-request reports distinguish selection from actual injection and preview.
+  The search computes the automatic selection first (`retrieveNexus`, mirroring `preview`) and
+  findings that restate it are dropped before presentation (`shared/nexus/findings.ts`: cited
+  records, normalised text against any revision of a loaded record, or a near-duplicate
+  transcript passage via the local embedding cache); the search prompt lists the already-loaded
+  texts so the model's budget goes to new material. Findings matching records *outside* the
+  selection stay — surfacing un-recalled material is the point.
 - **Nexus is the explicit full-screen explorer exception.** It preserves the mounted chat,
   draft, scroll, source-jump selection and camera, restores focus, and has a complete List
   alternative. Motion respects reduced motion and pauses while hidden. No proximity knowledge.

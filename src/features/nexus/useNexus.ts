@@ -1,4 +1,5 @@
 import { applyExtraction, buildNexusExtraction, parseExtraction } from '@shared/nexus/extract.ts';
+import { filterRecallFindings, recallSearchMessages } from '@shared/nexus/findings.ts';
 import {
   memoryDocuments,
   recallQuery,
@@ -75,6 +76,7 @@ export function useNexus(options: Options) {
   const [query, setQuery] = useState('');
   const draftRef = useRef('');
   const [findings, setFindings] = useState<NexusFinding[]>([]);
+  const [droppedFindings, setDroppedFindings] = useState(0);
   const findingsRef = useRef(findings);
   findingsRef.current = findings;
   const staged = useRef<NexusFinding[] | null>(null);
@@ -161,10 +163,12 @@ export function useNexus(options: Options) {
   const consume = useCallback(() => {
     staged.current = null;
     setFindings([]);
+    setDroppedFindings(0);
   }, []);
   const clearFindings = useCallback(() => {
     staged.current = null;
     setFindings([]);
+    setDroppedFindings(0);
   }, []);
   const cancel = useCallback(() => {
     abort.current?.abort();
@@ -173,6 +177,7 @@ export function useNexus(options: Options) {
   useEffect(() => {
     setOpen(false);
     setFindings([]);
+    setDroppedFindings(0);
     staged.current = null;
     setRecall(null);
     setLoadedChat(null);
@@ -206,6 +211,7 @@ export function useNexus(options: Options) {
     if (!enabled) {
       abort.current?.abort();
       setFindings([]);
+      setDroppedFindings(0);
       staged.current = null;
     }
   }, [enabled]);
@@ -483,13 +489,25 @@ export function useNexus(options: Options) {
       // and Use selected findings arms the fresh results instead.
       staged.current = null;
       setFindings([]);
+      setDroppedFindings(0);
       setRun({ running: true, processed: 0, total: 1, error: null, kind: 'recall' });
       try {
-        let vector: number[] | undefined;
-        try {
-          vector = await embed(search, true);
-        } catch {}
         const current = o.stateRef.current.metadata.nexus ?? emptyNexus();
+        // The automatic selection the next request loads without this search — Reviewed
+        // Recall exists to reach beyond it, so it drives both the prompt and the drops.
+        // Mirrors preview(): same query shape, no armed findings, same budget.
+        const autoQuery = recallQuery(
+          history,
+          '',
+          current.nodes.flatMap((n) => {
+            const v = n.versions.at(-1)!;
+            return [v.name, ...v.aliases];
+          }),
+        );
+        const [vector, autoVector] = await Promise.all([
+          embed(search, true).catch(() => undefined),
+          embed(autoQuery, true).catch(() => undefined),
+        ]);
         const available = [...memoryDocuments(current, history), ...transcriptDocuments(history)];
         const ranked = searchDocuments(
           available,
@@ -497,16 +515,25 @@ export function useNexus(options: Options) {
           [...vectors.current.values()],
           vector,
         ).slice(0, 24);
+        const autoHits = retrieveNexus({
+          nexus: current,
+          messages: history,
+          query: autoQuery,
+          budget: o.settings.budgetTokens,
+          countTokens: o.counter.countText,
+          embeddings: [...vectors.current.values()],
+          queryVector: autoVector,
+        }).hits.filter((h) => h.included && h.recordId);
+        const includedRecords = current.records.filter((r) =>
+          autoHits.some((h) => h.recordId === r.id),
+        );
         const selected: typeof ranked = [];
-        const system =
-          'Find information relevant to the user’s story question using only the supplied sources. Do not invent an answer. Reply ONLY with JSON {"findings":[{"text":"concise attributed finding","sources":[0]}]}. Sources are the zero-based numbers below. If no source supports an answer return {"findings":[]}. Preserve uncertainty and chronology. At most 8 findings.';
-        const make = (): ApiMessage[] => [
-          { role: 'system', content: system },
-          {
-            role: 'user',
-            content: `Question: ${search}\n\n${selected.map((r, i) => `[${i}] ${r.doc.text}`).join('\n\n')}`,
-          },
-        ];
+        const make = (): ApiMessage[] =>
+          recallSearchMessages(
+            search,
+            selected.map((r) => r.doc),
+            autoHits.map((h) => h.text),
+          );
         for (const r of ranked) {
           selected.push(r);
           if (
@@ -538,7 +565,7 @@ export function useNexus(options: Options) {
         const parsed = looseParseJson(result.content) as { findings?: unknown };
         if (!Array.isArray(parsed?.findings) || parsed.findings.length > 8)
           throw new Error('The model did not return valid sourced findings.');
-        const found: NexusFinding[] = parsed.findings.map((f: unknown) => {
+        const sourced = parsed.findings.map((f: unknown) => {
           const v = f as { text?: unknown; sources?: unknown };
           if (
             typeof v?.text !== 'string' ||
@@ -549,20 +576,30 @@ export function useNexus(options: Options) {
             v.sources.some((i) => !Number.isInteger(i) || !selected[i])
           )
             throw new Error('A finding was missing text or cited an invalid source.');
-          const docs = v.sources.map((i) => selected[i]!.doc);
-          return {
-            id: crypto.randomUUID(),
-            text: v.text,
-            evidence: docs.flatMap((d) => d.evidence),
-            nodeIds: [...new Set(docs.flatMap((d) => d.nodeIds))],
-            selected: true,
-          };
+          return { text: v.text, docs: v.sources.map((i) => selected[i]!.doc) };
         });
+        const { kept, dropped } = filterRecallFindings({
+          findings: sourced,
+          includedRecords,
+          embeddings: vectors.current,
+        });
+        const found: NexusFinding[] = kept.map((f) => ({
+          id: crypto.randomUUID(),
+          text: f.text,
+          evidence: f.docs.flatMap((d) => d.evidence),
+          nodeIds: [...new Set(f.docs.flatMap((d) => d.nodeIds))],
+          selected: true,
+        }));
         setFindings(found);
+        setDroppedFindings(dropped);
         setRun((s) => ({
           ...s,
           processed: 1,
-          error: found.length ? null : 'No supported answer was found in the retrieved passages.',
+          error: sourced.length
+            ? found.length
+              ? null
+              : 'Every finding restated memories this request already loads. Try a more specific question.'
+            : 'No supported answer was found in the retrieved passages.',
         }));
       } catch (error) {
         if (!controller.signal.aborted) setRun((s) => ({ ...s, error: (error as Error).message }));
@@ -615,6 +652,7 @@ export function useNexus(options: Options) {
     setQuery,
     findings,
     setFindings,
+    droppedFindings,
     saveFinding,
     deeper,
     run,

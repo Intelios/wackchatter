@@ -12,6 +12,10 @@ export function fingerprint(text: string): string {
   }
   return `${(a >>> 0).toString(16)}${(b >>> 0).toString(16)}:${text.length}`;
 }
+/** Normalised comparison key for memory text: case- and whitespace-insensitive. */
+export function textKey(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim();
+}
 export function messageFingerprint(message: ChatMessage): string {
   return fingerprint(
     JSON.stringify([message.name, message.is_user, message.persona_id, message.mes]),

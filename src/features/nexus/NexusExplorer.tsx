@@ -333,6 +333,12 @@ export function NexusExplorer({ chat, ...config }: Props) {
               </button>
             </article>
           ))}
+          {n.droppedFindings ? (
+            <p className="nexus-muted">
+              {plural(n.droppedFindings, 'finding', 'findings')} restated memories this request
+              already loads and were hidden.
+            </p>
+          ) : null}
           {n.findings.length ? (
             <button
               type="button"
