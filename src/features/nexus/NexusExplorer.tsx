@@ -23,6 +23,7 @@ import { Popover } from '../../components/Popover.tsx';
 import { type HighlightPart, highlightParts } from '../chat/cardSearch.ts';
 import type { UseChat } from '../chat/useChat.ts';
 import { type Camera, fitCamera, screenPoint, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
+import { layoutEdgeLabels } from './edgeLabels.ts';
 import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusCosmicCanvas } from './NexusCosmicCanvas.tsx';
@@ -53,6 +54,16 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const [kind, setKind] = useState<NexusNodeKind | 'all'>('all');
   const [view, setView] = useState<'map' | 'list'>('map');
   const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const selectNode = useCallback((id: string | null) => {
+    setSelected(id);
+    setEditing(null);
+  }, []);
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    editButton.current?.focus({ preventScroll: true });
+  }, []);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, z: 1 });
   const [introActive, setIntroActive] = useState(false);
   const [introProgress, setIntroProgress] = useState(0);
@@ -86,7 +97,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: camera and selection belong to the chat identity
   useEffect(() => {
-    setSelected(null);
+    selectNode(null);
     setCamera({ x: 0, y: 0, z: 1 });
     setSearch('');
     setConfirm('');
@@ -114,6 +125,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
     const wasInert = shell?.inert;
     if (shell) shell.inert = true;
     root.current?.querySelector<HTMLButtonElement>('[data-close]')?.focus({ preventScroll: true });
+    return () => {
+      if (shell) shell.inert = wasInert ?? false;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [n.open]);
+  useEffect(() => {
+    if (!n.open) return;
     const key = (e: KeyboardEvent) => {
       if (introActive && e.key !== 'Tab') {
         skipIntro();
@@ -126,7 +144,8 @@ export function NexusExplorer({ chat, ...config }: Props) {
         // the whisper trigger keeps focus, so its layer is peeled back here. Same
         // layering for the node card, then the explorer itself.
         if (activityOpen) setActivityOpen(false);
-        else if (selected) setSelected(null);
+        else if (editing) closeEditor();
+        else if (selected) selectNode(null);
         else n.setOpen(false);
       }
       if (e.key === 'Tab') {
@@ -149,10 +168,25 @@ export function NexusExplorer({ chat, ...config }: Props) {
     document.addEventListener('keydown', key);
     return () => {
       document.removeEventListener('keydown', key);
-      if (shell) shell.inert = wasInert ?? false;
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [n.open, n.setOpen, introActive, skipIntro, selected, activityOpen]);
+  }, [
+    n.open,
+    n.setOpen,
+    introActive,
+    skipIntro,
+    selected,
+    activityOpen,
+    editing,
+    closeEditor,
+    selectNode,
+  ]);
+  useEffect(() => {
+    if (editing && view === 'map' && n.section === 'explore') {
+      root.current
+        ?.querySelector<HTMLInputElement>('.nexus-nodecard__name')
+        ?.focus({ preventScroll: true });
+    }
+  }, [editing, view, n.section]);
   // The node card anchors to the selected node in pixel space, so it needs the rendered
   // map's size. Re-subscribes when the map mounts or unmounts (view/section switches).
   useEffect(() => {
@@ -217,6 +251,30 @@ export function NexusExplorer({ chat, ...config }: Props) {
     )
     .slice(0, 180);
   const drawnIds = new Set(drawn.map((v) => v.id));
+  const drawnEdges = graph.edges
+    .filter((e) => drawnIds.has(e.from) && drawnIds.has(e.to))
+    .slice(0, 500);
+  const drawnEdgeIds = new Set(drawnEdges.map((e) => e.id));
+  const edgeLabels = useMemo(() => {
+    if (!selected) return [];
+    const context = document.createElement('canvas').getContext('2d');
+    const font = getComputedStyle(document.documentElement)
+      .getPropertyValue('--wc-font-sans')
+      .trim();
+    if (context) context.font = `11px ${font}`;
+    return layoutEdgeLabels(
+      graph.edges.filter((e) => e.from === selected || e.to === selected),
+      graph.nodes.map((n) => {
+        const name = nodeVersion(n).name;
+        return {
+          id: n.id,
+          ...positions.get(n.id)!,
+          name: name.length > 24 ? `${name.slice(0, 23)}…` : name,
+        };
+      }),
+      (text) => context?.measureText(text).width ?? text.length * 7,
+    );
+  }, [graph, positions, selected]);
   // Fit once per open, when the map is actually on screen: show() can open
   // straight to Recall or Settings, and the map renders only in Explore.
   const fittedOpen = useRef(false);
@@ -280,7 +338,15 @@ export function NexusExplorer({ chat, ...config }: Props) {
   function fit(animateIntro = false) {
     const rect = svg.current?.getBoundingClientRect();
     const dest = fitCamera(
-      drawn.map((v) => positions.get(v.id)!),
+      [
+        ...drawn.map((v) => positions.get(v.id)!),
+        ...edgeLabels
+          .filter((label) => drawnEdgeIds.has(label.id))
+          .flatMap((label) => [
+            { x: label.x - label.width / 2, y: label.y - label.height / 2 },
+            { x: label.x + label.width / 2, y: label.y + label.height / 2 },
+          ]),
+      ],
       rect ? { width: rect.width, height: rect.height } : { width: VIEW_W, height: VIEW_H },
     );
 
@@ -372,7 +438,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
               ],
             }));
             setNewName('');
-            setSelected(id);
+            selectNode(id);
           }}
         >
           <input
@@ -622,7 +688,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                 }}
                 onPointerUp={() => {
                   // A still click on the background is a deselect; a drag is a pan.
-                  if (drag.current && !drag.current.moved) setSelected(null);
+                  if (drag.current && !drag.current.moved) selectNode(null);
                   drag.current = null;
                 }}
                 onPointerCancel={() => {
@@ -644,58 +710,70 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       </text>
                     </g>
                   ) : null}
-                  {graph.edges
-                    .filter((e) => drawnIds.has(e.from) && drawnIds.has(e.to))
-                    .slice(0, 500)
-                    .map((e) => {
-                      const a = positions.get(e.from)!,
-                        b = positions.get(e.to)!;
-                      // Perpendicular offset: centred on the line it names, the label
-                      // collides with both the line and the node captions.
-                      const dx = b.x - a.x,
-                        dy = b.y - a.y,
-                        len = Math.hypot(dx, dy) || 1;
-                      const distA = Math.hypot(a.x - VIEW_W / 2, a.y - VIEW_H / 2);
-                      const distB = Math.hypot(b.x - VIEW_W / 2, b.y - VIEW_H / 2);
-                      const edgeDelay = Math.round(
-                        Math.max(360 + (distA / 600) * 380, 360 + (distB / 600) * 380) - 60,
-                      );
-                      return (
-                        <g
-                          key={e.id}
-                          className="nexus-edge"
-                          style={
-                            {
-                              '--intro-delay': `${edgeDelay}ms`,
-                              '--edge-len': Math.ceil(len),
-                            } as React.CSSProperties
-                          }
-                          data-implicit={e.implicit || undefined}
-                          data-lit={e.from === selected || e.to === selected}
-                          data-recalled={recalled.has(e.from) && recalled.has(e.to)}
-                        >
-                          <title>{e.label}</title>
-                          {/* Non-scaling: the camera zooms 0.15–4, and a 1.5px stroke
+                  {drawnEdges.map((e) => {
+                    const a = positions.get(e.from)!,
+                      b = positions.get(e.to)!;
+                    const dx = b.x - a.x,
+                      dy = b.y - a.y,
+                      len = Math.hypot(dx, dy) || 1;
+                    const distA = Math.hypot(a.x - VIEW_W / 2, a.y - VIEW_H / 2);
+                    const distB = Math.hypot(b.x - VIEW_W / 2, b.y - VIEW_H / 2);
+                    const edgeDelay = Math.round(
+                      Math.max(360 + (distA / 600) * 380, 360 + (distB / 600) * 380) - 60,
+                    );
+                    return (
+                      <g
+                        key={e.id}
+                        className="nexus-edge"
+                        style={
+                          {
+                            '--intro-delay': `${edgeDelay}ms`,
+                            '--edge-len': Math.ceil(len),
+                          } as React.CSSProperties
+                        }
+                        data-implicit={e.implicit || undefined}
+                        data-lit={e.from === selected || e.to === selected}
+                        data-recalled={recalled.has(e.from) && recalled.has(e.to)}
+                      >
+                        <title>{e.label}</title>
+                        {/* Non-scaling: the camera zooms 0.15–4, and a 1.5px stroke
                                   shared with the min zoom renders at ~0.23px — invisible. */}
-                          <line
-                            x1={a.x}
-                            y1={a.y}
-                            x2={b.x}
-                            y2={b.y}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          {(e.from === selected || e.to === selected) && camera.z > 0.6 ? (
-                            <text
-                              x={(a.x + b.x) / 2 + (-dy / len) * 12}
-                              y={(a.y + b.y) / 2 + (dx / len) * 12}
-                              dominantBaseline="middle"
-                            >
-                              {e.label}
-                            </text>
-                          ) : null}
-                        </g>
-                      );
-                    })}
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      </g>
+                    );
+                  })}
+                  {edgeLabels
+                    .filter((label) => drawnEdgeIds.has(label.id))
+                    .map((label) => (
+                      <g key={label.id} className="nexus-edge-label" pointerEvents="none">
+                        <path d={`M${label.anchor.x} ${label.anchor.y} L${label.x} ${label.y}`} />
+                        <rect
+                          x={label.x - label.width / 2}
+                          y={label.y - label.height / 2}
+                          width={label.width}
+                          height={label.height}
+                          rx="5"
+                        />
+                        <text
+                          x={label.x}
+                          y={label.y - (label.lines.length - 1) * 7}
+                          dominantBaseline="middle"
+                        >
+                          {label.lines.map((line, i) => (
+                            // biome-ignore lint/suspicious/noArrayIndexKey: static wrapped text fragments have no identity or state.
+                            <tspan key={`${i}:${line}`} x={label.x} dy={i ? 14 : 0}>
+                              {line}
+                            </tspan>
+                          ))}
+                        </text>
+                      </g>
+                    ))}
                   {drawn.map((v) => {
                     const p = positions.get(v.id)!,
                       info = nodeVersion(v);
@@ -728,13 +806,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
                         aria-pressed={v.id === selected}
                         transform={`translate(${p.x} ${p.y})`}
                         onClick={() => {
-                          setSelected(v.id);
+                          selectNode(v.id);
                           setConfirm('');
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            setSelected(v.id);
+                            selectNode(v.id);
                           }
                         }}
                       >
@@ -765,7 +843,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
           ) : (
             <div className="nexus-list">
               <div className="nexus-actions">
-                <button className="wc-button" type="button" onClick={() => setSelected(null)}>
+                <button className="wc-button" type="button" onClick={() => selectNode(null)}>
                   All memories
                 </button>
                 {visibleNodes.slice(limit - 80, limit).map((v) => {
@@ -776,7 +854,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       type="button"
                       key={v.id}
                       aria-pressed={selected === v.id}
-                      onClick={() => setSelected(v.id)}
+                      onClick={() => selectNode(v.id)}
                     >
                       {SYMBOL[nodeVersion(v).kind]}{' '}
                       <Marked parts={highlightParts(name, matchRanges(name, search))} />
@@ -812,10 +890,11 @@ export function NexusExplorer({ chat, ...config }: Props) {
               ) : null}
             </div>
           )}
-          {view === 'map' && selectedNode && node && cardBox ? (
+          {view === 'map' && editing === selected && selectedNode && node && cardBox ? (
             <section
               key={selected}
               className="nexus-nodecard"
+              id="nexus-node-editor"
               style={cardBox}
               aria-label={`${node.name} details`}
             >
@@ -852,9 +931,9 @@ export function NexusExplorer({ chat, ...config }: Props) {
                 <button
                   type="button"
                   className="wc-button wc-button--ghost"
-                  aria-label="Clear selection"
-                  title="Clear selection (Escape)"
-                  onClick={() => setSelected(null)}
+                  aria-label="Close editor"
+                  title="Close editor (Escape)"
+                  onClick={closeEditor}
                 >
                   ×
                 </button>
@@ -940,7 +1019,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     onClick={() => {
                       if (confirm === 'merge') {
                         n.update((s) => mergeNodes(s, selected!, mergeTarget, anchor));
-                        setSelected(mergeTarget);
+                        selectNode(mergeTarget);
                         setMergeTarget('');
                         setConfirm('');
                       } else setConfirm('merge');
@@ -1102,6 +1181,25 @@ export function NexusExplorer({ chat, ...config }: Props) {
             <span className="nexus-dock__count">
               {drawn.length}/{graph.nodes.length} nodes
             </span>
+            {selectedNode && node ? (
+              <>
+                <span className="nexus-dock__sep" aria-hidden="true" />
+                <button
+                  ref={editButton}
+                  type="button"
+                  className="wc-button"
+                  aria-label={`Edit ${node.name}`}
+                  aria-expanded={editing === selected}
+                  aria-controls={editing === selected ? 'nexus-node-editor' : undefined}
+                  onClick={() => (editing === selected ? closeEditor() : setEditing(selected))}
+                >
+                  Edit{' '}
+                  <span className="nexus-dock__name" title={node.name}>
+                    {node.name}
+                  </span>
+                </button>
+              </>
+            ) : null}
             <span className="nexus-dock__sep" aria-hidden="true" />
           </>
         ) : null}

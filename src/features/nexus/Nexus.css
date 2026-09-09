@@ -15,7 +15,7 @@
  * The map is the screen; everything else floats above it as HUD pills and gets out of
  * the way. There is no top bar, no toolbar and no docked sidebar: search sits top-left,
  * the view/section cluster top-right, the command dock — with Exit — bottom-centre, and
- * the activity whisper bottom-left. Node details open in a card anchored to the node.
+ * the activity whisper bottom-left. Selecting reveals connections; Edit opens a card anchored to the node.
  */
 
 .nexus-stage {
@@ -863,4 +863,31 @@
     opacity: 1;
     stroke-dashoffset: 0;
   }
+}
+
+/* Keep the selected identity discoverable without covering its connections. */
+.nexus-dock__name {
+  max-width: var(--wc-nexus-card);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Relationship captions occupy reserved space; stems retain the connection to their edge. */
+.nexus-edge-label path {
+  fill: none;
+  stroke: var(--wc-accent-border);
+  stroke-width: var(--wc-border-width);
+}
+
+.nexus-edge-label rect {
+  fill: var(--wc-bg);
+  stroke: var(--wc-border);
+  stroke-width: var(--wc-border-width);
+}
+
+.nexus-edge-label text {
+  fill: var(--wc-text);
+  font-size: var(--wc-nexus-edge-text);
+  text-anchor: middle;
 }

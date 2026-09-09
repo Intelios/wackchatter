@@ -56,6 +56,7 @@
   --wc-border-strong: #3a3a40;
   --wc-border-width: 1px;
   --wc-nexus-node-stroke: 1.5px;
+  --wc-nexus-edge-text: 11px;
 
   /* Accent. Acid lime against neutral chrome: it reads as "active" at a glance
      without borrowing a hue any status colour needs. Light enough that text on
