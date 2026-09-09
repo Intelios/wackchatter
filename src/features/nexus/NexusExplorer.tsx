@@ -172,6 +172,9 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const configured = Boolean(
     config.connections.some((c) => c.id === config.settings.connectionId) && config.settings.model,
   );
+  // Hand-authored records are real writes to the chat; on a Summary/off chat they would
+  // never be recalled, so the add affordances wait for the mode switch instead.
+  const nexusMode = chat.memoryMode === 'nexus';
   function changeNode(patch: Partial<NonNullable<typeof node>>) {
     if (selected) n.update((s) => reviseNode(s, selected, patch, anchor));
   }
@@ -292,8 +295,11 @@ export function NexusExplorer({ chat, ...config }: Props) {
             <button
               type="button"
               className="wc-button wc-button--primary"
-              disabled={
-                !configured || n.run.running || chat.memoryMode !== 'nexus' || !n.query.trim()
+              disabled={!configured || n.run.running || !nexusMode || !n.query.trim()}
+              title={
+                nexusMode
+                  ? undefined
+                  : 'Switch this chat to Nexus memory first — “Use Nexus for this chat” on the Explore tab, or Chat context.'
               }
               onClick={() => void n.deeper(n.query)}
             >
@@ -306,6 +312,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
             ) : null}
           </div>
           {!configured ? <p>Configure a connection and model in Settings first.</p> : null}
+          {!nexusMode ? <p>Switch this chat to Nexus memory to search with the model.</p> : null}
           {n.run.error ? <p role="status">{n.run.error}</p> : null}
           {n.findings.map((f) => {
             const existing = n.data.records.some(
@@ -800,11 +807,17 @@ export function NexusExplorer({ chat, ...config }: Props) {
               )}
               <details open={!n.data.nodes.length}>
                 <summary>Add to Nexus</summary>
+                {!nexusMode ? (
+                  <p role="status">
+                    Switch this chat to Nexus memory before adding by hand — records here are only
+                    recalled in Nexus mode.
+                  </p>
+                ) : null}
                 <form
                   className="nexus-settings"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (!newName.trim()) return;
+                    if (!newName.trim() || !nexusMode) return;
                     const id = crypto.randomUUID();
                     n.update((s) => ({
                       ...s,
@@ -834,19 +847,26 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     aria-label="New node name"
                     placeholder="Name…"
                     value={newName}
+                    disabled={!nexusMode}
                     onChange={(e) => setNewName(e.target.value)}
                   />
                   <select
                     className="wc-input"
                     aria-label="New node category"
                     value={newKind}
+                    disabled={!nexusMode}
                     onChange={(e) => setNewKind(e.target.value as NexusNodeKind)}
                   >
                     {KINDS.map((k) => (
                       <option key={k}>{k}</option>
                     ))}
                   </select>
-                  <button type="submit" className="wc-button" disabled={!newName.trim()}>
+                  <button
+                    type="submit"
+                    className="wc-button"
+                    disabled={!newName.trim() || !nexusMode}
+                    title={nexusMode ? undefined : 'Switch this chat to Nexus memory first.'}
+                  >
                     Add node
                   </button>
                 </form>
@@ -856,6 +876,8 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       key={k}
                       type="button"
                       className="wc-button"
+                      disabled={!nexusMode}
+                      title={nexusMode ? undefined : 'Switch this chat to Nexus memory first.'}
                       onClick={() => addRecord(k)}
                     >
                       Add {k}

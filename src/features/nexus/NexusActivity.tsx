@@ -12,6 +12,14 @@ export function NexusActivity({ chat, configured }: { chat: UseChat; configured:
           : `${n.data.paused ? 'Paused · ' : ''}${plural(n.pending, 'message')} awaiting collection`}
       </p>
       {n.run.error ? <p role="alert">{n.run.error}</p> : null}
+      {!enabled ? (
+        <p role="status">
+          {chat.memoryMode === 'off'
+            ? 'Story memory is off for this chat.'
+            : 'This chat uses the rolling Summary for memory.'}{' '}
+          Its Nexus records are never recalled into the prompt.
+        </p>
+      ) : null}
       {!configured ? (
         <p>
           Select a saved connection and a Nexus model in Settings to collect or search more deeply.
@@ -20,6 +28,16 @@ export function NexusActivity({ chat, configured }: { chat: UseChat; configured:
       {n.run.running ? (
         <button type="button" className="wc-button" onClick={n.cancel}>
           Cancel
+        </button>
+      ) : !enabled ? (
+        /* A disabled Build/Start pair told the user nothing about why; the switch is
+           the action this screen actually needs before anything else works. */
+        <button
+          type="button"
+          className="wc-button wc-button--primary"
+          onClick={() => n.setMode('nexus')}
+        >
+          Use Nexus for this chat
         </button>
       ) : (
         <div className="nexus-actions">
