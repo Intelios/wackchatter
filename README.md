@@ -138,3 +138,7 @@ Several SillyTavern extensions directly inspired features here:
 - [Smart Dialogue Colorizer](https://github.com/b4bysw0rld/SillyTavern-Smart-Dialogue-Colorizer) — avatar-based dialogue colouring, reimplemented natively
 
 The Memory Nexus's local semantic search uses [BGE-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) by BAAI, released under the MIT licence — small enough to vendor and run entirely in the browser without phoning home.
+
+## Licence
+
+[GNU Affero General Public License v3.0](LICENSE) — free to use, fork, and modify, but derivatives must stay open source and give credit.
