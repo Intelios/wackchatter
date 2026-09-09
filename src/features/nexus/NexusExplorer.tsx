@@ -957,6 +957,11 @@ function RecordEditor({
   valid: boolean;
 }) {
   const r = latest(record);
+  // A tombstone is closed for editing: any control left live here would append revisions
+  // to a deleted record (re-wording, re-categorising, pinning a memory that is gone).
+  // Restore is the one way back in. A merely disabled record stays fully editable — it
+  // is live data, switched off.
+  const locked = r.deleted;
   const [text, setText] = useState(r.text);
   const [confirm, setConfirm] = useState<'delete' | 'reassert' | null>(null);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
@@ -985,17 +990,23 @@ function RecordEditor({
     );
   const nodes = matchingNodes.slice(0, 100);
   return (
-    <article className="nexus-card" data-disabled={!r.enabled || r.deleted}>
+    <article
+      className="nexus-card"
+      data-disabled={!r.enabled || r.deleted}
+      data-deleted={r.deleted || undefined}
+    >
       <div className="nexus-actions">
         <span className="nexus-kicker">
           {r.kind}
           {r.legacy ? ' · Legacy event' : ''}
           {r.manual ? ' · Edited' : ''}
+          {r.deleted ? ' · Deleted' : !r.enabled ? ' · Disabled' : ''}
         </span>
         <label>
           <input
             type="checkbox"
             checked={r.pinned}
+            disabled={locked}
             onChange={(e) => patch({ pinned: e.target.checked })}
           />{' '}
           Pin
@@ -1004,6 +1015,7 @@ function RecordEditor({
           <input
             type="checkbox"
             checked={r.enabled}
+            disabled={locked}
             onChange={(e) => patch({ enabled: e.target.checked })}
           />{' '}
           Enabled
@@ -1018,6 +1030,7 @@ function RecordEditor({
         maxLength={2000}
         rows={3}
         value={text}
+        readOnly={locked}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => {
           if (text !== r.text) patch({ text });
@@ -1030,6 +1043,7 @@ function RecordEditor({
             className="wc-input"
             aria-label="Memory kind"
             value={r.kind}
+            disabled={locked}
             onChange={(e) => patch({ kind: e.target.value as NexusKind })}
           >
             {RECORD_KINDS.map((k) => (
@@ -1043,6 +1057,7 @@ function RecordEditor({
             className="wc-input"
             aria-label="Memory state"
             value={r.status}
+            disabled={locked}
             onChange={(e) => patch({ status: e.target.value as NexusRevision['status'] })}
           >
             {['active', 'resolved', 'historical', 'conflict'].map((k) => (
@@ -1056,6 +1071,7 @@ function RecordEditor({
             className="wc-input"
             aria-label="Evidence attribution"
             value={r.assertion}
+            disabled={locked}
             onChange={(e) => patch({ assertion: e.target.value as NexusRevision['assertion'] })}
           >
             {['fact', 'claim', 'intention', 'event'].map((k) => (
@@ -1073,6 +1089,7 @@ function RecordEditor({
               aria-label="Find identities"
               placeholder="Search all names and aliases…"
               value={nodeSearch}
+              disabled={locked}
               onChange={(e) => setNodeSearch(e.target.value)}
             />
             <p>
@@ -1086,6 +1103,7 @@ function RecordEditor({
                   <input
                     type="checkbox"
                     checked={r.nodeIds.some((id) => canonicalNode(chat.nexus.data, id) === n.id)}
+                    disabled={locked}
                     onChange={(e) =>
                       patch({
                         nodeIds: e.target.checked
@@ -1119,6 +1137,7 @@ function RecordEditor({
                   className="wc-input"
                   aria-label={`Connection ${k}`}
                   value={relation[k]}
+                  disabled={locked}
                   onChange={(e) => setRelation((v) => ({ ...v, [k]: e.target.value }))}
                 >
                   <option value="">{k}</option>
@@ -1134,15 +1153,17 @@ function RecordEditor({
                 aria-label="Connection label"
                 placeholder="Relationship, e.g. is from"
                 value={relation.label}
+                disabled={locked}
                 onChange={(e) => setRelation((v) => ({ ...v, label: e.target.value }))}
               />
-              <button type="submit" className="wc-button">
+              <button type="submit" className="wc-button" disabled={locked}>
                 Save connection
               </button>
               {r.relation ? (
                 <button
                   type="button"
                   className="wc-button"
+                  disabled={locked}
                   onClick={() => patch({ relation: undefined })}
                 >
                   Remove connection

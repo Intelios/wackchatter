@@ -130,6 +130,11 @@
 .nexus-card[data-disabled="true"] {
   opacity: 0.65;
 }
+/* Dashed, the app's severed-thing convention (branch-timeline orphan stubs): a tombstone
+   must not read identically to a record that is merely switched off. */
+.nexus-card[data-deleted="true"] {
+  border-style: dashed;
+}
 /* Captioned selects: kind/state/attribution all read as bare words on a fresh card
    ("fact" twice), so each select carries its own label above it. Scoped to the card so
    the specificity clears `.nexus label`'s font-size. */
