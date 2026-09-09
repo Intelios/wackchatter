@@ -133,6 +133,9 @@ export function ChatView({
   const contentRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom, stopFollowing } = useStickToBottom(scrollRef, contentRef);
   const [window, setWindow] = useState<TranscriptWindowState>({ chatId: null, start: 0, end: 0 });
+  // The message a jump just centred on, held briefly so the row can flash. Null = nothing
+  // to show; the jump's centring effect is the only writer.
+  const [flashId, setFlashId] = useState<string | null>(null);
   // The first rendered message and where its top sat relative to the viewport, captured
   // before a prepend so the same document position can be restored after it commits.
   const restorePrependScroll = useRef<{ messageId: string; offset: number } | null>(null);
@@ -175,6 +178,7 @@ export function ChatView({
   useEffect(() => {
     const initial = initialTranscriptWindow(state.messages.length);
     setWindow({ chatId: state.chatId, start: initial.start, end: initial.end });
+    setFlashId(null);
     scrollToBottom();
   }, [state.chatId, chat.reloadCount]);
 
@@ -283,11 +287,21 @@ export function ChatView({
     programmaticScrollRef.current = true;
     scroll.scrollTop =
       elRect.top - scrollRect.top + scroll.scrollTop - scroll.clientHeight / 2 + elRect.height / 2;
+    // The reader has arrived at a wall of text; mark which row they came to see.
+    setFlashId(id);
     // Released after the scroll event this just queued has been dispatched.
     requestAnimationFrame(() => {
       programmaticScrollRef.current = false;
     });
   }, [jumpSeq]);
+
+  // The flash is a notice, not a state: cleared on a timer so the row reads normally
+  // again. The cleanup also cancels a pending clear when another jump re-arms it first.
+  useEffect(() => {
+    if (!flashId) return;
+    const timer = setTimeout(() => setFlashId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [flashId]);
 
   // --- Sending ---------------------------------------------------------------
 
@@ -790,6 +804,7 @@ export function ChatView({
               const shared = {
                 message,
                 streaming: state.streamingId === message.id,
+                flash: message.id === flashId,
                 mode: state.mode,
                 stream,
                 isLast: message.id === lastId,

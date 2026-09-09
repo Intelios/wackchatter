@@ -31,6 +31,12 @@ interface MessageBubbleProps {
   dialogueColor: string | null;
   /** True while this message is the one being generated into. */
   streaming: boolean;
+  /*
+   * A jump (Nexus "Jump to message", /jump) just centred on this row. Presentational
+   * only — the bubble flashes so the reader can tell the target from the wall of text
+   * around it. Primitive, like every other prop here, so the memo survives.
+   */
+  flash?: boolean;
   /** The generation in flight, or null when idle. Lets the bubble tell a re-roll from a send. */
   mode: GenMode | null;
   stream: StreamStore;
@@ -103,6 +109,7 @@ export const MessageBubble = memo(function MessageBubble({
   dialogueActive,
   dialogueColor,
   streaming,
+  flash,
   mode,
   stream,
   isLast,
@@ -217,6 +224,7 @@ export const MessageBubble = memo(function MessageBubble({
       data-message-id={message.id}
       data-role={message.is_user ? 'user' : 'assistant'}
       data-hidden={message.is_system || undefined}
+      data-flash={flash || undefined}
       data-dialogue-colored={dialogueActive || undefined}
       style={
         dialogueColor ? ({ '--wc-dialogue-color': dialogueColor } as CSSProperties) : undefined

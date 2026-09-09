@@ -335,6 +335,36 @@
   }
 }
 
+/* --- Jump flash ----------------------------------------------------------- */
+
+/*
+ * A jump (Nexus "Jump to message", /jump) lands the reader mid-transcript with no
+ * indication of what they came to see. Both properties start at their flash values and
+ * animate to the bubble's natural border, so nothing snaps when it ends — and the 2s
+ * duration matches the timer in ChatView that drops the attribute, so the fade and the
+ * state agree.
+ */
+.message[data-flash] .message__bubble {
+  animation: wc-jump-flash 2s var(--wc-ease);
+}
+
+@keyframes wc-jump-flash {
+  from {
+    border-color: var(--wc-accent-border);
+    box-shadow: 0 0 0 6px var(--wc-accent-glow);
+  }
+}
+
+/* The ring without the motion is the reduced-motion answer: a static marker the timer
+   still clears, so the target stays identifiable without movement. */
+@media (prefers-reduced-motion: reduce) {
+  .message[data-flash] .message__bubble {
+    animation: none;
+    border-color: var(--wc-accent-border);
+    box-shadow: 0 0 0 3px var(--wc-accent-glow);
+  }
+}
+
 /* --- Reasoning ---------------------------------------------------------- */
 
 /*
