@@ -16,6 +16,11 @@ export function normalizeNexusSettings(value: unknown): NexusSettings {
     outputTokens: Math.floor(n('outputTokens', 256, 16384)),
     budgetTokens: Math.floor(n('budgetTokens', 0, 32000)),
     temperature: n('temperature', 0, 2),
+    reasoningEffort: ['auto', 'min', 'low', 'medium', 'high', 'max'].includes(
+      String(v.reasoningEffort),
+    )
+      ? (v.reasoningEffort as NexusSettings['reasoningEffort'])
+      : DEFAULT_NEXUS.reasoningEffort,
     motion: typeof v.motion === 'boolean' ? v.motion : true,
     template: str('template'),
     position: ['none', 'beforeMain', 'afterMain', 'atDepth'].includes(String(v.position))

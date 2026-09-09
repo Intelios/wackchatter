@@ -1,5 +1,6 @@
 import { applyExtraction, buildNexusExtraction, parseExtraction } from '@shared/nexus/extract.ts';
 import { filterRecallFindings, recallSearchMessages } from '@shared/nexus/findings.ts';
+import { nexusPreset, nexusRequestError } from '@shared/nexus/generate.ts';
 import {
   memoryDocuments,
   recallQuery,
@@ -23,7 +24,6 @@ import type {
   NexusSettings,
   NexusState,
 } from '@shared/nexus/types.ts';
-import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { looseParseJson } from '@shared/providers/looseJson.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
@@ -338,14 +338,7 @@ export function useNexus(options: Options) {
     const connection = o.connection;
     if (!connection?.baseUrl || !connection.model)
       throw new Error('Choose a saved connection and a model for Nexus in Settings.');
-    const preset = createDefaultPreset();
-    preset.temperature = o.settings.temperature;
-    preset.openai_max_context = o.settings.inputTokens;
-    preset.openai_max_tokens = o.settings.outputTokens;
-    preset.top_p = 1;
-    preset.presence_penalty = 0;
-    preset.frequency_penalty = 0;
-    preset.stream_openai = false;
+    const preset = nexusPreset(o.settings);
     const body = buildRequestBody({
       messages: apiMessages,
       preset,
@@ -366,11 +359,8 @@ export function useNexus(options: Options) {
         countText: o.counter.countText,
       },
     );
-    if (result.finishReason === 'length')
-      throw new Error(
-        'The memory model reached its output limit. Increase the Nexus output allowance and retry.',
-      );
-    if (!result.content.trim()) throw new Error('The memory model returned no content.');
+    const failure = nexusRequestError(result);
+    if (failure) throw new Error(failure);
     return result;
   }, []);
   const collect = useCallback(

@@ -28,6 +28,14 @@ describe('normalizeNexusSettings', () => {
     expect(s.role).toBe(DEFAULT_NEXUS.role);
   });
 
+  test('a valid reasoning effort is kept, an unknown one falls back', () => {
+    expect(normalizeNexusSettings({ reasoningEffort: 'auto' }).reasoningEffort).toBe('auto');
+    expect(normalizeNexusSettings({ reasoningEffort: 'high' }).reasoningEffort).toBe('high');
+    expect(normalizeNexusSettings({ reasoningEffort: 'lazy' }).reasoningEffort).toBe(
+      DEFAULT_NEXUS.reasoningEffort,
+    );
+  });
+
   test('a template of the wrong type falls back, a string never validates macros', () => {
     expect(normalizeNexusSettings({ template: 42 }).template).toBe(DEFAULT_NEXUS.template);
     expect(normalizeNexusSettings({ template: 'no macro at all' }).template).toBe(

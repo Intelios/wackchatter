@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from '../types/preset.ts';
 import type { StoryMemoryPlacement } from '../types/settings.ts';
 
 export type NexusNodeKind = 'person' | 'place' | 'object' | 'event';
@@ -63,6 +64,12 @@ export interface NexusSettings extends StoryMemoryPlacement {
   outputTokens: number;
   budgetTokens: number;
   temperature: number;
+  /**
+   * Extraction is structured output, not a task that benefits from long chains of thought —
+   * and a reasoning model will happily spend the whole output allowance thinking and never
+   * emit the JSON. Low by default; Auto sends nothing for endpoints that reject the field.
+   */
+  reasoningEffort: ReasoningEffort;
   motion: boolean;
 }
 export interface NexusDocument {
@@ -119,6 +126,7 @@ export const DEFAULT_NEXUS: Readonly<NexusSettings> = {
   outputTokens: 2048,
   budgetTokens: 1200,
   temperature: 0.2,
+  reasoningEffort: 'low',
   motion: true,
   template:
     '[Story knowledge. Respect chronology, attribution and who knows each fact.\n{{memories}}]',

@@ -1,5 +1,6 @@
 import { NEXUS_PROMPT, type NexusSettings as Settings } from '@shared/nexus/types.ts';
 import type { Connection, ProviderModel } from '@shared/providers/types.ts';
+import type { ReasoningEffort } from '@shared/types/preset.ts';
 import { useEffect, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
@@ -113,6 +114,20 @@ export function NexusSettings({
         max={16384}
         step={256}
         onChange={(outputTokens) => patch({ outputTokens })}
+      />
+      <SelectField<ReasoningEffort>
+        label="Reasoning effort"
+        value={settings.reasoningEffort}
+        options={[
+          { label: 'Auto', value: 'auto' },
+          { label: 'Min', value: 'min' },
+          { label: 'Low', value: 'low' },
+          { label: 'Medium', value: 'medium' },
+          { label: 'High', value: 'high' },
+          { label: 'Max', value: 'max' },
+        ]}
+        onChange={(reasoningEffort) => patch({ reasoningEffort })}
+        hint="Low by default: extraction is structured output, and a reasoning model can otherwise spend the whole output budget thinking before writing any of it. Auto sends nothing, for endpoints that reject the parameter."
       />
       <NumberField
         label="Extraction temperature"
