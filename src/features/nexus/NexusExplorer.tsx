@@ -6,6 +6,7 @@ import {
   nodeVersion,
   reviseNode,
   reviseRecord,
+  textKey,
   validEvidence,
 } from '@shared/nexus/state.ts';
 import type {
@@ -305,34 +306,38 @@ export function NexusExplorer({ chat, ...config }: Props) {
           </div>
           {!configured ? <p>Configure a connection and model in Settings first.</p> : null}
           {n.run.error ? <p role="status">{n.run.error}</p> : null}
-          {n.findings.map((f) => (
-            <article className="nexus-card" key={f.id}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={f.selected}
-                  onChange={(e) =>
-                    n.setFindings((fs) =>
-                      fs.map((v) => (v.id === f.id ? { ...v, selected: e.target.checked } : v)),
-                    )
-                  }
-                />{' '}
-                Include in next request
-              </label>
-              <p>{f.text}</p>
-              <Sources evidence={f.evidence} chat={chat} />
-              <button
-                type="button"
-                className="wc-button"
-                disabled={n.data.records.some(
-                  (r) => latest(r).text === f.text && !latest(r).deleted,
-                )}
-                onClick={() => n.saveFinding(f)}
-              >
-                Save to Nexus
-              </button>
-            </article>
-          ))}
+          {n.findings.map((f) => {
+            const existing = n.data.records.some(
+              (r) => !latest(r).deleted && textKey(latest(r).text) === textKey(f.text),
+            );
+            return (
+              <article className="nexus-card" key={f.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={f.selected}
+                    onChange={(e) =>
+                      n.setFindings((fs) =>
+                        fs.map((v) => (v.id === f.id ? { ...v, selected: e.target.checked } : v)),
+                      )
+                    }
+                  />{' '}
+                  Include in next request
+                </label>
+                <p>{f.text}</p>
+                <Sources evidence={f.evidence} chat={chat} />
+                <button
+                  type="button"
+                  className="wc-button"
+                  disabled={existing}
+                  title={existing ? 'This fact is already saved as a memory.' : undefined}
+                  onClick={() => n.saveFinding(f)}
+                >
+                  {existing ? 'Already in Nexus' : 'Save to Nexus'}
+                </button>
+              </article>
+            );
+          })}
           {n.droppedFindings ? (
             <p className="nexus-muted">
               {plural(n.droppedFindings, 'finding', 'findings')} restated memories this request
