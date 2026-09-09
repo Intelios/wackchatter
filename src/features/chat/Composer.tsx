@@ -46,11 +46,6 @@ interface ComposerProps {
    * Absent means the button is not rendered at all, so the composer works unguided.
    */
   onGuide?: (text: string) => void;
-  onRecall?: (text: string) => void;
-  /** How many Recall-more findings attach to the next request. Drives the count badge. */
-  recallCount?: number;
-  /** Clear the attached findings — the badge's click. Absent means no badge is rendered. */
-  onClearRecall?: () => void;
   onDraftChange?: (text: string) => void;
   onGuidedSwipe?: (text: string) => void;
   /** Why guided swipe is unavailable. Becomes its title — disabled beats refused. */
@@ -82,9 +77,6 @@ interface ComposerProps {
 
 export function Composer({
   onSend,
-  onRecall,
-  recallCount,
-  onClearRecall,
   onDraftChange,
   onGuide,
   onGuidedSwipe,
@@ -580,31 +572,6 @@ export function Composer({
         <span className="composer__tray-spacer" />
 
         {trailing}
-        {onRecall ? (
-          <span className="composer__recall">
-            <button
-              type="button"
-              className="wc-button wc-button--ghost"
-              onClick={() => onRecall(text)}
-              title={
-                recallCount ? `${recallCount} findings attach to your next request` : undefined
-              }
-            >
-              Recall more
-            </button>
-            {onClearRecall && recallCount ? (
-              <button
-                type="button"
-                className="composer__recall-badge"
-                onClick={onClearRecall}
-                aria-label={`Clear ${recallCount} attached findings`}
-                title={`Clear ${recallCount} attached findings`}
-              >
-                {recallCount}
-              </button>
-            ) : null}
-          </span>
-        ) : null}
 
         {/* Hidden mid-generation rather than disabled: Send has already become Stop, and two
             dead buttons beside it is noise where the row should read as one action. */}

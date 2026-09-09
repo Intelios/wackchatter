@@ -283,9 +283,8 @@ byte-identically. The quirks are load-bearing and each has a named test.
 - **Reviewed Recall more findings are one-request context, never transcript messages.**
   `Use selected findings` arms them: armed findings survive draft edits — the natural flow is
   look things up, then write the message that uses them — and are consumed on dispatch.
-  Unstaged search results clear on typing; a new search or the composer's armed-count badge
-  (its click) clears either; transcript/evidence changes invalidate both. Save to Nexus is
-  separate. Frozen per-request reports distinguish selection from actual injection and preview.
+  Unstaged search results clear on typing; a new search clears either;
+  transcript/evidence changes invalidate both. Save to Nexus is separate. Frozen per-request reports distinguish selection from actual injection and preview.
   The search computes the automatic selection first (`retrieveNexus`, mirroring `preview`) and
   findings that restate it are dropped before presentation (`shared/nexus/findings.ts`: cited
   records, normalised text against any revision of a loaded record, or a near-duplicate

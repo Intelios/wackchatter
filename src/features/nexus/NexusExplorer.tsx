@@ -467,9 +467,8 @@ export function NexusExplorer({ chat, ...config }: Props) {
           ) : null}
           <p>
             Findings stay outside the transcript and attach to your next request. Use selected
-            findings keeps them attached while you write; sending consumes them. A new search, the
-            count beside Recall more, or a change to the conversation clears them. Saving
-            permanently is a separate action.
+            findings keeps them attached while you write; sending consumes them. A new search or a
+            change to the conversation clears them. Saving permanently is a separate action.
           </p>
         </div>
       ) : (
