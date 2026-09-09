@@ -103,9 +103,9 @@ export function NexusSettings({
         label="Memory model context (tokens)"
         value={settings.inputTokens}
         min={2048}
-        max={131072}
         step={1024}
         onChange={(inputTokens) => patch({ inputTokens })}
+        hint="Match the model's real context — modern models take 200K to 1M."
       />
       <NumberField
         label="Memory model output (tokens)"
@@ -114,6 +114,7 @@ export function NexusSettings({
         max={16384}
         step={256}
         onChange={(outputTokens) => patch({ outputTokens })}
+        hint="Buys only the visible JSON. Reasoning is budgeted separately, on top."
       />
       <SelectField<ReasoningEffort>
         label="Reasoning effort"
@@ -127,7 +128,7 @@ export function NexusSettings({
           { label: 'Max', value: 'max' },
         ]}
         onChange={(reasoningEffort) => patch({ reasoningEffort })}
-        hint="Low by default: extraction is structured output, and a reasoning model can otherwise spend the whole output budget thinking before writing any of it. Auto sends nothing, for endpoints that reject the parameter."
+        hint="Sizes the thinking room bought on top of the output allowance — 4K at Min to 64K at Max. Low by default to keep the bill modest; the JSON keeps its full budget at every setting. Auto sends nothing, for endpoints that reject the parameter."
       />
       <NumberField
         label="Extraction temperature"

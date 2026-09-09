@@ -12,7 +12,9 @@ export function normalizeNexusSettings(value: unknown): NexusSettings {
     model: str('model'),
     extractPrompt: str('extractPrompt'),
     autoInterval: Math.floor(n('autoInterval', 0, 2000)),
-    inputTokens: Math.floor(n('inputTokens', 2048, 131072)),
+    // Context ceilings move faster than this file: the upper bound is a garbage guard
+    // (Infinity would survive a round-trip as null), never a policy.
+    inputTokens: Math.floor(n('inputTokens', 2048, Number.MAX_SAFE_INTEGER)),
     outputTokens: Math.floor(n('outputTokens', 256, 16384)),
     budgetTokens: Math.floor(n('budgetTokens', 0, 32000)),
     temperature: n('temperature', 0, 2),

@@ -60,14 +60,20 @@ export interface NexusSettings extends StoryMemoryPlacement {
   model: string;
   extractPrompt: string;
   autoInterval: number;
+  /** The memory model's context: the packing target for transcript windows. Not capped. */
   inputTokens: number;
+  /**
+   * The visible-JSON allowance. Reasoning never comes out of it — `nexusMaxTokens` buys
+   * thinking room on top, sized by `reasoningEffort` and clamped to the context's slack.
+   */
   outputTokens: number;
   budgetTokens: number;
   temperature: number;
   /**
-   * Extraction is structured output, not a task that benefits from long chains of thought —
-   * and a reasoning model will happily spend the whole output allowance thinking and never
-   * emit the JSON. Low by default; Auto sends nothing for endpoints that reject the field.
+   * How much thinking to buy on top of the output allowance (4K at Min to 64K at Max; Low
+   * by default to keep the bill modest). Auto sends nothing, for endpoints that reject the
+   * field — and still buys Low's headroom, because the endpoint's default effort is not
+   * "never think".
    */
   reasoningEffort: ReasoningEffort;
   motion: boolean;

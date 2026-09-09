@@ -55,4 +55,14 @@ describe('normalizeNexusSettings', () => {
     expect(s.autoInterval).toBe(2000);
     expect(s.motion).toBe(false);
   });
+
+  test('the context allowance is not capped — modern models run to a million and beyond', () => {
+    expect(normalizeNexusSettings({ inputTokens: 1_000_000 }).inputTokens).toBe(1_000_000);
+    expect(normalizeNexusSettings({ inputTokens: 4_194_304 }).inputTokens).toBe(4_194_304);
+    // Still floored, and garbage of the wrong type still falls back.
+    expect(normalizeNexusSettings({ inputTokens: 1 }).inputTokens).toBe(2048);
+    expect(normalizeNexusSettings({ inputTokens: 'lots' }).inputTokens).toBe(
+      DEFAULT_NEXUS.inputTokens,
+    );
+  });
 });

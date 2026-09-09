@@ -1,6 +1,6 @@
 import { applyExtraction, buildNexusExtraction, parseExtraction } from '@shared/nexus/extract.ts';
 import { filterRecallFindings, recallSearchMessages } from '@shared/nexus/findings.ts';
-import { nexusPreset, nexusRequestError } from '@shared/nexus/generate.ts';
+import { nexusMaxTokens, nexusPreset, nexusRequestError } from '@shared/nexus/generate.ts';
 import {
   memoryDocuments,
   recallQuery,
@@ -344,7 +344,7 @@ export function useNexus(options: Options) {
       preset,
       connection: { ...connection, showReasoning: false },
       stream: false,
-      maxTokens: o.settings.outputTokens,
+      maxTokens: nexusMaxTokens(o.settings, connection),
     });
     const result = await streamGenerate(
       body,

@@ -266,6 +266,13 @@ byte-identically. The quirks are load-bearing and each has a named test.
   verifies live source/record versions and flushes every accepted batch. Empty valid output
   advances; invalid/truncated output does not. Errors stop, no automatic paid retry loops.
   Chat generation remains available. Extraction never changes transcript visibility.
+  **Reasoning never comes out of the output allowance:** OpenAI-compatible endpoints count
+  thinking inside `max_tokens`, so `nexusMaxTokens` asks for the output plus an effort-sized
+  thinking headroom (4K at Min to 64K at Max; Auto buys Low's, because an endpoint's default
+  effort is not "never think"), clamped to the context's slack so the ask stays inside what
+  the user declared — and Claude on OpenRouter is the exception, where the reply budget
+  travels alone because `buildRequestBody` adds its exact thinking budget on top. The context
+  field itself is uncapped; the normalizer's bound is a garbage guard, not a policy.
 - **Local recall uses the shared retrieval/renderer**, both for preview and requests. BGE-small
   q8, tokenizer, manifest and licence are vendored under `public/models`; WASM runtime assets
   ship locally. The worker forbids remote model fetching. Query jobs take priority. Cache
