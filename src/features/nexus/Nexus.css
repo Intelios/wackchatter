@@ -556,16 +556,48 @@
   --nexus-color: var(--wc-series-6);
 }
 
-.nexus-node circle {
-  fill: var(--wc-surface-raised);
+.nexus-core-light {
+  stop-color: color-mix(in srgb, var(--nexus-color) 24%, var(--wc-surface-raised));
+}
+
+.nexus-core-mid {
+  stop-color: color-mix(in srgb, var(--nexus-color) 7%, var(--wc-surface));
+}
+
+.nexus-core-dark {
+  stop-color: var(--wc-bg);
+}
+
+.nexus-node-core {
+  stroke: color-mix(in srgb, var(--nexus-color) 65%, var(--wc-surface-raised));
+  stroke-width: var(--wc-nexus-node-stroke);
+}
+
+.nexus-node-rim {
+  fill: none;
+  stroke: color-mix(in srgb, var(--nexus-color) 55%, var(--wc-text));
+  stroke-width: var(--wc-border-width);
+  stroke-linecap: round;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.nexus-node-rim--lower {
+  opacity: 0.2;
+}
+
+.nexus-node-orbit {
+  fill: none;
   stroke: var(--nexus-color);
-  stroke-width: 2px;
+  stroke-width: var(--wc-border-width);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .nexus-node .nexus-halo {
   stroke: none;
-  fill: var(--nexus-color);
-  opacity: 0.08;
+  opacity: 0.2;
+  pointer-events: none;
 }
 
 .nexus-node text {
@@ -575,8 +607,12 @@
 }
 
 .nexus-node .nexus-symbol {
-  fill: var(--nexus-color);
-  font-size: 19px;
+  fill: none;
+  stroke: color-mix(in srgb, var(--nexus-color) 75%, var(--wc-text));
+  stroke-width: var(--wc-nexus-node-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .nexus-node .nexus-node-label {
@@ -588,21 +624,32 @@
 .nexus-node:hover .nexus-halo,
 .nexus-node:focus .nexus-halo,
 .nexus-node[data-selected="true"] .nexus-halo {
-  opacity: 0.3;
+  opacity: 0.65;
 }
 
-.nexus-node:focus circle,
-.nexus-node[data-selected="true"] circle {
-  stroke-width: 3;
+.nexus-node:hover .nexus-node-core,
+.nexus-node:focus-visible .nexus-node-core,
+.nexus-node[data-selected="true"] .nexus-node-core {
+  stroke: var(--nexus-color);
+}
+
+.nexus-node:focus-visible .nexus-node-orbit,
+.nexus-node[data-selected="true"] .nexus-node-orbit {
+  opacity: 0.8;
+}
+
+.nexus-node:focus-visible .nexus-node-orbit {
+  stroke: var(--wc-text);
+  stroke-dasharray: 3 3;
 }
 
 .nexus-node[data-recalled="true"] .nexus-halo {
-  opacity: 0.4;
+  opacity: 0.8;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .nexus[data-motion="true"]
-    .nexus-node:not(:hover):not(:focus):not([data-selected="true"])
+    .nexus-node:not(:hover):not(:focus):not([data-selected="true"]):not([data-recalled="true"])
     .nexus-halo {
     animation: nexus-breathe 7s ease-in-out infinite alternate;
   }
@@ -778,20 +825,17 @@
 @keyframes nexus-symbol-spin {
   0% {
     opacity: 0;
-    transform: rotate(-140deg) scale(0.3);
-    fill: #ffffff;
+    transform: rotate(-20deg) scale(0.3);
   }
   40% {
     opacity: 1;
   }
   70% {
-    transform: rotate(15deg) scale(1.25);
-    fill: #ffffff;
+    transform: rotate(0deg) scale(1.1);
   }
   100% {
     opacity: 1;
     transform: rotate(0deg) scale(1);
-    fill: var(--nexus-color);
   }
 }
 

@@ -26,6 +26,7 @@ import { type Camera, fitCamera, screenPoint, VIEW_H, VIEW_W, Z_MAX, Z_MIN } fro
 import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusCosmicCanvas } from './NexusCosmicCanvas.tsx';
+import { NexusNodeArt } from './NexusNodeArt.tsx';
 import { NexusReport } from './NexusReport.tsx';
 import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
 import { MIN_HIGHLIGHT_QUERY, matchRanges } from './searchHighlight.ts';
@@ -738,12 +739,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                         }}
                       >
                         <g className="nexus-node-blossom">
-                          <circle className="nexus-node-shock-ring" r="17" />
-                          <circle className="nexus-halo" r="25" />
-                          <circle r="17" />
-                          <text className="nexus-symbol" y="5">
-                            {SYMBOL[info.kind]}
-                          </text>
+                          <NexusNodeArt kind={info.kind} />
                           <text className="nexus-node-label" y="40">
                             {info.name.length > 24 ? `${info.name.slice(0, 23)}…` : info.name}
                           </text>
