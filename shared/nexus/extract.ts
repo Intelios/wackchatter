@@ -21,9 +21,9 @@ import type {
 
 export const CONTRACT = `Return only a JSON object: {"nodes":[],"records":[]}.
 nodes: {"ref":"local-identifier-or-existing-node-id","name":"Joe","kind":"person|place|object|event","aliases":[],"sources":[0]}.
-records: {"id":"existing-record-id ONLY when updating it; otherwise omit", "text":"one concise standalone memory", "kind":"fact|event|situation|thread", "assertion":"fact|claim|intention|event", "status":"active|resolved|historical|conflict", "nodeRefs":["local-identifier-or-existing-node-id"], "relation":{"from":"node-ref","to":"node-ref","label":"is from"}, "sources":[0], "cues":["hometown"], "conflicts":["existing-record-id"]}.
+records: {"id":"existing-record-id ONLY when updating it; otherwise omit", "text":"one concise standalone memory", "kind":"fact|event|situation|thread", "assertion":"fact|claim|intention|event", "status":"active|resolved|historical|conflict", "nodeRefs":["local-identifier-or-existing-node-id"], "relation":{"from":"node-ref","to":"node-ref","label":"is from"}, "sources":[0], "cues":["hometown","origin"], "conflicts":["existing-record-id"]}.
 Worked example: {"nodes":[{"ref":"tomas","name":"Tomas","kind":"person","aliases":[],"sources":[0]},{"ref":"vellmoor","name":"Vellmoor","kind":"place","aliases":[],"sources":[1]}],"records":[{"text":"Tomas is from Vellmoor.","kind":"fact","assertion":"fact","status":"active","nodeRefs":["tomas","vellmoor"],"relation":{"from":"tomas","to":"vellmoor","label":"is from"},"sources":[0],"cues":["origin","hometown"]}]}
-conflicts is optional. Emit a relation whenever the excerpt states how two entities stand to each other — kinship, origin, employment, ownership, location — using a short verb-phrase label such as "is sister of", "is from", "works for" or "lies under". Create an event node for a named or referable happening that several memories will point at (a battle, a bargain, a journey) and attach its participants through nodeRefs. Sources are the zero-based line numbers in this excerpt, required on every node and record. Multiple records may cite the same line. Use only evidence actually in the excerpt. Up to 48 nodes/records each; record text up to 2000 characters. An empty result is valid. Do not emit control fields, deletions, or changes to manually curated records.`;
+conflicts is optional. Emit a relation whenever the excerpt states how two entities stand to each other — kinship, origin, employment, ownership, location — using a short verb-phrase label such as "is sister of", "is from", "works for" or "lies under". Create an event node for a named or referable happening that several memories will point at (a battle, a bargain, a journey) and attach its participants through nodeRefs. Give every record 2–4 cues: names, places and topics it should surface for, not words already prominent in its text. Sources are the zero-based line numbers in this excerpt, required on every node and record. Multiple records may cite the same line. Use only evidence actually in the excerpt. Up to 48 nodes/records each; record text up to 2000 characters. An empty result is valid. Do not emit control fields, deletions, or changes to manually curated records.`;
 
 interface WindowItem {
   message: ChatMessage;
@@ -206,6 +206,8 @@ export function parseExtraction(
       throw new Error('A memory tries to update an unknown record.');
     const relation = r.relation === undefined ? undefined : object(r.relation);
     const evidence = sources(r.sources, batch);
+    const cues = list(r.cues, 12).map((c) => string(c, 100));
+    if (!cues.length) throw new Error('A memory returned no search cues.');
     const conflicts = list(r.conflicts ?? [], 12).map((v) => string(v, 150));
     if (conflicts.some((id) => !nexus.records.some((r) => r.id === id)))
       throw new Error('Unknown conflicting record.');
@@ -215,7 +217,7 @@ export function parseExtraction(
       assertion: choice(r.assertion, ['fact', 'claim', 'intention', 'event'] as const),
       status: choice(r.status, ['active', 'resolved', 'historical', 'conflict'] as const),
       nodeIds: list(r.nodeRefs ?? [], 24).map(resolve),
-      cues: list(r.cues ?? [], 12).map((c) => string(c, 100)),
+      cues,
       relation: relation
         ? {
             from: resolve(relation.from),

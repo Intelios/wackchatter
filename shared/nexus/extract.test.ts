@@ -82,7 +82,7 @@ test('duplicate output cannot resurrect a manual edit, disabled record, or tombs
         status: 'active',
         nodeRefs: [],
         sources: [0],
-        cues: [],
+        cues: ['hometown'],
       },
     ],
   };
@@ -103,6 +103,24 @@ test('duplicate output cannot resurrect a manual edit, disabled record, or tombs
     expect(after.records[0]!.revisions).toEqual(n.records[0]!.revisions);
     expect(after.records).toHaveLength(1);
   }
+});
+
+test('a record without search cues is rejected, not silently accepted', () => {
+  const n = emptyNexus();
+  const batch = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
+  const record = {
+    text: 'Joe is from London.',
+    kind: 'fact',
+    assertion: 'fact',
+    status: 'active',
+    nodeRefs: [],
+    sources: [0],
+  };
+  const wrap = (cues: unknown) => JSON.stringify({ nodes: [], records: [{ ...record, cues }] });
+  expect(() => parseExtraction(wrap([]), batch, n)).toThrow('A memory returned no search cues.');
+  expect(() => parseExtraction(wrap(undefined), batch, n)).toThrow();
+  const parsed = parseExtraction(wrap(['hometown', 'origin']), batch, n);
+  expect(parsed.records[0]!.revision.cues).toEqual(['hometown', 'origin']);
 });
 
 test('the contract’s worked example is valid against its own parser', () => {
@@ -166,7 +184,7 @@ test('a paraphrase over curated source and identity is disabled for review', () 
         status: 'active',
         nodeRefs: [],
         sources: [0],
-        cues: [],
+        cues: ['hometown'],
       },
     ],
   };
