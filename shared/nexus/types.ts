@@ -1,7 +1,7 @@
 import type { ReasoningEffort } from '../types/preset.ts';
 import type { StoryMemoryPlacement } from '../types/settings.ts';
 
-export type NexusNodeKind = 'person' | 'place' | 'object' | 'event';
+export type NexusNodeKind = 'person' | 'place' | 'object' | 'event' | 'group' | 'concept';
 export type NexusKind = 'fact' | 'event' | 'situation' | 'thread';
 export interface NexusEvidence {
   messageId: string;

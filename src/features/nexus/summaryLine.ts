@@ -7,14 +7,18 @@ export interface NexusCounts {
   place: number;
   object: number;
   event: number;
+  group: number;
+  concept: number;
 }
 
-const KINDS: readonly NexusNodeKind[] = ['person', 'place', 'object', 'event'];
+const KINDS: readonly NexusNodeKind[] = ['person', 'place', 'object', 'event', 'group', 'concept'];
 const PLURAL: Record<NexusNodeKind, string> = {
   person: 'people',
   place: 'places',
   object: 'objects',
   event: 'events',
+  group: 'groups',
+  concept: 'concepts',
 };
 
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
@@ -26,7 +30,15 @@ export function plural(count: number, singular: string, pluralForm = `${singular
  * nor merged away, and records whose latest revision survives.
  */
 export function nexusCounts(nexus: NexusState): NexusCounts {
-  const counts: NexusCounts = { memories: 0, person: 0, place: 0, object: 0, event: 0 };
+  const counts: NexusCounts = {
+    memories: 0,
+    person: 0,
+    place: 0,
+    object: 0,
+    event: 0,
+    group: 0,
+    concept: 0,
+  };
   for (const node of nexus.nodes) {
     const v = nodeVersion(node);
     if (v.deleted || v.mergedInto) continue;

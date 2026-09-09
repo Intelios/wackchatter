@@ -135,6 +135,22 @@ test('a record without search cues is rejected, not silently accepted', () => {
   expect(parsed.records[0]!.revision.cues).toEqual(['hometown', 'origin']);
 });
 
+test('group and concept are valid node kinds, unknown ones still are not', () => {
+  const n = emptyNexus();
+  const batch = buildNexusExtraction(n, [msg], DEFAULT_NEXUS, counter, '');
+  const raw = {
+    nodes: [
+      { ref: 'guild', name: 'Vellmoor guild', kind: 'group', aliases: [], sources: [0] },
+      { ref: 'bell', name: 'Sunken Bell prophecy', kind: 'concept', aliases: [], sources: [0] },
+    ],
+    records: [],
+  };
+  const parsed = parseExtraction(JSON.stringify(raw), batch, n);
+  expect(parsed.nodes.map((x) => x.kind)).toEqual(['group', 'concept']);
+  raw.nodes[0]!.kind = 'faction';
+  expect(() => parseExtraction(JSON.stringify(raw), batch, n)).toThrow('unsupported category');
+});
+
 test('the contract’s worked example is valid against its own parser', () => {
   const second: ChatMessage = {
     ...msg,

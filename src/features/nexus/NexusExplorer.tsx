@@ -29,10 +29,17 @@ import { nexusCounts, nexusSummaryLine, plural, revisionDateLabel } from './summ
 import './Nexus.css';
 
 type Props = NexusSettingsProps & { chat: UseChat };
-const KINDS = ['person', 'place', 'object', 'event'] as const;
+const KINDS = ['person', 'place', 'object', 'event', 'group', 'concept'] as const;
 const RECORD_KINDS = ['fact', 'event', 'situation', 'thread'] as const;
-const TITLE = { person: 'People', place: 'Places', object: 'Objects', event: 'Events' };
-const SYMBOL = { person: '◎', place: '⌖', object: '◇', event: '✦' };
+const TITLE = {
+  person: 'People',
+  place: 'Places',
+  object: 'Objects',
+  event: 'Events',
+  group: 'Groups',
+  concept: 'Concepts',
+};
+const SYMBOL = { person: '◎', place: '⌖', object: '◇', event: '✦', group: '⬡', concept: '❖' };
 export function NexusExplorer({ chat, ...config }: Props) {
   const n = chat.nexus;
   const [search, setSearch] = useState('');
@@ -559,8 +566,8 @@ export function NexusExplorer({ chat, ...config }: Props) {
                         {n.data.nodes.length ? 'No matching nodes' : 'A story worth remembering'}
                       </h2>
                       <p>
-                        Add a person, place, object or event, or build memories from the
-                        conversation.
+                        Add a person, place, object, event, group or concept, or build memories from
+                        the conversation.
                       </p>
                     </div>
                   ) : null}
@@ -1058,7 +1065,7 @@ function RecordEditor({
         </label>
       </div>
       <details onToggle={(e) => setConnectionsOpen(e.currentTarget.open)}>
-        <summary>People, places and connections</summary>
+        <summary>Identities and connections</summary>
         {connectionsOpen ? (
           <>
             <input

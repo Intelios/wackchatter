@@ -222,6 +222,12 @@
 .nexus-node[data-kind="event"] {
   --nexus-color: var(--wc-series-4);
 }
+.nexus-node[data-kind="group"] {
+  --nexus-color: var(--wc-series-5);
+}
+.nexus-node[data-kind="concept"] {
+  --nexus-color: var(--wc-series-6);
+}
 .nexus-node circle {
   fill: var(--wc-surface-raised);
   stroke: var(--nexus-color);
