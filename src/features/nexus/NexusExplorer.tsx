@@ -939,7 +939,7 @@ function RecordEditor({
   useEffect(() => setRelation(r.relation ?? { from: '', to: '', label: '' }), [r.relation]);
   const patch = (p: Partial<NexusRevision>) =>
     chat.nexus.update((s) => reviseRecord(s, record.id, p, chat.messages.at(-1)?.id));
-  const nodes = chat.nexus.data.nodes
+  const matchingNodes = chat.nexus.data.nodes
     .filter(
       (n) =>
         !nodeVersion(n).mergedInto &&
@@ -953,8 +953,8 @@ function RecordEditor({
       (a, b) =>
         Number(r.nodeIds.includes(b.id) || b.id === relation.from || b.id === relation.to) -
         Number(r.nodeIds.includes(a.id) || a.id === relation.from || a.id === relation.to),
-    )
-    .slice(0, 100);
+    );
+  const nodes = matchingNodes.slice(0, 100);
   return (
     <article className="nexus-card" data-disabled={!r.enabled || r.deleted}>
       <div className="nexus-actions">
@@ -1037,7 +1037,11 @@ function RecordEditor({
               value={nodeSearch}
               onChange={(e) => setNodeSearch(e.target.value)}
             />
-            <p>Showing up to 100 matching identities.</p>
+            <p>
+              {matchingNodes.length > nodes.length
+                ? `Showing ${nodes.length} of ${matchingNodes.length.toLocaleString()} matching identities — type to narrow.`
+                : `Showing all ${plural(matchingNodes.length, 'matching identity', 'matching identities')}.`}
+            </p>
             <div className="nexus-attachments">
               {nodes.map((n) => (
                 <label key={n.id}>
