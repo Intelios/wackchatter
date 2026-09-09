@@ -25,7 +25,7 @@ import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
 import { NexusReport } from './NexusReport.tsx';
 import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
-import { nexusCounts, nexusSummaryLine, plural } from './summaryLine.ts';
+import { nexusCounts, nexusSummaryLine, plural, revisionDateLabel } from './summaryLine.ts';
 import './Nexus.css';
 
 type Props = NexusSettingsProps & { chat: UseChat };
@@ -1135,8 +1135,8 @@ function RecordEditor({
                   key={`${v.created}:${v.status}:${v.pinned}:${v.enabled}:${v.deleted}:${v.text}:${JSON.stringify(v.evidence)}`}
                 >
                   <p>
-                    {new Date(v.created).toLocaleString()} · {v.manual ? 'User edit' : 'Generated'}{' '}
-                    · {change ? change.join(' · ') : v.status}
+                    {revisionDateLabel(v.created)} · {v.manual ? 'User edit' : 'Generated'} ·{' '}
+                    {change ? change.join(' · ') : v.status}
                   </p>
                   {/* A state change repeats the previous text and sources; the label is the row. */}
                   {change ? null : (

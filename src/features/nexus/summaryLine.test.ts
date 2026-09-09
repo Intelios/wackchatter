@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { NexusNode, NexusRecord, NexusState } from '@shared/nexus/types.ts';
-import { nexusCounts, nexusSummaryLine, plural } from './summaryLine.ts';
+import { nexusCounts, nexusSummaryLine, plural, revisionDateLabel } from './summaryLine.ts';
 
 function node(id: string, kind: NexusNode['versions'][number]['kind'], extra = {}) {
   return { id, versions: [{ name: id, aliases: [], kind, evidence: [], manual: true, ...extra }] };
@@ -89,5 +89,20 @@ describe('nexusSummaryLine', () => {
     expect(nexusSummaryLine({ memories: 0, person: 2, place: 0, object: 0, event: 0 })).toBe(
       'No memories yet',
     );
+  });
+});
+
+describe('revisionDateLabel', () => {
+  test('formats a real timestamp exactly as the locale renders it', () => {
+    const created = 1787328363137;
+    expect(revisionDateLabel(created)).toBe(new Date(created).toLocaleString());
+  });
+
+  test('zero, seed-like small integers, negative and non-finite timestamps read as Unknown', () => {
+    expect(revisionDateLabel(0)).toBe('Unknown');
+    expect(revisionDateLabel(1)).toBe('Unknown');
+    expect(revisionDateLabel(12345)).toBe('Unknown');
+    expect(revisionDateLabel(-5)).toBe('Unknown');
+    expect(revisionDateLabel(Number.NaN)).toBe('Unknown');
   });
 });

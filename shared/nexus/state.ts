@@ -320,7 +320,9 @@ export function migrateMemories(memories: Memory[], messages: ChatMessage[]): Ne
           cues: m.keywords,
           evidence,
           anchorId,
-          created: m.generatedAt,
+          // A pre-timestamp legacy memory would otherwise read as 1 January 1970; the
+          // migration moment is a plausible stand-in for when it entered the Nexus.
+          created: m.generatedAt > 0 ? m.generatedAt : Date.now(),
           enabled: m.enabled,
           needsReview: Boolean(m.stale) || undefined,
           pinned: m.pinned,

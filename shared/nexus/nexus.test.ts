@@ -106,6 +106,26 @@ describe('Nexus evidence and revisions', () => {
     });
     expect(JSON.stringify(messages)).toBe(before);
   });
+  test('migrated legacy events carry a real created timestamp', () => {
+    const memory = (id: string, generatedAt: number) => ({
+      id,
+      title: id,
+      text: 'Joe moved.',
+      keywords: [],
+      source: 'generated' as const,
+      edited: false,
+      enabled: true,
+      pinned: false,
+      generatedAt,
+      range: { startId: 'a', endId: 'b' },
+    });
+    const nexus = migrateMemories(
+      [memory('stamped', 1787328363137), memory('untimed', 0)],
+      messages,
+    );
+    expect(nexus.records[0]?.revisions[0]?.created).toBe(1787328363137);
+    expect(nexus.records[1]?.revisions[0]?.created).toBeGreaterThan(0);
+  });
 });
 
 test('spanning descriptions are excluded at a fork, and manual corrections never expose old versions', () => {

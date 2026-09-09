@@ -44,3 +44,14 @@ export function nexusSummaryLine(counts: NexusCounts): string {
     ...KINDS.map((k) => plural(counts[k], k, PLURAL[k])),
   ].join(' · ');
 }
+
+/** Below one trillion epoch-ms (Sept 2001) nothing is a plausible creation time —
+ * seeded fixtures and stray small integers are the epoch in disguise. */
+const MIN_PLAUSIBLE_CREATED = 1_000_000_000_000;
+
+/** A revision without a real timestamp must not read as 1 January 1970. */
+export function revisionDateLabel(created: number): string {
+  return Number.isFinite(created) && created >= MIN_PLAUSIBLE_CREATED
+    ? new Date(created).toLocaleString()
+    : 'Unknown';
+}
