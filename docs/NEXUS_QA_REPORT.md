@@ -21,53 +21,6 @@ real paid generations. No source files changed.
 
 ## Findings
 
-### N-31 · Suggested contract/prompt changes to help the memory model — **LLM (summary)**
-
-Items 1–5 (demand relations, event-node rule, require cues, the `group` kind, the excerpt
-boundary) landed with the N-25–N-28 fixes. Still open:
-
-1. **Accept the valid subset of a batch.** `parseExtraction` is strictly all-or-nothing —
-   one bad `kind`, one out-of-range source index or one unknown node ref throws and the whole
-   batch is discarded ([extract.ts:173](shared/nexus/extract.ts:173)). With 48 records allowed
-   per batch, one malformed entry from a small model costs the user a paid call and all 47 good
-   records. Collecting per-record errors and applying the rest — reporting *"3 of 21 memories
-   were rejected"* — would make Nexus far more usable on cheap models, which is exactly the
-   market for a background extraction model.
-2. **Nudge against low-value nodes.** The original run created a node for `Satchel`. A line
-   such as *"Only create a node for something that will be referred to again"* would help.
-
-### N-32 · The Recall allowance barely does anything — **BUG (design) / GAP**
-
-`buildRecall` picks candidates *before* the token budget is ever consulted, and the candidate
-set is hard-capped ([retrieve.ts:199](shared/nexus/retrieve.ts:199)):
-
-```
-const candidates = new Map(ranked.slice(0, 3).map(...))   // top 3 ranked
-... .slice(0, 2) seeds → neighbours .slice(-2)            // + up to 2 graph neighbours
-... + pinned records + active situations + selected findings
-```
-
-So automatic recall considers **three ranked memories plus two neighbours**, whatever the
-allowance says. Measured on the 13-memory Seraphina chat:
-
-| Recall allowance | Memories included | Tokens used |
-|---|---|---|
-| 1,200 (default) | 6 of 13 | **112** |
-| 12,000 | 6 of 13 | **112** |
-
-Seven memories — about 130 tokens of them — were never candidates, with ~1,090 tokens of the
-default allowance unspent. The Inspect report reflects this honestly: every hit says
-*Included*, because nothing ever reached the budget stage to be excluded.
-
-"Recall allowance (tokens)" is the most prominent number in Nexus settings and is presented as
-the thing that governs how much memory is used. On any Nexus below a few hundred records it
-governs nothing.
-
-*Fix:* let ranking produce many more candidates (`searchDocuments` already returns 24) and let
-the token budget do the cutting — which is what the user is being asked to tune. Keep the
-**graph expansion** bounded exactly as it is; that is the part that must not explode, and the
-comment on line 200 is defending the right thing, just in the wrong place.
-
 ### N-33 · A deleted memory is still fully editable and is labelled "Edited" — **BUG (minor)**
 
 Deleting a memory (with a proper **Confirm deletion** step — good) and then ticking **Deleted**
