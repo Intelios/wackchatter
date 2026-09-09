@@ -17,13 +17,14 @@ import type {
   NexusRecord,
   NexusRevision,
 } from '@shared/nexus/types.ts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type HighlightPart, highlightParts } from '../chat/cardSearch.ts';
 import type { UseChat } from '../chat/useChat.ts';
 import { type Camera, fitCamera, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
 import { nexusGraph, nodePosition } from './graph.ts';
 import { NexusActivity } from './NexusActivity.tsx';
+import { NexusCosmicCanvas } from './NexusCosmicCanvas.tsx';
 import { NexusReport } from './NexusReport.tsx';
 import { NexusSettings, type NexusSettingsProps } from './NexusSettings.tsx';
 import { MIN_HIGHLIGHT_QUERY, matchRanges } from './searchHighlight.ts';
@@ -49,6 +50,9 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const [view, setView] = useState<'map' | 'list'>('map');
   const [selected, setSelected] = useState<string | null>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, z: 1 });
+  const [introActive, setIntroActive] = useState(false);
+  const [introProgress, setIntroProgress] = useState(0);
+  const introRaf = useRef<number | null>(null);
   const [archived, setArchived] = useState(false);
   const [limit, setLimit] = useState(80);
   const [newName, setNewName] = useState('');
@@ -60,13 +64,34 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const anchor = chat.messages.at(-1)?.id;
+
+  const skipIntro = useCallback(() => {
+    if (introRaf.current !== null) {
+      cancelAnimationFrame(introRaf.current);
+      introRaf.current = null;
+    }
+    setIntroActive(false);
+    setIntroProgress(1);
+  }, []);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: camera and selection belong to the chat identity
   useEffect(() => {
     setSelected(null);
     setCamera({ x: 0, y: 0, z: 1 });
     setSearch('');
     setConfirm('');
-  }, [chat.state.chatId]);
+    skipIntro();
+  }, [chat.state.chatId, skipIntro]);
+
+  useEffect(() => {
+    return () => {
+      if (introRaf.current !== null) {
+        cancelAnimationFrame(introRaf.current);
+        introRaf.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const listener = () => setHidden(document.hidden);
     document.addEventListener('visibilitychange', listener);
@@ -80,6 +105,10 @@ export function NexusExplorer({ chat, ...config }: Props) {
     if (shell) shell.inert = true;
     root.current?.querySelector<HTMLButtonElement>('[data-close]')?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => {
+      if (introActive && e.key !== 'Tab') {
+        skipIntro();
+        if (e.key !== 'Escape') return;
+      }
       if (e.defaultPrevented) return;
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -108,7 +137,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
       if (shell) shell.inert = wasInert ?? false;
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [n.open, n.setOpen]);
+  }, [n.open, n.setOpen, introActive, skipIntro]);
   const graph = useMemo(() => nexusGraph(n.data, chat.messages), [n.data, chat.messages]);
   const positions = useMemo(
     () => new Map(n.data.nodes.map((v, i) => [v.id, nodePosition(i)])),
@@ -169,12 +198,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
   useEffect(() => {
     if (!n.open) {
       fittedOpen.current = false;
+      skipIntro();
       return;
     }
     if (fittedOpen.current || n.section !== 'explore' || view !== 'map') return;
     fittedOpen.current = true;
-    fit();
-  }, [n.open, n.section, view]);
+    fit(true);
+  }, [n.open, n.section, view, skipIntro]);
   const recalled = new Set(
     n.recall?.hits.filter((h) => h.included).flatMap((h) => h.nodeIds) ?? [],
   );
@@ -221,14 +251,62 @@ export function NexusExplorer({ chat, ...config }: Props) {
     const p = selected && positions.get(selected);
     if (p) setCamera((c) => ({ ...c, x: VIEW_W / 2 - p.x * c.z, y: VIEW_H / 2 - p.y * c.z }));
   }
-  function fit() {
+  function fit(animateIntro = false) {
     const rect = svg.current?.getBoundingClientRect();
-    setCamera(
-      fitCamera(
-        drawn.map((v) => positions.get(v.id)!),
-        rect ? { width: rect.width, height: rect.height } : { width: VIEW_W, height: VIEW_H },
-      ),
+    const dest = fitCamera(
+      drawn.map((v) => positions.get(v.id)!),
+      rect ? { width: rect.width, height: rect.height } : { width: VIEW_W, height: VIEW_H },
     );
+
+    const motionPref = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const allowMotion = Boolean(config.settings.motion) && !hidden && !motionPref;
+
+    if (!animateIntro || !allowMotion) {
+      skipIntro();
+      setCamera(dest);
+      return;
+    }
+
+    if (introRaf.current !== null) {
+      cancelAnimationFrame(introRaf.current);
+    }
+    setIntroActive(true);
+    setIntroProgress(0);
+
+    const startCam: Camera = {
+      x: VIEW_W / 2 - (VIEW_W / 2 - dest.x) * 0.4,
+      y: VIEW_H / 2 - (VIEW_H / 2 - dest.y) * 0.4,
+      z: Math.max(Z_MIN, dest.z * 0.35),
+    };
+    setCamera(startCam);
+
+    const startTime = performance.now();
+    const duration = 2000;
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      setIntroProgress(progress);
+
+      if (elapsed >= 350) {
+        const swoopT = Math.min(1, (elapsed - 350) / 1500);
+        const ease = 1 - (1 - swoopT) ** 3;
+        setCamera({
+          x: startCam.x + (dest.x - startCam.x) * ease,
+          y: startCam.y + (dest.y - startCam.y) * ease,
+          z: startCam.z + (dest.z - startCam.z) * ease,
+        });
+      }
+
+      if (progress < 1) {
+        introRaf.current = requestAnimationFrame(tick);
+      } else {
+        setCamera(dest);
+        setIntroActive(false);
+        introRaf.current = null;
+      }
+    };
+    introRaf.current = requestAnimationFrame(tick);
   }
   // Collection ("Add to Nexus", "Latest request memories") lives in the detail pane on
   // the map and at the top of the list — the pane is absent from List view until an
@@ -330,6 +408,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
       aria-label="Memory Nexus"
       className="nexus"
       data-motion={config.settings.motion && !hidden}
+      data-intro={introActive || undefined}
     >
       <header className="nexus-top">
         <div>
@@ -525,7 +604,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
           <div className="nexus-body">
             <main className="nexus-main">
               {view === 'map' ? (
-                <div className="nexus-map">
+                <div className="nexus-map" onPointerDown={skipIntro}>
+                  <NexusCosmicCanvas
+                    introActive={introActive}
+                    introProgress={introProgress}
+                    motion={Boolean(config.settings.motion)}
+                    hidden={hidden}
+                  />
                   {/* biome-ignore lint/a11y/useSemanticElements: SVG map contains keyboard-accessible interactive nodes */}
                   <svg
                     ref={svg}
@@ -533,6 +618,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     role="group"
                     aria-label="Connected memory map. Use Tab to select nodes, or switch to List view."
                     onWheel={(e) => {
+                      if (introActive) skipIntro();
                       setCamera((c) => {
                         const z = Math.max(
                           Z_MIN,
@@ -546,6 +632,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       });
                     }}
                     onPointerDown={(e) => {
+                      if (introActive) skipIntro();
                       if ((e.target as Element).closest('[data-node]')) return;
                       drag.current = { x: e.clientX, y: e.clientY, cx: camera.x, cy: camera.y };
                       e.currentTarget.setPointerCapture(e.pointerId);
@@ -570,6 +657,19 @@ export function NexusExplorer({ chat, ...config }: Props) {
                   >
                     <title>Memory Nexus map</title>
                     <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}>
+                      {!drawn.length ? (
+                        <g
+                          className="nexus-beacon"
+                          transform={`translate(${VIEW_W / 2} ${VIEW_H / 2})`}
+                        >
+                          <circle className="nexus-beacon-pulse" r="54" />
+                          <circle className="nexus-beacon-ring" r="36" />
+                          <circle className="nexus-beacon-core" r="16" />
+                          <text className="nexus-beacon-symbol" y="6">
+                            ✦
+                          </text>
+                        </g>
+                      ) : null}
                       {graph.edges
                         .filter((e) => drawnIds.has(e.from) && drawnIds.has(e.to))
                         .slice(0, 500)
@@ -581,10 +681,21 @@ export function NexusExplorer({ chat, ...config }: Props) {
                           const dx = b.x - a.x,
                             dy = b.y - a.y,
                             len = Math.hypot(dx, dy) || 1;
+                          const distA = Math.hypot(a.x - VIEW_W / 2, a.y - VIEW_H / 2);
+                          const distB = Math.hypot(b.x - VIEW_W / 2, b.y - VIEW_H / 2);
+                          const edgeDelay = Math.round(
+                            Math.max(360 + (distA / 600) * 380, 360 + (distB / 600) * 380) - 60,
+                          );
                           return (
                             <g
                               key={e.id}
                               className="nexus-edge"
+                              style={
+                                {
+                                  '--intro-delay': `${edgeDelay}ms`,
+                                  '--edge-len': Math.ceil(len),
+                                } as React.CSSProperties
+                              }
                               data-implicit={e.implicit || undefined}
                               data-lit={e.from === selected || e.to === selected}
                               data-recalled={recalled.has(e.from) && recalled.has(e.to)}
@@ -614,6 +725,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
                       {drawn.map((v) => {
                         const p = positions.get(v.id)!,
                           info = nodeVersion(v);
+                        const dx = p.x - VIEW_W / 2;
+                        const dy = p.y - VIEW_H / 2;
+                        const dist = Math.hypot(dx, dy) || 1;
+                        const pullback = Math.min(260, dist * 0.75);
+                        const blastX = -(dx / dist) * pullback;
+                        const blastY = -(dy / dist) * pullback;
+                        const delay = Math.round(360 + (dist / 600) * 380);
                         return (
                           // biome-ignore lint/a11y/useSemanticElements: SVG nodes cannot be HTML buttons
                           <g
@@ -623,6 +741,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
                             data-selected={v.id === selected}
                             data-recalled={recalled.has(v.id)}
                             className="nexus-node"
+                            style={
+                              {
+                                '--intro-delay': `${delay}ms`,
+                                '--blast-x': `${Math.round(blastX)}px`,
+                                '--blast-y': `${Math.round(blastY)}px`,
+                              } as React.CSSProperties
+                            }
                             role="button"
                             tabIndex={0}
                             aria-label={`${info.name}, ${info.kind}`}
@@ -639,14 +764,17 @@ export function NexusExplorer({ chat, ...config }: Props) {
                               }
                             }}
                           >
-                            <circle className="nexus-halo" r="25" />
-                            <circle r="17" />
-                            <text className="nexus-symbol" y="5">
-                              {SYMBOL[info.kind]}
-                            </text>
-                            <text className="nexus-node-label" y="40">
-                              {info.name.length > 24 ? `${info.name.slice(0, 23)}…` : info.name}
-                            </text>
+                            <g className="nexus-node-blossom">
+                              <circle className="nexus-node-shock-ring" r="17" />
+                              <circle className="nexus-halo" r="25" />
+                              <circle r="17" />
+                              <text className="nexus-symbol" y="5">
+                                {SYMBOL[info.kind]}
+                              </text>
+                              <text className="nexus-node-label" y="40">
+                                {info.name.length > 24 ? `${info.name.slice(0, 23)}…` : info.name}
+                              </text>
+                            </g>
                           </g>
                         );
                       })}
@@ -664,7 +792,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     </div>
                   ) : null}
                   <div className="nexus-map-controls">
-                    <button type="button" className="wc-button" onClick={fit}>
+                    <button type="button" className="wc-button" onClick={() => fit(false)}>
                       Fit
                     </button>
                     <button

@@ -268,10 +268,20 @@
   overflow: hidden;
   background: radial-gradient(ellipse at center, var(--wc-accent-subtle), transparent 70%);
 }
+.nexus-cosmic-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
 .nexus-map svg {
   width: 100%;
   height: 100%;
   touch-action: none;
+  position: relative;
+  z-index: 1;
 }
 .nexus-map-controls {
   position: absolute;
@@ -411,11 +421,83 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* --- Grand Cosmic Entrance & Living Constellation ------------------------ */
+.nexus-beacon-pulse {
+  fill: var(--wc-accent);
+  opacity: 0.08;
+}
+.nexus-beacon-ring {
+  fill: none;
+  stroke: var(--wc-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 6;
+  opacity: 0.35;
+}
+.nexus-beacon-core {
+  fill: var(--wc-surface-raised);
+  stroke: var(--wc-accent);
+  stroke-width: 2.5;
+}
+.nexus-beacon-symbol {
+  fill: var(--wc-accent);
+  text-anchor: middle;
+  font-size: 16px;
+}
+
+.nexus-node-shock-ring {
+  fill: none;
+  stroke: var(--nexus-color);
+  stroke-width: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .nexus[data-motion="true"] .nexus-node {
+  .nexus[data-motion="true"] .nexus-beacon-pulse {
+    animation: nexus-breathe 4s ease-in-out infinite alternate;
+  }
+  .nexus[data-motion="true"] .nexus-beacon-ring {
+    animation: nexus-pulse 10s linear infinite;
+  }
+
+  /* When the grand entrance is not active (normal mount/filter updates), use subtle arrival */
+  .nexus[data-motion="true"]:not([data-intro="true"]) .nexus-node {
     animation: nexus-arrival 900ms ease-out;
   }
+
+  /* Grand entrance: Staggered node outward blast & elastic lock */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-node-blossom {
+    transform-origin: 0 0;
+    animation: nexus-node-blossom 850ms cubic-bezier(0.18, 0.89, 0.32, 1.25) var(--intro-delay, 0ms)
+      both;
+  }
+
+  /* Secondary shockwave ring radiating from the node upon landing */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-node-shock-ring {
+    animation: nexus-node-shock-ring 850ms ease-out var(--intro-delay, 0ms) both;
+  }
+
+  /* Celestial symbol spin-in */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-symbol {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nexus-symbol-spin 850ms cubic-bezier(0.18, 0.89, 0.32, 1.2) var(--intro-delay, 0ms)
+      both;
+  }
+
+  /* Smooth label reveal on landing */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-node-label {
+    animation: nexus-label-reveal 850ms ease-out var(--intro-delay, 0ms) both;
+  }
+
+  /* Grand entrance: Constellation laser beam strike */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-edge line {
+    stroke-dasharray: var(--edge-len, 1000);
+    stroke-dashoffset: var(--edge-len, 1000);
+    animation: nexus-beam-strike 650ms cubic-bezier(0.16, 1, 0.3, 1) var(--intro-delay, 0ms) both;
+  }
 }
+
 @keyframes nexus-arrival {
   from {
     opacity: 0.1;
@@ -423,6 +505,96 @@
   }
   to {
     opacity: 1;
-    filter: brightness(1);
+  }
+}
+
+@keyframes nexus-node-blossom {
+  0% {
+    opacity: 0;
+    transform: translate(var(--blast-x, 0px), var(--blast-y, 0px)) scale(0.15);
+    filter: brightness(4) drop-shadow(0 0 22px var(--nexus-color));
+  }
+  20% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 1;
+    transform: translate(calc(var(--blast-x, 0px) * -0.09), calc(var(--blast-y, 0px) * -0.09))
+      scale(1.22);
+    filter: brightness(2.2) drop-shadow(0 0 14px var(--nexus-color));
+  }
+  85% {
+    transform: translate(calc(var(--blast-x, 0px) * 0.02), calc(var(--blast-y, 0px) * 0.02))
+      scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: brightness(1) drop-shadow(0 0 0 transparent);
+  }
+}
+
+@keyframes nexus-node-shock-ring {
+  0%,
+  55% {
+    r: 17;
+    opacity: 0;
+    stroke-width: 3px;
+  }
+  65% {
+    r: 22;
+    opacity: 0.9;
+    stroke-width: 2.5px;
+  }
+  100% {
+    r: 54;
+    opacity: 0;
+    stroke-width: 0.5px;
+  }
+}
+
+@keyframes nexus-symbol-spin {
+  0% {
+    opacity: 0;
+    transform: rotate(-140deg) scale(0.3);
+    fill: #ffffff;
+  }
+  40% {
+    opacity: 1;
+  }
+  70% {
+    transform: rotate(15deg) scale(1.25);
+    fill: #ffffff;
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+    fill: var(--nexus-color);
+  }
+}
+
+@keyframes nexus-label-reveal {
+  0%,
+  55% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nexus-beam-strike {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: var(--edge-len, 1000);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
   }
 }
