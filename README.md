@@ -41,7 +41,11 @@ Your characters, chats, presets, and keys are all in `data/`, which git ignores 
 
 **Chat** — Multiple chats per character. Swipes, branching, regenerate, continue, edit, delete, hide messages. Deleted chats go to a trash bin you can restore from.
 
-**Characters** — SillyTavern-compatible V1/V2/V3 cards. Organise them into folders. Import, export, or build new ones in the Character Creator Studio and Co-Creator.
+**Characters** — SillyTavern-compatible V1/V2/V3 cards. Organise them into folders, import and export as PNG or JSON.
+
+**Character Creator Studio** — A full card editor with structured fields for every part of a character: identity, description, personality, greetings, example dialogue, prompts, embedded lorebook, tags, and metadata. Shows live token counts per field and a budget meter against your preset's context limit, and lints your card in real time — catches missing fields, broken macros, duplicate greetings, placeholder avatars, and more.
+
+**Character Co-Creator** — An AI design partner that helps you build characters through conversation. Describe a vague idea and it'll ask the right questions, draft fields, and propose openings. Everything it suggests appears as a labelled block you can file into the card with one click. Attach favourite cards from your library as style examples, and when you're happy, hand off to the Studio for final polish. The AI never edits the card directly — you curate what goes in.
 
 **Prompt Manager** — Drag to reorder prompts, set depth injections, use marker prompts. Shows live token counts using a real tokenizer so you can see exactly how your context budget is being spent.
 
@@ -51,7 +55,7 @@ Your characters, chats, presets, and keys are all in `data/`, which git ignores 
 
 **Guided Generations** — Steer replies with one-shot instructions or persistent per-chat guides, without cluttering the transcript.
 
-**Memory Nexus** — The app tracks characters, places, events, and relationships as the story unfolds and recalls them when relevant. Uses a separate, cheaper model so it doesn't eat into your chat context. Includes a full-screen graph view for exploring what the story knows. You can also use classic summarisation, or turn memory off entirely — it's per-chat. [More details →](docs/MEMORY_NEXUS.md)
+**Memory Nexus** — The app tracks characters, places, events, and relationships as the story unfolds and recalls them when relevant. Uses a separate, cheaper model so it doesn't eat into your chat context. Includes a full-screen graph view for exploring what the story knows. You can also use classic summarisation, or turn memory off entirely — it's per-chat.
 
 ![Memory Nexus graph view](images/memory-nexus.jpeg)
 
