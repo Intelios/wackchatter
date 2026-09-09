@@ -11,8 +11,10 @@ export const VIEW_H = 700;
 export const Z_MIN = 0.15;
 export const Z_MAX = 4;
 
-/** Fraction of the rendered element the fitted content may occupy. */
-const MARGIN = 0.9;
+/** Fraction of the rendered element the fitted content may occupy. Below the old 0.9:
+ *  on the full-bleed map a 90% fit read as "zoomed in", and the constellation needs
+ *  dark space around it more than it needs size. */
+const MARGIN = 0.8;
 
 /**
  * The drawn node is wider than its centre point: a halo above, and the name
@@ -59,4 +61,26 @@ export function fitCamera(
   // the content, so the cluster sits slightly high of centre on purpose.
   const cy = (minY - PAD.top + maxY + PAD.bottom) / 2;
   return { z, x: VIEW_W / 2 - ((minX + maxX) / 2) * z, y: VIEW_H / 2 - cy * z };
+}
+
+/**
+ * Projects a point in map space to pixel coordinates in the rendered element.
+ *
+ * The SVG viewBox is letterboxed onto its element (`xMidYMid meet`), so the map is
+ * offset inside the element by half the slack on each axis before the camera transform
+ * is applied. The node card and anything else HTML-side that must hug a map feature
+ * anchors through this; the drag handler is the same maths run backwards.
+ */
+export function screenPoint(
+  p: { x: number; y: number },
+  camera: Camera,
+  viewport: { width: number; height: number },
+): { x: number; y: number } {
+  const scale = Math.min(viewport.width / VIEW_W, viewport.height / VIEW_H);
+  const ox = (viewport.width - VIEW_W * scale) / 2;
+  const oy = (viewport.height - VIEW_H * scale) / 2;
+  return {
+    x: ox + (p.x * camera.z + camera.x) * scale,
+    y: oy + (p.y * camera.z + camera.y) * scale,
+  };
 }
