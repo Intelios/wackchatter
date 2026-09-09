@@ -1017,36 +1017,45 @@ function RecordEditor({
         }}
       />
       <div className="nexus-actions">
-        <select
-          className="wc-input"
-          aria-label="Memory kind"
-          value={r.kind}
-          onChange={(e) => patch({ kind: e.target.value as NexusKind })}
-        >
-          {RECORD_KINDS.map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
-        <select
-          className="wc-input"
-          aria-label="Memory state"
-          value={r.status}
-          onChange={(e) => patch({ status: e.target.value as NexusRevision['status'] })}
-        >
-          {['active', 'resolved', 'historical', 'conflict'].map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
-        <select
-          className="wc-input"
-          aria-label="Evidence attribution"
-          value={r.assertion}
-          onChange={(e) => patch({ assertion: e.target.value as NexusRevision['assertion'] })}
-        >
-          {['fact', 'claim', 'intention', 'event'].map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
+        <label className="nexus-select">
+          <span className="nexus-select__label">Kind</span>
+          <select
+            className="wc-input"
+            aria-label="Memory kind"
+            value={r.kind}
+            onChange={(e) => patch({ kind: e.target.value as NexusKind })}
+          >
+            {RECORD_KINDS.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+        </label>
+        <label className="nexus-select">
+          <span className="nexus-select__label">State</span>
+          <select
+            className="wc-input"
+            aria-label="Memory state"
+            value={r.status}
+            onChange={(e) => patch({ status: e.target.value as NexusRevision['status'] })}
+          >
+            {['active', 'resolved', 'historical', 'conflict'].map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+        </label>
+        <label className="nexus-select">
+          <span className="nexus-select__label">Attribution</span>
+          <select
+            className="wc-input"
+            aria-label="Evidence attribution"
+            value={r.assertion}
+            onChange={(e) => patch({ assertion: e.target.value as NexusRevision['assertion'] })}
+          >
+            {['fact', 'claim', 'intention', 'event'].map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+        </label>
       </div>
       <details onToggle={(e) => setConnectionsOpen(e.currentTarget.open)}>
         <summary>People, places and connections</summary>
