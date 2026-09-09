@@ -40,82 +40,6 @@ faithfully lands in the second.
 have the first error name both numbers: *"Output allowance 2048 of a 8192 context leaves 6064
 for the transcript."*
 
-### N-25 · Real extraction produces a graph with **zero** connections — **BUG / VIS (headline)**
-
-The most important result of this session. A fresh Seraphina chat, five substantive messages
-dense with explicit relationships, extracted by a real model:
-
-- **10 nodes**, **13 records**, **0 edges**
-- footer reads `4 people · 3 places · 3 objects · 0 events`
-- the map is ten unconnected dots under the caption *"Your story, connected"*
-
-The transcript stated, in plain language: Tomas is *from* Vellmoor; Ines is Tomas's *sister*;
-Ruven Hask is the guild's *factor*; Ines *gave* Tomas the astrolabe; the Sunken Bell lies
-*under* the old riverbed. The model recorded every one of those as record **text** and did not
-emit a single `relation`.
-
-Three compounding causes:
-
-1. **`relation` is optional and unexemplified in practice.** The contract mentions it once in a
-   dense one-line schema ([extract.ts:22](shared/nexus/extract.ts:22)); the extraction prompt
-   says only "connect people, places, objects and events only where supported by the
-   transcript" — which reads as a caution, not an instruction.
-2. **Event-participation edges need an `event` *node*, and the model creates none.**
-   `nexusGraph` only builds participation edges when a record's `nodeIds` contains a node whose
-   kind is `event` ([graph.ts:19](src/features/nexus/graph.ts:19)). Nothing in the contract
-   tells the model when to make an event node, so `0 events` and therefore no edges from the
-   eight `kind: "event"` records either.
-3. **Co-mention is not an edge** (see N-05).
-
-*Fix:* all three are worth doing, but the cheapest big win is (3) — draw implicit co-mention
-edges — plus a worked `relation` example in the contract. See N-31 for prompt wording.
-
-### N-26 · The model emitted no search cues at all — **LLM**
-
-All 13 records came back with `cues: []`, despite the prompt's *"Give facts useful search
-cues"* and `cues` being in the schema. Cues are a live retrieval signal
-(`searchDocuments` ranks on them), so a whole ranking channel is inert in real use.
-
-*Fix:* make `cues` non-optional in the contract with a concrete example and a stated count
-("2–4 cues: names, places, topics — not words already in the text"), and consider rejecting a
-record with no cues at parse time rather than silently accepting the empty array.
-
-### N-27 · Node kinds have no slot for groups, factions or creatures — **LLM**
-
-Captured verbatim from the model's own reasoning trace while extracting:
-
-> "The allowed kinds are limited. We can create node for 'Vellmoor guild' as 'place'? Not
-> appropriate. Maybe skip node for guild, mention in record text."
-
-and again for the beasts:
-
-> "Beasts are creatures, not person. Could use object? Not ideal. … skip node for beasts."
-
-`NexusNodeKind` is `person | place | object | event`
-([types.ts:3](shared/nexus/types.ts:3)). Guilds, orders, houses, companies, armies, species and
-monster groups are everywhere in roleplay, and every one of them is currently either dropped or
-mis-typed. Two entities were dropped from this five-message excerpt alone.
-
-*Fix:* add `group` (organisations, factions, families, species) and possibly `concept` (lore,
-prophecies, rules). Both are additive to the node schema; the map already colours by kind.
-
-### N-28 · The extraction prompt makes the model litigate what counts as evidence — **LLM**
-
-The reasoning trace spends several hundred tokens on this, twice:
-
-> "The scenario is not in excerpt? … The instructions say profiles are for interpretation, not
-> evidence. The scenario is part of the prompt? … So ignore scenario? But we can use line 0…"
-
-The profile block is sent as a second `system` message headed *"Profiles for interpretation,
-not evidence:"* ([extract.ts:83](shared/nexus/extract.ts:83)), and the excerpt arrives as an
-unlabelled `user` message of `[n] Name: text` lines. The boundary is real but implicit, and the
-model burns budget (and, on a smaller model, accuracy) rediscovering it.
-
-*Fix:* label the excerpt explicitly — e.g. prefix the user message with
-`TRANSCRIPT EXCERPT — the only evidence. Cite line numbers from this block only.` — and state
-once in the system prompt that character cards, scenario and existing records are never
-citable.
-
 ### N-29 · Progress reads `0 / 5` for the entire run — **VIS**
 
 `Remembering… 0 / 5` is shown for the whole extraction — 30–60 s against a real model — because
@@ -136,28 +60,18 @@ display.
 
 ### N-31 · Suggested contract/prompt changes to help the memory model — **LLM (summary)**
 
-Consolidating what the traces and results above point at, in the order I would do them:
+Items 1–5 (demand relations, event-node rule, require cues, the `group` kind, the excerpt
+boundary) landed with the N-25–N-28 fixes. Still open:
 
-1. **Demand relations.** Add to the guidance: *"Whenever the transcript states how two
-   entities stand to each other — kinship, origin, employment, ownership, location — emit a
-   `relation` on the record, with a short verb-phrase label ('is sister of', 'is from',
-   'works for', 'lies under')."* Put one filled-in `relation` in the schema example.
-2. **Say when to create an `event` node.** *"Create an `event` node for any named or
-   referable happening that several memories will point at (a battle, a bargain, a journey);
-   attach its participants through `nodeRefs`."* Without this the participation-edge half of
-   `nexusGraph` is unreachable.
-3. **Require `cues`** (N-26).
-4. **Add `group` to node kinds** (N-27).
-5. **Mark the excerpt boundary explicitly** (N-28).
-6. **Accept the valid subset of a batch.** `parseExtraction` is strictly all-or-nothing —
+1. **Accept the valid subset of a batch.** `parseExtraction` is strictly all-or-nothing —
    one bad `kind`, one out-of-range source index or one unknown node ref throws and the whole
    batch is discarded ([extract.ts:173](shared/nexus/extract.ts:173)). With 48 records allowed
    per batch, one malformed entry from a small model costs the user a paid call and all 47 good
    records. Collecting per-record errors and applying the rest — reporting *"3 of 21 memories
    were rejected"* — would make Nexus far more usable on cheap models, which is exactly the
    market for a background extraction model.
-7. **Nudge against low-value nodes.** This run created a node for `Satchel`. A line such as
-   *"Only create a node for something that will be referred to again"* would help.
+2. **Nudge against low-value nodes.** The original run created a node for `Satchel`. A line
+   such as *"Only create a node for something that will be referred to again"* would help.
 
 ### N-32 · The Recall allowance barely does anything — **BUG (design) / GAP**
 
