@@ -126,3 +126,15 @@ Prompt assembly runs client-side (like SillyTavern) — the server only proxies 
 See [AGENTS.md](AGENTS.md) for detailed architecture and format rules.
 
 </details>
+
+## Acknowledgements
+
+This app wouldn't exist without [SillyTavern](https://github.com/SillyTavern/SillyTavern). No code was taken from it, but its formats, design decisions, and years of community problem-solving taught me most of what I know about building a chat frontend. If you haven't tried it, you should.
+
+Several SillyTavern extensions directly inspired features here:
+
+- [Guided Generations](https://github.com/Samueras/GuidedGenerations-Extension) by Samueras — the idea of steering a reply without editing the transcript came from here
+- [Moonlit Echoes](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme) by RivelleDays — a beautiful theme that influenced the visual direction
+- [Smart Dialogue Colorizer](https://github.com/b4bysw0rld/SillyTavern-Smart-Dialogue-Colorizer) — avatar-based dialogue colouring, reimplemented natively
+
+The Memory Nexus's local semantic search uses [BGE-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) by BAAI, released under the MIT licence — small enough to vendor and run entirely in the browser without phoning home.
