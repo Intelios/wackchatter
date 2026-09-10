@@ -19,7 +19,7 @@ const MAX_RECENT = 15;
 
 interface StartScreenProps {
   characters: CharacterSummary[];
-  onOpenChat: (avatar: string, chatId: string) => void;
+  onOpenChat: (avatar: string | null, chatId: string) => void;
   onDeleteChat: (chatId: string) => Promise<void>;
   onOpenStudio: () => void;
   onOpenCoCreator: () => void;
@@ -29,7 +29,7 @@ interface StartScreenProps {
 
 interface RecentChat extends ChatSummary {
   characterName: string;
-  characterAvatar: string;
+  characterAvatar: string | null;
 }
 
 export function StartScreen({
@@ -92,10 +92,10 @@ export function StartScreen({
   const enriched: RecentChat[] = useMemo(() => {
     if (!recent) return [];
     return recent.map((chat) => {
-      const character = byAvatar.get(chat.characterId);
+      const character = byAvatar.get(chat.characterId ?? '');
       return {
         ...chat,
-        characterName: character?.name ?? chat.characterId,
+        characterName: character?.name ?? chat.characterId ?? 'Group',
         characterAvatar: chat.characterId,
       };
     });
@@ -150,7 +150,7 @@ export function StartScreen({
                 >
                   <img
                     className="start-screen__chat-avatar"
-                    src={characterApi.imageUrl(chat.characterAvatar)}
+                    src={characterApi.imageUrl(chat.characterAvatar ?? '')}
                     alt=""
                   />
                   <div className="start-screen__chat-info">

@@ -1,6 +1,12 @@
 import type { UseChat } from '../chat/useChat.ts';
 import { nexusCounts, nexusSummaryLine, plural } from './summaryLine.ts';
-export function NexusActivity({ chat, configured }: { chat: UseChat; configured: boolean }) {
+export function NexusActivity({
+  chat,
+  configured,
+}: {
+  chat: Pick<UseChat, 'nexus' | 'memoryMode'>;
+  configured: boolean;
+}) {
   const n = chat.nexus;
   const enabled = chat.memoryMode === 'nexus';
   return (

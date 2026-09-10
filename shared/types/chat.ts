@@ -7,6 +7,7 @@
  */
 
 import type { NexusRecall, NexusState } from '../nexus/types.ts';
+import type { GroupScene } from './group.ts';
 import type { MemoryMode } from './settings.ts';
 
 export interface SwipeInfo {
@@ -72,6 +73,8 @@ export interface MessageExtra {
 }
 
 export interface ChatMessage {
+  memberId?: string;
+  characterId?: string;
   id: string;
   name: string;
   is_user: boolean;
@@ -109,6 +112,7 @@ export interface ChatMessage {
 }
 
 export interface ChatMetadata {
+  group?: GroupScene;
   /** Overrides the character's scenario for this chat only. */
   scenario?: string;
   /**
@@ -269,7 +273,8 @@ export interface MacroWarning {
 export interface Chat {
   id: string;
   /** Character avatar filename — the character this chat belongs to. */
-  characterId: string;
+  characterId: string | null;
+  kind?: 'direct' | 'group';
   title: string;
   created: number;
   modified: number;
@@ -296,7 +301,8 @@ export interface StaleChatRevision {
 
 export interface ChatSummary {
   id: string;
-  characterId: string;
+  characterId: string | null;
+  kind?: 'direct' | 'group';
   title: string;
   created: number;
   modified: number;
@@ -316,7 +322,8 @@ export interface ChatBackupSummary {
   backupId: string;
   /** The chat as it was deleted. Restore recreates it under a fresh id. */
   chatId: string;
-  characterId: string;
+  characterId: string | null;
+  kind?: 'direct' | 'group';
   title: string;
   messageCount: number;
   /** Epoch ms when the chat was deleted, which is when the backup was taken. */

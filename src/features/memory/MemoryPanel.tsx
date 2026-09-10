@@ -8,7 +8,18 @@ import { SummaryPanel } from '../summary/SummaryPanel.tsx';
 import './MemoryPanel.css';
 
 interface Props extends NexusSettingsProps {
-  chat: UseChat;
+  chat: Pick<
+    UseChat,
+    | 'state'
+    | 'busy'
+    | 'summaryStatus'
+    | 'summaryPending'
+    | 'summarize'
+    | 'cancelSummary'
+    | 'editSummary'
+    | 'nexus'
+    | 'memoryMode'
+  >;
   mode: MemoryMode;
   onModeChange: (mode: 'classic' | 'nexus' | 'off') => void;
   defaultMode: MemoryMode;

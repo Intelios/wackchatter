@@ -34,7 +34,7 @@ import './BranchTree.css';
 const BUSY = 'Wait for the current reply to finish.';
 
 interface BranchTreeProps {
-  chat: UseChat;
+  chat: Pick<UseChat, 'state' | 'busy' | 'openChat'>;
   onClose: () => void;
 }
 
@@ -77,11 +77,11 @@ export function BranchTree({ chat, onClose }: BranchTreeProps) {
   const [family, setFamily] = useState<FamilyState>({ status: 'loading' });
   const requestId = useRef(0);
   const loadFamily = useCallback(() => {
-    if (!characterId) return;
+    if (!chatId) return;
     const id = ++requestId.current;
     setFamily({ status: 'loading' });
     chatApi
-      .list(characterId)
+      .list(characterId ?? undefined)
       .then((chats) => {
         if (requestId.current === id) setFamily({ status: 'ready', chats });
       })

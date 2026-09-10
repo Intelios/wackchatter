@@ -1,3 +1,4 @@
+import type { GroupConfig, GroupTemplate } from '@shared/types/group.ts';
 /** Typed client for the local API. */
 
 import type { StreamState } from '@shared/providers/sse.ts';
@@ -387,7 +388,8 @@ export const chatApi = {
   get: (id: string) => request<Chat>(`/chats/${encodeURIComponent(id)}`),
 
   create: (input: {
-    characterId: string;
+    characterId?: string | null;
+    kind?: 'direct' | 'group';
     title?: string;
     metadata?: ChatMetadata;
     messages?: ChatMessage[];
@@ -920,4 +922,22 @@ export const arenaApi = {
 
   /** Empty the history. Guarded by a two-click confirm in the panel, not here. */
   clear: () => request<{ ok: true; removed: number }>('/arena/rounds', { method: 'DELETE' }),
+};
+
+export const groupApi = {
+  list: () => request<GroupTemplate[]>('/groups'),
+  create: (config: GroupConfig) =>
+    request<GroupTemplate>('/groups', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(config),
+    }),
+  save: (id: string, revision: number, config: GroupConfig) =>
+    request<GroupTemplate>(`/groups/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ revision, config }),
+    }),
+  remove: (id: string) =>
+    request<{ ok: true }>(`/groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

@@ -15,12 +15,13 @@ import { PATHS } from './paths.ts';
  * an upgraded database is stamped with the CURRENT version — a literal in each test would
  * only pin that someone remembered to edit three files.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
   id           TEXT    PRIMARY KEY,
-  character_id TEXT    NOT NULL,
+  character_id TEXT,
+  kind         TEXT    NOT NULL DEFAULT 'direct',
   title        TEXT    NOT NULL,
   created      INTEGER NOT NULL,
   modified     INTEGER NOT NULL,
@@ -51,6 +52,14 @@ CREATE TABLE IF NOT EXISTS messages (
 ) WITHOUT ROWID;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_order ON messages(chat_id, position);
+
+CREATE TABLE IF NOT EXISTS groups (
+  id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL DEFAULT 0,
+  created INTEGER NOT NULL,
+  modified INTEGER NOT NULL,
+  config TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
@@ -157,12 +166,38 @@ export function createSchema(database: Database): void {
     database.exec('ALTER TABLE chats ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
   }
 
+  if (!chatColumns.some((column) => column.name === 'kind')) {
+    // Rebuild only the parent, with FK enforcement off outside the transaction.
+    // Child rows and their indexes remain untouched.
+    database.exec('PRAGMA foreign_keys = OFF');
+    try {
+      database.transaction(() => {
+        database.exec(`CREATE TABLE chats_group_upgrade (
+          id TEXT PRIMARY KEY, character_id TEXT, kind TEXT NOT NULL DEFAULT 'direct',
+          title TEXT NOT NULL, created INTEGER NOT NULL, modified INTEGER NOT NULL,
+          revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}');
+          INSERT INTO chats_group_upgrade (id, character_id, title, created, modified, revision, metadata)
+            SELECT id, character_id, title, created, modified, revision, metadata FROM chats;
+          DROP TABLE chats;
+          ALTER TABLE chats_group_upgrade RENAME TO chats;
+          CREATE INDEX idx_chats_character ON chats(character_id, modified DESC);`);
+      })();
+    } finally {
+      database.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+
   // The persona a user message was sent as. NULL means "speaker not recorded" — rows
   // from before this column existed — while an empty string is the explicit "sent with
   // no persona", so the two states cannot collapse into one.
   const messageColumns = database.query<{ name: string }, []>('PRAGMA table_info(messages)').all();
   if (!messageColumns.some((column) => column.name === 'persona_id')) {
     database.exec('ALTER TABLE messages ADD COLUMN persona_id TEXT');
+  }
+
+  for (const name of ['member_id', 'character_id']) {
+    if (!messageColumns.some((column) => column.name === name))
+      database.exec(`ALTER TABLE messages ADD COLUMN ${name} TEXT`);
   }
 
   // The memory that hid a message. NULL covers both "hidden by a person" and every row

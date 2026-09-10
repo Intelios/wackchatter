@@ -1,0 +1,152 @@
+.groups-panel,
+.group-editor,
+.group-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+.groups-panel {
+  padding: var(--wc-space-4);
+}
+.group-editor {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.group-fields label,
+.groups-panel > label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  align-items: center;
+}
+.group-note {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  margin: var(--wc-space-1) 0;
+}
+.group-card,
+.group-member,
+.group-drafts {
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+}
+.group-card h3,
+.group-card p {
+  margin: 0 0 var(--wc-space-2);
+}
+.group-member > summary {
+  cursor: pointer;
+  padding-block: var(--wc-space-1);
+}
+.group-picker {
+  max-height: calc(var(--wc-control) * 4);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+.group-scene {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  text-align: left;
+  color: var(--wc-text);
+  background: var(--wc-surface);
+  cursor: pointer;
+}
+.group-scene:hover {
+  background: var(--wc-surface-hover);
+}
+.group-scene span {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.group-chat {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-4);
+}
+.group-title {
+  border: 0;
+  padding: 0;
+  color: var(--wc-text);
+  background: none;
+  font-size: var(--wc-text-lg);
+  font-weight: 600;
+  cursor: pointer;
+}
+.group-toolbar,
+.group-controls,
+.group-activity,
+.group-error {
+  padding: var(--wc-space-2) var(--wc-space-4);
+}
+.group-toolbar,
+.group-controls {
+  border-block: var(--wc-border-width) solid var(--wc-border);
+}
+.group-activity {
+  display: flex;
+  justify-content: space-between;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.group-transcript {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  overflow-anchor: none;
+}
+.group-message {
+  padding-inline: var(--wc-space-3);
+}
+.group-message-tools {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding-inline: var(--wc-space-4);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+}
+.group-empty {
+  padding: var(--wc-space-6);
+  text-align: center;
+  color: var(--wc-text-muted);
+}
+.group-composer-label {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+}
+.group-composer-label select {
+  width: auto;
+  max-width: calc(var(--wc-control) * 4);
+}
+.group-wire {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--wc-text-sm);
+}

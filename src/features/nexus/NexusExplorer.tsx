@@ -34,7 +34,9 @@ import { MIN_HIGHLIGHT_QUERY, matchRanges } from './searchHighlight.ts';
 import { nexusCounts, nexusSummaryLine, plural, revisionDateLabel } from './summaryLine.ts';
 import './Nexus.css';
 
-type Props = NexusSettingsProps & { chat: UseChat };
+type Props = NexusSettingsProps & {
+  chat: Pick<UseChat, 'nexus' | 'state' | 'memoryMode' | 'messages' | 'saving' | 'saveError'>;
+};
 const KINDS = ['person', 'place', 'object', 'event', 'group', 'concept'] as const;
 const RECORD_KINDS = ['fact', 'event', 'situation', 'thread'] as const;
 const TITLE = {
@@ -1217,7 +1219,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
   );
 }
 
-function Sources({ evidence, chat }: { evidence: NexusEvidence[]; chat: UseChat }) {
+function Sources({
+  evidence,
+  chat,
+}: {
+  evidence: NexusEvidence[];
+  chat: Pick<UseChat, 'nexus' | 'state' | 'memoryMode' | 'messages' | 'saving' | 'saveError'>;
+}) {
   if (!evidence.length) return <p className="nexus-muted">No transcript source attached</p>;
   return (
     <details>
@@ -1271,7 +1279,7 @@ function RecordEditor({
   query,
 }: {
   record: NexusRecord;
-  chat: UseChat;
+  chat: Pick<UseChat, 'nexus' | 'state' | 'memoryMode' | 'messages' | 'saving' | 'saveError'>;
   valid: boolean;
   /** The toolbar search, so live matches are marked in the memory text. */
   query: string;

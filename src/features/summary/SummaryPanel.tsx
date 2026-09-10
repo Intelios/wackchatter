@@ -10,7 +10,16 @@ import type { UseChat } from '../chat/useChat.ts';
 import './SummaryPanel.css';
 
 interface SummaryPanelProps {
-  chat: UseChat;
+  chat: Pick<
+    UseChat,
+    | 'state'
+    | 'busy'
+    | 'summaryStatus'
+    | 'summaryPending'
+    | 'summarize'
+    | 'cancelSummary'
+    | 'editSummary'
+  >;
   settings: SummarySettings;
   connections: Connection[];
   activeConnection: Connection | null;

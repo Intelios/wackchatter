@@ -1,4 +1,5 @@
 import { migrateMemories } from '../../shared/nexus/state.ts';
+import { validateGroup } from '../../shared/types/group.ts';
 import type { MemoryMode } from '../../shared/types/settings.ts';
 /**
  * Chat backups — the trash bin deleted chats land in.
@@ -47,7 +48,9 @@ function parseBackup(raw: unknown): Chat | null {
   if (!raw || typeof raw !== 'object') return null;
   const chat = raw as Partial<Chat>;
   if (typeof chat.id !== 'string' || !chat.id) return null;
-  if (typeof chat.characterId !== 'string' || !chat.characterId) return null;
+  if (chat.kind === 'group') {
+    if (!validateGroup(chat.metadata?.group, 0)) return null;
+  } else if (typeof chat.characterId !== 'string' || !chat.characterId) return null;
   if (typeof chat.title !== 'string') return null;
   if (!Array.isArray(chat.messages)) return null;
   return chat as Chat;
@@ -96,6 +99,7 @@ export function listChatBackups(
       backupId: stem,
       chatId: chat.id,
       characterId: chat.characterId,
+      kind: chat.kind,
       title: chat.title,
       messageCount: chat.messages.length,
       deleted: Number.isFinite(deleted) ? deleted : 0,
@@ -158,6 +162,7 @@ export function restoreChatBackup(
   if (!backup) return null;
   const chat = store.createChat({
     characterId: backup.characterId,
+    kind: backup.kind,
     title: backup.title,
     metadata: {
       ...backup.metadata,
@@ -183,10 +188,11 @@ export function restoreChatBackup(
  */
 export function parseChatExport(
   raw: unknown,
-): Pick<Chat, 'title' | 'metadata' | 'messages'> | null {
+): Pick<Chat, 'title' | 'metadata' | 'messages' | 'kind'> | null {
   const chat = parseBackup(raw);
   if (!chat) return null;
   return {
+    ...(chat.kind ? { kind: chat.kind } : {}),
     title: chat.title,
     metadata: chat.metadata,
     messages: chat.messages,
