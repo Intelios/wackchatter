@@ -437,7 +437,7 @@ export function useGroupChat(options: GroupChatOptions) {
               sessionId: id,
               countText: counter.countText,
             });
-            return parseDirector(result.content, eligible, capacity);
+            return parseDirector(result.content, eligible, capacity, scene.members);
           },
         });
         coordinator.current = c;

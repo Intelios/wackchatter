@@ -43,7 +43,7 @@ export function emptyGroup(): GroupConfig {
     members: [],
     scenario: '',
     generation: { connectionId: '', model: '', presetId: '' },
-    director: { connectionId: '', model: '', maxTokens: 1024, contextTokens: 16384 },
+    director: { connectionId: '', model: '', maxTokens: 2048, contextTokens: 16384 },
     concurrency: 2,
     replyLimit: 4,
     lorebookIds: [],

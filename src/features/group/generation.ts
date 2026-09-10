@@ -1,3 +1,4 @@
+import { DIRECTOR_REASONING_EFFORT, directorMaxTokens } from '@shared/group/director.ts';
 import { type AssembleOptions, assemblePrompt } from '@shared/prompt/assemble.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import { memoizeCounter } from '@shared/prompt/token-cache.ts';
@@ -102,10 +103,10 @@ export function directorBody(
     stream: false,
     preset: {
       ...createDefaultPreset(),
-      openai_max_tokens: scene.director.maxTokens,
+      openai_max_tokens: directorMaxTokens(scene.director, connection),
       openai_max_context: scene.director.contextTokens,
       temperature: 0.3,
-      reasoning_effort: 'low',
+      reasoning_effort: DIRECTOR_REASONING_EFFORT,
     },
   });
 }

@@ -1,8 +1,8 @@
 import { createDefaultPreset } from '../prompt/defaults.ts';
-import { isAnthropicModel } from '../providers/request.ts';
 import type { StreamState } from '../providers/sse.ts';
+import { thinkingMaxTokens } from '../providers/thinking.ts';
 import type { ConnectionSettings } from '../providers/types.ts';
-import type { Preset, ReasoningEffort } from '../types/preset.ts';
+import type { Preset } from '../types/preset.ts';
 import type { NexusSettings } from './types.ts';
 
 /**
@@ -28,44 +28,20 @@ export function nexusPreset(settings: NexusSettings): Preset {
 }
 
 /**
- * Thinking room bought per effort, added on top of the output allowance. OpenAI-compatible
- * endpoints count reasoning inside `max_tokens`, so without this a model that thinks at all
- * is spending the JSON's budget before writing any of it — a 10K-token think is not output.
- * `auto` buys the same room as Low: it sends no effort field, but the endpoint's default
- * effort is not "never think".
- */
-const NEXUS_THINKING_HEADROOM: Record<ReasoningEffort, number> = {
-  auto: 8192,
-  min: 4096,
-  low: 8192,
-  medium: 16384,
-  high: 32768,
-  max: 65536,
-};
-
-/** Same slop `buildNexusExtraction` leaves between prompt and context. */
-const CONTEXT_SLOP = 128;
-
-/**
  * The `max_tokens` a Nexus request asks for: the visible-JSON allowance plus thinking room,
- * so reasoning is never carved out of the output.
- *
- * The headroom clamps to the declared context's slack (context − output − slop), keeping
- * the ask within what the user said the model has. A context with no slack still asks for
- * the full reply budget — the one thing the request exists to produce.
- *
- * Claude on OpenRouter is the exception: `buildRequestBody` already sizes an exact thinking
- * budget and adds it on top of whatever it is given, so here the reply budget travels alone.
+ * so reasoning is never carved out of the output. Shared with the group director, which
+ * needs the same protection for its speaker pick.
  */
 export function nexusMaxTokens(
   settings: NexusSettings,
   connection: Pick<ConnectionSettings, 'provider' | 'model'> | null,
 ): number {
-  if (connection?.provider === 'openrouter' && isAnthropicModel(connection.model))
-    return settings.outputTokens;
-  const slack = Math.max(0, settings.inputTokens - settings.outputTokens - CONTEXT_SLOP);
-  const headroom = Math.min(NEXUS_THINKING_HEADROOM[settings.reasoningEffort], slack);
-  return settings.outputTokens + headroom;
+  return thinkingMaxTokens({
+    outputTokens: settings.outputTokens,
+    contextTokens: settings.inputTokens,
+    effort: settings.reasoningEffort,
+    connection,
+  });
 }
 
 /** What `nexusRequestError` needs from a finished generation. */
