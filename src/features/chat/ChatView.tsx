@@ -144,6 +144,9 @@ export function ChatView({
   const composerRef = useRef<ComposerHandle>(null);
 
   const { state, stream, busy, generationBlocked } = chat;
+  // A generation whose text belongs to the composer rather than the transcript. The mode
+  // is what distinguishes it — the status alone cannot, since both kinds are "busy".
+  const impersonating = state.status !== 'idle' && state.mode === 'impersonate';
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
@@ -465,6 +468,18 @@ export function ChatView({
   const openBranchTree = useCallback(() => setBranchTreeOpen(true), []);
   const closeBranchTree = useCallback(() => setBranchTreeOpen(false), []);
 
+  /**
+   * Impersonate. The model writes the user's next message; the draft steers it (exactly
+   * like a guided reply) and the result replaces the draft, so it is editable before it is
+   * sent. The composer's `replace` is the one write path back into the field.
+   */
+  const impersonate = useCallback(
+    (instruction?: string) => {
+      void chat.impersonate(instruction, (text) => composerRef.current?.replace(text));
+    },
+    [chat],
+  );
+
   // --- Slash commands --------------------------------------------------------
 
   const runCommand = useCallback(
@@ -560,6 +575,19 @@ export function ChatView({
           }
           return null;
         }
+        /*
+         * The model writes your next message and leaves it in the composer. Same act as the
+         * tray button, typed instead. Blocked while a generation runs for the same reason
+         * `/roll` is: the provider plumbing expects one request at a time.
+         */
+        case 'impersonate': {
+          if (!state.chatId) return 'Open a chat before impersonating.';
+          if (generationBlocked) {
+            return 'Wait for the current reply to finish before impersonating.';
+          }
+          impersonate(command.instruction);
+          return null;
+        }
       }
     },
     [
@@ -567,6 +595,7 @@ export function ChatView({
       state.messages,
       generationBlocked,
       chat,
+      impersonate,
       jumpTo,
       openCardReader,
       onOpenPanel,
@@ -939,6 +968,9 @@ export function ChatView({
             void chat.guidedSwipe(text);
           }}
           guidedSwipeDisabledReason={guidedSwipeDisabledReason}
+          onImpersonate={impersonate}
+          impersonating={impersonating}
+          stream={stream}
           onStop={
             chat.summaryStatus.running
               ? chat.cancelSummary

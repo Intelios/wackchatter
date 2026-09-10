@@ -76,6 +76,16 @@ describe('SillyTavern default preset', () => {
     expect(written.vertexai_model).toBe(raw.vertexai_model);
     expect(written.assistant_prefill).toBe(raw.assistant_prefill);
   });
+
+  test('the impersonation prompt survives a load/save round trip', () => {
+    // The Impersonate action reads this field like any other ST setting, and the user edits
+    // it from the Generation panel — so what ST wrote has to come back unchanged.
+    const raw = loadStDefault() as Record<string, unknown>;
+    const written = JSON.parse(serializePreset(normalizePreset(raw)));
+
+    expect(written.impersonation_prompt).toBe(raw.impersonation_prompt);
+    expect(written.impersonation_prompt).toContain('{{user}}');
+  });
 });
 
 describe('serialization format', () => {

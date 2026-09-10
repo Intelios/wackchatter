@@ -1,3 +1,4 @@
+import { DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
 import { claudeThinkingBudget, isAnthropicModel } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import {
@@ -266,6 +267,17 @@ export function GenerationPanel({
           value={preset.continue_postfix ?? ' '}
           onChange={(value) => setField('continue_postfix', value)}
           hint="Inserted between the existing reply and newly generated text."
+        />
+      </Section>
+
+      <Section title="Impersonate">
+        <TextField
+          label="Impersonation prompt"
+          value={preset.impersonation_prompt ?? DEFAULT_IMPERSONATION_PROMPT}
+          onChange={(value) => setField('impersonation_prompt', value)}
+          multiline
+          expandable
+          hint="Sent last when you ask the model to write your message. {{user}} and {{char}} expand as usual."
         />
       </Section>
 

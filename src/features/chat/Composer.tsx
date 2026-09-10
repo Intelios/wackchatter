@@ -1,21 +1,30 @@
 import {
   type ReactNode,
   type Ref,
+  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   MacroCompletionList,
   macroComboboxProps,
   useMacroCompletion,
 } from '../../components/MacroCompletion.tsx';
-import { GuidedSwipeIcon, SendIcon, StopIcon, WandIcon } from '../../layout/icons.tsx';
+import {
+  GuidedSwipeIcon,
+  ImpersonateIcon,
+  SendIcon,
+  StopIcon,
+  WandIcon,
+} from '../../layout/icons.tsx';
 import { composerMaxHeight, rowCap } from './composerGrowth.ts';
 import { type SlashCommandHelp, slashCompletion } from './slashCommands.ts';
+import type { StreamSnapshot, StreamStore } from './state/streamStore.ts';
 import './Composer.css';
 
 /**
@@ -26,7 +35,16 @@ import './Composer.css';
 export interface ComposerHandle {
   /** Append on a new line when there is a draft, replace when there is not. */
   insert: (text: string) => void;
+  /**
+   * Replace the whole draft — the impersonation write. Unlike `insert`, which places a
+   * quick command ready to send, this text is the user's message written for them, so it
+   * takes the field rather than joining it.
+   */
+  replace: (text: string) => void;
 }
+
+/** Stable snapshot for the unsubscribed case; a fresh object would loop React forever. */
+const IDLE_STREAM: StreamSnapshot = { text: '', reasoning: '', active: false, incremental: false };
 
 interface ComposerProps {
   /**
@@ -50,6 +68,20 @@ interface ComposerProps {
   onGuidedSwipe?: (text: string) => void;
   /** Why guided swipe is unavailable. Becomes its title — disabled beats refused. */
   guidedSwipeDisabledReason?: string;
+  /**
+   * Impersonation. The model writes the user's next message and it lands in this field; the
+   * callback receives the current draft as steering, the same bargain `onGuide` makes.
+   * Absent means the button is not rendered at all.
+   */
+  onImpersonate?: (text: string) => void;
+  /**
+   * Whether an impersonation is running. While it is, the field shows the live stream
+   * instead of the draft — the model's text arriving where the user will edit it, which is
+   * how SillyTavern fills the input box.
+   */
+  impersonating?: boolean;
+  /** The stream rendered while `impersonating`. Subscribed to only then. */
+  stream?: StreamStore;
   onStop: () => void;
   busy: boolean;
   disabled: boolean;
@@ -81,6 +113,9 @@ export function Composer({
   onGuide,
   onGuidedSwipe,
   guidedSwipeDisabledReason,
+  onImpersonate,
+  impersonating,
+  stream,
   onStop,
   busy,
   disabled,
@@ -91,6 +126,25 @@ export function Composer({
   ref,
 }: ComposerProps) {
   const [text, setText] = useState('');
+
+  /*
+   * The live impersonation text.
+   *
+   * Subscribed only while one is running: the store also emits for every transcript token,
+   * and a composer that re-rendered through every ordinary reply would undo the reason the
+   * streaming text lives outside React state. `active` gates the display so a stale
+   * snapshot from the previous generation — `end()` keeps its text — cannot show up in the
+   * window before this run's `begin()` clears it.
+   */
+  const streamLive = Boolean(impersonating && stream);
+  const subscribeStream = useCallback(
+    (listener: () => void) => (streamLive && stream ? stream.subscribe(listener) : () => {}),
+    [streamLive, stream],
+  );
+  const streamSnapshot = useSyncExternalStore(subscribeStream, () =>
+    streamLive && stream ? stream.getSnapshot() : IDLE_STREAM,
+  );
+  const displayed = streamLive && streamSnapshot.active ? streamSnapshot.text : text;
   useEffect(() => {
     onDraftChange?.(text);
   }, [text, onDraftChange]);
@@ -221,6 +275,15 @@ export function Composer({
         macro.dismiss();
         // A menu selection restores focus to the menu's trigger AFTER `onSelect` runs, so
         // the focus waits one tick to win — "ready to send" means the cursor is here.
+        setTimeout(() => textarea.current?.focus({ preventScroll: true }), 0);
+      },
+      replace(next: string) {
+        setText(next);
+        setSlashDismissed(false);
+        setSlashIndex(0);
+        macro.dismiss();
+        // The impersonation settles and the field becomes editable again in the same
+        // render, so the focus waits a tick to land after `disabled` lifts.
         setTimeout(() => textarea.current?.focus({ preventScroll: true }), 0);
       },
     }),
@@ -471,7 +534,7 @@ export function Composer({
         <textarea
           ref={textarea}
           className="composer__input"
-          value={text}
+          value={displayed}
           rows={1}
           spellCheck={true}
           disabled={disabled || busy}
@@ -575,6 +638,23 @@ export function Composer({
 
         {/* Hidden mid-generation rather than disabled: Send has already become Stop, and two
             dead buttons beside it is noise where the row should read as one action. */}
+        {!busy && onImpersonate ? (
+          <button
+            type="button"
+            className="wc-button wc-button--ghost composer__icon"
+            onClick={() => onImpersonate(text)}
+            disabled={disabled}
+            aria-label="Impersonate"
+            title={
+              text.trim()
+                ? 'Impersonate — the model writes my next message, steered by this and left here to edit'
+                : 'Impersonate — the model writes my next message and leaves it here to edit'
+            }
+          >
+            <ImpersonateIcon />
+          </button>
+        ) : null}
+
         {!busy && onGuide ? (
           <button
             type="button"

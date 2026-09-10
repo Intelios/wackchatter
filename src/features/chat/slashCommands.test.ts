@@ -238,6 +238,40 @@ describe('/persona', () => {
   });
 });
 
+describe('/impersonate', () => {
+  test('bare asks for an unsteered impersonation', () => {
+    expect(parseSlashCommand('/impersonate')).toEqual({
+      ok: true,
+      command: { type: 'impersonate', instruction: '' },
+    });
+  });
+
+  // Steering is prose, not tokens: "in a hurry, short sentences" is one instruction.
+  test('takes an instruction verbatim, spaces and all', () => {
+    expect(parseSlashCommand('/impersonate in a hurry, short sentences')).toEqual({
+      ok: true,
+      command: { type: 'impersonate', instruction: 'in a hurry, short sentences' },
+    });
+  });
+
+  // SillyTavern's alias. Deliberately not in the help registry, so the autocomplete box
+  // advertises one spelling while both parse.
+  test('recognises the /imp alias', () => {
+    expect(parseSlashCommand('/imp')).toEqual({
+      ok: true,
+      command: { type: 'impersonate', instruction: '' },
+    });
+    expect(parseSlashCommand('/IMP politely')).toEqual({
+      ok: true,
+      command: { type: 'impersonate', instruction: 'politely' },
+    });
+  });
+
+  test('the alias is not advertised in the registry', () => {
+    expect(SLASH_COMMANDS.some((command) => command.name === 'imp')).toBe(false);
+  });
+});
+
 describe('/roll', () => {
   test('normalises the formula it hands the executor', () => {
     expect(parseSlashCommand('/roll 2d6+3')).toEqual({
@@ -292,6 +326,7 @@ describe('slashCompletion', () => {
       'card',
       'persona',
       'roll',
+      'impersonate',
     ]);
   });
 
@@ -333,7 +368,16 @@ describe('slashCompletion', () => {
 
   test('the registry covers every command the parser recognises', () => {
     const names = new Set(SLASH_COMMANDS.map((command) => command.name));
-    for (const input of ['/hide', '/unhide', '/jump', '/rename', '/reload', '/card', '/persona']) {
+    for (const input of [
+      '/hide',
+      '/unhide',
+      '/jump',
+      '/rename',
+      '/reload',
+      '/card',
+      '/persona',
+      '/impersonate',
+    ]) {
       expect(names.has(input.slice(1))).toBe(true);
     }
   });

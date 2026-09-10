@@ -116,7 +116,9 @@ export interface AssembleOptions {
   countTokens: TokenCounter;
   /**
    * Mandatory provider-facing controls placed after every preset and history message.
-   * Their content is already materialised and is deliberately not macro-substituted.
+   * Content is used verbatim unless the control opts into macro substitution
+   * (`macros: true`) — most are built from text we already rendered, and re-scanning a
+   * summary request for macros would let model output write variables.
    */
   finalControls?: FinalControlMessage[];
   /** Override the completion budget without mutating the selected preset. */
@@ -140,6 +142,13 @@ export interface FinalControlMessage {
   identifier: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /**
+   * Substitute macros in `content` before sending. Off by default because a control built
+   * from already-rendered text must not be scanned again. The impersonation instruction
+   * opts in: it is authored prose written in `{{user}}`/`{{char}}` like any preset prompt,
+   * and it expands once here, the same as a prompt object does.
+   */
+  macros?: boolean;
 }
 
 export interface DepthInjection {
@@ -522,7 +531,15 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   // when assigning an individual message to a prompt slot, then charge it once in the
   // final assembled payload.
   const { replyPriming, cost: messageCost } = messageCoster(countTokens);
-  const finalControls = finalControlsInput.filter((control) => control.content.trim());
+  // Substitution before the blank filter: a control whose macros leave nothing behind
+  // drops out, the same rule variable-only drafts follow on the composer path.
+  const finalControls = finalControlsInput
+    .map((control) =>
+      control.macros
+        ? { ...control, content: substitute(control.content, control.identifier) }
+        : control,
+    )
+    .filter((control) => control.content.trim());
   for (const control of finalControls) {
     const tokens = messageCost({ role: control.role, content: control.content });
     tokenCounts[control.identifier] = (tokenCounts[control.identifier] ?? 0) + tokens;

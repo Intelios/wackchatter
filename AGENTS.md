@@ -242,6 +242,30 @@ byte-identically. The quirks are load-bearing and each has a named test.
   enabled non-blank guide is its own injection. Guides and guidance are pushed **last**
   into `depthInjections`; `tokenCounts.guides` / `.guidance` are their own keys.
 
+**Impersonate** (`useChat.impersonate`, `chatReducer` `GenMode: 'impersonate'`)
+- The instruction is ST's **flat preset field** `impersonation_prompt`, not a prompt
+  object. ST ships no `impersonate` entry among its 12 built-ins (its `Default.json` has
+  none either), and adding a 13th would break the byte-locked preset round-trip — so an
+  imported preset keeps the field, the Generation panel edits it, and a cleared field
+  sends nothing. A prompt object carrying `injection_trigger: ['impersonate']` also works:
+  `generationType` flows into `shouldTrigger` like any other mode.
+- The instruction is appended **dead last** as a `finalControls` message (role system,
+  `macros: true`) — after every ordered prompt, the jailbreak and the depth injections,
+  which is where ST's synthesized control prompt lands. `macros: true` is the opt-in
+  that makes `{{user}}`/`{{char}}` expand exactly once; final controls are verbatim by
+  default so a summary request built from rendered text is never re-scanned.
+- **Nothing reaches the transcript.** `gen/started` adds no message and sets
+  `streamingId: null`; `settle` returns early on a missing id, so finished, stopped and
+  failed all reset the status without touching a message — the undo table never sees it.
+  The text goes to the composer through `ComposerHandle.replace`, the second and only
+  other write into the draft, and the live stream is rendered in the field by subscribing
+  to `streamStore` **only while the mode is `impersonate`** (a composer re-rendering
+  through every ordinary reply would undo the reason streaming text is not React state).
+- `n` is forced to 1: the result is the one message the user is about to send, so spares
+  would have nowhere to go. Usage is tagged `impersonate` (its own `UsageFeature`) because
+  it bills like a chat generation but produces no swipe. Auto memory-extraction is **not**
+  armed: an impersonation adds no turn to extract.
+
 **Story memory** (`shared/nexus/`, `src/features/nexus/`, `src/features/summary/`)
 - **One per-chat slot:** `ChatMetadata.memoryMode` is `classic` (Summary), `nexus`, or `off`.
   App settings provide the default for new chats only. Migration stamps existing chats once

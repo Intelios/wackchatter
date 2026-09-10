@@ -404,6 +404,21 @@ export function GuidedSwipeIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Impersonate — a figure in a hat: the model writes the user's next message, so this is
+ * "who you are, at one remove".
+ */
+export function ImpersonateIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="12" cy="10" r="3.2" />
+      <path d="M5.5 20c.9-3.2 3.4-4.8 6.5-4.8s5.6 1.6 6.5 4.8" />
+      <path d="M4 8.6h16" />
+      <path d="M9 8.6 9.7 5h4.6l.7 3.6" />
+    </svg>
+  );
+}
+
 /** Quick commands — a bolt. */
 export function BoltIcon({ className }: IconProps) {
   return (

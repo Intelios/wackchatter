@@ -13,7 +13,15 @@
  */
 
 /** Which part of the app made the request. */
-export type UsageFeature = 'chat' | 'summary' | 'memory' | 'cocreator' | 'arena' | 'persona';
+export type UsageFeature =
+  | 'chat'
+  | 'summary'
+  | 'memory'
+  | 'cocreator'
+  | 'arena'
+  | 'persona'
+  /** A message written as the user for the composer. Billed like any other generation. */
+  | 'impersonate';
 
 export const USAGE_FEATURES: readonly UsageFeature[] = [
   'chat',
@@ -22,6 +30,7 @@ export const USAGE_FEATURES: readonly UsageFeature[] = [
   'cocreator',
   'arena',
   'persona',
+  'impersonate',
 ];
 
 export function isUsageFeature(value: unknown): value is UsageFeature {

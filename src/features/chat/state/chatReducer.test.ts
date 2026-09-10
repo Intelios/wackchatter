@@ -602,6 +602,60 @@ describe('guided generations', () => {
   });
 });
 
+describe('impersonation', () => {
+  test('starting one adds nothing to the transcript and owns no message', () => {
+    const before = loaded();
+    const state = run(before, { type: 'gen/started', mode: 'impersonate', newId: 'i1', name: 'S' });
+
+    expect(state.messages).toBe(before.messages);
+    expect(state.streamingId).toBeNull();
+    expect(state.mode).toBe('impersonate');
+    expect(state.status).toBe('connecting');
+  });
+
+  test('a finished impersonation leaves the transcript alone and returns to idle', () => {
+    // The text belongs to the composer; nothing here may look like a reply was made.
+    const before = loaded();
+    const state = run(
+      before,
+      { type: 'gen/started', mode: 'impersonate', newId: 'i1', name: 'S' },
+      { type: 'gen/finished', text: 'I draw my blade.' },
+    );
+
+    expect(state.messages).toBe(before.messages);
+    expect(state.status).toBe('idle');
+    expect(state.mode).toBeNull();
+    assertConsistent(state);
+  });
+
+  test('a stopped or failed impersonation leaves the transcript alone', () => {
+    const before = loaded();
+    const stopped = run(
+      before,
+      { type: 'gen/started', mode: 'impersonate', newId: 'i1', name: 'S' },
+      { type: 'gen/aborted', text: 'I draw' },
+    );
+    expect(stopped.messages).toBe(before.messages);
+    expect(stopped.status).toBe('idle');
+
+    const failed = run(
+      before,
+      { type: 'gen/started', mode: 'impersonate', newId: 'i2', name: 'S' },
+      { type: 'gen/failed', message: 'Upstream died.' },
+    );
+    expect(failed.messages).toBe(before.messages);
+    expect(failed.status).toBe('idle');
+    expect(failed.error).toBe('Upstream died.');
+  });
+
+  test('it cannot start while a reply is already generating', () => {
+    const state = run(loaded(), { type: 'gen/started', mode: 'send', newId: 'a1', name: 'S' });
+    const after = run(state, { type: 'gen/started', mode: 'impersonate', newId: 'i1', name: 'S' });
+
+    expect(after).toBe(state);
+  });
+});
+
 describe('regenerating', () => {
   test('regenerate replaces the message and drops its alternates', () => {
     const state = run(

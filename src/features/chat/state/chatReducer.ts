@@ -42,7 +42,12 @@ import type {
 } from '@shared/types/chat.ts';
 import type { GenerationType } from '@shared/types/preset.ts';
 
-export type GenMode = 'send' | 'regenerate' | 'swipe' | 'continue';
+/**
+ * What a generation is doing. `impersonate` is the odd one out: its text belongs to the
+ * composer, not the transcript, so it adds no message and owns no `streamingId`. The settle
+ * paths reset the status and leave the messages alone.
+ */
+export type GenMode = 'send' | 'regenerate' | 'swipe' | 'continue' | 'impersonate';
 export type ChatStatus = 'idle' | 'connecting' | 'streaming';
 
 /** A record of one generation, for the "what was actually sent" inspector. */
@@ -485,6 +490,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       if (state.status !== 'idle') return state;
 
       const base = { ...state, status: 'connecting' as const, mode: action.mode, error: null };
+
+      // Impersonation has no transcript home — the model is writing the user's next
+      // message, which lands in the composer. Nothing is added and `streamingId` stays
+      // null, which is also what keeps the streamed text out of the transcript: no
+      // message matches it. `settle` returns early on a missing id, so finished, stopped
+      // and failed all reset the status without touching a message.
+      if (action.mode === 'impersonate') {
+        return { ...base, streamingId: null };
+      }
+
       const last = state.messages[state.messages.length - 1];
       const awaitingReply = Boolean(last?.is_user);
 

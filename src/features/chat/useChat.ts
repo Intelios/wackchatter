@@ -24,6 +24,7 @@ import {
 } from '@shared/memory/memories.ts';
 import type { MemoryRecall } from '@shared/memory/source.ts';
 import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/assemble.ts';
+import { DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
@@ -99,6 +100,7 @@ const MODE_TO_GENERATION_TYPE: Record<GenMode, GenerationType> = {
   regenerate: 'regenerate',
   swipe: 'swipe',
   continue: 'continue',
+  impersonate: 'impersonate',
 };
 
 export interface UseChatOptions {
@@ -191,6 +193,15 @@ export interface UseChat {
   guidedRespond(guidance: string): Promise<void>;
   /** A new alternate on the last reply, steered the same way. Never a cached swipe. */
   guidedSwipe(guidance: string): Promise<void>;
+  /**
+   * Write the user's next message with the model, into the composer draft.
+   *
+   * Nothing reaches the transcript. `onText` receives the settled text — and the partial
+   * text of a stopped or failed attempt — so the caller can place it in the field; it is
+   * not called when no text arrived, leaving any existing draft untouched. `instruction`
+   * is optional steering, injected exactly like a guided reply's guidance.
+   */
+  impersonate(instruction?: string, onText?: (text: string) => void): Promise<void>;
   abort(): void;
 
   summaryStatus: SummaryRunStatus;
@@ -680,10 +691,22 @@ export function useChat(options: UseChatOptions): UseChat {
    *   into it (as `send` does with the user's message).
    */
   const generate = useCallback(
-    async (mode: GenMode, base?: ChatState, guidance?: string) => {
+    async (
+      mode: GenMode,
+      base?: ChatState,
+      guidance?: string,
+      /**
+       * Impersonate only: handed the text the model wrote, before the terminal dispatch so
+       * the composer commits it in the same render that clears the busy state. A stopped or
+       * failed attempt passes whatever arrived first; nothing arrived means it is not
+       * called, and the draft the user already had is left untouched.
+       */
+      onText?: (text: string) => void,
+    ) => {
       const current = base ?? stateRef.current;
       if (current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) return;
       if (!character || !preset || !connection) return;
+      const isImpersonation = mode === 'impersonate';
 
       // Settings can change while the prompt is being assembled or global variables are
       // persisted. Keep the request body, reply metadata, and server-side connection lookup
@@ -700,8 +723,9 @@ export function useChat(options: UseChatOptions): UseChat {
       const started = chatReducer(current, startAction);
       dispatch(startAction);
 
-      // The reducer refuses some starts outright — swiping with no reply to swipe.
-      if (started.status === 'idle' || !started.streamingId) return;
+      // The reducer refuses some starts outright — swiping with no reply to swipe. An
+      // impersonation owns no message, so it is the one start with no `streamingId`.
+      if (started.status === 'idle' || (!started.streamingId && !isImpersonation)) return;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -775,6 +799,14 @@ export function useChat(options: UseChatOptions): UseChat {
               )
             : undefined;
 
+        // SillyTavern's impersonation control prompt: the model's closest instruction,
+        // appended after everything else the request carries. `{{user}}` here is who it is
+        // being asked to become, so the control opts into macro substitution. A field the
+        // user cleared to empty sends nothing at all, matching ST's falsy check.
+        const impersonationPrompt = isImpersonation
+          ? (preset.impersonation_prompt ?? DEFAULT_IMPERSONATION_PROMPT)
+          : '';
+
         const assembled = assemblePrompt({
           preset,
           character,
@@ -801,6 +833,17 @@ export function useChat(options: UseChatOptions): UseChat {
           localVariables: started.metadata.variables ?? {},
           globalVariables,
           countTokens,
+          finalControls:
+            isImpersonation && impersonationPrompt.trim()
+              ? [
+                  {
+                    identifier: 'impersonate',
+                    role: 'system',
+                    content: impersonationPrompt,
+                    macros: true,
+                  },
+                ]
+              : undefined,
           seed: started.chatId ?? '',
           regexScripts,
         });
@@ -831,8 +874,11 @@ export function useChat(options: UseChatOptions): UseChat {
 
         // Extra completions become extra swipes, so they only make sense for the modes
         // that own a swipe array. `continue` writes back into one existing swipe — it has
-        // nowhere to put a second take of the same half-finished sentence.
-        const completions = mode === 'continue' ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
+        // nowhere to put a second take of the same half-finished sentence. Impersonation
+        // writes the one message the user is going to send; spares have nowhere to go,
+        // which is why SillyTavern excludes it from multi-swipe too.
+        const completions =
+          mode === 'continue' || isImpersonation ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
 
         const streamed = preset.stream_openai !== false;
 
@@ -902,7 +948,9 @@ export function useChat(options: UseChatOptions): UseChat {
           seed,
           requestConnection.id,
           {
-            feature: 'chat',
+            // Tagged apart in the usage log: an impersonation is still a paid chat
+            // generation, but it produced no swipe and should not be counted as a reply.
+            feature: isImpersonation ? 'impersonate' : 'chat',
             generationId,
             ...(started.chatId ? { sessionId: started.chatId } : {}),
             ...(characterId ? { character: characterId } : {}),
@@ -938,6 +986,11 @@ export function useChat(options: UseChatOptions): UseChat {
                   },
                 }))
             : [];
+
+        // Hand the composer its text before the dispatch, so both land in one render: the
+        // busy state clears and the draft already holds what the model wrote. An empty
+        // completion is not a message — the user's existing draft stays untouched.
+        if (isImpersonation && final.content.trim()) onText?.(final.content);
 
         dispatch({
           type: 'gen/finished',
@@ -978,9 +1031,15 @@ export function useChat(options: UseChatOptions): UseChat {
         // Arm, don't fire: the dispatch has not reached stateRef yet, so an extraction
         // started here would still see this generation as streaming and bail. The effect
         // below consumes the arm on the settle render.
-        autoExtractArmRef.current = started.chatId;
+        // An impersonation added no turn, so there is nothing of it to extract; arming
+        // here would let an unrelated backlog fire a paid run off the back of it.
+        if (!isImpersonation) autoExtractArmRef.current = started.chatId;
       } catch (error) {
         if (ownsGeneration()) endStream();
+        // Whatever arrived before a stop or a failure is the user's message so far —
+        // SillyTavern leaves it in the box too, so a stopped impersonation is editable
+        // rather than lost. Nothing arrived means nothing is delivered.
+        if (isImpersonation && ownsGeneration() && text.trim()) onText?.(text);
         // Whatever arrived before the failure is kept, as SillyTavern does.
         if (ownsGeneration() && controller.signal.aborted)
           dispatch({ type: 'gen/aborted', text, reasoning, generationId });
@@ -1223,6 +1282,31 @@ export function useChat(options: UseChatOptions): UseChat {
       await generate('swipe', draft.state, draft.text);
     },
     [generate, resolveDraft],
+  );
+
+  /**
+   * Write the user's next message with the model — SillyTavern's Impersonate.
+   *
+   * The text belongs to the composer, never the transcript: this runs `generate` in mode
+   * `impersonate`, which owns no message, and hands the finished text to `onText` so the
+   * caller can put it in the draft for the user to edit and send.
+   *
+   * `instruction` is optional steering and rides the same one-shot guidance injection a
+   * guided reply uses — resolved once at the composer chokepoint, so a macro becomes a fact
+   * about this turn instead of being re-rolled later. It is the equivalent of the prompt
+   * SillyTavern's `/impersonate <prompt>` passes along.
+   */
+  const impersonate = useCallback(
+    async (instruction?: string, onText?: (text: string) => void) => {
+      if (stateRef.current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) {
+        return;
+      }
+      if (!character || !preset || !connection) return;
+      const steer = instruction?.trim();
+      const draft = steer ? await resolveDraft(steer) : null;
+      await generate('impersonate', draft?.state, draft?.text, onText);
+    },
+    [character, preset, connection, generate, resolveDraft],
   );
 
   const abort = useCallback(() => {
@@ -2040,6 +2124,7 @@ export function useChat(options: UseChatOptions): UseChat {
     continueLast,
     guidedRespond,
     guidedSwipe,
+    impersonate,
     abort,
     summaryStatus,
     summaryPending,
