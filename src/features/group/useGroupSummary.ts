@@ -6,7 +6,7 @@ import type { Connection } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, StorySummary } from '@shared/types/chat.ts';
 import type { SummarySettings } from '@shared/types/settings.ts';
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { streamGenerate } from '../../lib/api.ts';
 import { encodingForModel, loadCounter } from '../../lib/tokenizer.ts';
 import {
@@ -32,10 +32,15 @@ export function useGroupSummary(
     total: 0,
     error: null as string | null,
   });
-  const pending = summaryBacklog(
-    summaryMessages(completedGroupMessages(state)),
-    state.metadata.summary,
-  ).length;
+  // The unsummarised count shows in the memory panel; recomputing it on every render of
+  // the scene walks the whole transcript twice (projection, then backlog), so it is keyed
+  // on the inputs it actually reads.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: projection of messages, jobs and summary only
+  const pending = useMemo(
+    () =>
+      summaryBacklog(summaryMessages(completedGroupMessages(state)), state.metadata.summary).length,
+    [state.messages, state.jobs, state.metadata.summary],
+  );
   const cancelSummary = useCallback(() => abort.current?.abort(), []);
   useEffect(() => {
     return () => abort.current?.abort();

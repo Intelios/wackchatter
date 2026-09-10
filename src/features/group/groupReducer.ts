@@ -36,18 +36,20 @@ export type GroupAction =
   | { type: 'group/error'; message: string };
 
 function status(state: GroupState): GroupState {
-  return {
-    ...state,
-    streamingId: null,
-    mode: null,
-    status: state.conversationRunning || Object.keys(state.jobs).length ? 'streaming' : 'idle',
-  };
+  const next = state.conversationRunning || Object.keys(state.jobs).length ? 'streaming' : 'idle';
+  // The coordinator reports every transition (launch, settle, pump) and most reports
+  // change nothing. Returning the same object lets React skip the render entirely —
+  // without this, a group exchange re-renders the whole app a dozen times per reply.
+  if (state.status === next && state.streamingId === null && state.mode === null) return state;
+  return { ...state, streamingId: null, mode: null, status: next };
 }
 export function groupReducer(state: GroupState, action: GroupAction): GroupState {
   if (action.type === 'chat/loaded' || action.type === 'chat/closed')
     return { ...chatReducer(state, action), jobs: {}, conversationRunning: false };
-  if (action.type === 'group/running')
+  if (action.type === 'group/running') {
+    if (state.conversationRunning === action.running) return status(state);
     return status({ ...state, conversationRunning: action.running });
+  }
   if (action.type === 'group/error') return { ...state, error: action.message };
   if (action.type === 'group/start') {
     const original = action.mode === 'swipe' ? state.messages.at(-1) : undefined;

@@ -5,7 +5,7 @@ import type {
   DialogueColorSettings,
   QuickCommand,
 } from '@shared/types/settings.ts';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ContinueIcon, NexusIcon, PauseIcon } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, chatApi, personaApi } from '../../lib/api.ts';
@@ -14,13 +14,28 @@ import { BranchTree } from '../chat/BranchTree.tsx';
 import { Composer, type ComposerHandle } from '../chat/Composer.tsx';
 import { MessageBubble } from '../chat/MessageBubble.tsx';
 import { QuickCommands } from '../chat/QuickCommands.tsx';
+import type { GenMode } from '../chat/state/chatReducer.ts';
 import { createStreamStore, type StreamStore } from '../chat/state/streamStore.ts';
+import {
+  appendTranscriptWindow,
+  initialTranscriptWindow,
+  prependTranscriptWindow,
+  type TranscriptWindow,
+  windowForJump,
+} from '../chat/transcriptWindow.ts';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
 import { GroupChatMenu } from './GroupChatMenu.tsx';
 import { SpeakNextPopover } from './SpeakNextPopover.tsx';
 import type { GroupChatController } from './useGroupChat.ts';
 import './Group.css';
+
+/** How close to a page edge the reader must scroll before the next page loads. */
+const LOAD_AHEAD_PX = 800;
+
+interface TranscriptWindowState extends TranscriptWindow {
+  chatId: string | null;
+}
 
 interface GroupChatViewProps {
   chat: GroupChatController;
@@ -51,6 +66,11 @@ interface GroupChatViewProps {
  *
  * What is genuinely group-shaped is only where it has to be: each row resolves its own
  * speaker, and the tray carries a second identity chip for who is being addressed.
+ *
+ * The transcript shares `ChatView`'s windowed pages and hoisted callbacks, and for the
+ * same reasons: a group exchange fires far more state changes than a one-on-one reply
+ * (a director pick, several concurrent streams, a save per settle), and a long scene
+ * rendering every message on each of them froze the tab.
  */
 export function GroupChatView({
   chat,
@@ -72,41 +92,287 @@ export function GroupChatView({
   const content = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const idleStream = useRef(createStreamStore());
-  const { scrollToBottom } = useStickToBottom(scroll, content);
+  const { scrollToBottom, stopFollowing } = useStickToBottom(scroll, content);
   const scene = chat.state.metadata.group;
   const coordinator = chat.coordinator;
   const running = Boolean(coordinator?.running || coordinator?.selecting);
   const jobList = coordinator ? [...coordinator.jobs.values()] : [];
+  const jobsByMessageId = useMemo(
+    () =>
+      new Map(
+        Object.entries(chat.state.jobs).map(([jobId, job]) => [job.messageId, { jobId, job }]),
+      ),
+    [chat.state.jobs],
+  );
   const busyMemberIds = jobList.map((job) => job.memberId);
   const blocked = chat.busy || chat.nexus.run.running || chat.summaryStatus.running;
   const act = (work: () => Promise<unknown>) => {
     void work().catch((e) => setError((e as Error).message));
   };
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
 
-  // Jump to the end when a different scene is opened — the transcript has been replaced,
-  // so the previous scroll position belongs to another conversation entirely.
+  // --- The transcript window (the ChatView pattern) ---------------------------
+
+  const [window, setWindow] = useState<TranscriptWindowState>({ chatId: null, start: 0, end: 0 });
+  const atEndRef = useRef(true);
+  const restorePrependScroll = useRef<{ messageId: string; offset: number } | null>(null);
+  const pendingJumpRef = useRef<string | null>(null);
+  const [jumpSeq, setJumpSeq] = useState(0);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const suppressLoadAheadRef = useRef(false);
+  const programmaticScrollRef = useRef(false);
+
+  // Reset to the newest page when a different scene is opened — the transcript has been
+  // replaced, so the previous window and scroll position belong to another conversation
+  // entirely.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on scene identity
   useEffect(() => {
+    const initial = initialTranscriptWindow(chat.state.messages.length);
+    setWindow({ chatId: chat.state.chatId, start: initial.start, end: initial.end });
+    setFlashId(null);
     scrollToBottom();
   }, [chat.state.chatId, scrollToBottom]);
+
+  // A scene can render its loaded messages before the scene-change effect has set the
+  // window. Deriving the initial tail page here prevents that first paint from mounting
+  // every message in a long scene.
+  const fallbackWindow = initialTranscriptWindow(chat.state.messages.length);
+  const visibleStart =
+    window.chatId === chat.state.chatId
+      ? Math.min(window.start, chat.state.messages.length)
+      : fallbackWindow.start;
+  const visibleEnd =
+    window.chatId === chat.state.chatId
+      ? Math.min(window.end, chat.state.messages.length)
+      : fallbackWindow.end;
+  const visibleMessages = chat.state.messages.slice(visibleStart, visibleEnd);
+
+  // While the window is not anchored to the tail, bottom-follow must stay off: the
+  // "bottom" of the scroll container is a page boundary, not the transcript's end.
+  atEndRef.current = visibleEnd >= chat.state.messages.length;
+
+  const loadOlderMessages = useCallback(() => {
+    if (visibleStart === 0) return;
+    const scrollEl = scroll.current;
+    const contentEl = content.current;
+    const first = contentEl?.querySelector<HTMLElement>('[data-message-id]');
+    if (scrollEl && first) {
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const firstRect = first.getBoundingClientRect();
+      restorePrependScroll.current = {
+        messageId: first.dataset.messageId!,
+        offset: firstRect.top - scrollRect.top,
+      };
+    }
+    setWindow((current) =>
+      current.chatId === chat.state.chatId
+        ? {
+            chatId: current.chatId,
+            ...prependTranscriptWindow(
+              { start: current.start, end: current.end },
+              chat.state.messages.length,
+            ),
+          }
+        : current,
+    );
+  }, [visibleStart, chat.state.chatId, chat.state.messages.length]);
+
+  const loadNewerMessages = useCallback(() => {
+    if (visibleEnd >= chat.state.messages.length) return;
+    setWindow((current) =>
+      current.chatId === chat.state.chatId
+        ? {
+            chatId: current.chatId,
+            ...appendTranscriptWindow(
+              { start: current.start, end: current.end },
+              chat.state.messages.length,
+            ),
+          }
+        : current,
+    );
+  }, [visibleEnd, chat.state.chatId, chat.state.messages.length]);
+
+  // Scrolling up loads the next older page on the way; scrolling down toward a page
+  // boundary appends the next newer page. A tail-anchored window leaves the bottom edge
+  // to the stick-to-bottom follow — the two would cascade page loads against each other.
+  useEffect(() => {
+    const scrollEl = scroll.current;
+    if (!scrollEl) return;
+    const onScroll = () => {
+      if (programmaticScrollRef.current) return;
+      suppressLoadAheadRef.current = false;
+      if (!atEndRef.current) stopFollowing();
+      if (scrollEl.scrollTop < LOAD_AHEAD_PX) loadOlderMessages();
+      if (atEndRef.current) return;
+      if (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < LOAD_AHEAD_PX) {
+        loadNewerMessages();
+      }
+    };
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', onScroll);
+  }, [loadOlderMessages, loadNewerMessages, stopFollowing]);
+
+  // The listeners run on scroll events; a page too short to scroll never fires one.
+  // After the scene opens or a page lands, keep loading while the reader is still inside
+  // a load-ahead band. A jump suppresses both until the reader scrolls.
+  useLayoutEffect(() => {
+    if (suppressLoadAheadRef.current) return;
+    const scrollEl = scroll.current;
+    if (!scrollEl || visibleStart === 0) return;
+    if (window.chatId !== chat.state.chatId) return;
+    if (scrollEl.scrollTop >= LOAD_AHEAD_PX) return;
+    loadOlderMessages();
+  }, [visibleStart, window.chatId, chat.state.chatId, loadOlderMessages]);
+
+  useLayoutEffect(() => {
+    if (suppressLoadAheadRef.current) return;
+    const scrollEl = scroll.current;
+    if (!scrollEl || atEndRef.current) return;
+    if (window.chatId !== chat.state.chatId) return;
+    if (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight >= LOAD_AHEAD_PX) return;
+    loadNewerMessages();
+  }, [window, chat.state.chatId, loadNewerMessages]);
+
+  // Prepending adds DOM above the reader. Restore the same document position after the
+  // layout commits, anchored to the first rendered message rather than a height delta —
+  // the newer load-ahead can append below in the same commit.
+  useLayoutEffect(() => {
+    const restore = restorePrependScroll.current;
+    const scrollEl = scroll.current;
+    const contentEl = content.current;
+    if (!restore || !scrollEl || !contentEl) return;
+    const el = contentEl.querySelector(`[data-message-id="${restore.messageId}"]`);
+    if (el) {
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      scrollEl.scrollTop += elRect.top - scrollRect.top - restore.offset;
+    }
+    restorePrependScroll.current = null;
+  });
+
+  // A window anchored to the tail follows it. Without this, a member's placeholder born
+  // into a window whose end was computed before the growth would land past the rendered
+  // rows and be invisible — the scene would look like nobody answered.
+  const lastCountRef = useRef(chat.state.messages.length);
+  useEffect(() => {
+    const previous = lastCountRef.current;
+    lastCountRef.current = chat.state.messages.length;
+    if (window.chatId !== chat.state.chatId) return;
+    if (chat.state.messages.length > previous && window.end >= previous) {
+      setWindow((current) =>
+        current.chatId === chat.state.chatId && current.end >= previous
+          ? { ...current, end: chat.state.messages.length }
+          : current,
+      );
+    }
+  }, [chat.state.messages.length, window.chatId, chat.state.chatId, window.end]);
+
+  // --- Nexus jump -------------------------------------------------------------
+
+  const jumpTo = useCallback(
+    (index: number) => {
+      const count = chatRef.current.state.messages.length;
+      if (count === 0) return;
+      const target = Math.min(Math.max(0, index), count - 1);
+      const win = windowForJump(target, count);
+      pendingJumpRef.current = chatRef.current.state.messages[target]?.id ?? null;
+      suppressLoadAheadRef.current = true;
+      stopFollowing();
+      setWindow({ chatId: chatRef.current.state.chatId, start: win.start, end: win.end });
+      setJumpSeq((s) => s + 1);
+    },
+    [stopFollowing],
+  );
+
   useEffect(() => {
     const id = chat.nexus.jumpId;
-    // The bubble already carries `data-message-id`; scoped to this transcript so a jump
-    // can never land on a row of some other view that happens to share the attribute.
-    if (id)
-      content.current
-        ?.querySelector(`[data-message-id="${id}"]`)
-        ?.scrollIntoView({ block: 'center' });
-  }, [chat.nexus.jumpId]);
+    if (!id) return;
+    const index = chat.state.messages.findIndex((m) => m.id === id);
+    if (index >= 0) jumpTo(index);
+    chat.nexus.setJumpId(null);
+  }, [chat.nexus.jumpId, chat.nexus.setJumpId, chat.state.messages, jumpTo]);
+
+  // The flash is a notice, not a state: cleared on a timer so the row reads normally
+  // again. The cleanup also cancels a pending clear when another jump re-arms it first.
+  useEffect(() => {
+    if (!flashId) return;
+    const timer = setTimeout(() => setFlashId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [flashId]);
+
+  // The target only exists in the DOM once the new window has committed, so the scroll
+  // waits for this layout effect. Centred, not snapped to the top. Declared before the
+  // load-ahead effects so their scroll captures happen after the centering.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the sequence is the trigger
+  useLayoutEffect(() => {
+    const id = pendingJumpRef.current;
+    if (!id) return;
+    pendingJumpRef.current = null;
+    const scrollEl = scroll.current;
+    const contentEl = content.current;
+    if (!scrollEl || !contentEl) return;
+    const el = contentEl.querySelector(`[data-message-id="${id}"]`);
+    if (!el) return;
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    programmaticScrollRef.current = true;
+    scrollEl.scrollTop =
+      elRect.top -
+      scrollRect.top +
+      scrollEl.scrollTop -
+      scrollEl.clientHeight / 2 +
+      elRect.height / 2;
+    setFlashId(id);
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }, [jumpSeq]);
+
+  // --- Actions, hoisted so a row's memo survives a re-render of this view ---------
 
   const handleSend = useCallback(
     async (text: string): Promise<string | null> => {
-      const sent = await chat.send(text);
+      const sent = await chatRef.current.send(text);
       if (sent) scrollToBottom();
       return sent ? null : 'Message was not sent. Check the scene error above.';
     },
-    [chat, scrollToBottom],
+    [scrollToBottom],
   );
+  const rerollMessage = useCallback((id: string) => chatRef.current.reroll(id), []);
+  const speakMember = useCallback(
+    (memberId: string) => chatRef.current.coordinator?.manual(memberId),
+    [],
+  );
+  const retryScene = useCallback(() => chatRef.current.coordinator?.start(), []);
+  const editMessage = useCallback((id: string, text: string) => {
+    const c = chatRef.current;
+    if (c.busy || c.nexus.run.running || c.summaryStatus.running) return;
+    c.dispatch({ type: 'message/edited', id, text });
+  }, []);
+  const editReasoning = useCallback((id: string, reasoning: string) => {
+    const c = chatRef.current;
+    if (c.busy || c.nexus.run.running || c.summaryStatus.running) return;
+    c.dispatch({ type: 'message/reasoningEdited', id, reasoning });
+  }, []);
+  const deleteMessage = useCallback((id: string) => {
+    const c = chatRef.current;
+    if (c.busy || c.nexus.run.running || c.summaryStatus.running) return;
+    c.dispatch({ type: 'message/deleted', id });
+  }, []);
+  const toggleHidden = useCallback((id: string) => {
+    const c = chatRef.current;
+    if (c.busy || c.nexus.run.running || c.summaryStatus.running) return;
+    c.dispatch({ type: 'message/toggleHidden', id });
+  }, []);
+  const branchMessage = useCallback((id: string) => {
+    void chatRef.current.branch(id).catch((e: unknown) => setError((e as Error).message));
+  }, []);
+  const selectSwipe = useCallback((id: string, index: number) => {
+    const c = chatRef.current;
+    if (c.busy || c.nexus.run.running || c.summaryStatus.running) return;
+    c.dispatch({ type: 'swipe/select', id, index });
+  }, []);
 
   if (chat.loading)
     return (
@@ -156,52 +422,42 @@ export function GroupChatView({
               </span>
             </div>
           ) : (
-            chat.state.messages.map((message, index) => {
-              const jobEntry = Object.entries(chat.state.jobs).find(
-                ([, job]) => job.messageId === message.id,
-              );
-              const stream = jobEntry
-                ? (chat.streams.get(jobEntry[0]) ?? idleStream.current)
+            visibleMessages.map((message) => {
+              const entry = jobsByMessageId.get(message.id);
+              const stream = entry
+                ? (chat.streams.get(entry.jobId) ?? idleStream.current)
                 : idleStream.current;
               return (
                 <GroupMessageRow
                   key={message.id}
-                  chat={chat}
                   message={message}
                   personas={personas}
+                  currentPersona={chat.persona}
                   personaAvatarVersions={personaAvatarVersions}
                   dialogueColors={dialogueColors}
-                  streaming={Boolean(jobEntry)}
+                  streaming={Boolean(entry)}
                   stream={stream}
                   streamNote={
-                    jobEntry
-                      ? stream.getSnapshot().active
-                        ? 'Replying…'
-                        : 'Connecting…'
-                      : undefined
+                    entry ? (stream.getSnapshot().active ? 'Replying…' : 'Connecting…') : undefined
                   }
-                  onStopStream={jobEntry ? () => coordinator?.stop(jobEntry[0]) : undefined}
-                  isLast={index === chat.state.messages.length - 1}
+                  mode={entry?.job.mode ?? null}
+                  onStopStream={
+                    entry ? () => chatRef.current.coordinator?.stop(entry.jobId) : undefined
+                  }
+                  isLast={message.id === chat.state.messages.at(-1)?.id}
                   busy={blocked}
                   summaryRunning={chat.summaryStatus.running}
                   memoryRunning={chat.nexus.run.running}
-                  flash={chat.nexus.jumpId === message.id}
-                  onReroll={(id) => chat.reroll(id)}
-                  onSpeak={(memberId) => coordinator?.manual(memberId)}
-                  onRetry={() => coordinator?.start()}
-                  onEdit={(id, text) => {
-                    if (!blocked) chat.dispatch({ type: 'message/edited', id, text });
-                  }}
-                  onEditReasoning={(id, reasoning) => {
-                    if (!blocked) chat.dispatch({ type: 'message/reasoningEdited', id, reasoning });
-                  }}
-                  onDelete={(id) => {
-                    if (!blocked) chat.dispatch({ type: 'message/deleted', id });
-                  }}
-                  onToggleHidden={(id) => {
-                    if (!blocked) chat.dispatch({ type: 'message/toggleHidden', id });
-                  }}
-                  onBranch={(id) => act(() => chat.branch(id))}
+                  flash={flashId === message.id}
+                  onReroll={rerollMessage}
+                  onSpeak={speakMember}
+                  onRetry={retryScene}
+                  onEdit={editMessage}
+                  onEditReasoning={editReasoning}
+                  onDelete={deleteMessage}
+                  onToggleHidden={toggleHidden}
+                  onBranch={branchMessage}
+                  onSwipeSelect={selectSwipe}
                 />
               );
             })
@@ -384,14 +640,16 @@ export function GroupChatView({
 }
 
 interface GroupMessageRowProps {
-  chat: GroupChatController;
   message: MessageState;
   personas: Persona[];
+  /** The scene's current persona, for rows sent before speakers were recorded. */
+  currentPersona: Persona | null;
   personaAvatarVersions?: Readonly<Record<string, number>>;
   dialogueColors: DialogueColorSettings;
   streaming: boolean;
   stream: StreamStore;
   streamNote?: string;
+  mode: GenMode | null;
   onStopStream?: () => void;
   isLast: boolean;
   busy: boolean;
@@ -406,28 +664,32 @@ interface GroupMessageRowProps {
   onDelete: (id: string) => void;
   onToggleHidden: (id: string) => void;
   onBranch: (id: string) => void;
+  /** Show a different existing swipe by index. */
+  onSwipeSelect: (id: string, index: number) => void;
 }
 
 /**
  * One turn, with its speaker's presentation resolved per row.
  *
- * A component rather than a loop body because the avatar-colour extraction is a hook, and
- * a group has as many speakers as it has rows — a member's dialogue colour comes from
- * their own card, the same rule (and the same cache) a one-on-one chat's does.
+ * Memoised, and only because everything it takes is a primitive or a stable identity —
+ * the callbacks are hoisted into the view, so a scene state change re-renders only the
+ * rows whose own message moved. The row-internal swipe closures are rebuilt when the row
+ * itself re-renders, which is the only place a new identity can leak.
  *
  * Both kinds of row go through one path: a member resolves against the cast's colours, a
  * user resolves against the persona they actually sent as, falling back to the scene's
  * current persona only for messages that predate the speaker being recorded.
  */
-function GroupMessageRow({
-  chat,
+const GroupMessageRow = memo(function GroupMessageRow({
   message,
   personas,
+  currentPersona,
   personaAvatarVersions,
   dialogueColors,
   streaming,
   stream,
   streamNote,
+  mode,
   onStopStream,
   isLast,
   busy,
@@ -442,8 +704,9 @@ function GroupMessageRow({
   onDelete,
   onToggleHidden,
   onBranch,
+  onSwipeSelect,
 }: GroupMessageRowProps) {
-  const persona = message.is_user ? speakerOf(message, personas, chat.persona) : null;
+  const persona = message.is_user ? speakerOf(message, personas, currentPersona) : null;
   const characterId = message.is_user ? null : (message.characterId ?? null);
   const avatarUrl = message.is_user
     ? persona?.avatar
@@ -471,7 +734,7 @@ function GroupMessageRow({
       dialogueActive={dialogue.active}
       dialogueColor={dialogue.color}
       streaming={streaming}
-      mode={runningMode(chat, message.id)}
+      mode={mode}
       stream={stream}
       isLast={isLast}
       busy={busy}
@@ -483,13 +746,10 @@ function GroupMessageRow({
       onSwipe={(direction) => {
         if (busy) return;
         const index = message.swipe_id + direction;
-        if (index >= 0 && index < message.swipes.length)
-          chat.dispatch({ type: 'swipe/select', id: message.id, index });
+        if (index >= 0 && index < message.swipes.length) onSwipeSelect(message.id, index);
         else if (direction > 0) onReroll(message.id);
       }}
-      onSwipeTo={(id, index) => {
-        if (!busy) chat.dispatch({ type: 'swipe/select', id, index });
-      }}
+      onSwipeTo={onSwipeSelect}
       onRegenerate={() => onReroll(message.id)}
       onContinue={() => message.memberId && onSpeak(message.memberId)}
       onRetry={onRetry}
@@ -500,13 +760,7 @@ function GroupMessageRow({
       onBranch={onBranch}
     />
   );
-}
-
-/** The generation mode a row is streaming under, so a re-roll animates as a re-roll. */
-function runningMode(chat: GroupChatController, messageId: string) {
-  const job = Object.values(chat.state.jobs).find((entry) => entry.messageId === messageId);
-  return job?.mode ?? null;
-}
+});
 
 /** Who spoke, resolved the way `ChatView` resolves it: recorded, or the scene's current. */
 function speakerOf(

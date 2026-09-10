@@ -101,6 +101,9 @@ export function useNexus(options: Options) {
     () => [...memoryDocuments(nexus, messages), ...transcriptDocuments(messages)],
     [nexus, messages],
   );
+  // Fingerprinting the transcript for the pending count reads every message; on each
+  // render of the app that is a full pass over the text, so it rides the docs memo's keys.
+  const pendingCount = useMemo(() => pendingMessages(nexus, messages).length, [nexus, messages]);
   const identity = state.chatId;
 
   const update = useCallback((transform: (current: NexusState) => NexusState) => {
@@ -665,7 +668,7 @@ export function useNexus(options: Options) {
     // (stage, consume, clear, search, chat/mode reset) co-occurs with a setFindings
     // that schedules the render reading it. Mirrors preview's staged-??-live choice.
     armed: (staged.current ?? findings).filter((f) => f.selected).length,
-    pending: pendingMessages(nexus, messages).length,
+    pending: pendingCount,
   };
 }
 export type NexusController = ReturnType<typeof useNexus>;

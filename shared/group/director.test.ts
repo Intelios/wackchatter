@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { TokenCounter } from '../prompt/token-cache.ts';
-import type { ChatMessage } from '../types/chat.ts';
-import { emptyGroup, type GroupMember, type GroupScene } from '../types/group.ts';
+import type { ApiMessage, ChatMessage } from '../types/chat.ts';
+import { emptyGroup, type GroupMember, type GroupScene, memberLabel } from '../types/group.ts';
 import {
   DIRECTOR_REASONING_EFFORT,
   directorMaxTokens,
@@ -36,10 +36,15 @@ const message = (over: Partial<ChatMessage> = {}): ChatMessage => ({
   ...over,
 });
 
-/** One token per message, so the budget controls the count rather than the prose. */
+/** One token per character, with the real ChatML envelope — additive, like production. */
 const counted: TokenCounter = {
   countText: (text) => text.length,
-  countChat: (messages) => messages.length,
+  countChat: (messages) =>
+    3 +
+    messages.reduce(
+      (total, m) => total + 3 + m.role.length + m.content.length + (m.name ? m.name.length + 1 : 0),
+      0,
+    ),
 };
 
 test('parseDirector accepts verbatim ids', () => {
@@ -231,8 +236,6 @@ test('the output contract is the last thing the director reads', () => {
 
 test('director history packs newest-first, skips hidden and blank messages, labels speakers', () => {
   const s = scene([member('a', 'Alex'), member('b', 'Bryn')]);
-  // Small budget: room for the system prompt plus exactly three history messages.
-  const tight = { ...s, director: { ...s.director, contextTokens: s.director.maxTokens + 4 } };
   const history = [
     message({ id: 'old', memberId: 'a', mes: 'Oldest' }),
     message({ id: 'blank', memberId: 'a', mes: '   ' }),
@@ -240,6 +243,22 @@ test('director history packs newest-first, skips hidden and blank messages, labe
     message({ id: 'b2', memberId: 'b', mes: 'Middle' }),
     message({ id: 'u', is_user: true, name: 'You', mes: 'Speak up' }),
   ];
+  // A budget admitting the setup plus exactly the three speakable history messages:
+  // `countChat` is the envelope plus a per-message charge, so each admission costs
+  // `countChat([message]) - 3` on top of `countChat([system])`. The prompt embeds the
+  // pending list, so the probe reads the system prompt with the same one.
+  const system = directorMessages(s, [], ['b'], ['a', 'b'], 2, 3, '', counted)[0]!;
+  const setup = counted.countChat([system]);
+  const perMessage = (m: ChatMessage) =>
+    counted.countChat([
+      { role: m.is_user ? 'user' : 'assistant', content: `${m.name}: ${m.mes}` },
+    ]) - 3;
+  const speakable = [history[4]!, history[3]!, history[0]!];
+  const admitted = speakable.reduce((total, m) => total + perMessage(m), 0);
+  const tight = {
+    ...s,
+    director: { ...s.director, contextTokens: s.director.maxTokens + setup + admitted },
+  };
   const messages = directorMessages(tight, history, ['b'], ['a', 'b'], 2, 3, '', counted);
   // Blank and hidden messages take no slot, and the packed window stops at the budget.
   expect(messages.map((m) => m.content)).toEqual([
@@ -249,4 +268,54 @@ test('director history packs newest-first, skips hidden and blank messages, labe
     'You: Speak up',
   ]);
   expect(messages.slice(1).map((m) => m.role)).toEqual(['assistant', 'assistant', 'user']);
+});
+
+test('director packing matches a whole-array re-count on a long transcript', () => {
+  // The running-sum read must pack exactly what counting every candidate prefix whole
+  // packs: same messages, same order, same cut — the envelope makes the two identical.
+  const s = scene([member('a', 'Alex'), member('b', 'Bryn')]);
+  const history = Array.from({ length: 300 }, (_, i) =>
+    message({
+      id: `m${i}`,
+      memberId: i % 2 ? 'b' : 'a',
+      mes: `line ${i} of the scene. `.repeat(6),
+    }),
+  );
+  const long = { ...s, director: { ...s.director, contextTokens: s.director.maxTokens + 12000 } };
+  const packed = directorMessages(long, history, [], ['a', 'b'], 2, 4, '', counted);
+  const system = packed[0]!;
+  const budget = long.director.contextTokens - long.director.maxTokens;
+  const naive: ApiMessage[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]!;
+    const member = long.members.find((v) => v.id === m.memberId);
+    const next: ApiMessage = {
+      role: m.is_user ? 'user' : 'assistant',
+      content: `${member ? memberLabel(member, long.members) : m.name}: ${m.mes}`,
+    };
+    if (counted.countChat([system, next, ...naive]) > budget) break;
+    naive.unshift(next);
+  }
+  expect(packed.length).toBeGreaterThan(2); // cut by the budget, not vacuously equal
+  expect(packed.slice(1)).toEqual(naive);
+});
+
+test('director packing reads each message once, not once per candidate prefix', () => {
+  // 300 messages cost ~80,000 countText reads under the quadratic read; the linear read
+  // is bounded by two per history message plus the system prompt's.
+  const s = scene([member('a', 'Alex'), member('b', 'Bryn')]);
+  const history = Array.from({ length: 300 }, (_, i) =>
+    message({ id: `m${i}`, memberId: 'a', mes: `spoken line ${i} of the scene.` }),
+  );
+  const long = { ...s, director: { ...s.director, contextTokens: s.director.maxTokens + 60000 } };
+  let reads = 0;
+  const spy: TokenCounter = {
+    countText: (text) => {
+      reads++;
+      return counted.countText(text);
+    },
+    countChat: (messages) => counted.countChat(messages),
+  };
+  directorMessages(long, history, [], ['a', 'b'], 2, 4, '', spy);
+  expect(reads).toBeLessThanOrEqual(history.length * 2 + 8);
 });

@@ -279,11 +279,22 @@ Choose in this order: a member reacting to the latest meaningful contribution; e
 Choose at most ${capacity} distinct eligible members and never choose a muted or already-replying member. An empty array is not a valid reply. There are ${remaining} replies left in this exchange.\nEligible IDs: ${JSON.stringify(eligible)}\nAlready replying: ${JSON.stringify(pending)}\nCast:\n${publicCast(scene)}\nShared scenario:\n${scene.scenario}\nShared memory:\n${memory}\nReply with one line only — no prose and no markdown fence — naming each chosen member by the "id:" shown for a Cast entry above, or the member's name, in exactly this shape: {"speakers":["member-id"]}`,
   };
   const budget = scene.director.contextTokens - scene.director.maxTokens;
-  const packed: ApiMessage[] = [];
-  if (counter.countChat([system]) > budget)
+  /*
+   * `countChat` is the ChatML envelope plus one fixed charge per message (see
+   * `withChatEnvelope` — additive by construction), so each candidate's total is the
+   * running sum plus that candidate alone. Re-counting the whole packed array per
+   * candidate, as this loop once did, is quadratic in transcript tokens and stalled the
+   * main thread for seconds on a long scene before the director ever went to the wire.
+   */
+  const messageCost = (m: ApiMessage) =>
+    3 + counter.countText(m.role) + counter.countText(m.content);
+  const systemCost = messageCost(system);
+  if (3 + systemCost > budget)
     throw new Error(
       'Director setup exceeds its context budget. Shorten profiles or increase context.',
     );
+  const packed: ApiMessage[] = [];
+  let packedCost = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i]!;
     if (m.is_system || !m.mes.trim()) continue;
@@ -292,8 +303,10 @@ Choose at most ${capacity} distinct eligible members and never choose a muted or
       role: m.is_user ? 'user' : 'assistant',
       content: `${member ? memberLabel(member, scene.members) : m.name}: ${m.mes}`,
     };
-    if (counter.countChat([system, next, ...packed]) > budget) break;
+    const cost = messageCost(next);
+    if (3 + systemCost + cost + packedCost > budget) break;
     packed.unshift(next);
+    packedCost += cost;
   }
   return [system, ...packed];
 }

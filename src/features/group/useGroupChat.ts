@@ -126,6 +126,12 @@ export function useGroupChat(options: GroupChatOptions) {
   const nexusRef = useRef(nexus);
   nexusRef.current = nexus;
 
+  // The transcript minus any message a job is still streaming into. Derived per render
+  // would copy every message through `toChatMessage` on each of the exchange's frequent
+  // state changes, so it is keyed on the only two inputs it reads.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: projection of messages and jobs only
+  const messages = useMemo(() => completedGroupMessages(state), [state.messages, state.jobs]);
+
   useEffect(() => {
     if (state.revision > state.persistedRevision) {
       const snapshot = captureSnapshot(state);
@@ -612,7 +618,7 @@ export function useGroupChat(options: GroupChatOptions) {
     busy: state.status !== 'idle',
     state,
     stateRef,
-    messages: completedGroupMessages(state),
+    messages,
     persona,
     memoryMode,
     nexus,
