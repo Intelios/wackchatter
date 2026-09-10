@@ -57,6 +57,21 @@ test('group snapshots, independent branches, deletion and speaker persistence', 
   groups.remove(group.id);
   expect(chats.getChat(chat.id)).not.toBeNull();
   expect(chats.listRecent(2).every((c) => c.kind === 'group')).toBe(true);
+
+  /*
+   * The recents list draws a scene's cast as a stack of faces, so the summary has to carry
+   * the filenames — extracted from the metadata blob in SQL, the way `branchedFrom` is, so
+   * one list fetch builds every row without fetching whole scenes. Order is cast order:
+   * the stack reads left to right the way the cast does. The projection drops the profiles
+   * and overrides a summary has no business shipping.
+   */
+  const summary = chats.listRecent(2).find((c) => c.id === chat.id);
+  expect(summary?.groupMembers).toEqual(['renamed.png', 'b.png']);
+
+  // A direct chat has no cast, and `undefined` is what every consumer tests for.
+  const direct = chats.createChat({ characterId: 'a.png', messages: [] });
+  expect(chats.listRecent(5).find((c) => c.id === direct.id)?.groupMembers).toBeUndefined();
+
   db.close();
 });
 

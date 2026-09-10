@@ -1,6 +1,7 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import { useEffect, useMemo, useState } from 'react';
+import { StackedAvatars } from '../../components/StackedAvatars.tsx';
 import {
   ArenaIcon,
   CoCreatorIcon,
@@ -30,6 +31,9 @@ interface StartScreenProps {
 interface RecentChat extends ChatSummary {
   characterName: string;
   characterAvatar: string | null;
+  /** A group scene's cast faces, in cast order. Empty for a direct chat. */
+  memberUrls: string[];
+  memberNames: string[];
 }
 
 export function StartScreen({
@@ -93,10 +97,16 @@ export function StartScreen({
     if (!recent) return [];
     return recent.map((chat) => {
       const character = byAvatar.get(chat.characterId ?? '');
+      // The cast rides on the summary (see `ChatSummary.groupMembers`), so a group row can
+      // show faces without fetching every scene in full. A member whose card is gone still
+      // gets a slot — the name and a blank face — rather than silently shrinking the stack.
+      const memberIds = chat.groupMembers ?? [];
       return {
         ...chat,
         characterName: character?.name ?? chat.characterId ?? 'Group',
         characterAvatar: chat.characterId,
+        memberUrls: memberIds.map((id) => characterApi.imageUrl(id)),
+        memberNames: memberIds.map((id) => byAvatar.get(id)?.name ?? id),
       };
     });
   }, [recent, byAvatar]);
@@ -148,11 +158,16 @@ export function StartScreen({
                   className="start-screen__chat-open"
                   onClick={() => onOpenChat(chat.characterAvatar, chat.id)}
                 >
-                  <img
-                    className="start-screen__chat-avatar"
-                    src={characterApi.imageUrl(chat.characterAvatar ?? '')}
-                    alt=""
-                  />
+                  {/* A scene shows its cast; a one-on-one shows one face. */}
+                  {chat.memberUrls.length ? (
+                    <StackedAvatars urls={chat.memberUrls} names={chat.memberNames} />
+                  ) : (
+                    <img
+                      className="start-screen__chat-avatar"
+                      src={characterApi.imageUrl(chat.characterAvatar ?? '')}
+                      alt=""
+                    />
+                  )}
                   <div className="start-screen__chat-info">
                     <div className="start-screen__chat-name">
                       <strong>{chat.characterName}</strong>

@@ -1,0 +1,184 @@
+/*
+ * The "who speaks next" chip in the composer's tray.
+ *
+ * Deliberately the twin of `persona-chip`, which sits beside it and answers the same shape
+ * of question from the other side of the exchange: who am I, and who am I addressing. The
+ * literal sizes below (24px face, 999px pill) are `persona-chip`'s, kept in step by hand so
+ * the two pills in one tray cannot drift into different shapes.
+ */
+
+.speak-next {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.speak-next__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  height: var(--wc-control);
+  max-width: 200px;
+  padding: 0 var(--wc-space-2) 0 3px;
+  border: 1px solid var(--wc-border);
+  border-radius: 999px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease;
+}
+
+.speak-next__trigger:hover:not(:disabled) {
+  border-color: var(--wc-border-strong);
+  background: var(--wc-surface-hover);
+}
+
+.speak-next__trigger[aria-expanded="true"] {
+  border-color: var(--wc-accent);
+}
+
+.speak-next__trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Nobody selected is a real state: it says so in words rather than leaving a hole. */
+.speak-next__trigger[data-empty] {
+  color: var(--wc-text-muted);
+  font-weight: 500;
+}
+
+.speak-next__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speak-next__chevron {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  /* The icon points right; the popup opens upward, the same turn persona-chip makes. */
+  transform: rotate(-90deg);
+}
+
+/* --- The face ----------------------------------------------------------- */
+
+.speak-next__face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--wc-radius-sm);
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.speak-next__face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.speak-next__face[data-empty] {
+  border-style: dashed;
+  background: none;
+  color: var(--wc-text-faint);
+}
+
+.speak-next__face[data-empty] svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+/* --- The popup ---------------------------------------------------------- */
+
+.speak-next__popup {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.speak-next__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--wc-space-1);
+  max-height: min(50vh, var(--wc-scroll-cap));
+  overflow-y: auto;
+}
+
+.speak-next__row {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  text-align: left;
+  cursor: default;
+}
+
+/* One highlight, driven by the cursor, which the pointer moves as well as the arrow keys —
+   two lit rows (moused and keyed) would disagree about what Enter picks. */
+.speak-next__row[data-cursor] {
+  background: var(--wc-surface-hover);
+}
+
+.speak-next__row:disabled {
+  color: var(--wc-text-faint);
+}
+
+.speak-next__row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speak-next__state {
+  flex-shrink: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+/* "macro" marks the member `{{char}}` resolves to: a current state, not another reason the
+   row is dim, so it wears the accent rather than the faint grey. */
+.speak-next__you {
+  flex-shrink: 0;
+  padding: 0 var(--wc-space-2);
+  border: 1px solid var(--wc-accent);
+  border-radius: 999px;
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+}
+
+.speak-next__foot {
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-top: 1px solid var(--wc-border);
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}

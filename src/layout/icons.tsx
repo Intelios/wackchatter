@@ -144,6 +144,19 @@ export function ContinueIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Pause — two bars. Not `StopIcon`'s square: a paused exchange keeps its schedule and the
+ * replies already running, while Stop ends the exchange, and the two sit side by side.
+ */
+export function PauseIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M9 5v14" />
+      <path d="M15 5v14" />
+    </svg>
+  );
+}
+
 export function EditIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

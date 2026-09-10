@@ -1,225 +1,194 @@
-import { currentText } from '@shared/chat/message.ts';
+import type { MessageState } from '@shared/chat/message.ts';
 import type { Persona } from '@shared/types/chat.ts';
-import { memberLabel } from '@shared/types/group.ts';
-import { useEffect, useRef, useState } from 'react';
+import type {
+  DialogueColorOverride,
+  DialogueColorSettings,
+  QuickCommand,
+} from '@shared/types/settings.ts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ContinueIcon, NexusIcon, PauseIcon } from '../../layout/icons.tsx';
+import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, chatApi, personaApi } from '../../lib/api.ts';
+import { resolveDialogueColor, useAvatarColor } from '../chat/avatarColor.ts';
 import { BranchTree } from '../chat/BranchTree.tsx';
-import { Composer } from '../chat/Composer.tsx';
+import { Composer, type ComposerHandle } from '../chat/Composer.tsx';
 import { MessageBubble } from '../chat/MessageBubble.tsx';
-import { createStreamStore } from '../chat/state/streamStore.ts';
+import { QuickCommands } from '../chat/QuickCommands.tsx';
+import { createStreamStore, type StreamStore } from '../chat/state/streamStore.ts';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
+import { PersonaChip } from '../persona/PersonaChip.tsx';
+import { GroupChatMenu } from './GroupChatMenu.tsx';
+import { SpeakNextPopover } from './SpeakNextPopover.tsx';
 import type { GroupChatController } from './useGroupChat.ts';
 import './Group.css';
 
+interface GroupChatViewProps {
+  chat: GroupChatController;
+  personas: Persona[];
+  /** Most recently switched to, newest first. Orders the composer's persona chip. */
+  recentPersonaIds: readonly string[];
+  personaAvatarVersions?: Readonly<Record<string, number>>;
+  dialogueColors: DialogueColorSettings;
+  quickCommands: QuickCommand[];
+  onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  /** Sets the app-wide persona and this scene's, together. */
+  onSelectPersona: (id: string | null) => void;
+  /** Opens a right panel — the cast, memory, or the persona manager. */
+  onOpenPanel: (panel: RightPanelId) => void;
+  /** Opens the prompt inspector in the left panel. */
+  onInspect: () => void;
+  directorConfigured: boolean;
+  onClose(): void;
+}
+
+/**
+ * An open group scene.
+ *
+ * Structurally this is `ChatView`: a transcript that scrolls under a pinned composer, no
+ * chrome of its own. The scene's actions live in the composer's burger and its speaker
+ * controls in the tray, exactly where a one-on-one chat keeps its equivalents, because a
+ * group is a chat with more characters in it rather than a different screen.
+ *
+ * What is genuinely group-shaped is only where it has to be: each row resolves its own
+ * speaker, and the tray carries a second identity chip for who is being addressed.
+ */
 export function GroupChatView({
   chat,
   personas,
-  onClose,
-  onSettings,
+  recentPersonaIds,
+  personaAvatarVersions,
+  dialogueColors,
+  quickCommands,
+  onQuickCommandsChange,
+  onSelectPersona,
+  onOpenPanel,
   onInspect,
-  onMemory,
   directorConfigured,
-}: {
-  chat: GroupChatController;
-  personas: Persona[];
-  onClose(): void;
-  onSettings(): void;
-  onInspect(): void;
-  onMemory(): void;
-  directorConfigured: boolean;
-}) {
+  onClose,
+}: GroupChatViewProps) {
   const [timeline, setTimeline] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [title, setTitle] = useState(chat.state.title);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<ComposerHandle>(null);
   const idleStream = useRef(createStreamStore());
   const { scrollToBottom } = useStickToBottom(scroll, content);
   const scene = chat.state.metadata.group;
+  const coordinator = chat.coordinator;
+  const running = Boolean(coordinator?.running || coordinator?.selecting);
+  const jobList = coordinator ? [...coordinator.jobs.values()] : [];
+  const busyMemberIds = jobList.map((job) => job.memberId);
   const blocked = chat.busy || chat.nexus.run.running || chat.summaryStatus.running;
   const act = (work: () => Promise<unknown>) => {
-    void work().catch((e) => setError(e.message));
+    void work().catch((e) => setError((e as Error).message));
   };
+
+  // Jump to the end when a different scene is opened — the transcript has been replaced,
+  // so the previous scroll position belongs to another conversation entirely.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on scene identity
   useEffect(() => {
     scrollToBottom();
   }, [chat.state.chatId, scrollToBottom]);
   useEffect(() => {
     const id = chat.nexus.jumpId;
-    if (id) document.getElementById(`group-message-${id}`)?.scrollIntoView({ block: 'center' });
+    // The bubble already carries `data-message-id`; scoped to this transcript so a jump
+    // can never land on a row of some other view that happens to share the attribute.
+    if (id)
+      content.current
+        ?.querySelector(`[data-message-id="${id}"]`)
+        ?.scrollIntoView({ block: 'center' });
   }, [chat.nexus.jumpId]);
+
+  const handleSend = useCallback(
+    async (text: string): Promise<string | null> => {
+      const sent = await chat.send(text);
+      if (sent) scrollToBottom();
+      return sent ? null : 'Message was not sent. Check the scene error above.';
+    },
+    [chat, scrollToBottom],
+  );
+
   if (chat.loading)
     return (
-      <div className="group-empty" role="status">
-        Opening scene…
+      <div className="wc-empty" role="status">
+        <span>Opening scene…</span>
       </div>
     );
   if (!scene)
     return (
-      <div className="group-empty" role="alert">
-        {chat.state.error ?? 'Scene unavailable.'}
+      <div className="wc-empty" role="alert">
+        <span>{chat.state.error ?? 'Scene unavailable.'}</span>
       </div>
     );
-  const running = chat.coordinator?.running || chat.coordinator?.selecting;
+
+  const pausedAtLimit = jobList.length >= scene.concurrency;
+  const speakerBlockedReason = chat.nexus.run.running
+    ? 'Cancel or finish the memory extraction first.'
+    : chat.summaryStatus.running
+      ? 'Cancel or finish the current summary first.'
+      : undefined;
+  const continueDisabled = !directorConfigured || blocked || running;
+  /*
+   * When an exchange is already running the reason points at Pause, which sits beside this
+   * button — "wait for the current replies" is a dead end, while "pause it first" is the
+   * actual next click, and pausing is what frees a director that has stopped answering.
+   */
+  const continueReason = !directorConfigured
+    ? 'Choose a director connection and model in Cast & settings first.'
+    : running
+      ? 'An exchange is already running — pause it, then continue.'
+      : blocked
+        ? (speakerBlockedReason ?? 'Wait for the current reply to finish.')
+        : 'Continue the conversation';
+  // The scene's opening press is a start, the rest are continuations — the menu's first
+  // entry says the same thing, and the two must not disagree about which one this is.
+  const continueLabel = chat.state.messages.length ? 'Continue' : 'Start scene';
+
   return (
-    <div className="group-chat">
-      <header className="group-header">
-        <div>
-          {renaming ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                chat.dispatch({ type: 'chat/renamed', title: title.trim() || chat.state.title });
-                setRenaming(false);
-              }}
-            >
-              <input
-                className="wc-input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                aria-label="Scene title"
-              />
-              <button type="submit" className="wc-button">
-                Save title
-              </button>
-            </form>
-          ) : (
-            <button
-              type="button"
-              className="group-title"
-              onClick={() => {
-                setTitle(chat.state.title);
-                setRenaming(true);
-              }}
-            >
-              {chat.state.title}
-            </button>
-          )}
-          <p className="group-note">
-            {scene.members.map((m) => memberLabel(m, scene.members)).join(' · ')}
-          </p>
-        </div>
-        <button type="button" className="wc-button" onClick={onClose}>
-          Close
-        </button>
-      </header>
-      <nav className="group-actions group-toolbar" aria-label="Scene controls">
-        <button type="button" className="wc-button" onClick={onSettings}>
-          Cast & settings
-        </button>
-        <button type="button" className="wc-button" onClick={onMemory}>
-          Memory
-        </button>
-        <button type="button" className="wc-button" onClick={onInspect}>
-          Inspect
-        </button>
-        <button type="button" className="wc-button" onClick={() => setTimeline(true)}>
-          Branch timeline
-        </button>
-        {chat.state.chatId ? (
-          <a className="wc-button" href={chatApi.exportUrl(chat.state.chatId)} download>
-            Export
-          </a>
-        ) : null}
-        <button
-          type="button"
-          className="wc-button"
-          disabled={blocked}
-          onBlur={() => setConfirmDelete(false)}
-          onClick={() =>
-            confirmDelete
-              ? act(async () => {
-                  await chat.saveNow();
-                  await chatApi.remove(chat.state.chatId!);
-                  onClose();
-                })
-              : setConfirmDelete(true)
-          }
-        >
-          {confirmDelete ? 'Confirm delete scene' : 'Delete scene'}
-        </button>
-      </nav>
-      <div className="group-activity" aria-live="polite">
-        <span>
-          {chat.coordinator?.selecting
-            ? 'Director choosing speakers…'
-            : running
-              ? 'Conversation active'
-              : 'Conversation paused'}
-          {running ? ` · ${chat.coordinator?.remaining ?? 0} replies remaining` : ''}
-        </span>
-        <span>{chat.saving ? 'Saving…' : 'Saved'}</span>
-      </div>
-      {chat.state.error || chat.saveError || error ? (
-        <div className="group-error" role="alert">
-          {chat.state.error || chat.saveError || error}
-          {chat.saveError ? (
-            <button type="button" className="wc-button" onClick={() => act(chat.saveNow)}>
-              Retry save
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {!directorConfigured ? (
-        <p className="group-error">
-          Choose a director connection and model in Cast & settings to enable automatic
-          conversation. You can still call on a configured member.
-        </p>
-      ) : null}
-      <div className="group-transcript" ref={scroll}>
-        <div ref={content}>
-          {!chat.state.messages.length ? (
-            <div className="group-empty">
-              <h2>Set the scene</h2>
-              <p>
+    <div className="chat-view">
+      <div className="chat-view__scroll" ref={scroll}>
+        <div className="chat-view__content" ref={content}>
+          {chat.state.messages.length === 0 ? (
+            <div className="wc-empty">
+              <span>
                 {scene.scenario ||
-                  'Write an opening message, or ask the director to start the scene.'}
-              </p>
+                  'Set the scene — write an opening message, or continue the conversation.'}
+              </span>
             </div>
-          ) : null}
-          {chat.state.messages.map((m, i) => {
-            const jobEntry = Object.entries(chat.state.jobs).find(([, j]) => j.messageId === m.id);
-            const stream = jobEntry
-              ? (chat.streams.get(jobEntry[0]) ?? idleStream.current)
-              : idleStream.current;
-            const persona = m.is_user ? personas.find((p) => p.id === m.persona_id) : null;
-            return (
-              <div id={`group-message-${m.id}`} key={m.id} className="group-message">
-                <MessageBubble
-                  message={m}
-                  avatarUrl={
-                    m.is_user
-                      ? persona?.avatar
-                        ? personaApi.avatarUrl(persona.id)
-                        : null
-                      : m.characterId
-                        ? characterApi.imageUrl(m.characterId)
-                        : null
-                  }
-                  dialogueActive={false}
-                  dialogueColor={null}
-                  streaming={!!jobEntry}
-                  mode={jobEntry?.[1].mode ?? null}
+          ) : (
+            chat.state.messages.map((message, index) => {
+              const jobEntry = Object.entries(chat.state.jobs).find(
+                ([, job]) => job.messageId === message.id,
+              );
+              const stream = jobEntry
+                ? (chat.streams.get(jobEntry[0]) ?? idleStream.current)
+                : idleStream.current;
+              return (
+                <GroupMessageRow
+                  key={message.id}
+                  chat={chat}
+                  message={message}
+                  personas={personas}
+                  personaAvatarVersions={personaAvatarVersions}
+                  dialogueColors={dialogueColors}
+                  streaming={Boolean(jobEntry)}
                   stream={stream}
-                  isLast={i === chat.state.messages.length - 1}
+                  streamNote={
+                    jobEntry
+                      ? stream.getSnapshot().active
+                        ? 'Replying…'
+                        : 'Connecting…'
+                      : undefined
+                  }
+                  onStopStream={jobEntry ? () => coordinator?.stop(jobEntry[0]) : undefined}
+                  isLast={index === chat.state.messages.length - 1}
                   busy={blocked}
                   summaryRunning={chat.summaryStatus.running}
                   memoryRunning={chat.nexus.run.running}
-                  flash={chat.nexus.jumpId === m.id}
-                  onSwipe={(direction) => {
-                    if (blocked) return;
-                    const index = m.swipe_id + direction;
-                    if (index >= 0 && index < m.swipes.length)
-                      chat.dispatch({ type: 'swipe/select', id: m.id, index });
-                    else if (direction > 0) chat.reroll(m.id);
-                  }}
-                  onSwipeTo={(id, index) => {
-                    if (!blocked) chat.dispatch({ type: 'swipe/select', id, index });
-                  }}
-                  onRegenerate={() => chat.reroll(m.id)}
-                  onContinue={() => chat.coordinator?.manual(m.memberId ?? '')}
-                  onRetry={() => chat.coordinator?.start()}
+                  flash={chat.nexus.jumpId === message.id}
+                  onReroll={(id) => chat.reroll(id)}
+                  onSpeak={(memberId) => coordinator?.manual(memberId)}
+                  onRetry={() => coordinator?.start()}
                   onEdit={(id, text) => {
                     if (!blocked) chat.dispatch({ type: 'message/edited', id, text });
                   }}
@@ -234,141 +203,317 @@ export function GroupChatView({
                   }}
                   onBranch={(id) => act(() => chat.branch(id))}
                 />
-                {jobEntry ? (
-                  <div className="group-message-tools">
-                    <span role="status">
-                      {stream.getSnapshot().active ? 'Replying…' : 'Connecting…'}
-                    </span>
-                    <button
-                      type="button"
-                      className="wc-button"
-                      onClick={() => chat.coordinator?.stop(jobEntry[0])}
-                    >
-                      Stop {m.name}
-                    </button>
-                  </div>
-                ) : !m.is_user && currentText(m) ? (
-                  <div className="group-message-tools">
-                    <button
-                      type="button"
-                      className="wc-button wc-button--ghost"
-                      disabled={blocked}
-                      onClick={() => chat.reroll(m.id)}
-                    >
-                      {i === chat.state.messages.length - 1 ? 'Reroll' : 'Branch & reroll'}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
-      <div className="group-actions group-controls">
-        <button
-          type="button"
-          className="wc-button wc-button--primary"
-          disabled={
-            !directorConfigured || chat.nexus.run.running || chat.summaryStatus.running || !!running
-          }
-          onClick={() => {
-            chat.dispatch({ type: 'error/cleared' });
-            chat.coordinator?.start();
-          }}
-        >
-          {chat.state.messages.length ? 'Continue conversation' : 'Start scene'}
-        </button>
-        <button
-          type="button"
-          className="wc-button"
-          disabled={!running}
-          onClick={() => chat.coordinator?.pause()}
-        >
-          Pause conversation
-        </button>
-        <button
-          type="button"
-          className="wc-button"
-          disabled={!blocked}
-          onClick={() => chat.coordinator?.stopAll()}
-        >
-          Stop all
-        </button>
-        <label>
-          Speak next
-          <select
-            className="wc-input"
-            value=""
-            disabled={
-              chat.nexus.run.running ||
-              chat.summaryStatus.running ||
-              (chat.coordinator?.jobs.size ?? 0) >= scene.concurrency
-            }
-            onChange={(e) => chat.coordinator?.manual(e.target.value)}
-          >
-            <option value="">Choose member</option>
-            {scene.members.map((m) => (
-              <option
-                key={m.id}
-                value={m.id}
-                disabled={
-                  m.muted ||
-                  [...(chat.coordinator?.jobs.values() ?? [])].some((j) => j.memberId === m.id)
-                }
+
+      {/*
+        The dock: failure notices and the composer, pinned below the transcript and outside
+        its scroller — the same anchor ChatView uses, so the composer grows upward into a
+        shorter transcript rather than pushing the transcript off the page.
+      */}
+      <div className="chat-view__dock">
+        {chat.state.error || chat.saveError || error ? (
+          <div className="chat-view__error" role="alert">
+            <span className="chat-view__error-text">
+              {chat.state.error || chat.saveError || error}
+            </span>
+            {chat.saveError ? (
+              <button
+                type="button"
+                className="wc-button chat-view__retry"
+                onClick={() => act(chat.saveNow)}
               >
-                {memberLabel(m, scene.members)}
-              </option>
-            ))}
-          </select>
-        </label>
+                Retry save
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/*
+          The exchange's status, and the one place a stalled director is legible. A director
+          call that never answers leaves the scene "active" with nothing arriving, so the
+          stalling phase says what it is waiting on rather than looking like progress.
+        */}
+        {running ? (
+          <p className="group-live" role="status">
+            {coordinator?.selecting
+              ? 'Director choosing who speaks…'
+              : `Conversation active${coordinator?.remaining ? ` · ${coordinator.remaining} replies still to come` : ''}`}
+          </p>
+        ) : !directorConfigured ? (
+          /*
+           * A dead primary button with only a tooltip is a dead end, and this is a setup
+           * problem rather than a passing state — so it says so once, in the one line the
+           * dock already has, rather than leaving the user to guess why Continue is grey.
+           */
+          <p className="group-live">
+            Choose a director connection and model in Cast &amp; settings to start an automatic
+            conversation. You can still call on a member.
+          </p>
+        ) : null}
+
+        <Composer
+          key={chat.state.chatId}
+          ref={composerRef}
+          onSend={handleSend}
+          onDraftChange={chat.nexus.draftChanged}
+          onGuide={(text) => void chat.guide(text)}
+          // The composer's Stop ends the whole exchange, which is what its label says. A
+          // single member's reply has its own Stop in that row's header.
+          onStop={() => coordinator?.stopAll()}
+          busy={running || chat.busy}
+          disabled={chat.loading || chat.nexus.run.running || chat.summaryStatus.running}
+          placeholder="Join the conversation…"
+          identity={
+            <PersonaChip
+              personas={personas}
+              active={chat.persona}
+              recentIds={recentPersonaIds}
+              avatarVersions={personaAvatarVersions ?? {}}
+              onSelect={onSelectPersona}
+              onManage={() => onOpenPanel('persona')}
+            />
+          }
+          leading={
+            <>
+              <GroupChatMenu
+                chat={chat}
+                directorConfigured={directorConfigured}
+                onStopAll={() => coordinator?.stopAll()}
+                onPause={() => coordinator?.pause()}
+                onContinue={() => coordinator?.start()}
+                onOpenCast={() => onOpenPanel('groups')}
+                onOpenMemory={() => onOpenPanel('summary')}
+                onOpenInspect={onInspect}
+                onOpenBranchTree={() => setTimeline(true)}
+                onCloseScene={onClose}
+                onDeleteScene={() =>
+                  act(async () => {
+                    await chat.saveNow();
+                    await chatApi.remove(chat.state.chatId!);
+                    onClose();
+                  })
+                }
+                onSelectMember={(id) => chat.selectMember(id)}
+              />
+              <QuickCommands
+                quickCommands={quickCommands}
+                onInsertCommand={(text) => composerRef.current?.insert(text)}
+                onQuickCommandsChange={onQuickCommandsChange}
+              />
+              {chat.memoryMode === 'nexus' ? (
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost composer__icon"
+                  aria-label="Memory Nexus"
+                  title="Memory Nexus"
+                  onClick={() => chat.nexus.show('explore')}
+                >
+                  <NexusIcon />
+                </button>
+              ) : null}
+            </>
+          }
+          trailing={
+            <>
+              {/*
+                Both conversation controls are always mounted and always labelled.
+                Labelled, because "continue the conversation" is the group's headline action
+                and a bare fast-forward glyph does not read as a button you can press to
+                nudge a director that has gone quiet — which is a real state, and the reason
+                this pair exists at all.
+                Both mounted, because appearing and disappearing would shift the speaker
+                chip and the wand sideways every time an exchange starts; a disabled Pause
+                says "nothing to pause" without moving anything.
+              */}
+              <button
+                type="button"
+                className="wc-button group-conversation"
+                aria-label="Continue conversation"
+                title={continueReason}
+                disabled={continueDisabled}
+                onClick={() => {
+                  chat.dispatch({ type: 'error/cleared' });
+                  coordinator?.start();
+                }}
+              >
+                <ContinueIcon />
+                {continueLabel}
+              </button>
+              <button
+                type="button"
+                className="wc-button group-conversation"
+                aria-label="Pause conversation"
+                // A stalled director is the case this button is for, so it says what
+                // pausing actually does from where the user is standing.
+                title={
+                  coordinator?.selecting
+                    ? 'Pause conversation — stop waiting on the director'
+                    : 'Pause conversation — replies already running will finish'
+                }
+                disabled={!running}
+                onClick={() => coordinator?.pause()}
+              >
+                <PauseIcon />
+                Pause
+              </button>
+              <SpeakNextPopover
+                members={scene.members}
+                selectedId={chat.selectedMemberId}
+                busyIds={busyMemberIds}
+                disabledReason={speakerBlockedReason}
+                busyReason={
+                  pausedAtLimit ? 'The conversation is already running its replies.' : undefined
+                }
+                onSpeak={(id) => {
+                  chat.selectMember(id);
+                  coordinator?.manual(id);
+                }}
+              />
+            </>
+          }
+        />
       </div>
-      <Composer
-        key={chat.state.chatId}
-        onSend={async (text) =>
-          (await chat.send(text)) ? null : 'Message was not sent. Check the scene error above.'
-        }
-        onDraftChange={chat.nexus.draftChanged}
-        onGuide={(text) => void chat.guide(text)}
-        onStop={() => chat.coordinator?.stopAll()}
-        busy={false}
-        disabled={chat.loading || chat.nexus.run.running || chat.summaryStatus.running}
-        placeholder="Join the conversation…"
-        identity={
-          <label className="group-composer-label">
-            Writing as
-            <select
-              className="wc-input"
-              value={chat.persona?.id ?? ''}
-              onChange={(e) => chat.setPersona(e.target.value || null)}
-            >
-              <option value="">User</option>
-              {personas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.variantLabel ? ` (${p.variantLabel})` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        }
-        trailing={
-          <label className="group-composer-label">
-            Macro character
-            <select
-              className="wc-input"
-              value={chat.selectedMemberId}
-              onChange={(e) => chat.selectMember(e.target.value)}
-            >
-              {scene.members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {memberLabel(m, scene.members)}
-                </option>
-              ))}
-            </select>
-          </label>
-        }
-      />
+
       {timeline ? <BranchTree chat={chat} onClose={() => setTimeline(false)} /> : null}
     </div>
   );
+}
+
+interface GroupMessageRowProps {
+  chat: GroupChatController;
+  message: MessageState;
+  personas: Persona[];
+  personaAvatarVersions?: Readonly<Record<string, number>>;
+  dialogueColors: DialogueColorSettings;
+  streaming: boolean;
+  stream: StreamStore;
+  streamNote?: string;
+  onStopStream?: () => void;
+  isLast: boolean;
+  busy: boolean;
+  summaryRunning: boolean;
+  memoryRunning: boolean;
+  flash: boolean;
+  onReroll: (id: string) => void;
+  onSpeak: (memberId: string) => void;
+  onRetry: () => void;
+  onEdit: (id: string, text: string) => void;
+  onEditReasoning: (id: string, reasoning: string) => void;
+  onDelete: (id: string) => void;
+  onToggleHidden: (id: string) => void;
+  onBranch: (id: string) => void;
+}
+
+/**
+ * One turn, with its speaker's presentation resolved per row.
+ *
+ * A component rather than a loop body because the avatar-colour extraction is a hook, and
+ * a group has as many speakers as it has rows — a member's dialogue colour comes from
+ * their own card, the same rule (and the same cache) a one-on-one chat's does.
+ *
+ * Both kinds of row go through one path: a member resolves against the cast's colours, a
+ * user resolves against the persona they actually sent as, falling back to the scene's
+ * current persona only for messages that predate the speaker being recorded.
+ */
+function GroupMessageRow({
+  chat,
+  message,
+  personas,
+  personaAvatarVersions,
+  dialogueColors,
+  streaming,
+  stream,
+  streamNote,
+  onStopStream,
+  isLast,
+  busy,
+  summaryRunning,
+  memoryRunning,
+  flash,
+  onReroll,
+  onSpeak,
+  onRetry,
+  onEdit,
+  onEditReasoning,
+  onDelete,
+  onToggleHidden,
+  onBranch,
+}: GroupMessageRowProps) {
+  const persona = message.is_user ? speakerOf(message, personas, chat.persona) : null;
+  const characterId = message.is_user ? null : (message.characterId ?? null);
+  const avatarUrl = message.is_user
+    ? persona?.avatar
+      ? personaApi.avatarUrl(persona.id, personaAvatarVersions?.[persona.id] ?? persona.avatar)
+      : null
+    : characterId
+      ? characterApi.imageUrl(characterId)
+      : null;
+  const override: DialogueColorOverride | undefined = message.is_user
+    ? persona
+      ? dialogueColors.personas[persona.id]
+      : undefined
+    : characterId
+      ? dialogueColors.characters[characterId]
+      : undefined;
+  const autoColor = useAvatarColor(
+    dialogueColors.enabled && override === undefined ? avatarUrl : null,
+  );
+  const dialogue = resolveDialogueColor(dialogueColors.enabled, override, autoColor);
+
+  return (
+    <MessageBubble
+      message={message}
+      avatarUrl={avatarUrl}
+      dialogueActive={dialogue.active}
+      dialogueColor={dialogue.color}
+      streaming={streaming}
+      mode={runningMode(chat, message.id)}
+      stream={stream}
+      isLast={isLast}
+      busy={busy}
+      summaryRunning={summaryRunning}
+      memoryRunning={memoryRunning}
+      flash={flash}
+      streamNote={streamNote}
+      onStopStream={onStopStream}
+      onSwipe={(direction) => {
+        if (busy) return;
+        const index = message.swipe_id + direction;
+        if (index >= 0 && index < message.swipes.length)
+          chat.dispatch({ type: 'swipe/select', id: message.id, index });
+        else if (direction > 0) onReroll(message.id);
+      }}
+      onSwipeTo={(id, index) => {
+        if (!busy) chat.dispatch({ type: 'swipe/select', id, index });
+      }}
+      onRegenerate={() => onReroll(message.id)}
+      onContinue={() => message.memberId && onSpeak(message.memberId)}
+      onRetry={onRetry}
+      onEdit={onEdit}
+      onEditReasoning={onEditReasoning}
+      onDelete={onDelete}
+      onToggleHidden={onToggleHidden}
+      onBranch={onBranch}
+    />
+  );
+}
+
+/** The generation mode a row is streaming under, so a re-roll animates as a re-roll. */
+function runningMode(chat: GroupChatController, messageId: string) {
+  const job = Object.values(chat.state.jobs).find((entry) => entry.messageId === messageId);
+  return job?.mode ?? null;
+}
+
+/** Who spoke, resolved the way `ChatView` resolves it: recorded, or the scene's current. */
+function speakerOf(
+  message: MessageState,
+  personas: Persona[],
+  current: Persona | null,
+): Persona | null {
+  const id = message.persona_id === undefined ? (current?.id ?? null) : message.persona_id;
+  return id ? (personas.find((persona) => persona.id === id) ?? null) : null;
 }

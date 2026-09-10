@@ -314,6 +314,12 @@ export interface ChatSummary {
    * fetching every chat in full. Absent on a chat that was never branched off another.
    */
   branchedFrom?: BranchOrigin;
+  /**
+   * For a group scene, the cast's character filenames in cast order, so the recents list
+   * can show who is in the room without fetching every scene in full. Absent on a direct
+   * chat, and on a scene whose metadata is malformed.
+   */
+  groupMembers?: string[];
 }
 
 /** A deleted chat waiting in the trash bin (data/backups), still restorable. */

@@ -76,6 +76,34 @@ import {
 import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
+/**
+ * The settings write for a persona pick, shared by the one-on-one chat and a group scene.
+ *
+ * Both doors have to move the same two things — the app-wide persona, and the recents that
+ * order the composer's switcher and the panel's roster — or a pick made in a group would
+ * leave the next one-on-one chat on the old persona. `withRecentPersona` returns the same
+ * reference when nothing would move, so re-picking the persona you are already using
+ * writes no settings at all.
+ *
+ * Recents are recorded at group grain — a variant's use bumps its base, because the Recent
+ * section lists people and the base row is where its flavours are reached from. Switching
+ * flavours of the same person then moves nothing, correctly.
+ */
+function personaPickSettings(
+  personas: readonly Persona[],
+  recentIds: readonly string[],
+  id: string | null,
+) {
+  const recent = withRecentPersona(
+    recentIds,
+    id ? recentPersonaId(personas, id) : null,
+    MAX_RECENT_PERSONAS,
+  );
+  return recent === recentIds
+    ? { personaId: id }
+    : { personaId: id, recentPersonaIds: [...recent] };
+}
+
 export function App() {
   const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
@@ -647,7 +675,12 @@ export function App() {
     characterIds: characters.map((c) => c.avatar),
     personas,
     personaId: settings?.personaId ?? null,
-    onPersonaSwitch: (id) => void patchSettings({ personaId: id }),
+    // A pick in a group scene writes the same two settings a one-on-one pick does, through
+    // the same helper — `groupChat.setPersona` is the door, this is the effect.
+    onPersonaSwitch: (id) =>
+      void patchSettings(
+        personaPickSettings(personas, settings?.recentPersonaIds ?? [], id),
+      ),
     globalVariables: settings?.variables ?? {},
     commitGlobalVariables,
     globalBookIds,
@@ -1160,19 +1193,7 @@ export function App() {
   // writes no settings at all.
   const handleSelectPersona = useCallback(
     (id: string | null) => {
-      // Recents are recorded at group grain — a variant's use bumps its base, because the
-      // Recent section lists people and the base row is where its flavours are reached
-      // from. Switching flavours of the same person then moves nothing, correctly.
-      const recent = withRecentPersona(
-        settings?.recentPersonaIds ?? [],
-        id ? recentPersonaId(personas, id) : null,
-        MAX_RECENT_PERSONAS,
-      );
-      void patchSettings(
-        recent === (settings?.recentPersonaIds ?? [])
-          ? { personaId: id }
-          : { personaId: id, recentPersonaIds: [...recent] },
-      );
+      void patchSettings(personaPickSettings(personas, settings?.recentPersonaIds ?? [], id));
       if (chat.state.chatId) chat.setPersona(id);
     },
     [chat, patchSettings, personas, settings?.recentPersonaIds],
@@ -1204,9 +1225,13 @@ export function App() {
     if (view === 'cocreator') return 'Character Co-Creator';
     if (view === 'stats') return 'Stats';
     if (view === 'arena') return 'Model Arena';
+    // A scene has no character to name it, and its own header is gone — the tab is the one
+    // place left that says which scene is open, so it says it the way a one-on-one chat
+    // does: "who, then which conversation".
+    if (groupChatId) return groupChat.state.title ? `Group — ${groupChat.state.title}` : 'Group';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
-  }, [view, active, chat.state.title]);
+  }, [view, groupChatId, groupChat.state.title, active, chat.state.title]);
 
   useEffect(() => {
     document.title = documentTitle;
@@ -1549,10 +1574,17 @@ export function App() {
           <GroupChatView
             chat={groupChat}
             personas={personas}
-            onClose={() => void handleCloseChat()}
-            onSettings={() => void showRightPanel('groups')}
-            onMemory={() => void showRightPanel('summary')}
+            recentPersonaIds={settings?.recentPersonaIds ?? []}
+            personaAvatarVersions={personaAvatarVersions}
+            dialogueColors={dialogueColorSettings}
+            quickCommands={quickCommands}
+            onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            // Through the controller, so the scene records the switch; the controller's
+            // `onPersonaSwitch` is what moves the app-wide persona and its recents.
+            onSelectPersona={(id) => groupChat.setPersona(id)}
+            onOpenPanel={(id) => void showRightPanel(id)}
             onInspect={() => setLeftPanel('inspect')}
+            onClose={() => void handleCloseChat()}
             directorConfigured={Boolean(
               groupChat.state.metadata.group?.director.model &&
                 settings?.connections.some(

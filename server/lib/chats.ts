@@ -1,4 +1,4 @@
-import { validateGroup } from '../../shared/types/group.ts';
+import { type GroupMember, validateGroup } from '../../shared/types/group.ts';
 import { createGroupStore } from './groups.ts';
 /**
  * Chat storage.
@@ -178,18 +178,22 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
   // The current swipe's text as the preview, taken live rather than denormalised into a
   // column that could disagree with the message it summarises. `branchedFrom` arrives as
-  // JSON text (json_extract of an object), parsed on the way out below.
+  // JSON text (json_extract of an object), parsed on the way out below; `groupMembers` is
+  // the group cast array, projected down to its character filenames there.
   const summarySelect = `
     SELECT c.id, c.kind, c.character_id AS characterId, c.title, c.created, c.modified,
       (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id) AS messageCount,
       (SELECT substr(json_extract(m.swipes, '$[' || m.swipe_id || ']'), 1, 200)
          FROM messages m WHERE m.chat_id = c.id
         ORDER BY m.position DESC LIMIT 1) AS lastMessage,
-      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom
+      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom,
+      json_extract(c.metadata, '$.group.members') AS groupMembers
     FROM chats c`;
 
-  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom'> {
+  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom' | 'groupMembers'> {
     branchedFrom: string | null;
+    /** The group cast as JSON text, or NULL for a direct chat. */
+    groupMembers: string | null;
   }
 
   function rowToSummary(row: SummaryRow): ChatSummary {
@@ -197,11 +201,21 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       row.branchedFrom === null
         ? undefined
         : parseJson<BranchOrigin | null>(row.branchedFrom, null);
+    /*
+     * The cast's filenames only, in cast order. The rows on the other side of this call
+     * carry public profiles and per-member overrides; none of that is a summary's business,
+     * and shipping it would bloat every recents fetch with prose nobody reads there.
+     */
+    const cast = row.groupMembers === null ? null : parseJson<GroupMember[] | null>(row.groupMembers, null);
+    const groupMembers = cast
+      ?.map((member) => member?.characterId)
+      .filter((id): id is string => typeof id === 'string');
     // A malformed blob is not a summary-killer; the chat lists without its provenance.
     return {
       ...row,
       lastMessage: row.lastMessage ?? '',
       branchedFrom: origin ?? undefined,
+      groupMembers: groupMembers?.length ? groupMembers : undefined,
     };
   }
 

@@ -147,6 +147,17 @@
   opacity: 1;
 }
 
+/* A live job's Stop is not a hover affordance — it has to be visible while it matters. */
+.message__tools[data-live] {
+  opacity: 1;
+}
+
+.message__stream-note {
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+  white-space: nowrap;
+}
+
 /* An open menu whose trigger has faded out is a trap — you cannot see what you opened. */
 .message:has(.popover__trigger[aria-expanded="true"]) .message__tools {
   opacity: 1;

@@ -187,6 +187,9 @@
   --wc-control-lg: 42px;
   --wc-avatar-sm: 32px;
   --wc-avatar-md: 44px;
+  /* How far stacked group faces tuck under one another. The visible step is the face size
+     minus this, so the two are tuned together to keep a face recognisable. */
+  --wc-avatar-overlap: 12px;
 
   /* Layout */
   --wc-panel-width: clamp(380px, 25vw, 560px);

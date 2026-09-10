@@ -7,6 +7,7 @@ import {
   EditIcon,
   PlugIcon,
   RefreshIcon,
+  StopIcon,
 } from '../../layout/icons.tsx';
 import type { CardReaderInit } from './CardReader.tsx';
 import { CardSheetPopover } from './CardSheetPopover.tsx';
@@ -44,6 +45,17 @@ interface MessageBubbleProps {
   isLast: boolean;
   /** A real reply is active; structural actions cannot safely run. */
   busy: boolean;
+  /**
+   * A group job's status line, shown in the header while this row streams. Opt-in with
+   * `onStopStream` and absent everywhere in a one-on-one chat, where the composer's Stop
+   * is the only generation in flight and a second one here would be redundant.
+   */
+  streamNote?: string;
+  /**
+   * Stop just this row's generation. Groups run several at once, so the composer's Stop
+   * — which ends the whole exchange — is not the right door for "stop her reply".
+   */
+  onStopStream?: () => void;
   /** A quiet summary blocks new provider generations but not transcript interaction. */
   summaryRunning: boolean;
   /** A quiet memory extraction blocks new provider generations but not transcript interaction. */
@@ -114,6 +126,8 @@ export const MessageBubble = memo(function MessageBubble({
   stream,
   isLast,
   busy,
+  streamNote,
+  onStopStream,
   summaryRunning,
   memoryRunning,
   displayText,
@@ -328,6 +342,31 @@ export const MessageBubble = memo(function MessageBubble({
                   if (!open) setConfirmDelete(false);
                 }}
               />
+            </div>
+          ) : null}
+
+          {/*
+            The live row's own controls. `data-live` keeps them visible: the tools above are
+            hover-revealed, and a Stop you cannot see while the reply you want to stop is
+            arriving is not an affordance. Only the rows that pass `onStopStream` group
+            take this path.
+          */}
+          {!editing && streaming && onStopStream ? (
+            <div className="message__tools" data-live>
+              {streamNote ? (
+                <span className="message__stream-note" role="status">
+                  {streamNote}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                className="wc-button wc-button--ghost message__action"
+                onClick={onStopStream}
+                title={`Stop ${message.name}`}
+                aria-label={`Stop ${message.name}`}
+              >
+                <StopIcon />
+              </button>
             </div>
           ) : null}
         </header>
