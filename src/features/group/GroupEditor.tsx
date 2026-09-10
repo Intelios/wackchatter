@@ -6,6 +6,7 @@ import {
   type GroupConfig,
   type GroupGeneration,
   type GroupMember,
+  mintMemberId,
 } from '@shared/types/group.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
@@ -307,7 +308,10 @@ export function GroupEditor({
                     members: [
                       ...value.members,
                       {
-                        id: crypto.randomUUID(),
+                        id: mintMemberId(
+                          c.name,
+                          value.members.map((m) => m.id),
+                        ),
                         characterId: c.avatar,
                         name: c.name,
                         publicProfile: '',

@@ -1,6 +1,27 @@
 import { expect, test } from 'bun:test';
 import { fromChatMessage, toChatMessage } from '../chat/message.ts';
-import { emptyGroup, groupProblem, memberLabel, validateGroup } from '../types/group.ts';
+import {
+  emptyGroup,
+  groupProblem,
+  memberLabel,
+  mintMemberId,
+  validateGroup,
+} from '../types/group.ts';
+
+test('mintMemberId mints a speakable slug that is unique in the scene', () => {
+  // A slug is something a small model can copy back exactly — the director's whole
+  // contract — unlike a UUID it must transcribe without slipping.
+  expect(mintMemberId('Lady Wren de Winter', [])).toBe('lady-wren-de-winter');
+  expect(mintMemberId('Wren', ['wren'])).toBe('wren-2');
+  expect(mintMemberId('Wren?', ['wren', 'wren-2'])).toBe('wren-3');
+  // Case folds onto the same slug: ids are matched case-insensitively downstream.
+  expect(mintMemberId('WREN', ['wren'])).toBe('wren-2');
+  // Non-Latin names keep their letters; the model can copy those too.
+  expect(mintMemberId('Врен', [])).toBe('Врен'.toLowerCase());
+  // A name with nothing slug-shaped left falls back instead of minting an empty id.
+  expect(mintMemberId('!!!', [])).toBe('member');
+  expect(mintMemberId('!!!', ['member'])).toBe('member-2');
+});
 
 test('speaker identity survives message repair and swipes', () => {
   const message = {

@@ -62,6 +62,87 @@ test('parseDirector recovers from model noise instead of pausing', () => {
   expect(parseDirector('{"speakers":["a","b","c"]}', ['a', 'b', 'c'], 2)).toEqual(['a', 'b']);
 });
 
+test('parseDirector strips an inline thinking block before reading the reply', () => {
+  // Proxies of reasoning models often leave <think> in the content. When the thought
+  // muses with JSON shapes, the first-{-to-last-} read spans both and parses nothing.
+  expect(
+    parseDirector(
+      '<think>The cast maps to {"speakers":["..."]}. Kellan just spoke, so Wren reacts.</think>\n{"speakers":["a"]}',
+      ['a', 'b'],
+      2,
+    ),
+  ).toEqual(['a']);
+  // Deliberation that never made it out of the think block is still a decision.
+  expect(
+    parseDirector(
+      '<thinking>Wren has been quiet and the hook is hers. {"speakers":["a"]}</thinking>',
+      ['a', 'b'],
+      2,
+    ),
+  ).toEqual(['a']);
+});
+
+test('parseDirector reads the structured object that answers, not a span across two', () => {
+  // An example object in prose followed by the real one: first-to-last splices them
+  // into one unparseable string.
+  expect(
+    parseDirector('For example {"speakers":["a"]} but really:\n{"speakers":["b"]}', ['a', 'b'], 2),
+  ).toEqual(['b']);
+  // The last object with a usable shape wins; later objects without one do not hide it.
+  expect(parseDirector('{"speakers":["a"]}\n{"note":"Kellan spoke last"}', ['a', 'b'], 2)).toEqual([
+    'a',
+  ]);
+});
+
+test('parseDirector accepts the shapes models actually answer with', () => {
+  // Singular key.
+  expect(parseDirector('{"speaker":"a"}', ['a', 'b'], 2)).toEqual(['a']);
+  // A bare array.
+  expect(parseDirector('["a"]', ['a', 'b'], 2)).toEqual(['a']);
+  // A bare quoted id.
+  expect(parseDirector('"a"', ['a', 'b'], 2)).toEqual(['a']);
+  // Single-quoted JSON, a small-model habit. Only tried when no double quotes exist,
+  // so prose apostrophes can never corrupt a real parse.
+  expect(parseDirector("{'speakers':['a']}", ['a', 'b'], 2)).toEqual(['a']);
+});
+
+test('parseDirector resolves a cast-line entry, punctuation and all', () => {
+  const members = [member('a', 'Alex'), member('b', 'Bryn')];
+  // Copying the whole "Name (id: …)" prefix off the Cast block.
+  expect(parseDirector('{"speakers":["Alex (id: a)"]}', ['a', 'b'], 2, members)).toEqual(['a']);
+  // A label with a sentence period, quoted.
+  expect(parseDirector('{"speakers":["\\"Alex.\\""]}', ['a', 'b'], 2, members)).toEqual(['a']);
+});
+
+test('parseDirector rescues a mis-copied id when exactly one eligible id is close', () => {
+  const uuid = '23cb4ead-b0cd-4d45-804c-8323fc841279';
+  const garbled = '23cb4ead-b0cd-4d45-804c-8323fc841278'; // one hex digit off
+  expect(parseDirector(`{"speakers":["${garbled}"]}`, [uuid, 'b'], 2)).toEqual([uuid]);
+  // A slug id one letter off is the same slip.
+  expect(parseDirector('{"speakers":["wrenn"]}', ['wren', 'bryn'], 2)).toEqual(['wren']);
+  // Two near-identical ids: ambiguity resolves to nothing rather than to a guess.
+  expect(() => parseDirector('{"speakers":["wren-3"]}', ['wren-1', 'wren-2'], 2)).toThrow();
+  // Fuzzy rescue is for ids, not one-letter noise.
+  expect(() => parseDirector('{"speakers":["m"]}', ['a'], 1)).toThrow();
+});
+
+test('parseDirector falls back to names mentioned in a plain-prose reply', () => {
+  const members = [member('a', 'Alex'), member('b', 'Bryn')];
+  expect(
+    parseDirector('Alex should speak next, reacting to the storm.', ['a', 'b'], 2, members),
+  ).toEqual(['a']);
+  // Mentions in order, capped at capacity.
+  expect(
+    parseDirector('Bryn reacts first; Alex can jump in alongside.', ['a', 'b'], 1, members),
+  ).toEqual(['b']);
+  // A member who is not eligible is not a prose selection either.
+  expect(() => parseDirector('Alex should speak next.', ['b'], 1, members)).toThrow();
+  // And a refusal that names nobody still refuses — nothing is invented.
+  expect(() =>
+    parseDirector("I'm sorry, I can't pick a character for this scene.", ['a', 'b'], 2, members),
+  ).toThrow('Director returned an invalid speaker selection. Continue to try again.');
+});
+
 test('parseDirector resolves a cast label back to its id', () => {
   const members = [member('a', 'Alex'), member('b', 'Bryn')];
   expect(parseDirector('{"speakers":["Alex"]}', ['a', 'b'], 2, members)).toEqual(['a']);
@@ -77,7 +158,6 @@ test('parseDirector resolves a cast label back to its id', () => {
 test('parseDirector throws only when nothing usable survives', () => {
   expect(() => parseDirector('{"speakers":[]}', ['a'], 2)).toThrow();
   expect(() => parseDirector('{"speakers":["ghost"]}', ['a'], 2)).toThrow();
-  expect(() => parseDirector('{"speakers":"a"}', ['a'], 2)).toThrow();
   expect(() => parseDirector('no json at all', ['a'], 2)).toThrow();
   // An id that is not eligible (muted, or already replying) is not a usable selection.
   expect(() => parseDirector('{"speakers":["m"]}', ['a'], 1)).toThrow();
@@ -123,7 +203,9 @@ test('director prompt demands a speaker and offers no pause escape', () => {
   expect(system.content).toContain('always name at least one');
   expect(system.content).toContain('An empty array is not a valid reply');
   expect(system.content).toContain('no prose and no markdown fence');
-  expect(system.content).toContain('Copy an id verbatim');
+  // A name is accepted wherever an id is, so a model never has to transcribe an id.
+  expect(system.content).toContain("or the member's name");
+  expect(system.content).not.toContain('Copy an id verbatim');
   expect(system.content).not.toContain('empty array pauses');
   // Capacity and remaining ride in the prompt so the model's bound matches the scheduler's.
   expect(system.content).toContain('at most 2 distinct eligible members');
@@ -133,6 +215,18 @@ test('director prompt demands a speaker and offers no pause escape', () => {
   expect(system.content).toContain('Bryn (id: b)');
   expect(system.content).toContain('A tavern at closing time.');
   expect(system.content).toContain('Earlier, a deal.');
+});
+
+test('the output contract is the last thing the director reads', () => {
+  // Models weight the tail of the instruction most; the reply shape belongs there,
+  // after the cast, scenario and memory it must not get lost among.
+  const s = scene([member('a', 'Alex'), member('b', 'Bryn')]);
+  const messages = directorMessages(s, [], [], ['a', 'b'], 2, 4, 'Earlier, a deal.', counted);
+  const content = messages[0]!.content.trimEnd();
+  expect(content.endsWith('{"speakers":["member-id"]}')).toBe(true);
+  const lastLine = content.slice(content.lastIndexOf('\n') + 1);
+  expect(lastLine).toContain('one line');
+  expect(lastLine).toContain('no markdown fence');
 });
 
 test('director history packs newest-first, skips hidden and blank messages, labels speakers', () => {

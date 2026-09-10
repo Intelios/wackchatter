@@ -437,6 +437,12 @@ export function useGroupChat(options: GroupChatOptions) {
               sessionId: id,
               countText: counter.countText,
             });
+            // An empty reply cut off at the token limit would read as "the model refused
+            // to pick" when the real cause is the output allowance — name it instead.
+            if (!result.content.trim() && result.finishReason === 'length')
+              throw new Error(
+                'The director ran out of output room before it answered. Give the director a larger output allowance in group settings.',
+              );
             return parseDirector(result.content, eligible, capacity, scene.members);
           },
         });

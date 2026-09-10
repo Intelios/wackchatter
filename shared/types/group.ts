@@ -57,6 +57,29 @@ export function memberLabel(member: GroupMember, members: readonly GroupMember[]
 }
 
 /**
+ * A new cast member's id: a slug of the character's name, unique among the ids already
+ * taken in the scene.
+ *
+ * The director asks a model to name its pick by id, so the id has to be something a model
+ * can copy back exactly — a UUID asked for that, and a one-hex-digit transcription slip
+ * used to cost the whole exchange. The slug is also case-folded for the same reason:
+ * id matching downstream is case-insensitive, so two ids that differ only by case would
+ * be two spellings of one member. Non-Latin names keep their letters; a name with
+ * nothing slug-shaped left falls back to `member` rather than an empty id.
+ */
+export function mintMemberId(name: string, taken: readonly string[]): string {
+  const fold = (v: string) => v.trim().toLowerCase();
+  const base =
+    fold(name)
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '') || 'member';
+  let id = base;
+  let n = 2;
+  while (taken.some((v) => fold(v) === id)) id = `${base}-${n++}`;
+  return id;
+}
+
+/**
  * The first constraint a group breaks, as a sentence for the editor to show.
  *
  * `validateGroup` is derived from this so the two can never disagree. The messages exist
