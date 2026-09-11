@@ -1,4 +1,5 @@
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import type { ComposerLabelMode, ComposerLayout } from '@shared/composer/layout.ts';
 import { formatRoll, rollDice } from '@shared/prompt/dice.ts';
 import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
@@ -15,6 +16,7 @@ import type {
 import {
   type ComponentProps,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -22,9 +24,24 @@ import {
   useRef,
   useState,
 } from 'react';
-import { RefreshIcon } from '../../layout/icons.tsx';
+import {
+  BoltIcon,
+  BookIcon,
+  BranchIcon,
+  CardIcon,
+  CloseIcon,
+  ContinueIcon,
+  DownloadIcon,
+  MessagesIcon,
+  NexusIcon,
+  PlusIcon,
+  RecapIcon,
+  RefreshIcon,
+  UserIcon,
+} from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
-import { characterApi, personaApi } from '../../lib/api.ts';
+import { characterApi, chatApi, personaApi } from '../../lib/api.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
 import { matchPersonaByName, personaDisplayName } from '../persona/personaRoster.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
@@ -32,9 +49,11 @@ import { BranchTree } from './BranchTree.tsx';
 import { CardReader, type CardReaderInit } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
+import { ComposerImportControl, ComposerRenameControl } from './ComposerUtilityControls.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { QuickCommands } from './QuickCommands.tsx';
+import { type RecapMeta, RecapOverlay, type RecapViewState } from './RecapOverlay.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
 import { createCardStore } from './state/cardStore.ts';
 import {
@@ -90,6 +109,8 @@ interface ChatViewProps {
   /** App-wide user-defined quick commands, inserted into the composer from the chat menu. */
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  composerLayout: ComposerLayout;
+  onComposerLayoutSave: (layout: ComposerLayout) => Promise<void>;
   /** Reads a chat export into this character as a new chat, from the chat menu. */
   onImportChat: (file: File) => void;
   /**
@@ -97,6 +118,13 @@ interface ChatViewProps {
    * dialogue colours are: an unrelated settings change must not re-render the transcript.
    */
   regexScripts: readonly RegexScript[];
+  /**
+   * Chat-menu families the user has collapsed, by header key, and the write-back. Passed
+   * straight through to the burger: the menu popup unmounts on close, so the choice has to
+   * be owned above it to survive.
+   */
+  collapsedMenuGroups: readonly string[];
+  onCollapsedMenuGroupsChange: (next: string[]) => void;
 }
 
 interface TranscriptWindowState {
@@ -126,13 +154,20 @@ export function ChatView({
   dialogueColors,
   quickCommands,
   onQuickCommandsChange,
+  composerLayout,
+  onComposerLayoutSave,
   onImportChat,
   regexScripts,
+  collapsedMenuGroups,
+  onCollapsedMenuGroupsChange,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom, stopFollowing } = useStickToBottom(scrollRef, contentRef);
   const [window, setWindow] = useState<TranscriptWindowState>({ chatId: null, start: 0, end: 0 });
+  // The message a jump just centred on, held briefly so the row can flash. Null = nothing
+  // to show; the jump's centring effect is the only writer.
+  const [flashId, setFlashId] = useState<string | null>(null);
   // The first rendered message and where its top sat relative to the viewport, captured
   // before a prepend so the same document position can be restored after it commits.
   const restorePrependScroll = useRef<{ messageId: string; offset: number } | null>(null);
@@ -141,6 +176,9 @@ export function ChatView({
   const composerRef = useRef<ComposerHandle>(null);
 
   const { state, stream, busy, generationBlocked } = chat;
+  // A generation whose text belongs to the composer rather than the transcript. The mode
+  // is what distinguishes it — the status alone cannot, since both kinds are "busy".
+  const impersonating = state.status !== 'idle' && state.mode === 'impersonate';
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
@@ -152,6 +190,26 @@ export function ChatView({
     dialogueColors.enabled,
     characterOverride,
     characterAutoColor,
+  );
+
+  const controlButton = (
+    label: string,
+    icon: ReactNode,
+    display: ComposerLabelMode,
+    onClick: () => void,
+    disabledReason?: string,
+  ) => (
+    <button
+      type="button"
+      className="wc-button wc-button--ghost composer__icon composer__layout-button"
+      onClick={onClick}
+      disabled={Boolean(disabledReason)}
+      title={disabledReason ?? label}
+      aria-label={label}
+    >
+      {icon}
+      {display === 'label' ? <span>{label}</span> : null}
+    </button>
   );
 
   // Who "you" are can change mid-conversation, but a message keeps the face it was
@@ -175,6 +233,7 @@ export function ChatView({
   useEffect(() => {
     const initial = initialTranscriptWindow(state.messages.length);
     setWindow({ chatId: state.chatId, start: initial.start, end: initial.end });
+    setFlashId(null);
     scrollToBottom();
   }, [state.chatId, chat.reloadCount]);
 
@@ -223,6 +282,12 @@ export function ChatView({
   // --- /jump -----------------------------------------------------------------
 
   const pendingJumpRef = useRef<string | null>(null);
+  // Every jump bumps this counter, and the centring effect below is keyed on it — not on
+  // the window bounds. A target already inside the current window leaves the bounds
+  // unchanged, so an effect keyed on them never ran: the jump set the target, the overlay
+  // closed, and nothing scrolled. That is the common case for Nexus — memories are
+  // extracted from recent messages, the ones already loaded.
+  const [jumpSeq, setJumpSeq] = useState(0);
   // After a jump, the load-ahead must stand down until the reader actually scrolls: the
   // jump's own centering scroll lands inside the load-ahead band, and letting the band
   // logic fire there would cascade page loads and restores that walk the viewport away
@@ -241,9 +306,18 @@ export function ChatView({
       suppressLoadAheadRef.current = true;
       stopFollowing();
       setWindow({ chatId: state.chatId, start: win.start, end: win.end });
+      setJumpSeq((s) => s + 1);
     },
     [state.chatId, state.messages, stopFollowing],
   );
+
+  useEffect(() => {
+    const id = chat.nexus.jumpId;
+    if (!id) return;
+    const index = chat.messages.findIndex((m) => m.id === id);
+    if (index >= 0) jumpTo(index);
+    chat.nexus.setJumpId(null);
+  }, [chat.nexus.jumpId, chat.nexus.setJumpId, chat.messages, jumpTo]);
 
   // The target only exists in the DOM once the new window has committed, so the scroll
   // waits for this layout effect. Centred, not snapped to the top: the reader lands with
@@ -251,8 +325,9 @@ export function ChatView({
   // Declared before the load-ahead effects so their scroll captures happen after the
   // centering — otherwise a prepend queued by the same commit would restore the viewport
   // to the pre-jump position and the jump would land somewhere else entirely.
-  // Keyed on the window bounds, by design — a jump is a window change.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the window is the trigger
+  // Keyed on the jump sequence, not the window bounds — see `jumpSeq` for why identical
+  // bounds must still run this.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the sequence is the trigger
   useLayoutEffect(() => {
     const id = pendingJumpRef.current;
     if (!id) return;
@@ -267,11 +342,21 @@ export function ChatView({
     programmaticScrollRef.current = true;
     scroll.scrollTop =
       elRect.top - scrollRect.top + scroll.scrollTop - scroll.clientHeight / 2 + elRect.height / 2;
+    // The reader has arrived at a wall of text; mark which row they came to see.
+    setFlashId(id);
     // Released after the scroll event this just queued has been dispatched.
     requestAnimationFrame(() => {
       programmaticScrollRef.current = false;
     });
-  }, [window.start, window.end]);
+  }, [jumpSeq]);
+
+  // The flash is a notice, not a state: cleared on a timer so the row reads normally
+  // again. The cleanup also cancels a pending clear when another jump re-arms it first.
+  useEffect(() => {
+    if (!flashId) return;
+    const timer = setTimeout(() => setFlashId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [flashId]);
 
   // --- Sending ---------------------------------------------------------------
 
@@ -435,6 +520,63 @@ export function ChatView({
   const openBranchTree = useCallback(() => setBranchTreeOpen(true), []);
   const closeBranchTree = useCallback(() => setBranchTreeOpen(false), []);
 
+  // --- "Previously on…" ------------------------------------------------------
+
+  /*
+   * The recap has two doors (the burger and the composer tray) and one destination. The
+   * text is held here rather than in `useChat` because it belongs to a reading surface,
+   * not to the chat: `chat.recap` deliberately keeps it out of the transcript and the save
+   * queue, so this component is its only home for as long as the overlay is up.
+   *
+   * `status` starts `active` because opening the overlay is what starts the run — there is
+   * no visible empty state. A failed run keeps its own reason; a stopped one settles as
+   * `done` with whatever text arrived, and the overlay says so if nothing did.
+   */
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [recapView, setRecapView] = useState<RecapViewState>({
+    status: 'active',
+    text: '',
+    error: null,
+  });
+  const [recapMeta, setRecapMeta] = useState<RecapMeta | null>(null);
+
+  const runRecap = useCallback(() => {
+    setRecapOpen(true);
+    setRecapMeta(null);
+    setRecapView({ status: 'active', text: '', error: null });
+    void chat.recap({
+      onText: (text) => setRecapView((prev) => ({ ...prev, text })),
+      onMeta: (meta) => setRecapMeta(meta),
+      onError: (error) => setRecapView({ status: 'failed', text: '', error }),
+      // Partial text is a result, not a failure: only a run that failed outright keeps its
+      // `failed` face. Everything else settles as done, empty or not.
+      onDone: () =>
+        setRecapView((prev) => (prev.status === 'failed' ? prev : { ...prev, status: 'done' })),
+    });
+  }, [chat]);
+  const closeRecap = useCallback(() => setRecapOpen(false), []);
+
+  // A recap belongs to the chat it was written for. Closing on a switch stops the previous
+  // story's text sitting over a different transcript while its run is still settling.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on chat identity on purpose — the body only calls setters
+  useEffect(() => {
+    setRecapOpen(false);
+    setRecapView({ status: 'done', text: '', error: null });
+    setRecapMeta(null);
+  }, [state.chatId]);
+
+  /**
+   * Impersonate. The model writes the user's next message; the draft steers it (exactly
+   * like a guided reply) and the result replaces the draft, so it is editable before it is
+   * sent. The composer's `replace` is the one write path back into the field.
+   */
+  const impersonate = useCallback(
+    (instruction?: string) => {
+      void chat.impersonate(instruction, (text) => composerRef.current?.replace(text));
+    },
+    [chat],
+  );
+
   // --- Slash commands --------------------------------------------------------
 
   const runCommand = useCallback(
@@ -530,6 +672,19 @@ export function ChatView({
           }
           return null;
         }
+        /*
+         * The model writes your next message and leaves it in the composer. Same act as the
+         * tray button, typed instead. Blocked while a generation runs for the same reason
+         * `/roll` is: the provider plumbing expects one request at a time.
+         */
+        case 'impersonate': {
+          if (!state.chatId) return 'Open a chat before impersonating.';
+          if (generationBlocked) {
+            return 'Wait for the current reply to finish before impersonating.';
+          }
+          impersonate(command.instruction);
+          return null;
+        }
       }
     },
     [
@@ -537,6 +692,7 @@ export function ChatView({
       state.messages,
       generationBlocked,
       chat,
+      impersonate,
       jumpTo,
       openCardReader,
       onOpenPanel,
@@ -762,6 +918,21 @@ export function ChatView({
       {/* Same takeover, for the branch family. Unmounts with the chat it is centred on. */}
       {branchTreeOpen && state.chatId ? <BranchTree chat={chat} onClose={closeBranchTree} /> : null}
 
+      {/* The recap reads over the column, and survives a panel opening like the others. */}
+      {recapOpen ? (
+        <RecapOverlay
+          view={recapView}
+          meta={recapMeta}
+          stream={stream}
+          title={state.title}
+          characterName={characterName}
+          characterDialogueColor={characterDialogue.color}
+          personaName={chatPersona?.name}
+          episode={recapMeta?.total ?? state.messages.length}
+          onClose={closeRecap}
+        />
+      ) : null}
+
       <div className="chat-view__scroll" ref={scrollRef}>
         <div className="chat-view__content" ref={contentRef}>
           {state.messages.length === 0 ? (
@@ -774,6 +945,7 @@ export function ChatView({
               const shared = {
                 message,
                 streaming: state.streamingId === message.id,
+                flash: message.id === flashId,
                 mode: state.mode,
                 stream,
                 isLast: message.id === lastId,
@@ -894,7 +1066,9 @@ export function ChatView({
         ) : null}
 
         <Composer
+          key={state.chatId}
           ref={composerRef}
+          onDraftChange={chat.nexus.draftChanged}
           onSend={handleSend}
           // The other two composer submits. Both put new text at the end of the transcript,
           // so both earn the same snap as an ordinary send.
@@ -907,6 +1081,9 @@ export function ChatView({
             void chat.guidedSwipe(text);
           }}
           guidedSwipeDisabledReason={guidedSwipeDisabledReason}
+          onImpersonate={impersonate}
+          impersonating={impersonating}
+          stream={stream}
           onStop={
             chat.summaryStatus.running
               ? chat.cancelSummary
@@ -916,50 +1093,267 @@ export function ChatView({
           }
           busy={generationBlocked}
           disabled={!ready || loadBlocksChat}
-          // Who you are writing as. `chat.persona` rather than the raw setting, because a
-          // loaded chat adopts its own recorded persona — the chip has to show the one that
-          // will actually be stamped onto the next message.
-          identity={
-            <PersonaChip
-              personas={personas}
-              active={chat.persona}
-              recentIds={recentPersonaIds}
-              avatarVersions={personaAvatarVersions ?? {}}
-              onSelect={onSelectPersona}
-              onManage={() => onOpenPanel('persona')}
-            />
-          }
-          // Deliberately not gated on `ready`: closing or starting a chat has to work
-          // before a connection is configured.
-          leading={
-            <>
-              <ChatMenu
-                chat={chat}
-                onCloseChat={onCloseChat}
-                onOpenPanel={onOpenPanel}
-                onImportChat={onImportChat}
-                onOpenCard={openCardReader}
-                onOpenBranchTree={openBranchTree}
-              />
-              <QuickCommands
-                quickCommands={quickCommands}
-                onInsertCommand={(text) => composerRef.current?.insert(text)}
-                onQuickCommandsChange={onQuickCommandsChange}
-              />
-            </>
-          }
-          // Persistent guides sits with the draft actions, not with the menus: it and the
-          // wand are one idea — a standing instruction and a per-turn one — and they used
-          // to sit on opposite sides of the field with the whole input between them.
-          trailing={
-            <GuidesPopover
-              guides={guides}
-              onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
-              guidance={guidance}
-              onGuidanceChange={onGuidanceChange}
-              disabled={!state.chatId}
-            />
-          }
+          kind="single"
+          layout={composerLayout}
+          onLayoutSave={onComposerLayoutSave}
+          controls={[
+            {
+              id: 'persona',
+              label: 'Persona',
+              render: (display) => (
+                <PersonaChip
+                  compact={display === 'icon'}
+                  personas={personas}
+                  active={chat.persona}
+                  recentIds={recentPersonaIds}
+                  avatarVersions={personaAvatarVersions ?? {}}
+                  onSelect={onSelectPersona}
+                  onManage={() => onOpenPanel('persona')}
+                />
+              ),
+            },
+            {
+              id: 'menu',
+              label: 'Chat menu',
+              render: (display) => (
+                <ChatMenu
+                  showLabel={display === 'label'}
+                  chat={chat}
+                  onCloseChat={onCloseChat}
+                  onOpenPanel={onOpenPanel}
+                  onImportChat={onImportChat}
+                  onOpenCard={openCardReader}
+                  onOpenBranchTree={openBranchTree}
+                  onOpenRecap={runRecap}
+                  onCustomiseComposer={() => composerRef.current?.customise()}
+                  onComposerAction={(id) => composerRef.current?.activate(id)}
+                  collapsedMenuGroups={collapsedMenuGroups}
+                  onCollapsedMenuGroupsChange={onCollapsedMenuGroupsChange}
+                />
+              ),
+            },
+            {
+              id: 'quickCommands',
+              label: 'Quick commands',
+              render: (display) => (
+                <QuickCommands
+                  showLabel={display === 'label'}
+                  quickCommands={quickCommands}
+                  onInsertCommand={(text) => composerRef.current?.insert(text)}
+                  onQuickCommandsChange={onQuickCommandsChange}
+                />
+              ),
+            },
+            {
+              id: 'nexus',
+              label: 'Memory Nexus',
+              render: (display) =>
+                controlButton(
+                  'Memory Nexus',
+                  <NexusIcon />,
+                  display,
+                  () => chat.nexus.show('explore'),
+                  chat.memoryMode === 'nexus' ? undefined : 'This chat is not using Memory Nexus.',
+                ),
+            },
+            {
+              id: 'guides',
+              label: 'Persistent guides',
+              render: (display) => (
+                <GuidesPopover
+                  showLabel={display === 'label'}
+                  guides={guides}
+                  onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
+                  guidance={guidance}
+                  onGuidanceChange={onGuidanceChange}
+                  disabled={!state.chatId}
+                />
+              ),
+            },
+            {
+              id: 'recap',
+              label: 'Previously on',
+              render: (display) =>
+                controlButton(
+                  'Previously on',
+                  <RecapIcon />,
+                  display,
+                  runRecap,
+                  generationBlocked
+                    ? 'Wait for the current operation to finish.'
+                    : state.messages.length
+                      ? undefined
+                      : 'This chat has no messages yet.',
+                ),
+            },
+            {
+              id: 'newChat',
+              label: 'New chat',
+              render: (display) =>
+                controlButton(
+                  'New chat',
+                  <PlusIcon />,
+                  display,
+                  () => void chat.newChat(),
+                  busy ? 'Wait for the current reply to finish.' : undefined,
+                ),
+            },
+            {
+              id: 'rename',
+              label: 'Rename chat',
+              render: (display) => (
+                <ComposerRenameControl
+                  title={state.title}
+                  display={display}
+                  disabledReason={
+                    busy
+                      ? 'Wait for the current reply to finish.'
+                      : !state.chatId
+                        ? 'No chat is open.'
+                        : undefined
+                  }
+                  onRename={(title) => void chat.renameChat(title)}
+                />
+              ),
+            },
+            {
+              id: 'export',
+              label: 'Export chat',
+              render: (display) =>
+                controlButton(
+                  'Export chat',
+                  <DownloadIcon />,
+                  display,
+                  () => state.chatId && downloadUrl(chatApi.exportUrl(state.chatId)),
+                  busy
+                    ? 'Wait for the current reply to finish.'
+                    : !state.chatId
+                      ? 'No chat is open.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'import',
+              label: 'Import chat',
+              render: (display) => (
+                <ComposerImportControl
+                  display={display}
+                  disabledReason={busy ? 'Wait for the current reply to finish.' : undefined}
+                  onImport={onImportChat}
+                />
+              ),
+            },
+            {
+              id: 'checkpoint',
+              label: 'Save checkpoint',
+              render: (display) =>
+                controlButton(
+                  'Save checkpoint',
+                  <BranchIcon />,
+                  display,
+                  () => lastId && void chat.branchFrom(lastId),
+                  busy
+                    ? 'Wait for the current reply to finish.'
+                    : !lastId
+                      ? 'This chat has no messages yet.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'regenerate',
+              label: 'Regenerate',
+              render: (display) =>
+                controlButton(
+                  'Regenerate',
+                  <RefreshIcon />,
+                  display,
+                  () => void chat.regenerate(),
+                  generationBlocked
+                    ? 'Wait for the current operation to finish.'
+                    : !lastId
+                      ? 'This chat has no messages yet.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'continue',
+              label: 'Continue',
+              render: (display) =>
+                controlButton(
+                  'Continue',
+                  <ContinueIcon />,
+                  display,
+                  () => void chat.continueLast(),
+                  generationBlocked
+                    ? 'Wait for the current operation to finish.'
+                    : !lastId
+                      ? 'This chat has no messages yet.'
+                      : awaitingReply
+                        ? 'The last message is yours.'
+                        : undefined,
+                ),
+            },
+            {
+              id: 'card',
+              label: 'Character card',
+              render: (display) =>
+                controlButton('Character card', <CardIcon />, display, () => openCardReader()),
+            },
+            {
+              id: 'branches',
+              label: 'Branch timeline',
+              render: (display) =>
+                controlButton(
+                  'Branch timeline',
+                  <BranchIcon />,
+                  display,
+                  openBranchTree,
+                  state.chatId ? undefined : 'No chat is open.',
+                ),
+            },
+            {
+              id: 'context',
+              label: 'Chat context',
+              render: (display) =>
+                controlButton('Chat context', <MessagesIcon />, display, () =>
+                  onOpenPanel('characters'),
+                ),
+            },
+            {
+              id: 'lore',
+              label: 'Lore',
+              render: (display) =>
+                controlButton('Lore', <BookIcon />, display, () => onOpenPanel('lorebooks')),
+            },
+            {
+              id: 'personas',
+              label: 'Personas',
+              render: (display) =>
+                controlButton('Personas', <UserIcon />, display, () => onOpenPanel('persona')),
+            },
+            {
+              id: 'close',
+              label: 'Close chat',
+              render: (display) =>
+                controlButton(
+                  'Close chat',
+                  <CloseIcon />,
+                  display,
+                  onCloseChat,
+                  busy ? 'Wait for the current reply to finish.' : undefined,
+                ),
+            },
+            ...quickCommands
+              .filter((command) => command.text.trim())
+              .map((command) => ({
+                id: `quick:${command.id}`,
+                label: command.name.trim() || command.text.trim().slice(0, 32),
+                render: (display: ComposerLabelMode) =>
+                  controlButton(command.name.trim() || 'Quick command', <BoltIcon />, display, () =>
+                    composerRef.current?.insert(command.text),
+                  ),
+              })),
+          ]}
           placeholder={
             loadBlocksChat
               ? 'Retry loading this character before sending a message.'

@@ -31,6 +31,7 @@ interface GuidesPopoverProps {
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
   /** No open chat means nowhere to store a guide. */
   disabled?: boolean;
+  showLabel?: boolean;
 }
 
 export function GuidesPopover({
@@ -39,6 +40,7 @@ export function GuidesPopover({
   guidance,
   onGuidanceChange,
   disabled,
+  showLabel,
 }: GuidesPopoverProps) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function GuidesPopover({
     <Popover
       label={active > 0 ? `Persistent guides — ${active} shaping every reply` : 'Persistent guides'}
       icon={<BookIcon />}
+      triggerText={showLabel ? 'Guides' : undefined}
       // The only signal that something invisible is steering every reply. Without it a
       // guide written an hour ago silently explains a character who stopped sounding right.
       badge={active > 0 ? <span className="popover__badge">{active}</span> : undefined}

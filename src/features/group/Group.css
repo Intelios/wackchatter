@@ -1,0 +1,117 @@
+/*
+ * The group feature's own styles.
+ *
+ * The chat column itself is deliberately absent: an open scene lays out as a `.chat-view`
+ * (see ChatView.css), so it scrolls and centres by the same rules a one-on-one chat does.
+ * What is left here is the two panels — the reusable-cast browser and its editor — plus
+ * the one status line an actively running exchange needs.
+ *
+ * Structural only — every colour, space and duration comes from tokens.css.
+ */
+
+.groups-panel,
+.group-editor,
+.group-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+.groups-panel {
+  padding: var(--wc-space-4);
+}
+.group-editor {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.group-fields label,
+.groups-panel > label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  align-items: center;
+}
+.group-note {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  margin: var(--wc-space-1) 0;
+}
+.group-card,
+.group-member,
+.group-drafts {
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+}
+.group-card h3,
+.group-card p {
+  margin: 0 0 var(--wc-space-2);
+}
+.group-member > summary {
+  cursor: pointer;
+  padding-block: var(--wc-space-1);
+}
+.group-picker {
+  max-height: calc(var(--wc-control) * 4);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+.group-scene {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  text-align: left;
+  color: var(--wc-text);
+  background: var(--wc-surface);
+  cursor: pointer;
+}
+.group-scene:hover {
+  background: var(--wc-surface-hover);
+}
+.group-scene span {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+/*
+ * The conversation's own controls, in the composer's tray.
+ *
+ * Labelled rather than icon-only: the director can stall, and the way out of that is to
+ * press Continue again — which a bare fast-forward glyph does not advertise. Held at the
+ * tray's control height so the row keeps one baseline whether a label is present or not.
+ */
+.group-conversation {
+  height: var(--wc-control);
+  flex-shrink: 0;
+}
+
+/*
+ * The exchange's own status, in the dock above the composer.
+ *
+ * This is the whole surviving remnant of the controls bar: with several replies able to
+ * run at once, "is this still going, and how much is left" is a real question, and the
+ * Stop face alone cannot answer it. It is one muted line, present only while running —
+ * and it names the stalling phase, or a silent director reads as progress.
+ */
+.group-live {
+  margin: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.group-wire {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--wc-text-sm);
+}

@@ -1,3 +1,6 @@
+import { reportNexusAssembly } from '@shared/nexus/report.ts';
+import { DEFAULT_NEXUS, type NexusSettings } from '@shared/nexus/types.ts';
+import { type NexusController, useNexus } from '../nexus/useNexus.ts';
 /**
  * Chat orchestration: assembly, streaming, and persistence.
  *
@@ -7,6 +10,7 @@
  */
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import { buildRecapRequest } from '@shared/chat/recap.ts';
 import {
   buildExtractionMessages,
   memoryBacklog,
@@ -21,6 +25,7 @@ import {
 } from '@shared/memory/memories.ts';
 import type { MemoryRecall } from '@shared/memory/source.ts';
 import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/assemble.ts';
+import { createDefaultPreset, DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
@@ -65,7 +70,7 @@ import {
   useState,
 } from 'react';
 import { chatApi, streamGenerate } from '../../lib/api.ts';
-import { memoryRecallForChat, worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
   packClassicSummaryChunk,
   resolveSummaryPrompt,
@@ -96,6 +101,7 @@ const MODE_TO_GENERATION_TYPE: Record<GenMode, GenerationType> = {
   regenerate: 'regenerate',
   swipe: 'swipe',
   continue: 'continue',
+  impersonate: 'impersonate',
 };
 
 export interface UseChatOptions {
@@ -135,6 +141,9 @@ export interface UseChatOptions {
   memoryConnection?: Connection | null;
   memoryPreset?: Preset | null;
   memoryCountTokens?: TokenCounter;
+  nexusSettings?: NexusSettings;
+  nexusConnection?: Connection | null;
+  nexusCountTokens?: TokenCounter;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
   onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
@@ -145,7 +154,28 @@ export interface UseChatOptions {
   regexScripts?: readonly RegexScript[];
 }
 
+/**
+ * Where a "Previously on…" recap's text goes.
+ *
+ * The recap has no transcript home, so — like `impersonate`'s `onText` — the result is
+ * handed back through callbacks instead of a reducer dispatch. `onDone` fires once for the
+ * run that was started, after the reducer has settled, so the overlay can leave its
+ * streaming state on every outcome including a stop that produced nothing.
+ */
+export interface RecapHandlers {
+  /** The settled text, or the partial text of a stopped or failed attempt. */
+  onText?: (text: string) => void;
+  /** How much of a long chat had to be dropped to fit the declared context. */
+  onMeta?: (meta: { dropped: number; total: number }) => void;
+  /** The run produced nothing. The reason, for the overlay. */
+  onError?: (message: string) => void;
+  /** The run is over, whatever the outcome. */
+  onDone?: () => void;
+}
+
 export interface UseChat {
+  nexus: NexusController;
+  memoryMode: MemoryMode;
   state: ChatState;
   /** The transcript in wire form. Feeds both the UI and assemblePrompt. */
   messages: ChatMessage[];
@@ -183,6 +213,24 @@ export interface UseChat {
   guidedRespond(guidance: string): Promise<void>;
   /** A new alternate on the last reply, steered the same way. Never a cached swipe. */
   guidedSwipe(guidance: string): Promise<void>;
+  /**
+   * Write the user's next message with the model, into the composer draft.
+   *
+   * Nothing reaches the transcript. `onText` receives the settled text — and the partial
+   * text of a stopped or failed attempt — so the caller can place it in the field; it is
+   * not called when no text arrived, leaving any existing draft untouched. `instruction`
+   * is optional steering, injected exactly like a guided reply's guidance.
+   */
+  impersonate(instruction?: string, onText?: (text: string) => void): Promise<void>;
+  /**
+   * Write a "Previously on…" recap of the visible transcript.
+   *
+   * The request is built from the transcript alone — no preset prompts, card, persona,
+   * lore or macros — and nothing reaches the transcript. Busy-gated against replies and
+   * summaries, and stopped by the same `abort()`. `handlers.onText` receives the settled
+   * text, or the partial text of a stopped attempt; the overlay owns where it is shown.
+   */
+  recap(handlers?: RecapHandlers): Promise<void>;
   abort(): void;
 
   summaryStatus: SummaryRunStatus;
@@ -291,7 +339,10 @@ export function useChat(options: UseChatOptions): UseChat {
     summaryConnection,
     summarySettings,
     summaryCountTokens,
-    memoryMode = 'classic',
+    memoryMode: defaultMemoryMode = 'classic',
+    nexusSettings = DEFAULT_NEXUS,
+    nexusConnection,
+    nexusCountTokens,
     memorySettings,
     memoryConnection,
     memoryPreset,
@@ -302,6 +353,8 @@ export function useChat(options: UseChatOptions): UseChat {
   } = options;
 
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
+  const selectedMode = state.metadata.memoryMode ?? defaultMemoryMode;
+  const memoryMode = selectedMode === 'memories' ? 'nexus' : selectedMode;
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -440,6 +493,27 @@ export function useChat(options: UseChatOptions): UseChat {
     // persona, rather than borrowing the app-wide current one.
     return null;
   }, [state.metadata.persona, personas]);
+
+  const nexus = useNexus({
+    state,
+    stateRef,
+    dispatch,
+    settings: nexusSettings,
+    connection: nexusConnection ?? null,
+    counter: nexusCountTokens ?? countTokens,
+    enabled: memoryMode === 'nexus',
+    profile: [character?.name, character?.description, persona?.name, persona?.description]
+      .filter(Boolean)
+      .join('\n'),
+    captureSnapshot,
+    persistence,
+  });
+  const {
+    preview: prepareNexus,
+    setRecall: setNexusRecall,
+    consume: consumeNexus,
+    stageForSend,
+  } = nexus;
 
   const setPersona = useCallback((personaId: string | null) => {
     dispatch({ type: 'chat/metadata', patch: { persona: personaId } });
@@ -646,10 +720,22 @@ export function useChat(options: UseChatOptions): UseChat {
    *   into it (as `send` does with the user's message).
    */
   const generate = useCallback(
-    async (mode: GenMode, base?: ChatState, guidance?: string) => {
+    async (
+      mode: GenMode,
+      base?: ChatState,
+      guidance?: string,
+      /**
+       * Impersonate only: handed the text the model wrote, before the terminal dispatch so
+       * the composer commits it in the same render that clears the busy state. A stopped or
+       * failed attempt passes whatever arrived first; nothing arrived means it is not
+       * called, and the draft the user already had is left untouched.
+       */
+      onText?: (text: string) => void,
+    ) => {
       const current = base ?? stateRef.current;
       if (current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) return;
       if (!character || !preset || !connection) return;
+      const isImpersonation = mode === 'impersonate';
 
       // Settings can change while the prompt is being assembled or global variables are
       // persisted. Keep the request body, reply metadata, and server-side connection lookup
@@ -666,8 +752,9 @@ export function useChat(options: UseChatOptions): UseChat {
       const started = chatReducer(current, startAction);
       dispatch(startAction);
 
-      // The reducer refuses some starts outright — swiping with no reply to swipe.
-      if (started.status === 'idle' || !started.streamingId) return;
+      // The reducer refuses some starts outright — swiping with no reply to swipe. An
+      // impersonation owns no message, so it is the one start with no `streamingId`.
+      if (started.status === 'idle' || (!started.streamingId && !isImpersonation)) return;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -729,19 +816,25 @@ export function useChat(options: UseChatOptions): UseChat {
 
         // Recall runs over the same post-fold transcript, so a memory keyed on a word in
         // the message just typed fires for the reply it triggered rather than the next one.
-        const recall =
-          memoryMode === 'memories'
-            ? memoryRecallForChat({
-                memories: started.metadata.memories,
-                messages: chatMessages,
-                settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
-                budget: memoryConfigRef.current.budgetTokens,
-                preset,
-                chatId: started.chatId,
+        setMemoryRecall(null);
+        let nexusRecall =
+          memoryMode === 'nexus'
+            ? await prepareNexus(
+                chatMessages,
+                nexusSettings.budgetTokens,
                 countTokens,
-              })
-            : null;
-        setMemoryRecall(recall);
+                'Request',
+                controller.signal,
+              )
+            : undefined;
+
+        // SillyTavern's impersonation control prompt: the model's closest instruction,
+        // appended after everything else the request carries. `{{user}}` here is who it is
+        // being asked to become, so the control opts into macro substitution. A field the
+        // user cleared to empty sends nothing at all, matching ST's falsy check.
+        const impersonationPrompt = isImpersonation
+          ? (preset.impersonation_prompt ?? DEFAULT_IMPERSONATION_PROMPT)
+          : '';
 
         const assembled = assemblePrompt({
           preset,
@@ -753,8 +846,8 @@ export function useChat(options: UseChatOptions): UseChat {
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
           memoryMode,
-          memoryText: recall?.text,
-          memorySettings: memoryConfigRef.current,
+          memoryText: nexusRecall?.text,
+          memorySettings: memoryMode === 'nexus' ? nexusSettings : memoryConfigRef.current,
           scenarioOverride:
             typeof started.metadata.scenario === 'string' ? started.metadata.scenario : undefined,
           authorNote: started.metadata.authorNote,
@@ -769,15 +862,28 @@ export function useChat(options: UseChatOptions): UseChat {
           localVariables: started.metadata.variables ?? {},
           globalVariables,
           countTokens,
+          finalControls:
+            isImpersonation && impersonationPrompt.trim()
+              ? [
+                  {
+                    identifier: 'impersonate',
+                    role: 'system',
+                    content: impersonationPrompt,
+                    macros: true,
+                  },
+                ]
+              : undefined,
           seed: started.chatId ?? '',
           regexScripts,
         });
 
+        nexusRecall = reportNexusAssembly(nexusRecall, assembled);
         if (!assembled.ok) {
           dispatch({
             type: 'gen/inspected',
             inspection: {
               at: Date.now(),
+              nexusRecall,
               generationType,
               messages: assembled.messages,
               tokenCounts: assembled.tokenCounts,
@@ -797,8 +903,11 @@ export function useChat(options: UseChatOptions): UseChat {
 
         // Extra completions become extra swipes, so they only make sense for the modes
         // that own a swipe array. `continue` writes back into one existing swipe — it has
-        // nowhere to put a second take of the same half-finished sentence.
-        const completions = mode === 'continue' ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
+        // nowhere to put a second take of the same half-finished sentence. Impersonation
+        // writes the one message the user is going to send; spares have nowhere to go,
+        // which is why SillyTavern excludes it from multi-swipe too.
+        const completions =
+          mode === 'continue' || isImpersonation ? 1 : Math.max(1, Math.trunc(preset.n ?? 1));
 
         const streamed = preset.stream_openai !== false;
 
@@ -811,6 +920,7 @@ export function useChat(options: UseChatOptions): UseChat {
         });
 
         const inspection: PromptInspection = {
+          nexusRecall,
           at: Date.now(),
           generationType,
           messages: assembled.messages,
@@ -840,6 +950,10 @@ export function useChat(options: UseChatOptions): UseChat {
         // after its owner has moved on or its Stop/transition abort has already fired.
         if (!ensureGenerationActive()) return;
 
+        if (nexusRecall) {
+          setNexusRecall(nexusRecall);
+          consumeNexus();
+        }
         stream.begin(seed, streamed);
         streamStarted = true;
         text = seed;
@@ -863,7 +977,9 @@ export function useChat(options: UseChatOptions): UseChat {
           seed,
           requestConnection.id,
           {
-            feature: 'chat',
+            // Tagged apart in the usage log: an impersonation is still a paid chat
+            // generation, but it produced no swipe and should not be counted as a reply.
+            feature: isImpersonation ? 'impersonate' : 'chat',
             generationId,
             ...(started.chatId ? { sessionId: started.chatId } : {}),
             ...(characterId ? { character: characterId } : {}),
@@ -887,6 +1003,7 @@ export function useChat(options: UseChatOptions): UseChat {
                   text: choice.content,
                   finishReason: choice.finishReason,
                   extra: {
+                    nexusRecall,
                     api: requestConnection.provider,
                     model: final.model ?? requestConnection.model,
                     connection_id: requestConnection.id,
@@ -899,6 +1016,11 @@ export function useChat(options: UseChatOptions): UseChat {
                 }))
             : [];
 
+        // Hand the composer its text before the dispatch, so both land in one render: the
+        // busy state clears and the draft already holds what the model wrote. An empty
+        // completion is not a message — the user's existing draft stays untouched.
+        if (isImpersonation && final.content.trim()) onText?.(final.content);
+
         dispatch({
           type: 'gen/finished',
           text: final.content,
@@ -906,6 +1028,7 @@ export function useChat(options: UseChatOptions): UseChat {
           // truncated badge in the reducer; a Stop click or a failure marks its own.
           finishReason: final.finishReason,
           extra: {
+            nexusRecall,
             api: requestConnection.provider,
             model: final.model ?? requestConnection.model,
             connection_id: requestConnection.id,
@@ -937,9 +1060,15 @@ export function useChat(options: UseChatOptions): UseChat {
         // Arm, don't fire: the dispatch has not reached stateRef yet, so an extraction
         // started here would still see this generation as streaming and bail. The effect
         // below consumes the arm on the settle render.
-        autoExtractArmRef.current = started.chatId;
+        // An impersonation added no turn, so there is nothing of it to extract; arming
+        // here would let an unrelated backlog fire a paid run off the back of it.
+        if (!isImpersonation) autoExtractArmRef.current = started.chatId;
       } catch (error) {
         if (ownsGeneration()) endStream();
+        // Whatever arrived before a stop or a failure is the user's message so far —
+        // SillyTavern leaves it in the box too, so a stopped impersonation is editable
+        // rather than lost. Nothing arrived means nothing is delivered.
+        if (isImpersonation && ownsGeneration() && text.trim()) onText?.(text);
         // Whatever arrived before the failure is kept, as SillyTavern does.
         if (ownsGeneration() && controller.signal.aborted)
           dispatch({ type: 'gen/aborted', text, reasoning, generationId });
@@ -977,6 +1106,10 @@ export function useChat(options: UseChatOptions): UseChat {
       guidanceSettings,
       summarySettings,
       memoryMode,
+      nexusSettings,
+      prepareNexus,
+      setNexusRecall,
+      consumeNexus,
       globalVariables,
       regexScripts,
       onGlobalVariablesChange,
@@ -1040,6 +1173,7 @@ export function useChat(options: UseChatOptions): UseChat {
         return;
       }
 
+      stageForSend();
       const draft = await resolveDraft(trimmed);
       const resolved = draft.text.trim();
 
@@ -1069,7 +1203,7 @@ export function useChat(options: UseChatOptions): UseChat {
       // reply is assembled from, and dispatch has not re-rendered yet.
       await generate('send', chatReducer(draft.state, userAction));
     },
-    [generate, persona, resolveDraft],
+    [generate, persona, resolveDraft, stageForSend],
   );
 
   /**
@@ -1177,6 +1311,227 @@ export function useChat(options: UseChatOptions): UseChat {
       await generate('swipe', draft.state, draft.text);
     },
     [generate, resolveDraft],
+  );
+
+  /**
+   * Write the user's next message with the model — SillyTavern's Impersonate.
+   *
+   * The text belongs to the composer, never the transcript: this runs `generate` in mode
+   * `impersonate`, which owns no message, and hands the finished text to `onText` so the
+   * caller can put it in the draft for the user to edit and send.
+   *
+   * `instruction` is optional steering and rides the same one-shot guidance injection a
+   * guided reply uses — resolved once at the composer chokepoint, so a macro becomes a fact
+   * about this turn instead of being re-rolled later. It is the equivalent of the prompt
+   * SillyTavern's `/impersonate <prompt>` passes along.
+   */
+  const impersonate = useCallback(
+    async (instruction?: string, onText?: (text: string) => void) => {
+      if (stateRef.current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) {
+        return;
+      }
+      if (!character || !preset || !connection) return;
+      const steer = instruction?.trim();
+      const draft = steer ? await resolveDraft(steer) : null;
+      await generate('impersonate', draft?.state, draft?.text, onText);
+    },
+    [character, preset, connection, generate, resolveDraft],
+  );
+
+  /**
+   * "Previously on…": a recap of the visible transcript, read in an overlay.
+   *
+   * Deliberately not routed through `generate`. That path exists to assemble a *chat turn*
+   * — preset prompts, card, persona, lore, memory, macros — and the recap's whole premise
+   * is that none of it is in the request. So the prompt is built by hand in
+   * `shared/chat/recap.ts` and the body assembled from a default preset: the same shape as
+   * memory extraction and persona derivation, which bypass assembly for the same reason.
+   *
+   * It does borrow impersonation's reducer contract — `gen/started` with no transcript
+   * home, so `streamingId` stays null and every settle path clears the status without
+   * touching a message. The mode is the mechanism, not the meaning: the result goes to the
+   * overlay through `handlers.onText` and the usage log tags it `recap`, so nothing else
+   * has to know a second home-less mode exists.
+   */
+  const recap = useCallback(
+    async (handlers?: RecapHandlers) => {
+      const current = stateRef.current;
+      // Every bail still reports back: the caller has already opened its overlay in the
+      // `active` shape, and a refusal with no `onDone` would leave it waiting forever.
+      const refuse = (reason: string) => {
+        handlers?.onError?.(reason);
+        handlers?.onDone?.();
+      };
+
+      if (current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) {
+        refuse('Wait for the current reply to finish.');
+        return;
+      }
+      if (!current.chatId || !character || !preset || !connection) {
+        refuse('Open a chat with a connection before asking for a recap.');
+        return;
+      }
+
+      // Snapshot the connection like `generate` does: settings can change while the prompt
+      // is being built, and a body and its server-side key lookup must agree on one.
+      const requestConnection: Connection = { ...connection };
+
+      const startAction: ChatAction = {
+        type: 'gen/started',
+        mode: 'impersonate',
+        newId: crypto.randomUUID(),
+        name: character.name,
+      };
+      const started = chatReducer(current, startAction);
+      if (started.status === 'idle') {
+        refuse('Wait for the current reply to finish.');
+        return;
+      }
+      dispatch(startAction);
+
+      const maxTokens = preset.openai_max_tokens ?? 300;
+      const built = buildRecapRequest({
+        messages: toChatMessages(started),
+        counter: countTokens,
+        maxContext: preset.openai_max_context ?? 4095,
+        maxTokens,
+      });
+      handlers?.onMeta?.({ dropped: built.dropped, total: built.total });
+
+      // Nothing visible to recap, or an instruction that cannot fit the declared context.
+      // Both are settled with a reason rather than sent: a paid request whose only possible
+      // answer is "there is nothing here" is worse than saying so.
+      if (!built.total) {
+        refuse('This chat has nothing to recap yet.');
+        return;
+      }
+      if (!built.fits) {
+        refuse(
+          "The recap does not fit in the selected connection's context. Increase the context size in the preset.",
+        );
+        return;
+      }
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const generationId = crypto.randomUUID();
+      const ownsGeneration = () =>
+        abortRef.current === controller && stateRef.current.chatId === started.chatId;
+      const ensureGenerationActive = () => {
+        if (!ownsGeneration()) return false;
+        if (controller.signal.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+        return true;
+      };
+
+      let streamStarted = false;
+      let text = '';
+      const streamed = preset.stream_openai !== false;
+      // Default samplers, with only the declared context and the streaming preference
+      // carried over. Temperature, seed and `n` belong to writing a reply; a recap is a
+      // reading, and `completions: 1` below forces a single take regardless of `preset.n`.
+      const recapPreset: Preset = {
+        ...createDefaultPreset(),
+        openai_max_context: preset.openai_max_context ?? 4095,
+        openai_max_tokens: maxTokens,
+        stream_openai: streamed,
+      };
+
+      try {
+        const body = buildRequestBody({
+          messages: built.messages,
+          preset: recapPreset,
+          connection: requestConnection,
+          stream: streamed,
+          completions: 1,
+        });
+
+        stream.begin('', streamed);
+        streamStarted = true;
+
+        const final = await streamGenerate(
+          body,
+          controller.signal,
+          {
+            onFirstToken: () => {
+              if (ownsGeneration() && !controller.signal.aborted) {
+                dispatch({ type: 'gen/streaming' });
+              }
+            },
+            onTick: (streamState) => {
+              if (!ownsGeneration() || controller.signal.aborted) return;
+              text = streamState.content;
+              stream.set(streamState.content, streamState.reasoning);
+            },
+          },
+          '',
+          requestConnection.id,
+          {
+            feature: 'recap',
+            generationId,
+            ...(started.chatId ? { sessionId: started.chatId } : {}),
+            ...(characterId ? { character: characterId } : {}),
+            countText: countTokens.countText,
+          },
+        );
+
+        if (!ensureGenerationActive()) return;
+        stream.end();
+        streamStarted = false;
+
+        // The same partial-text rule as impersonation: anything the model produced is the
+        // user's result. Nothing produced means `onError` is not raised either — an empty
+        // completion settles as "came back empty" in the overlay, not as a failure.
+        if (final.content.trim()) handlers?.onText?.(final.content);
+
+        // The extra is carried for the reducer's contract, not persisted: settle returns
+        // early on the null `streamingId` and writes nothing.
+        dispatch({
+          type: 'gen/finished',
+          text: final.content,
+          finishReason: final.finishReason,
+          extra: {
+            model: final.model ?? requestConnection.model,
+            connection_id: requestConnection.id,
+            ...(final.reasoning ? { reasoning: final.reasoning } : {}),
+          },
+        });
+      } catch (error) {
+        if (ownsGeneration()) {
+          stream.end();
+          streamStarted = false;
+        }
+        // A stopped recap keeps whatever arrived, exactly as a stopped impersonation does.
+        if (ownsGeneration() && text.trim()) handlers?.onText?.(text);
+        if (ownsGeneration() && controller.signal.aborted) {
+          dispatch({ type: 'gen/aborted', text, generationId });
+        } else if (ownsGeneration()) {
+          const message = (error as Error).message;
+          dispatch({
+            type: 'gen/failed',
+            generationId,
+            message,
+            text,
+          });
+          // Partial text is the user's result and speaks for itself; with nothing on
+          // screen the failure is the only thing there is to show.
+          if (!text.trim()) handlers?.onError?.(message);
+        }
+      } finally {
+        // Captured before the ref is cleared: `ownsGeneration` reads that ref, so asking it
+        // afterwards would always say no and the overlay would never leave its stream.
+        const stillOwns = abortRef.current === controller;
+        if (stillOwns) {
+          if (streamStarted) stream.end();
+          abortRef.current = null;
+        }
+        // Only the run that still owns the hooks reports back. A stale run left behind by
+        // navigation must not settle the overlay the new chat is showing.
+        if (stillOwns && stateRef.current.chatId === started.chatId) handlers?.onDone?.();
+      }
+    },
+    [character, characterId, preset, connection, countTokens, stream],
   );
 
   const abort = useCallback(() => {
@@ -1975,6 +2330,8 @@ export function useChat(options: UseChatOptions): UseChat {
   }, [state, memoryMode, memoryPending, extractMemories]);
 
   return {
+    nexus,
+    memoryMode,
     state,
     messages,
     stream,
@@ -1992,6 +2349,8 @@ export function useChat(options: UseChatOptions): UseChat {
     continueLast,
     guidedRespond,
     guidedSwipe,
+    impersonate,
+    recap,
     abort,
     summaryStatus,
     summaryPending,

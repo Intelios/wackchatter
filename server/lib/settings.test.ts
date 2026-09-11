@@ -2,6 +2,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+} from '../../shared/composer/layout.ts';
 import type { Connection } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import {
@@ -52,6 +56,56 @@ function base(): AppSettings {
 }
 
 describe('mergeSettings', () => {
+  test('collapsed chat-menu families round-trip and default to open', () => {
+    // The collapsed set, not the expanded one: an empty default means a family added by a
+    // later build arrives visible rather than pre-collapsed.
+    expect(DEFAULT_SETTINGS.collapsedChatMenuGroups).toEqual([]);
+
+    const next = mergeSettings(base(), { collapsedChatMenuGroups: ['inspect', 'reply'] });
+    expect(next.collapsedChatMenuGroups).toEqual(['inspect', 'reply']);
+
+    // An unrelated patch leaves the list alone rather than resetting it — the spread carries
+    // it, exactly like collapsedCharacterFolders.
+    expect(mergeSettings(next, { usageLog: true }).collapsedChatMenuGroups).toEqual([
+      'inspect',
+      'reply',
+    ]);
+  });
+
+  test('composer layouts update independently and preserve required controls', () => {
+    const single = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    single.rows[0]!.centre.push(single.rows[0]!.right.splice(0, 1)[0]!);
+    const next = mergeSettings(base(), {
+      composerLayouts: { single, group: DEFAULT_GROUP_COMPOSER_LAYOUT },
+    });
+    expect(next.composerLayouts.single).toEqual(single);
+    expect(next.composerLayouts.group).toEqual(DEFAULT_GROUP_COMPOSER_LAYOUT);
+  });
+
+  test('a malformed composer layout cannot wipe a saved layout', () => {
+    const current = base();
+    const next = mergeSettings(current, {
+      composerLayouts: { single: { rows: [] }, group: current.composerLayouts.group } as never,
+    });
+    expect(next.composerLayouts.single).toEqual(current.composerLayouts.single);
+  });
+
+  test('deleting a quick command removes its pinned composer shortcut', () => {
+    const current = base();
+    current.quickCommands = [
+      { id: 'kept', name: 'Kept', text: 'a' },
+      { id: 'gone', name: 'Gone', text: 'b' },
+    ];
+    current.composerLayouts.single.rows[0]!.centre = [
+      { id: 'quick:kept', display: 'label' },
+      { id: 'quick:gone', display: 'icon' },
+    ];
+    const next = mergeSettings(current, { quickCommands: [current.quickCommands[0]!] });
+    expect(next.composerLayouts.single.rows[0]!.centre).toEqual([
+      { id: 'quick:kept', display: 'label' },
+    ]);
+  });
+
   test('a partial worldInfo patch keeps every untouched field', () => {
     // The bug a shallow spread would cause: changing the scan depth in the UI silently
     // resets the budget, recursion and both match settings.
@@ -192,12 +246,12 @@ describe('mergeSettings', () => {
   test('the memory mode defaults to the summary, so an upgrade changes nothing', () => {
     expect(base().memoryMode).toBe('classic');
     expect(mergeSettings(base(), { memoryMode: 'nonsense' as never }).memoryMode).toBe('classic');
-    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('memories');
+    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('nexus');
   });
 
   test('omitting the memory mode leaves it untouched', () => {
     const current = mergeSettings(base(), { memoryMode: 'memories' });
-    expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('memories');
+    expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('nexus');
   });
 
   test('memory preferences merge field-wise and clamp every numeric field', () => {
@@ -580,6 +634,54 @@ describe('arena settings', () => {
     } as never);
 
     expect(next.arena.contenders[0]?.connectionId).toBe('deleted-long-ago');
+  });
+
+  test('the merge map keeps only genuine id → id links', () => {
+    const next = mergeSettings(base(), {
+      arena: {
+        mergedContenders: {
+          b: 'a',
+          self: 'self',
+          blank: '',
+          '': 'a',
+          numeric: 7,
+          nested: { id: 'a' },
+          ok: 'c',
+        },
+      },
+    } as never);
+
+    // Self-references are dropped: they are not merges, and they would make the Pool's
+    // "already merged" checks lie about an entry that fights as itself.
+    expect(next.arena.mergedContenders).toEqual({ b: 'a', ok: 'c' });
+  });
+
+  test('a merge target that is not in the pool is kept, not dropped', () => {
+    // Same terms as a contender on a deleted connection: unresolvable, not invalid. The
+    // rounds still name it, and the row you folded away is exactly the one you are likely
+    // to remove — so a kept link has to survive that, or the history splits silently.
+    const next = mergeSettings(base(), {
+      arena: { contenders: [{ id: 'b', name: 'B' }], mergedContenders: { b: 'a' } },
+    } as never);
+
+    expect(next.arena.mergedContenders).toEqual({ b: 'a' });
+  });
+
+  test('a null merge map does not wipe the links, and a real one replaces wholesale', () => {
+    const current = mergeSettings(base(), {
+      arena: { mergedContenders: { b: 'a', c: 'a' } },
+    } as never);
+
+    expect(
+      mergeSettings(current, { arena: { mergedContenders: null } } as never).arena.mergedContenders,
+    ).toEqual({ b: 'a', c: 'a' });
+
+    // The client always sends the whole map (it holds the loaded settings), so an unmerge
+    // is an honest object that omits the link — the `backgroundEffects` semantics.
+    expect(
+      mergeSettings(current, { arena: { mergedContenders: { c: 'a' } } } as never).arena
+        .mergedContenders,
+    ).toEqual({ c: 'a' });
   });
 
   test('columns are clamped rather than rejected', () => {

@@ -15,6 +15,7 @@
  */
 
 import {
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -58,6 +59,24 @@ export interface MenuSeparator {
 }
 
 /**
+ * A family label above a run of related entries — an eyebrow, not an action. It also opens
+ * a visual group: the renderer wraps the header and the entries that follow it, so the CSS
+ * can tint the whole run with one hue and light the header up when any row in it is hovered.
+ *
+ * `hue` indexes the `--wc-series-*` palette, the same palette charts and the Nexus use, so
+ * a colour here cannot drift from the app's other categorisation.
+ */
+export type MenuHue = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+export interface MenuHeader {
+  kind: 'header';
+  label: string;
+  /** React key. Defaults to the label. */
+  key?: string;
+  hue?: MenuHue;
+}
+
+/**
  * An entry that opens a second menu to the side — hover it, or press ArrowRight on it.
  * The flyout is part of this menu, not a separate Popover: it only exists while the parent
  * is open, so it inherits the parent's dismissal instead of growing its own.
@@ -74,14 +93,54 @@ export interface MenuSubmenu {
   entries: MenuEntry[];
 }
 
-export type MenuEntry = MenuAction | MenuSeparator | MenuSubmenu;
+export type MenuEntry = MenuAction | MenuSeparator | MenuHeader | MenuSubmenu;
 
 export function isSeparator(entry: MenuEntry): entry is MenuSeparator {
   return entry.kind === 'separator';
 }
 
+export function isHeader(entry: MenuEntry): entry is MenuHeader {
+  return entry.kind === 'header';
+}
+
 export function isSubmenu(entry: MenuEntry): entry is MenuSubmenu {
   return entry.kind === 'submenu';
+}
+
+/**
+ * A rendered run: optionally a header, then its entries. A bare separator gets a node of its
+ * own rather than joining a run — that is what keeps the run after it its own group, so the
+ * tint of the group above cannot bleed onto an entry like "Close chat" that carries danger
+ * styling of its own.
+ */
+export interface MenuGroup {
+  header?: MenuHeader;
+  entries: (MenuAction | MenuSubmenu)[];
+  /** A bare separator, standing alone between runs. */
+  separator?: boolean;
+}
+
+/**
+ * Split a flat entry list into header-led runs, splitting on separators as well. Exported
+ * because it is the one part of the grouping that is pure — the tests pin it without a DOM.
+ * Entries before any header form an implicit, untinted run.
+ */
+export function groupMenuEntries(entries: MenuEntry[]): MenuGroup[] {
+  const groups: MenuGroup[] = [];
+  for (const entry of entries) {
+    if (isSeparator(entry)) {
+      groups.push({ entries: [], separator: true });
+      continue;
+    }
+    if (isHeader(entry)) {
+      groups.push({ header: entry, entries: [] });
+      continue;
+    }
+    const current = groups[groups.length - 1];
+    if (!current || current.separator) groups.push({ entries: [entry] });
+    else current.entries.push(entry);
+  }
+  return groups;
 }
 
 export type MenuPlacement = PopoverPlacement;
@@ -105,11 +164,52 @@ interface MenuProps {
    * grows out of the burger itself.
    */
   triggerRef?: RefObject<HTMLButtonElement | null>;
+  showLabel?: boolean;
+  /**
+   * Extra class on the popup itself. The one hook a caller has to skin a particular menu
+   * (the chat burger adds its family-lit treatment here); the entry rendering stays shared.
+   */
+  popupClassName?: string;
+  /**
+   * Header keys the user has collapsed. A collapsed family's rows stay mounted just long
+   * enough to play the collapse animation, then unmount — the `Section` rule — and the
+   * roving-focus query skips anything inside a collapsed group either way, so hidden rows
+   * hold no focus slot.
+   *
+   * Which keys are collapsed is the caller's state, not the menu's: the popup unmounts when
+   * it closes, so a `useState` in here would forget the choice on every close.
+   */
+  collapsedKeys?: ReadonlySet<string>;
+  /**
+   * Makes every header a toggle button. Omitted, headers stay inert labels — the default,
+   * so a menu that has not asked for collapsing renders exactly as it did before.
+   */
+  onToggleGroup?: (key: string) => void;
 }
 
 /** Identity of an entry that may not have a `key`: the label, which is then unique enough. */
-function keyOf(entry: MenuAction | MenuSubmenu): string {
+function keyOf(entry: MenuAction | MenuSubmenu | MenuHeader): string {
   return entry.key ?? entry.label;
+}
+
+/**
+ * How long a collapsing family keeps its rows mounted for the exit animation. Must outlive
+ * the body's `grid-template-rows` transition in Menu.css (`var(--wc-duration)`, 260 ms) by
+ * a frame or two, or the rows would vanish mid-shrink.
+ */
+const GROUP_COLLAPSE_MS = 300;
+
+/** Shared empty set, so menus without collapsing never allocate one per render. */
+const EMPTY_KEYS: ReadonlySet<string> = new Set();
+
+/**
+ * The stagger's slot: the ordinal of a header or item *within its family*, read by CSS as
+ * `--i`. Per-group rather than down the whole menu, so re-opening one collapsed family
+ * later gets the same quick one-by-one reveal the initial open has — starting immediately,
+ * not after the families above it have taken their turn.
+ */
+function indexStyle(index: number): CSSProperties {
+  return { '--i': index } as CSSProperties;
 }
 
 /**
@@ -141,6 +241,10 @@ export function Menu({
   placement = 'top-start',
   onOpenChange,
   triggerRef: externalTriggerRef,
+  showLabel,
+  popupClassName,
+  collapsedKeys,
+  onToggleGroup,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
 
@@ -198,6 +302,33 @@ export function Menu({
     triggerRef.current?.focus({ preventScroll: true });
   }, [setOpenState, triggerRef]);
 
+  /*
+   * The collapse animation's two halves. `collapsedKeys` is the caller's truth and arrives
+   * the instant the toggle is clicked; `exiting` is this menu's choreography — the set of
+   * families whose rows are still riding the shrinking body down. One effect turns newly
+   * closed keys into exiting ones; the other unmounts them once the exit has had its time.
+   * Re-expanding inside the window needs no special case: the rows are already mounted, and
+   * losing `data-collapsed` restarts their animation as an entrance.
+   */
+  const [exiting, setExiting] = useState<ReadonlySet<string>>(EMPTY_KEYS);
+  const prevCollapsedRef = useRef<ReadonlySet<string>>(EMPTY_KEYS);
+
+  useEffect(() => {
+    const now = collapsedKeys ?? EMPTY_KEYS;
+    const prev = prevCollapsedRef.current;
+    prevCollapsedRef.current = now;
+    if (!onToggleGroup) return;
+    const newlyCollapsed = [...now].filter((key) => !prev.has(key));
+    if (newlyCollapsed.length === 0) return;
+    setExiting((current) => new Set([...current, ...newlyCollapsed]));
+  }, [collapsedKeys, onToggleGroup]);
+
+  useEffect(() => {
+    if (exiting.size === 0) return;
+    const timer = window.setTimeout(() => setExiting(EMPTY_KEYS), GROUP_COLLAPSE_MS);
+    return () => window.clearTimeout(timer);
+  }, [exiting]);
+
   // The enabled items, in order. Queried from the DOM rather than kept in a ref array:
   // the entries are data, so the rendered list is already the only ordering that matters.
   const items = useCallback((): HTMLButtonElement[] => {
@@ -206,7 +337,15 @@ export function Menu({
     );
     if (!found) return [];
     // Flyout items belong to their own menu; the parent's roving focus stays on the parent.
-    return [...found].filter((item) => item.closest('[role="menu"]') === popupRef.current);
+    // A collapsing family keeps its rows mounted through the exit animation, so the second
+    // filter is what makes them hold no focus slot — the same as unmounted rows. It matches
+    // the group's *body*, not the group: the header sits outside the body and stays a focus
+    // stop, or ArrowDown from a collapsed family would jump back to the top of the menu.
+    return [...found].filter(
+      (item) =>
+        item.closest('[role="menu"]') === popupRef.current &&
+        !item.closest('.menu__group[data-collapsed] .menu__group-body'),
+    );
   }, []);
 
   // Focus the first enabled item on open, so the keyboard path starts somewhere useful.
@@ -252,17 +391,37 @@ export function Menu({
         moveFocus(items(), 0, items().length - 1);
         break;
       case 'ArrowRight': {
+        const active = document.activeElement as HTMLElement | null;
         // Opens the flyout of the submenu under focus, the keyboard's hover.
-        const key = (document.activeElement as HTMLElement | null)?.getAttribute?.(
-          'data-submenu-key',
+        const submenuKey = active?.getAttribute?.('data-submenu-key');
+        if (submenuKey) {
+          const entry = entries.find(
+            (candidate): candidate is MenuSubmenu =>
+              isSubmenu(candidate) && keyOf(candidate) === submenuKey,
+          );
+          if (!entry || entry.disabled) break;
+          event.preventDefault();
+          openSubmenu(entry, active?.parentElement ?? null, true);
+          break;
+        }
+        // Right re-opens a collapsed family — the tree-view convention, and the only way a
+        // keyboard user can open one back up, since the only toggle is the header itself.
+        const expandKey = active?.getAttribute?.('data-group-key');
+        if (expandKey && onToggleGroup && collapsedKeys?.has(expandKey)) {
+          event.preventDefault();
+          onToggleGroup(expandKey);
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        // Left shuts the family under focus, mirroring the flyout's ArrowLeft.
+        const collapseKey = (document.activeElement as HTMLElement | null)?.getAttribute?.(
+          'data-group-key',
         );
-        if (!key) break;
-        const entry = entries.find(
-          (candidate): candidate is MenuSubmenu => isSubmenu(candidate) && keyOf(candidate) === key,
-        );
-        if (!entry || entry.disabled) break;
-        event.preventDefault();
-        openSubmenu(entry, (document.activeElement as HTMLElement).parentElement, true);
+        if (collapseKey && onToggleGroup && !collapsedKeys?.has(collapseKey)) {
+          event.preventDefault();
+          onToggleGroup(collapseKey);
+        }
         break;
       }
       case 'Tab':
@@ -279,13 +438,14 @@ export function Menu({
     if (!entry.keepOpen) closeAndRestore();
   }
 
-  function renderAction(entry: MenuAction) {
+  function renderAction(entry: MenuAction, index: number) {
     return (
       <button
         type="button"
         key={keyOf(entry)}
         role="menuitem"
         className="menu__item"
+        style={indexStyle(index)}
         data-danger={entry.danger || undefined}
         disabled={entry.disabled}
         title={entry.disabled ? entry.disabledReason : undefined}
@@ -298,82 +458,142 @@ export function Menu({
     );
   }
 
+  /** A family is collapsed only when the caller opted into toggling and listed it. */
+  function isCollapsed(header: MenuHeader): boolean {
+    return Boolean(onToggleGroup && collapsedKeys?.has(keyOf(header)));
+  }
+
+  /**
+   * The family eyebrow. With no toggle handler it stays the inert label it has always been;
+   * with one it becomes a real `menuitem`, so the arrow keys can reach it — the toggle has
+   * to live on the header, or a keyboard user would have no way to re-open a closed family.
+   */
+  function renderHeader(header: MenuHeader, index: number) {
+    const style = indexStyle(index);
+    if (!onToggleGroup) {
+      return (
+        <div className="menu__header" style={style}>
+          {header.label}
+        </div>
+      );
+    }
+
+    const key = keyOf(header);
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        className="menu__header menu__header--toggle"
+        style={style}
+        data-group-key={key}
+        aria-expanded={!isCollapsed(header)}
+        tabIndex={-1}
+        onClick={() => onToggleGroup(key)}
+      >
+        <ChevronIcon className="menu__header-chevron" />
+        <span className="menu__header-label">{header.label}</span>
+      </button>
+    );
+  }
+
+  function renderEntry(entry: MenuAction | MenuSubmenu, index: number) {
+    if (isSubmenu(entry)) {
+      const isOpen = openKey === keyOf(entry);
+      return (
+        <div key={keyOf(entry)} className="menu__item-wrap" style={indexStyle(index)}>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu__item"
+            data-submenu-key={keyOf(entry)}
+            aria-haspopup="menu"
+            aria-expanded={isOpen}
+            disabled={entry.disabled}
+            title={entry.disabled ? entry.disabledReason : undefined}
+            tabIndex={-1}
+            // Hover opens without taking focus; the grace period on leaving covers the
+            // gap the pointer crosses to reach the flyout.
+            onMouseEnter={(event) => {
+              if (!entry.disabled) openSubmenu(entry, event.currentTarget.parentElement, false);
+            }}
+            onMouseLeave={scheduleSubmenuClose}
+            onClick={(event) => {
+              if (isOpen) closeSubmenu();
+              else openSubmenu(entry, event.currentTarget.parentElement, true);
+            }}
+          >
+            <EntryContent entry={entry} />
+            <ChevronIcon className="menu__chevron" />
+          </button>
+
+          {isOpen ? (
+            <Submenu
+              entry={entry}
+              anchor={submenuAnchorRef.current}
+              focusOnOpen={focusFlyout}
+              onSelect={select}
+              onClose={() => {
+                closeSubmenu();
+                // Back to the item the flyout grew from, so the keyboard path is a loop.
+                submenuAnchorRef.current
+                  ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+                  ?.focus({ preventScroll: true });
+              }}
+              onDismissAll={closeAndRestore}
+              onEnter={cancelSubmenuClose}
+              onLeave={scheduleSubmenuClose}
+            />
+          ) : null}
+        </div>
+      );
+    }
+
+    return renderAction(entry, index);
+  }
+
   return (
     <Popover
       label={label}
       icon={icon}
+      triggerText={showLabel ? label : undefined}
       open={open}
       onOpenChange={setOpenState}
       className={`menu${className ? ` ${className}` : ''}`}
-      popupClassName="menu__popup"
+      popupClassName={popupClassName ? `${popupClassName} menu__popup` : 'menu__popup'}
       placement={placement}
       role="menu"
       triggerRef={triggerRef}
       popupRef={popupRef}
       onKeyDown={onKeyDown}
     >
-      {entries.map((entry, index) => {
-        if (isSeparator(entry)) {
-          return (
-            // <hr> rather than a div with role="separator": the role is implicit, and a
-            // div carrying it explicitly is expected to be focusable (a splitter).
-            // biome-ignore lint/suspicious/noArrayIndexKey: separators carry no identity
-            <hr className="menu__separator" key={`sep-${index}`} />
-          );
+      {groupMenuEntries(entries).map((group, groupIndex) => {
+        // <hr> rather than a div with role="separator": the role is implicit, and a
+        // div carrying it explicitly is expected to be focusable (a splitter).
+        if (group.separator) {
+          // biome-ignore lint/suspicious/noArrayIndexKey: separators carry no identity
+          return <hr className="menu__separator" key={`sep-${groupIndex}`} />;
         }
 
-        if (isSubmenu(entry)) {
-          const isOpen = openKey === keyOf(entry);
-          return (
-            <div key={keyOf(entry)} className="menu__item-wrap">
-              <button
-                type="button"
-                role="menuitem"
-                className="menu__item"
-                data-submenu-key={keyOf(entry)}
-                aria-haspopup="menu"
-                aria-expanded={isOpen}
-                disabled={entry.disabled}
-                title={entry.disabled ? entry.disabledReason : undefined}
-                tabIndex={-1}
-                // Hover opens without taking focus; the grace period on leaving covers the
-                // gap the pointer crosses to reach the flyout.
-                onMouseEnter={(event) => {
-                  if (!entry.disabled) openSubmenu(entry, event.currentTarget.parentElement, false);
-                }}
-                onMouseLeave={scheduleSubmenuClose}
-                onClick={(event) => {
-                  if (isOpen) closeSubmenu();
-                  else openSubmenu(entry, event.currentTarget.parentElement, true);
-                }}
-              >
-                <EntryContent entry={entry} />
-                <ChevronIcon className="menu__chevron" />
-              </button>
-
-              {isOpen ? (
-                <Submenu
-                  entry={entry}
-                  anchor={submenuAnchorRef.current}
-                  focusOnOpen={focusFlyout}
-                  onSelect={select}
-                  onClose={() => {
-                    closeSubmenu();
-                    // Back to the item the flyout grew from, so the keyboard path is a loop.
-                    submenuAnchorRef.current
-                      ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-                      ?.focus({ preventScroll: true });
-                  }}
-                  onDismissAll={closeAndRestore}
-                  onEnter={cancelSubmenuClose}
-                  onLeave={scheduleSubmenuClose}
-                />
-              ) : null}
+        const collapsed = group.header ? isCollapsed(group.header) : false;
+        // Rows stay mounted while a closing family rides its exit animation; `exiting` is
+        // cleared by the timer, and only then does a collapsed group hold nothing.
+        const showEntries = !collapsed || (group.header ? exiting.has(keyOf(group.header)) : false);
+        let slot = 0;
+        return (
+          <div
+            className="menu__group"
+            key={group.header ? keyOf(group.header) : `group-${groupIndex}`}
+            data-hue={group.header?.hue || undefined}
+            data-collapsed={collapsed || undefined}
+          >
+            {group.header ? renderHeader(group.header, slot++) : null}
+            <div className="menu__group-body">
+              <div className="menu__group-inner">
+                {showEntries ? group.entries.map((entry) => renderEntry(entry, slot++)) : null}
+              </div>
             </div>
-          );
-        }
-
-        return renderAction(entry);
+          </div>
+        );
       })}
     </Popover>
   );
@@ -511,14 +731,21 @@ function Submenu({
         onMouseLeave={onLeave}
         onKeyDown={onKeyDown}
       >
-        {entry.entries.map((child, index) =>
-          isSeparator(child) ? (
-            // biome-ignore lint/suspicious/noArrayIndexKey: separators carry no identity
-            <hr className="menu__separator" key={`sep-${index}`} />
-          ) : isSubmenu(child) ? null : (
-            renderFlyoutAction(child)
-          ),
-        )}
+        {groupMenuEntries(entry.entries).map((group, groupIndex) => {
+          // biome-ignore lint/suspicious/noArrayIndexKey: separators carry no identity
+          if (group.separator) return <hr className="menu__separator" key={`sep-${groupIndex}`} />;
+
+          return (
+            <div
+              className="menu__group"
+              key={group.header ? keyOf(group.header) : `group-${groupIndex}`}
+              data-hue={group.header?.hue || undefined}
+            >
+              {group.header ? <div className="menu__header">{group.header.label}</div> : null}
+              {group.entries.map((child) => (isSubmenu(child) ? null : renderFlyoutAction(child)))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

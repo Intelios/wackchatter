@@ -384,6 +384,51 @@ describe('Classic quiet controls', () => {
   });
 });
 
+describe('the impersonation control', () => {
+  test('is placed last, after every ordered prompt and depth injection', () => {
+    // SillyTavern appends its synthesized impersonation prompt to controlPrompts, which are
+    // "always positioned last" — after the jailbreak and any in-chat injections. Reading the
+    // model's closest instruction is the whole point, so the position is the contract.
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+        { identifier: 'jailbreak', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: [
+        { ...makeMessages(1)[0]!, id: 'u1', name: 'User', is_user: true, mes: 'Question' },
+      ],
+      generationType: 'impersonate',
+      finalControls: [
+        { identifier: 'impersonate', role: 'system', content: 'Write as {{user}}.', macros: true },
+      ],
+    });
+
+    expect(result.messages.at(-1)).toEqual({ role: 'system', content: 'Write as User.' });
+    expect(result.tokenCounts.impersonate).toBeDefined();
+  });
+
+  test('substitutes macros only when the control opts in', () => {
+    // The default is verbatim: a summary request is built from text we already rendered,
+    // and re-scanning it would let model output write a variable.
+    const result = assemble({
+      finalControls: [
+        { identifier: 'literal', role: 'system', content: 'Keep {{user}} raw' },
+        { identifier: 'expanded', role: 'system', content: 'Hello {{user}}', macros: true },
+      ],
+    });
+
+    expect(result.messages.slice(-2)).toEqual([
+      { role: 'system', content: 'Keep {{user}} raw' },
+      { role: 'system', content: 'Hello User' },
+    ]);
+  });
+});
+
 describe('macros', () => {
   test('substitutes {{char}} and {{user}} in prompt content', () => {
     const preset = setPromptOrder(createDefaultPreset(), [{ identifier: 'main', enabled: true }]);

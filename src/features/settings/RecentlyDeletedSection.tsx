@@ -112,16 +112,16 @@ export function RecentlyDeletedSection({
               // A backup outlives its character, and the server refuses to restore into one
               // that is gone. Nothing to show a picture of in that case, so the row drops the
               // avatar and says why rather than offering a click that can only fail.
-              const character = byAvatar.get(backup.characterId);
+              const character = byAvatar.get(backup.characterId ?? '');
               return (
                 <li key={backup.backupId} className="bin__item">
                   <button
                     type="button"
                     className="bin__restore"
                     onClick={() => onRestore(backup.backupId)}
-                    disabled={!character}
+                    disabled={!character && backup.kind !== 'group'}
                     title={
-                      character
+                      character || backup.kind === 'group'
                         ? 'Restore this chat'
                         : `${backup.characterId} no longer exists — re-import the character, then restore.`
                     }
@@ -129,7 +129,7 @@ export function RecentlyDeletedSection({
                     {character ? (
                       <img
                         className="bin__avatar"
-                        src={characterApi.imageUrl(backup.characterId)}
+                        src={characterApi.imageUrl(backup.characterId ?? '')}
                         alt=""
                       />
                     ) : (
@@ -137,7 +137,7 @@ export function RecentlyDeletedSection({
                     )}
                     <span className="bin__info">
                       <span className="bin__name">
-                        {character?.name ?? backup.characterId.replace(/\.png$/i, '')}
+                        {character?.name ?? backup.characterId?.replace(/\.png$/i, '') ?? 'Group'}
                         <span className="bin__sep">–</span>
                         <span className="bin__title">{backup.title}</span>
                       </span>

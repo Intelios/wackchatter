@@ -144,6 +144,19 @@ export function ContinueIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Pause — two bars. Not `StopIcon`'s square: a paused exchange keeps its schedule and the
+ * replies already running, while Stop ends the exchange, and the two sit side by side.
+ */
+export function PauseIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M9 5v14" />
+      <path d="M15 5v14" />
+    </svg>
+  );
+}
+
 export function EditIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">
@@ -404,6 +417,35 @@ export function GuidedSwipeIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Impersonate — a figure in a hat: the model writes the user's next message, so this is
+ * "who you are, at one remove".
+ */
+export function ImpersonateIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="12" cy="10" r="3.2" />
+      <path d="M5.5 20c.9-3.2 3.4-4.8 6.5-4.8s5.6 1.6 6.5 4.8" />
+      <path d="M4 8.6h16" />
+      <path d="M9 8.6 9.7 5h4.6l.7 3.6" />
+    </svg>
+  );
+}
+
+/**
+ * Previously on… — a screen with a play triangle: the story so far, played back rather
+ * than read.
+ */
+export function RecapIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="5" width="18" height="12" rx="2" />
+      <path d="m10 8.5 4 2.5-4 2.5Z" />
+      <path d="M8 20h8" />
+    </svg>
+  );
+}
+
 /** Quick commands — a bolt. */
 export function BoltIcon({ className }: IconProps) {
   return (
@@ -506,6 +548,25 @@ export function GridIcon({ className }: IconProps) {
       <rect x="14" y="3" width="7" height="7" rx="1" />
       <rect x="3" y="14" width="7" height="7" rx="1" />
       <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
+/**
+ * Memory Nexus — an interconnected graph constellation of story knowledge.
+ */
+export function NexusIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="9" cy="8" r="2.5" />
+      <circle cx="18" cy="5" r="2" />
+      <circle cx="17" cy="18" r="2" />
+      <circle cx="5" cy="17" r="2" />
+      <line x1="11.4" y1="7.2" x2="16.1" y2="5.6" />
+      <line x1="10.6" y1="10" x2="15.7" y2="16.4" />
+      <line x1="8" y1="10.3" x2="5.8" y2="15.2" />
+      <line x1="17.9" y1="7" x2="17.1" y2="16" />
+      <line x1="7" y1="17.1" x2="15" y2="17.9" />
     </svg>
   );
 }

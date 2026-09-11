@@ -6,6 +6,8 @@
  * else's preset cannot silently repoint your endpoint, and exporting yours cannot leak it.
  */
 
+import { type ComposerLayouts, DEFAULT_COMPOSER_LAYOUTS } from '../composer/layout.ts';
+import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { ArenaSettings } from './arena.ts';
@@ -106,6 +108,7 @@ export interface AppSettings {
   memoryMode: MemoryMode;
   /** Discrete memories: extraction source, prompt, hiding and injection preferences. */
   memory: MemorySettings;
+  nexus: NexusSettings;
   coCreator: CoCreatorSettings;
   /**
    * Model Arena: the contender pool, the blind draw's card and probe pools, and how a
@@ -137,11 +140,24 @@ export interface AppSettings {
    */
   collapsedCharacterFolders: string[];
   /**
+   * Chat-menu families the user has collapsed in the burger menu, by the header's key
+   * (`chat`, `reply`, …).
+   *
+   * The same shape and the same reasoning as `collapsedCharacterFolders`: the collapsed set
+   * is stored rather than the expanded one, so the default is open and a family added by a
+   * later build cannot arrive already hidden. A flat array, so `mergeSettings`'s spread
+   * carries it and no field-wise branch is needed. Nothing keys on it, so a stale entry for
+   * a family that has been renamed away is inert.
+   */
+  collapsedChatMenuGroups: string[];
+  /**
    * User-defined quick commands: named snippets inserted into the composer from the chat
    * menu. App-wide, and never bundled — an empty list is the default, users add their own.
    * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
    */
   quickCommands: QuickCommand[];
+  /** App-wide control trays, independently arranged for direct and group chats. */
+  composerLayouts: ComposerLayouts;
   /**
    * User regex scripts, in SillyTavern's format so files move between the two apps.
    *
@@ -276,7 +292,8 @@ export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
  * different `ChatMetadata` fields, so switching mode is reversible and loses nothing: the
  * old rolling summary is still sitting there when you switch back.
  */
-export type MemoryMode = 'classic' | 'memories' | 'off';
+/** `memories` is accepted only for legacy data and format tests. UI uses `nexus`. */
+export type MemoryMode = 'classic' | 'memories' | 'nexus' | 'off';
 
 /**
  * Discrete memory extraction and recall.
@@ -500,6 +517,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   summary: { ...DEFAULT_SUMMARY },
   memoryMode: 'classic',
   memory: { ...DEFAULT_MEMORY },
+  nexus: { ...DEFAULT_NEXUS },
   coCreator: {
     ...DEFAULT_COCREATOR,
     exampleFields: { ...DEFAULT_EXAMPLE_FIELDS },
@@ -512,6 +530,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     contenders: [],
     cardPool: [],
     probes: [],
+    mergedContenders: {},
   },
   dialogueColors: {
     enabled: DEFAULT_DIALOGUE_COLORS.enabled,
@@ -522,7 +541,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterListSort: 'name',
   hiddenTags: [],
   collapsedCharacterFolders: [],
+  collapsedChatMenuGroups: [],
   quickCommands: [],
+  composerLayouts: structuredClone(DEFAULT_COMPOSER_LAYOUTS),
   regexScripts: [],
   studioInspectorCollapsed: false,
 };

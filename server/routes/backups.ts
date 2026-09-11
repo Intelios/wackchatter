@@ -1,3 +1,5 @@
+import { PATHS } from '../lib/paths.ts';
+import { getSettings } from '../lib/settings.ts';
 /** Backup CRUD — the trash bin deleted chats land in. */
 
 import {
@@ -39,13 +41,18 @@ export async function handleBackupRoute(
     if (!backup) return notFound('Backup not found.');
     // A chat keys on its character's avatar filename; restored for a card that no longer
     // exists it would be unreachable — nothing lists chats for a character that is gone.
-    if (!getCharacter(backup.characterId)) {
+    if (backup.kind !== 'group' && (!backup.characterId || !getCharacter(backup.characterId))) {
       return errorResponse(
         `The character "${backup.characterId}" no longer exists. Re-import it, then restore again.`,
         409,
       );
     }
-    const restored = restoreChatBackup(backupId, chatStore());
+    const restored = restoreChatBackup(
+      backupId,
+      chatStore(),
+      PATHS.backups,
+      getSettings().memoryMode,
+    );
     return restored ? json(restored, { status: 201 }) : notFound('Backup not found.');
   }
 

@@ -11,6 +11,12 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import {
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+  normalizeComposerLayout,
+} from '../../shared/composer/layout.ts';
+import { normalizeNexusSettings } from '../../shared/nexus/settings.ts';
 import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
 import { DEFAULT_CONNECTION, isProviderId, PROVIDERS } from '../../shared/providers/types.ts';
@@ -296,10 +302,11 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
   };
 }
 
-const MEMORY_MODES: MemoryMode[] = ['classic', 'memories', 'off'];
+const MEMORY_MODES: MemoryMode[] = ['classic', 'memories', 'nexus', 'off'];
 
 /** Coerce the memory feature selector. Anything unrecognised falls back to the summary. */
 function normalizeMemoryMode(value: unknown): MemoryMode {
+  if (value === 'memories') return 'nexus';
   return MEMORY_MODES.includes(value as MemoryMode) ? (value as MemoryMode) : 'classic';
 }
 
@@ -529,6 +536,7 @@ function normalizeArena(value: unknown): ArenaSettings {
       ? Math.min(ARENA_MAX_COLUMNS, Math.max(ARENA_MIN_COLUMNS, Math.round(columns)))
       : DEFAULT_ARENA.columns,
     holdBlindUntilComplete: value.holdBlindUntilComplete !== false,
+    mergedContenders: normalizeMergedContenders(value.mergedContenders),
   };
 }
 
@@ -576,6 +584,27 @@ function normalizeBackgroundEffects(value: unknown): Record<string, string> {
   for (const [background, candidate] of Object.entries(value)) {
     if (!background || typeof candidate !== 'string' || !candidate) continue;
     entries.push([background, candidate]);
+  }
+  return Object.fromEntries(entries);
+}
+
+/**
+ * Coerce the contender merge map. String→string, self-references dropped: an entry pointing
+ * at itself is not a merge and would only make the Pool's own "already merged" checks lie.
+ *
+ * A target id that is not in the pool is deliberately KEPT, on the same terms as a contender
+ * whose connection was deleted — it is unresolvable, not invalid. The rounds still name it,
+ * and the pool row that was folded away is exactly the one you are likely to remove; the
+ * `merges.ts` reader treats a missing target as "not merged" for display, so a kept link is
+ * inert rather than wrong, and re-adding the target restores the merge untouched.
+ */
+function normalizeMergedContenders(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+
+  const entries: Array<[string, string]> = [];
+  for (const [id, target] of Object.entries(value)) {
+    if (!id || typeof target !== 'string' || !target || target === id) continue;
+    entries.push([id, target]);
   }
   return Object.fromEntries(entries);
 }
@@ -646,6 +675,29 @@ function normalizeQuickCommands(value: unknown): QuickCommand[] {
   return commands;
 }
 
+function normalizeComposerLayouts(
+  value: unknown,
+  current?: AppSettings['composerLayouts'],
+  commands: QuickCommand[] = [],
+): AppSettings['composerLayouts'] {
+  const stored = isRecord(value) ? value : {};
+  const quickIds = new Set(commands.map((command) => command.id));
+  return {
+    single: normalizeComposerLayout(
+      stored.single,
+      'single',
+      current?.single ?? DEFAULT_SINGLE_COMPOSER_LAYOUT,
+      quickIds,
+    ),
+    group: normalizeComposerLayout(
+      stored.group,
+      'group',
+      current?.group ?? DEFAULT_GROUP_COMPOSER_LAYOUT,
+      quickIds,
+    ),
+  };
+}
+
 /**
  * Coerce a stored regex-script list, on the same terms as quick commands: an entry with no
  * usable id is dropped, because the id is what edits, deletes and reorders address.
@@ -693,6 +745,7 @@ export function getSettings(): AppSettings {
       ? DEFAULT_SETTINGS.connections.map((connection) => ({ ...connection }))
       : normalizeConnections(stored.connections);
 
+  const quickCommands = normalizeQuickCommands(stored.quickCommands);
   cache = {
     ...DEFAULT_SETTINGS,
     ...stored,
@@ -703,6 +756,7 @@ export function getSettings(): AppSettings {
     guidance: normalizeGuidance(stored.guidance),
     summary: normalizeSummary(stored.summary, connections),
     memoryMode: normalizeMemoryMode(stored.memoryMode),
+    nexus: normalizeNexusSettings(stored.nexus),
     memory: normalizeMemory(stored.memory, connections),
     coCreator: normalizeCoCreator(stored.coCreator, connections),
     arena: normalizeArena(stored.arena),
@@ -721,7 +775,8 @@ export function getSettings(): AppSettings {
     backgroundEffectLayer: stored.backgroundEffectLayer === 'front' ? 'front' : 'behind',
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
     hiddenTags: normalizeHiddenTags(stored.hiddenTags),
-    quickCommands: normalizeQuickCommands(stored.quickCommands),
+    quickCommands,
+    composerLayouts: normalizeComposerLayouts(stored.composerLayouts, undefined, quickCommands),
     recentPersonaIds: normalizeRecentPersonaIds(stored.recentPersonaIds),
     // Pinned to the two legal values, the same shape as `characterListSort` above: anything
     // else is a stale or hand-edited file, and rows are the safe default.
@@ -746,6 +801,9 @@ export function getSettings(): AppSettings {
  * deletion would make that irreversible. This is the character-book rule.
  */
 export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
+  const quickCommands = Array.isArray(patch.quickCommands)
+    ? normalizeQuickCommands(patch.quickCommands)
+    : current.quickCommands;
   return {
     ...current,
     ...patch,
@@ -766,6 +824,7 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       : normalizeSummary(current.summary, current.connections),
     memoryMode:
       patch.memoryMode === undefined ? current.memoryMode : normalizeMemoryMode(patch.memoryMode),
+    nexus: normalizeNexusSettings({ ...current.nexus, ...patch.nexus }),
     memory: patch.memory
       ? normalizeMemory({ ...current.memory, ...patch.memory }, current.connections)
       : normalizeMemory(current.memory, current.connections),
@@ -792,9 +851,10 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
         )
       : normalizeCoCreator(current.coCreator, current.connections),
     // Field-wise like coCreator, and for the same reason — but note the three array
-    // sub-fields are guarded on `Array.isArray` rather than merely spread: `normalizeArena`
-    // turns a non-array into an empty one, so `{"arena": {"contenders": null}}` from a
-    // stale tab would otherwise wipe a pool whose ratings history it cannot restore.
+    // sub-fields are guarded on `Array.isArray` rather than merely spread, and the merge map
+    // on `isRecord` the way `characterRatings` is: `normalizeArena` turns a non-array into an
+    // empty one, so `{"arena": {"contenders": null}}` from a stale tab would otherwise wipe a
+    // pool whose ratings history it cannot restore.
     arena: patch.arena
       ? normalizeArena({
           ...current.arena,
@@ -806,6 +866,12 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
             ? patch.arena.cardPool
             : current.arena.cardPool,
           probes: Array.isArray(patch.arena.probes) ? patch.arena.probes : current.arena.probes,
+          // The client sends the whole map (it holds the loaded settings), so a real object
+          // replaces wholesale — the `backgroundEffects` semantics — while a `null` keeps it.
+          mergedContenders:
+            isRecord(patch.arena.mergedContenders) || patch.arena.mergedContenders === undefined
+              ? (patch.arena.mergedContenders ?? current.arena.mergedContenders)
+              : current.arena.mergedContenders,
         })
       : current.arena,
     dialogueColors: patch.dialogueColors
@@ -824,9 +890,17 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       : current.dialogueColors,
     // A wholesale array like `collapsedCharacterFolders`, but normalised: a stale tab or a
     // malformed body like `{"quickCommands": null}` must not wipe the user's commands.
-    quickCommands: Array.isArray(patch.quickCommands)
-      ? normalizeQuickCommands(patch.quickCommands)
-      : current.quickCommands,
+    quickCommands,
+    composerLayouts: isRecord(patch.composerLayouts)
+      ? normalizeComposerLayouts(
+          {
+            single: patch.composerLayouts.single ?? current.composerLayouts.single,
+            group: patch.composerLayouts.group ?? current.composerLayouts.group,
+          },
+          current.composerLayouts,
+          quickCommands,
+        )
+      : normalizeComposerLayouts(current.composerLayouts, current.composerLayouts, quickCommands),
     // Normalised on the way in as well as on read, so the cap is enforced where the client
     // cannot skip it — this list is appended to on every persona switch.
     recentPersonaIds: Array.isArray(patch.recentPersonaIds)

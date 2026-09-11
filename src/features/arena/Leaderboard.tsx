@@ -33,6 +33,7 @@ import { ForestChart } from './ForestChart.tsx';
 import { HeadToHead } from './HeadToHead.tsx';
 import { ratingIntervals } from './intervals.ts';
 import { headToHead } from './matchups.ts';
+import { applyMerges, canonicalId, type MergeMap, mergeGroups } from './merges.ts';
 import { RatingChart } from './RatingChart.tsx';
 import { RoundInspector } from './RoundInspector.tsx';
 import { ratingTone } from './ratingTone.ts';
@@ -41,6 +42,8 @@ import { colourOf, viewSeries } from './series.ts';
 interface LeaderboardProps {
   rounds: readonly ArenaRound[];
   contenders: readonly Contender[];
+  /** Contender id → the id its rounds count under. See `ArenaSettings`. */
+  merged: MergeMap;
   characters: readonly CharacterSummary[];
   loading: boolean;
   preferredSlots: ReadonlyMap<string, number>;
@@ -124,6 +127,7 @@ function ViewToggle({
 export function Leaderboard({
   rounds,
   contenders,
+  merged,
   characters,
   loading,
   preferredSlots,
@@ -150,9 +154,24 @@ export function Leaderboard({
     return [...seen.entries()].sort((a, b) => b[1] - a[1]);
   }, [rounds]);
 
+  /*
+   * Fold first, filter second.
+   *
+   * A merge is a statement about the model, so it holds on every card's board as well as the
+   * whole one — and the fold is what the readers below key on, so it has to happen before the
+   * card filter hands them a list. `applyMerges` touches nothing when no merge exists.
+   */
+  const folded = useMemo(
+    () => applyMerges(rounds, contenders, merged),
+    [contenders, merged, rounds],
+  );
+
   const filtered = useMemo(
-    () => (cardFilter ? rounds.filter((round) => round.characterId === cardFilter) : rounds),
-    [cardFilter, rounds],
+    () =>
+      cardFilter
+        ? folded.rounds.filter((round) => round.characterId === cardFilter)
+        : folded.rounds,
+    [cardFilter, folded.rounds],
   );
 
   /*
@@ -163,8 +182,8 @@ export function Leaderboard({
    * being used to find out.
    */
   const { rows, series, ordered } = useMemo(
-    () => replay(filtered, cardFilter ? [] : contenders),
-    [cardFilter, contenders, filtered],
+    () => replay(filtered, cardFilter ? [] : folded.contenders),
+    [cardFilter, filtered, folded.contenders],
   );
 
   const table = useMemo(() => headToHead(filtered), [filtered]);
@@ -190,10 +209,35 @@ export function Leaderboard({
     [preferredSlots, rows],
   );
 
+  /**
+   * Pool entries grouped by the identity they count under, for `mergedLabel`.
+   *
+   * Grouped over the *whole* pool, not the folded list: the entries that were absorbed are
+   * precisely the ones the label has to name, and they are by construction absent from the
+   * surviving set the readers see.
+   */
+  const groups = useMemo(
+    () => mergeGroups(contenders, folded.canonical),
+    [contenders, folded.canonical],
+  );
+
   const nameOf = (contenderId: string, model: string): string => {
     const contender = contenders.find((entry) => entry.id === contenderId);
     // A deleted contender falls back to what it actually ran, never to a bare uuid.
     return contender ? contenderLabel(contender) : model || contenderId;
+  };
+
+  /**
+   * What a merged row is called, or null for a row that is one contender.
+   *
+   * Named rather than summarised: "Sonnet" alone on a board where two pool entries say
+   * Sonnet is exactly the confusion the merge created, and the reader needs to see which
+   * two endpoints are behind the number.
+   */
+  const mergedLabel = (contenderId: string): string | null => {
+    const members = groups.get(canonicalId(folded.canonical, contenderId));
+    if (!members || members.length < 2) return null;
+    return members.map((entry) => contenderLabel(entry)).join(' + ');
   };
 
   const openRound = ordered.find((round) => round.id === openRoundId) ?? null;
@@ -236,7 +280,7 @@ export function Leaderboard({
             </span>
             <span className="arena-champ__name">{nameOf(leader.contenderId, leader.model)}</span>
             <span className="arena-champ__model">
-              {leader.model || '—'} · {leader.rounds} rated{' '}
+              {mergedLabel(leader.contenderId) ?? leader.model ?? '—'} · {leader.rounds} rated{' '}
               {leader.rounds === 1 ? 'round' : 'rounds'}
             </span>
           </div>
@@ -348,6 +392,7 @@ export function Leaderboard({
               const decided = Math.max(1, row.wins + row.losses + row.ties);
               const tone = toneProps(row.rating, row.provisional);
               const isConfirming = confirmingPurgeId === row.contenderId;
+              const mergedName = mergedLabel(row.contenderId);
               return (
                 <tr
                   key={row.contenderId}
@@ -358,6 +403,14 @@ export function Leaderboard({
                   <th scope="row" className="arena-ranks__id">
                     <span className="arena-ranks__swatch" aria-hidden="true" />
                     <span className="arena-ranks__name">{nameOf(row.contenderId, row.model)}</span>
+                    {mergedName ? (
+                      <span
+                        className="arena-ranks__merged"
+                        title={`${mergedName} — merged: one rating over both providers' rounds.`}
+                      >
+                        {mergedName}
+                      </span>
+                    ) : null}
                   </th>
                   <td className="arena-ranks__model" title={`${row.provider} · ${row.model}`}>
                     {row.model || '—'}

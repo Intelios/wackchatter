@@ -26,7 +26,7 @@ const TRIGGERS: Array<{ value: GenerationType; label: string; unavailable?: bool
   { value: 'continue', label: 'Continue' },
   { value: 'swipe', label: 'Swipe' },
   { value: 'regenerate', label: 'Regenerate' },
-  { value: 'impersonate', label: 'Impersonate', unavailable: true },
+  { value: 'impersonate', label: 'Impersonate' },
   { value: 'quiet', label: 'Quiet', unavailable: true },
 ];
 

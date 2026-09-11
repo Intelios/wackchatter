@@ -6,6 +6,10 @@
  * a swipe is an alternate take on the same turn, not a separate message.
  */
 
+import type { NexusRecall, NexusState } from '../nexus/types.ts';
+import type { GroupScene } from './group.ts';
+import type { MemoryMode } from './settings.ts';
+
 export interface SwipeInfo {
   send_date: string;
   gen_started?: string;
@@ -14,6 +18,8 @@ export interface SwipeInfo {
 }
 
 export interface MessageExtra {
+  /** Frozen selection for this exact response/swipe. */
+  nexusRecall?: NexusRecall;
   /**
    * Provider id used to generate this message. A ProviderId, never a connection name —
    * see `connection_id` for which endpoint it actually was.
@@ -67,6 +73,8 @@ export interface MessageExtra {
 }
 
 export interface ChatMessage {
+  memberId?: string;
+  characterId?: string;
   id: string;
   name: string;
   is_user: boolean;
@@ -104,6 +112,7 @@ export interface ChatMessage {
 }
 
 export interface ChatMetadata {
+  group?: GroupScene;
   /** Overrides the character's scenario for this chat only. */
   scenario?: string;
   /**
@@ -134,6 +143,9 @@ export interface ChatMetadata {
    * yet, so the backlog starts at the top.
    */
   memoryWatermark?: string;
+  /** Copied from the app default at chat creation; never follows later default changes. */
+  memoryMode?: MemoryMode;
+  nexus?: NexusState;
   /** Provenance recorded when this chat was created as a branch of another chat. */
   branchedFrom?: BranchOrigin;
   [key: string]: unknown;
@@ -261,7 +273,8 @@ export interface MacroWarning {
 export interface Chat {
   id: string;
   /** Character avatar filename — the character this chat belongs to. */
-  characterId: string;
+  characterId: string | null;
+  kind?: 'direct' | 'group';
   title: string;
   created: number;
   modified: number;
@@ -288,7 +301,8 @@ export interface StaleChatRevision {
 
 export interface ChatSummary {
   id: string;
-  characterId: string;
+  characterId: string | null;
+  kind?: 'direct' | 'group';
   title: string;
   created: number;
   modified: number;
@@ -300,6 +314,12 @@ export interface ChatSummary {
    * fetching every chat in full. Absent on a chat that was never branched off another.
    */
   branchedFrom?: BranchOrigin;
+  /**
+   * For a group scene, the cast's character filenames in cast order, so the recents list
+   * can show who is in the room without fetching every scene in full. Absent on a direct
+   * chat, and on a scene whose metadata is malformed.
+   */
+  groupMembers?: string[];
 }
 
 /** A deleted chat waiting in the trash bin (data/backups), still restorable. */
@@ -308,7 +328,8 @@ export interface ChatBackupSummary {
   backupId: string;
   /** The chat as it was deleted. Restore recreates it under a fresh id. */
   chatId: string;
-  characterId: string;
+  characterId: string | null;
+  kind?: 'direct' | 'group';
   title: string;
   messageCount: number;
   /** Epoch ms when the chat was deleted, which is when the backup was taken. */

@@ -1,12 +1,26 @@
 import { describe, expect, test } from 'bun:test';
-import { isSeparator, type MenuAction, type MenuEntry } from '../../components/Menu.tsx';
+import {
+  groupMenuEntries,
+  isHeader,
+  isSeparator,
+  isSubmenu,
+  type MenuAction,
+  type MenuEntry,
+  type MenuHeader,
+} from '../../components/Menu.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
-import { buildChatMenu, type ChatMenuActions, type ChatMenuState } from './ChatMenu.tsx';
+import {
+  buildChatMenu,
+  type ChatMenuActions,
+  type ChatMenuState,
+  toggleGroupKey,
+} from './ChatMenu.tsx';
 import { nextChatTitle } from './RenameChatPopover.tsx';
 
 /** A transcript ending on the character's turn — the ordinary case, everything available. */
 const healthy: ChatMenuState = {
   busy: false,
+  memoryMode: 'nexus',
   chatId: 'c1',
   messageCount: 4,
   lastMessageId: 'm4',
@@ -28,6 +42,7 @@ function spies() {
     importChat: () => calls.push('importChat'),
     openCard: () => calls.push('openCard'),
     openBranchTree: () => calls.push('openBranchTree'),
+    openRecap: () => calls.push('openRecap'),
   };
   return { calls, panels, actions };
 }
@@ -39,14 +54,22 @@ function build(state: Partial<ChatMenuState> = {}, actions?: ChatMenuActions): M
 function item(entries: MenuEntry[], label: string): MenuAction {
   const found = entries.find(
     (entry): entry is MenuAction =>
-      !isSeparator(entry) && entry.kind !== 'submenu' && entry.label === label,
+      !isSeparator(entry) && !isHeader(entry) && !isSubmenu(entry) && entry.label === label,
   );
   if (!found) throw new Error(`No menu entry labelled "${label}"`);
   return found;
 }
 
 function actionLabels(entries: MenuEntry[]): string[] {
-  return entries.filter((entry): entry is MenuAction => !isSeparator(entry)).map((e) => e.label);
+  return entries
+    .filter(
+      (entry): entry is MenuAction => !isSeparator(entry) && !isHeader(entry) && !isSubmenu(entry),
+    )
+    .map((entry) => entry.label);
+}
+
+function headers(entries: MenuEntry[]): MenuHeader[] {
+  return entries.filter(isHeader);
 }
 
 /** Entries that open a right panel, in the order their panels are asserted below. */
@@ -67,17 +90,78 @@ describe('buildChatMenu', () => {
     expect(actionLabels(entries)).toEqual([
       'New chat',
       'Save checkpoint',
-      'Regenerate',
-      'Continue',
       'Rename chat…',
       'Export chat',
       'Import chat',
-      ...ALWAYS_OPEN,
+      'Regenerate',
+      'Continue',
+      'Impersonate',
+      'Guide next reply',
+      'Guided swipe',
+      'Character card…',
+      'Branch timeline…',
+      'Previously on…',
+      'Customise composer…',
+      ...JUMPS,
       'Close chat',
     ]);
     for (const label of actionLabels(entries)) {
       expect(item(entries, label).disabled).toBeFalsy();
     }
+  });
+
+  /*
+   * The families are what the menu is tinted by, so their identity and order is a real
+   * contract, not presentation detail: a run that lost its header would render as an
+   * untinted grey block again, which is exactly what this menu was rebuilt to stop being.
+   */
+  test('entries are laid out as labelled families', () => {
+    const { actions } = spies();
+    const entries = buildChatMenu(healthy, { ...actions, openNexus: () => {} });
+    expect(headers(entries).map((header) => header.label)).toEqual([
+      'Memory',
+      'Chat',
+      'Reply',
+      'Inspect',
+    ]);
+    expect(headers(entries).map((header) => header.hue)).toEqual([1, 3, 4, 2]);
+    // Explicit keys, not labels: the collapsed set is persisted by key, so renaming a
+    // family's label must not orphan the user's choice.
+    expect(headers(entries).map((header) => header.key)).toEqual([
+      'memory',
+      'chat',
+      'reply',
+      'inspect',
+    ]);
+  });
+
+  test('each family owns a contiguous run, and the destructive entry owns none', () => {
+    const { actions } = spies();
+    const groups = groupMenuEntries(buildChatMenu(healthy, { ...actions, openNexus: () => {} }));
+
+    const chat = groups.find((group) => group.header?.label === 'Chat');
+    expect(chat?.entries.map((entry) => entry.label)).toEqual([
+      'New chat',
+      'Save checkpoint',
+      'Rename chat…',
+      'Export chat',
+      'Import chat',
+    ]);
+
+    const reply = groups.find((group) => group.header?.label === 'Reply');
+    expect(reply?.entries.map((entry) => entry.label)).toEqual([
+      'Regenerate',
+      'Continue',
+      'Impersonate',
+      'Guide next reply',
+      'Guided swipe',
+    ]);
+
+    // Close chat sits after a separator with no header, so no family tint can reach its red.
+    const closeGroup = groups.find((group) =>
+      group.entries.some((entry) => entry.label === 'Close chat'),
+    );
+    expect(closeGroup?.header).toBeUndefined();
   });
 
   test('Continue is unavailable when the transcript ends on the user', () => {
@@ -195,6 +279,9 @@ describe('buildChatMenu', () => {
 
     item(entries, 'Branch timeline…').onSelect();
     expect(calls[calls.length - 1]).toBe('openBranchTree');
+
+    item(entries, 'Previously on…').onSelect();
+    expect(calls[calls.length - 1]).toBe('openRecap');
   });
 
   /*
@@ -224,6 +311,35 @@ describe('buildChatMenu', () => {
     expect(entry.disabledReason).toBe('No chat is open.');
   });
 
+  /*
+   * The recap is a provider generation, so it waits for the current reply; it is not a
+   * reader like its neighbours in the family, so `busy` is a real reason to disable it
+   * rather than something it can ignore.
+   */
+  test('Previously on needs a non-empty chat and waits for the current reply', () => {
+    expect(item(build(), 'Previously on…').disabled).toBeFalsy();
+
+    const empty = item(build({ messageCount: 0, lastMessageId: null }), 'Previously on…');
+    expect(empty.disabled).toBe(true);
+    expect(empty.disabledReason).toBe('This chat has no messages yet.');
+
+    const noChat = item(build({ chatId: null }), 'Previously on…');
+    expect(noChat.disabled).toBe(true);
+    expect(noChat.disabledReason).toBe('No chat is open.');
+
+    const busyEntry = item(build({ busy: true }), 'Previously on…');
+    expect(busyEntry.disabled).toBe(true);
+    expect(busyEntry.disabledReason).toBe('Wait for the current reply to finish.');
+
+    const summarizing = item(build({ summaryRunning: true }), 'Previously on…');
+    expect(summarizing.disabled).toBe(true);
+    expect(summarizing.disabledReason).toBe('Cancel or finish the current summary first.');
+
+    const extracting = item(build({ memoryRunning: true }), 'Previously on…');
+    expect(extracting.disabled).toBe(true);
+    expect(extracting.disabledReason).toBe('Cancel or finish the current memory extraction first.');
+  });
+
   test('Rename chat needs an open chat but not a message', () => {
     // A fresh transcript titled "New chat" is exactly when a real title is wanted most.
     expect(
@@ -241,6 +357,47 @@ describe('buildChatMenu', () => {
     expect(item(entries, 'Export chat').disabledReason).toBe(
       'Wait for the current reply to finish.',
     );
+  });
+
+  test('Memory Nexus entry has an icon and triggers openNexus when selected', () => {
+    const { calls, actions } = spies();
+    const actionsWithNexus: ChatMenuActions = {
+      ...actions,
+      openNexus: () => calls.push('openNexus'),
+    };
+    const entries = build({}, actionsWithNexus);
+    const nexusEntry = item(entries, 'Memory Nexus');
+    expect(nexusEntry.icon).toBeDefined();
+    expect(nexusEntry.disabled).toBeFalsy();
+    nexusEntry.onSelect();
+    expect(calls).toContain('openNexus');
+
+    const disabledEntries = build({ chatId: null }, actionsWithNexus);
+    const disabledNexusEntry = item(disabledEntries, 'Memory Nexus');
+    expect(disabledNexusEntry.disabled).toBe(true);
+    expect(disabledNexusEntry.disabledReason).toBe('No chat is open.');
+  });
+
+  /*
+   * The Nexus is the memory model in use or it is not: a Summary or Off chat has no explorer
+   * behind the entry. The header has to leave with it — a "Memory" eyebrow over nothing is a
+   * phantom section, and it would keep the lime family colour alive in a menu whose memory
+   * story runs through the Summary panel instead.
+   */
+  test('the Memory family exists only when the chat runs the Nexus', () => {
+    const { actions } = spies();
+    const actionsWithNexus: ChatMenuActions = { ...actions, openNexus: () => {} };
+
+    for (const memoryMode of ['classic', 'off'] as const) {
+      const entries = build({ memoryMode }, actionsWithNexus);
+      expect(actionLabels(entries)).not.toContain('Memory Nexus');
+      expect(headers(entries).map((header) => header.label)).not.toContain('Memory');
+    }
+
+    // And the first family is exactly the entry under its header when the mode is on.
+    const nexusEntries = build({}, actionsWithNexus);
+    expect(actionLabels(nexusEntries)).toContain('Memory Nexus');
+    expect(headers(nexusEntries)[0]?.label).toBe('Memory');
   });
 
   test('separators only ever sit between groups', () => {
@@ -263,9 +420,63 @@ describe('buildChatMenu', () => {
       { lastIsUser: true },
     ]) {
       for (const entry of build(state)) {
-        if (!isSeparator(entry) && entry.disabled) expect(entry.disabledReason).toBeTruthy();
+        if (!isSeparator(entry) && !isHeader(entry) && entry.disabled) {
+          expect(entry.disabledReason).toBeTruthy();
+        }
       }
     }
+  });
+});
+
+describe('groupMenuEntries', () => {
+  const action = (label: string): MenuAction => ({ label, onSelect: () => {} });
+  const header = (label: string, hue?: MenuHeader['hue']): MenuHeader => ({
+    kind: 'header',
+    label,
+    hue,
+  });
+
+  test('entries before the first header form an implicit untinted run', () => {
+    const groups = groupMenuEntries([action('Loose'), header('Chat'), action('New chat')]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.header).toBeUndefined();
+    expect(groups[0]!.entries.map((entry) => entry.label)).toEqual(['Loose']);
+    expect(groups[1]!.header?.label).toBe('Chat');
+  });
+
+  test('a separator stands alone and starts a fresh run for what follows', () => {
+    const groups = groupMenuEntries([
+      header('Chat'),
+      action('New chat'),
+      { kind: 'separator' },
+      action('Close chat'),
+    ]);
+    expect(
+      groups.map((group) => (group.separator ? 'sep' : (group.header?.label ?? 'run'))),
+    ).toEqual(['Chat', 'sep', 'run']);
+    expect(groups[2]!.entries.map((entry) => entry.label)).toEqual(['Close chat']);
+  });
+
+  test('an empty list groups to nothing', () => {
+    expect(groupMenuEntries([])).toEqual([]);
+  });
+});
+
+describe('toggleGroupKey', () => {
+  test('collapsing adds the key and expanding removes it', () => {
+    expect(toggleGroupKey([], 'inspect')).toEqual(['inspect']);
+    expect(toggleGroupKey(['inspect'], 'inspect')).toEqual([]);
+  });
+
+  test('families collapse independently — one toggle never disturbs another', () => {
+    expect(toggleGroupKey(['inspect'], 'reply')).toEqual(['inspect', 'reply']);
+    expect(toggleGroupKey(['inspect', 'reply'], 'inspect')).toEqual(['reply']);
+  });
+
+  test('collapsing the same key twice is idempotent', () => {
+    const once = toggleGroupKey([], 'chat');
+    // The set shape makes a double-toggle harmless rather than accumulating duplicates.
+    expect(toggleGroupKey(once, 'chat')).toEqual([]);
   });
 });
 

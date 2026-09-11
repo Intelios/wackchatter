@@ -55,6 +55,8 @@
   --wc-border: #2a2a2e;
   --wc-border-strong: #3a3a40;
   --wc-border-width: 1px;
+  --wc-nexus-node-stroke: 1.5px;
+  --wc-nexus-edge-text: 11px;
 
   /* Accent. Acid lime against neutral chrome: it reads as "active" at a glance
      without borrowing a hue any status colour needs. Light enough that text on
@@ -185,6 +187,9 @@
   --wc-control-lg: 42px;
   --wc-avatar-sm: 32px;
   --wc-avatar-md: 44px;
+  /* How far stacked group faces tuck under one another. The visible step is the face size
+     minus this, so the two are tuned together to keep a face recognisable. */
+  --wc-avatar-overlap: 12px;
 
   /* Layout */
   --wc-panel-width: clamp(380px, 25vw, 560px);
@@ -314,4 +319,13 @@
     --wc-surface-raised: #1e1e21;
     --wc-bubble: #16161a;
   }
+}
+
+:root {
+  /* Nexus is the explicit full-viewport explorer exception. */
+  --wc-nexus-card: 380px;
+  --wc-nexus-page: 780px;
+  /* Map edges on --wc-bg (#0e0e0f): ≥3:1 as a non-text UI component. --wc-border
+     measured 1.35:1 there — the connections were the one thing you could not see. */
+  --wc-nexus-edge: #6b6b73;
 }
