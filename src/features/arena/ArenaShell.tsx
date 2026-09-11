@@ -18,7 +18,14 @@
  */
 
 import type { Connection } from '@shared/providers/types.ts';
-import type { ArenaRound, ArenaSettings, Verdict } from '@shared/types/arena.ts';
+import type {
+  ArenaRound,
+  ArenaSettings,
+  TournamentSize,
+  TournamentStage,
+  TournamentWithMatches,
+  Verdict,
+} from '@shared/types/arena.ts';
 import type { CardDataV2, CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
@@ -28,7 +35,7 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon } from '../../layout/icons.tsx';
-import { arenaApi, characterApi, presetApi } from '../../lib/api.ts';
+import { arenaApi, characterApi, presetApi, tournamentApi } from '../../lib/api.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { EffectId } from '../backgrounds/effects.ts';
 import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
@@ -48,19 +55,27 @@ import { PoolPanel } from './PoolPanel.tsx';
 import { drawRound, type RoundDraw } from './pairing.ts';
 import { buildScene, sceneSeedId } from './scene.ts';
 import { poolSlots, viewSeries } from './series.ts';
+import { isRunSettled } from './state/arenaReducer.ts';
+import { bracketView } from './tournament/bracket.ts';
+import { tournamentLadder } from './tournament/ladder.ts';
+import type { MatchRun } from './tournament/match.ts';
+import { tournamentNameFor } from './tournament/names.ts';
+import { TournamentPanel } from './tournament/TournamentPanel.tsx';
 import { useArenaRun } from './useArenaRun.ts';
 import './ArenaShell.css';
 
 /** A run waiting for its card and lorebooks to finish loading. */
 interface PendingRun {
-  /** Which bench it belongs to. The two never share a log — see `benchRun` / `blindRun`. */
-  target: 'bench' | 'blind';
+  /** Which room it belongs to. The three never share a log — see `benchRun` / `blindRun`. */
+  target: 'bench' | 'blind' | 'tournament';
   runId: string;
   characterId: string;
   probe: string;
   contenderIds: string[];
   replace: boolean;
   draw?: RoundDraw;
+  /** Set for a tournament match: the slot being fought, and its coin-flipped sides. */
+  match?: MatchRun;
 }
 
 interface ArenaShellProps {
@@ -131,6 +146,16 @@ export function ArenaShell({
   const [rounds, setRounds] = useState<ArenaRound[]>([]);
   const [roundsLoading, setRoundsLoading] = useState(true);
 
+  const [tournaments, setTournaments] = useState<TournamentWithMatches[]>([]);
+  const [tournamentsLoading, setTournamentsLoading] = useState(true);
+  /** Which bracket the Tournament tab is showing. Null is the list. */
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+  /** The match currently in the room, with its coin-flipped sides. */
+  const [matchRun, setMatchRun] = useState<MatchRun | null>(null);
+  const [matchRevealed, setMatchRevealed] = useState(false);
+  const [matchRecording, setMatchRecording] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
+
   const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
   const [draw, setDraw] = useState<RoundDraw | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -164,6 +189,21 @@ export function ArenaShell({
   useEffect(() => {
     void refreshRounds();
   }, [refreshRounds]);
+
+  const refreshTournaments = useCallback(async () => {
+    try {
+      setTournaments(await tournamentApi.list());
+    } catch {
+      // Keep the last good view: a stale bracket is better than a blank one, and the next
+      // mutation reports its own failure.
+    } finally {
+      setTournamentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshTournaments();
+  }, [refreshTournaments]);
 
   useEffect(() => {
     if (!stagedId || cards[stagedId]) return;
@@ -310,18 +350,21 @@ export function ArenaShell({
    * One engine per mode, deliberately not shared.
    *
    * They looked like one thing — same scene, same columns — but their logs are opposites:
-   * the bench accumulates every comparison you have made, and a blind round keeps exactly
-   * one and replaces it. Sharing a reducer meant a benchmark round silently erased the
-   * bench's history, and switching tabs mid-session showed the bench's labelled replies
-   * masked as A and B, as though there were something to vote on.
+   * the bench accumulates every comparison you have made, while a blind round and a
+   * tournament match keep exactly one and replace it. Sharing a reducer meant a benchmark
+   * round silently erased the bench's history, and switching tabs mid-session showed the
+   * bench's labelled replies masked as A and B, as though there were something to vote on.
    */
   const benchRun = useArenaRun(runOptions);
   const blindRun = useArenaRun(runOptions);
+  const tournamentRun = useArenaRun(runOptions);
 
   const benchRef = useRef(benchRun);
   benchRef.current = benchRun;
   const blindRef = useRef(blindRun);
   blindRef.current = blindRun;
+  const tournamentRef = useRef(tournamentRun);
+  tournamentRef.current = tournamentRun;
 
   // --- readiness ------------------------------------------------------------
 
@@ -382,7 +425,18 @@ export function ArenaShell({
       setPreview(null);
       setRecordError(null);
     }
-    const engine = pendingRun.target === 'blind' ? blindRef.current : benchRef.current;
+    if (pendingRun.target === 'tournament') {
+      if (pendingRun.match) setMatchRun(pendingRun.match);
+      setMatchRevealed(false);
+      setMatchRecording(false);
+      setMatchError(null);
+    }
+    const engine =
+      pendingRun.target === 'blind'
+        ? blindRef.current
+        : pendingRun.target === 'tournament'
+          ? tournamentRef.current
+          : benchRef.current;
     void engine.start({
       runId: pendingRun.runId,
       characterId: pendingRun.characterId,
@@ -559,6 +613,221 @@ export function ArenaShell({
     [onSettingsChange, refreshRounds, settings.contenders, settings.mergedContenders],
   );
 
+  // --- tournaments ----------------------------------------------------------
+
+  /** Labels for the tournament views: live pool name first, then the recorded model. */
+  const nameFor = useMemo(() => tournamentNameFor(resolved, tournaments), [resolved, tournaments]);
+
+  /**
+   * Why a tournament cannot be created. Null when one can.
+   *
+   * A bracket of four is the floor, so the New button is disabled rather than opening a
+   * wizard that cannot be completed — the app's "disabled beats refused" rule.
+   */
+  const tournamentBlockedReason = useMemo(() => {
+    if (setupReason) return setupReason;
+    if (characters.length === 0) return 'Add a character card first.';
+    if (eligible.length < 4) {
+      return `Tournaments need at least 4 enabled, runnable contenders — you have ${eligible.length}.`;
+    }
+    return null;
+  }, [characters.length, eligible.length, setupReason]);
+
+  /** The career ladder, replayed from every tournament's matches — never stored. */
+  const careerLadder = useMemo(
+    () => tournamentLadder(tournaments, settings.contenders),
+    [settings.contenders, tournaments],
+  );
+
+  const startTournamentMatch = useCallback(
+    (tournamentId: string, stage: number, matchIndex: number) => {
+      if (pendingRun || tournamentRef.current.busy) return;
+      const tournament = tournaments.find((entry) => entry.id === tournamentId);
+      const plan = tournament?.stages[stage];
+      const slot = tournament ? bracketView(tournament).stages[stage]?.[matchIndex] : null;
+      // Both sides known means both feeders are recorded, so this is a real comparison.
+      if (!tournament || !plan || !slot || slot.match || !slot.leftId || !slot.rightId) return;
+
+      /*
+       * A coin flip decides which contender wears A.
+       *
+       * The bracket knows the matchup, but which reply belongs to whom is the thing being
+       * hidden — so the side a contender takes is drawn fresh each match, exactly as the
+       * blind round draws it, and position bias cannot bind to one entrant across a bracket.
+       */
+      const flip = Math.random() < 0.5;
+      const sides: [string, string] = flip
+        ? [slot.rightId, slot.leftId]
+        : [slot.leftId, slot.rightId];
+
+      requestRun({
+        target: 'tournament',
+        characterId: plan.characterId,
+        probe: plan.cue,
+        contenderIds: sides,
+        replace: true,
+        match: { tournamentId, stage, matchIndex, sides, deadHeat: false },
+      });
+    },
+    [pendingRun, requestRun, tournaments],
+  );
+
+  const voteMatch = useCallback(
+    (verdict: Verdict) => {
+      const current = tournamentRun.state.runs[0];
+      if (!current || !matchRun || matchRevealed || matchRecording) return;
+      if (!isRunSettled(current)) return;
+
+      if (verdict === 'tie' || verdict === 'bad') {
+        if (matchRun.deadHeat) return;
+        /*
+         * The dead heat is consumed, not recorded: both sides re-roll once against the run's
+         * cached prompt, and only the forced pick that follows reaches storage. `deadHeat`
+         * flips first so the vote bar can switch to its two-button form while they run.
+         */
+        setMatchRun({ ...matchRun, deadHeat: true });
+        setMatchError(null);
+        void Promise.all([
+          tournamentRun.rerollColumn(current.id, matchRun.sides[0]),
+          tournamentRun.rerollColumn(current.id, matchRun.sides[1]),
+        ]);
+        return;
+      }
+
+      const left = current.entries[0];
+      const right = current.entries[1];
+      if (!left || !right) return;
+
+      // The record names the draw's sides, not the entries' labels: the draw is what proves
+      // the two never disagreed about who was A.
+      const record = {
+        stage: matchRun.stage,
+        matchIndex: matchRun.matchIndex,
+        left: {
+          contenderId: matchRun.sides[0],
+          model: left.model,
+          provider: left.provider,
+          text: left.text,
+        },
+        right: {
+          contenderId: matchRun.sides[1],
+          model: right.model,
+          provider: right.provider,
+          text: right.text,
+        },
+        verdict,
+        rerolled: matchRun.deadHeat,
+      };
+
+      setMatchRevealed(true);
+      setMatchRecording(true);
+      setMatchError(null);
+
+      void tournamentApi
+        .recordMatch(matchRun.tournamentId, record)
+        .then(() => refreshTournaments())
+        .catch((err) => {
+          setMatchError(`This match was not recorded: ${(err as Error).message}`);
+        })
+        .finally(() => setMatchRecording(false));
+    },
+    [matchRecording, matchRevealed, matchRun, refreshTournaments, tournamentRun],
+  );
+
+  /*
+   * A re-rolled match that produced no evidence on a side cannot be judged, so it returns to
+   * un-played rather than recording an outcome nothing supports. Runs after commit, so the
+   * entries' final statuses are readable — the alternative, checking inside the re-roll's
+   * promise, would read state React has not written back yet.
+   */
+  useEffect(() => {
+    if (!matchRun?.deadHeat) return;
+    const current = tournamentRun.state.runs[0];
+    if (!current || !isRunSettled(current)) return;
+
+    const [a, b] = current.entries;
+    if (a?.status === 'done' && b?.status === 'done') return;
+
+    tournamentRun.clear();
+    setMatchRun(null);
+    setMatchRevealed(false);
+    setMatchError(
+      'A generation failed, so the match was reset. Fight it again when you are ready.',
+    );
+  }, [matchRun, tournamentRun]);
+
+  const exitMatch = useCallback(() => {
+    tournamentRun.clear();
+    setMatchRun(null);
+    setMatchRevealed(false);
+    setMatchError(null);
+  }, [tournamentRun]);
+
+  const startBlockedReason = useCallback(
+    (tournament: TournamentWithMatches): string | null => {
+      if (setupReason) return setupReason;
+      if (tournament.status !== 'active') return 'This tournament is not running.';
+      if (bracketView(tournament).complete) return 'This bracket is finished.';
+      if (pendingRun || tournamentRun.busy) return 'A generation is still running.';
+      return null;
+    },
+    [pendingRun, setupReason, tournamentRun.busy],
+  );
+
+  const createTournament = useCallback(
+    async (input: {
+      name: string;
+      size: TournamentSize;
+      entrants: string[];
+      stages: TournamentStage[];
+    }) => {
+      const created = await tournamentApi.create(input);
+      await refreshTournaments();
+      setTournamentId(created.id);
+    },
+    [refreshTournaments],
+  );
+
+  const abandonTournament = useCallback(
+    async (id: string) => {
+      await tournamentApi.update(id, { status: 'abandoned' });
+      await refreshTournaments();
+    },
+    [refreshTournaments],
+  );
+
+  const resumeTournament = useCallback(
+    async (id: string) => {
+      await tournamentApi.update(id, { status: 'active' });
+      await refreshTournaments();
+    },
+    [refreshTournaments],
+  );
+
+  const deleteTournament = useCallback(
+    async (id: string) => {
+      // A match still generating for this bracket has nothing left to belong to. Stop it
+      // before the rows go, or its settle would arrive for a tournament that no longer exists.
+      if (matchRun?.tournamentId === id) {
+        tournamentRun.abort();
+        tournamentRun.clear();
+        setMatchRun(null);
+      }
+      await tournamentApi.remove(id);
+      setTournamentId((current) => (current === id ? null : current));
+      await refreshTournaments();
+    },
+    [matchRun, refreshTournaments, tournamentRun],
+  );
+
+  const renameTournament = useCallback(
+    async (id: string, name: string) => {
+      await tournamentApi.update(id, { name });
+      await refreshTournaments();
+    },
+    [refreshTournaments],
+  );
+
   // --- rendering ------------------------------------------------------------
 
   /**
@@ -625,18 +894,23 @@ export function ArenaShell({
         <ArenaTabs mode={mode} onChange={setMode} />
 
         <div className="arena-shell__actions">
-          {benchRun.busy || blindRun.busy ? (
+          {benchRun.busy || blindRun.busy || tournamentRun.busy ? (
             <span className="arena-shell__busy">Generating…</span>
           ) : null}
         </div>
       </header>
 
       {/*
-       * The mode is on the scroll container because one of the four does not scroll: a blind
-       * round is a room you are in until you vote, and a vote bar that can leave the viewport
-       * turns a forty-round sitting into forty small hunts for it.
+       * The mode is on the scroll container because two of the five do not scroll: a blind
+       * round and a tournament match are rooms you are in until you vote, and a vote bar that
+       * can leave the viewport turns a long sitting into a hunt for it. A tournament match
+       * borrows the blind layout for exactly that reason — same duel, same docked bar — so the
+       * body is told `blind` while a match is in the room, however the tab is named.
        */}
-      <div className="arena-shell__body" data-mode={mode}>
+      <div
+        className="arena-shell__body"
+        data-mode={mode === 'tournament' && matchRun ? 'blind' : mode}
+      >
         {cardError ? (
           <p className="arena-error" role="alert">
             {cardError}
@@ -685,6 +959,40 @@ export function ArenaShell({
             sessionVerdicts={sessionVerdicts}
             preview={preview}
             preferredSlots={preferredSlots}
+          />
+        ) : null}
+
+        {mode === 'tournament' ? (
+          <TournamentPanel
+            tournaments={tournaments}
+            loading={tournamentsLoading}
+            ladder={careerLadder}
+            contenders={settings.contenders}
+            eligible={eligible}
+            characters={characters}
+            probes={settings.probes}
+            nameFor={nameFor}
+            newBlockedReason={tournamentBlockedReason}
+            tournamentId={tournamentId}
+            onSelectTournament={setTournamentId}
+            run={tournamentRun}
+            match={matchRun}
+            matchRevealed={matchRevealed}
+            matchRecording={matchRecording}
+            matchError={matchError}
+            holdUntilComplete={settings.holdBlindUntilComplete}
+            pending={pendingRun?.target === 'tournament'}
+            preferredSlots={preferredSlots}
+            displayFor={displayFor}
+            startBlockedReason={startBlockedReason}
+            onStartMatch={startTournamentMatch}
+            onVote={voteMatch}
+            onExitMatch={exitMatch}
+            onCreate={createTournament}
+            onAbandon={abandonTournament}
+            onResume={resumeTournament}
+            onDelete={deleteTournament}
+            onRename={renameTournament}
           />
         ) : null}
 

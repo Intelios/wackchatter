@@ -769,8 +769,61 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   with the mirror trick (`CueField.tsx`): every wrapping metric is set once on
   `.arena-cue__text` and inherited by both layers. The card is chosen from the medallion
   itself (`CharacterPicker.tsx`), composed from `Popover` per the popup rule; focus
-  lands on the staged card in a **layout effect**, not a `requestAnimationFrame` — a
-  frame callback does not fire while the window is backgrounded.
+  lands on the staged card in a **layout effect**, not a `requestAnimationFrame` —
+  a frame callback does not fire while the window is backgrounded.
+
+**Tournament Mode** (`server/lib/tournaments.ts`, `src/features/arena/tournament/`)
+
+- **A bracket is a fifth Arena tab, scored on its own points ladder — never mixed with the
+  blind Elo board.** The benchmark estimates strength, so a loss must move it; a tournament
+  records achievement, so a win earns points and **a loss costs nothing**. Weights double
+  per stage (`tournamentStagePoints`): 1, 2, 4, 8. A semi-finalist who lost to the champion
+  simply stops climbing. The two ladders never feed each other, and only blind rounds touch
+  the Elo board.
+- **The plan is stored, the progress is replayed.** `arena_tournaments` holds the entrants
+  in bracket-slot order and one card + cue per stage, all fixed at creation. Who advanced is
+  derived by walking `arena_matches` (`bracket.ts`), and the career ladder is `ladder.ts`'s
+  replay of the same rows — no standings table, the `arena_rounds` contract. A slot is
+  playable exactly when both sides resolve, which — since a side only comes from a recorded
+  feeder — is when the previous match is a real comparison.
+- **Only the plan is mutable, and only in two ways:** a name, and `active` ↔ `abandoned`.
+  There is no 'completed' status to drift — completion is the final having a match. Matches
+  are write-once with no update path anywhere.
+- **Sizes are 4/8/16 and seeding is random** — `seedEntrants` Fisher-Yates over the shared
+  seeded RNG, drawn once at creation and stored, so re-opening shows the bracket that ran.
+  No byes. Entrants come from the drawable pool, so a *merged* contender is not offered
+  (the fold is a blind-board lens; a tournament runs physical endpoints and names them on
+  every match, like the bench).
+- **Every match is blind, with the benchmark's masking rules verbatim** — identities,
+  models, providers, timings, colours and streaming cadence all withheld until the verdict
+  (`TournamentMatchRoom.tsx` renders the same `ContenderColumn` with `masked`/`hold`, and
+  the shell tells the body `data-mode="blind"` so the duel is the scroller and the vote bar
+  stays docked). The bracket *does* show who is in a match — a bracket has to — and the
+  coin-flipped A/B assignment is what stays hidden.
+- **A dead heat is re-rolled once, then judged.** `tie` ("both equally good") and `bad`
+  ("neither usable") are consumed by that flow and never reach storage: both sides re-roll
+  against the same cached prompt, and the judge must then pick who advances, recorded with
+  `rerolled: true`. `arena_matches.verdict` is therefore only ever `left`/`right` — there is
+  no legal "no winner" value. A re-roll that produces no evidence on a side (failure,
+  abort) **resets the match to un-played** rather than recording an outcome nothing
+  supports; nothing is written until a deciding verdict is.
+- **A retired contender keeps its points.** A match names the endpoint that fought it, and
+  deleting a pool row does not rewrite a tournament someone played — the recorded model is
+  the label fallback (`names.ts`). Deleting a *tournament* is different: it cascades to its
+  matches and its ladder contribution goes with them, because that is an explicit
+  discard. Abandoning only freezes: the matches already played keep paying.
+- **Career ties are ranked head-to-head first, then earliest first win, then id** — never a
+  silent ordering. `tournamentLadder` seeds current pool contenders at zero so an unfought
+  entrant is visible at the bottom, and `nameFor` resolves an unnamed contender to its
+  endpoint's model rather than a uuid (a real pool is often all-empty names).
+- One tournament engine (`tournamentRun`) beside the bench's and the blind's, for the same
+  reason they are separate: a match keeps exactly one comparison and replaces it.
+- **A stage's cue can be taken from the Pool** (`SavedCuePicker.tsx`). The Pool's saved cues
+  are what a blind round asks, so the wizard offers them per stage instead of making the user
+  retype them. A pick **copies** the text into that stage's field and moves focus into it —
+  the pool entry is untouched, so editing the copy never rewrites the pool. Macros stay
+  literal (`{{char}}` rides assembly like any cue). The trigger is disabled with the reason
+  when the pool has no cues, per the disabled-beats-refused rule.
 
 ## Testing
 

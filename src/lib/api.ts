@@ -13,7 +13,18 @@ import type {
   ProviderId,
   ProviderModel,
 } from '@shared/providers/types.ts';
-import type { ArenaRound, RoundSide, Verdict } from '@shared/types/arena.ts';
+import type {
+  ArenaRound,
+  RoundSide,
+  Tournament,
+  TournamentMatch,
+  TournamentSize,
+  TournamentStage,
+  TournamentStatus,
+  TournamentVerdict,
+  TournamentWithMatches,
+  Verdict,
+} from '@shared/types/arena.ts';
 import type { BackupPlan } from '@shared/types/backup.ts';
 import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type {
@@ -922,6 +933,66 @@ export const arenaApi = {
 
   /** Empty the history. Guarded by a two-click confirm in the panel, not here. */
   clear: () => request<{ ok: true; removed: number }>('/arena/rounds', { method: 'DELETE' }),
+};
+
+export const tournamentApi = {
+  /**
+   * Every tournament with the matches played in it, oldest first.
+   *
+   * One call, because no reader wants the definition without the evidence — the bracket and
+   * the career ladder are both replays of the matches, and the plan alone says nothing about
+   * who is still in it.
+   */
+  list: () => request<TournamentWithMatches[]>('/arena/tournaments'),
+
+  /** Create a bracket. `entrants` is in bracket-slot order, already seeded by the caller. */
+  create: (input: {
+    name: string;
+    size: TournamentSize;
+    entrants: string[];
+    stages: TournamentStage[];
+  }) =>
+    request<Tournament>('/arena/tournaments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+
+  /** Rename and/or abandon — a plan's only mutable fields. */
+  update: (id: string, patch: { name?: string; status?: TournamentStatus }) =>
+    request<Tournament>(`/arena/tournaments/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+
+  /** Delete a tournament and every match in it. Guarded by a two-click confirm in the UI. */
+  remove: (id: string) =>
+    request<{ ok: true }>(`/arena/tournaments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /**
+   * Record one decided match.
+   *
+   * The card and cue are not sent: the server reads them from the stage plan, so a match
+   * cannot claim a question the tournament never posed. `verdict` is left or right only —
+   * a dead heat is re-rolled and judged before it ever gets here.
+   */
+  recordMatch: (
+    id: string,
+    match: {
+      stage: number;
+      matchIndex: number;
+      left: RoundSide;
+      right: RoundSide;
+      verdict: TournamentVerdict;
+      rerolled: boolean;
+    },
+  ) =>
+    request<TournamentMatch>(`/arena/tournaments/${encodeURIComponent(id)}/matches`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(match),
+    }),
 };
 
 export const groupApi = {

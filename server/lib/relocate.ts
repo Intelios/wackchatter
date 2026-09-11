@@ -28,6 +28,7 @@ import { inspectLocation, resolveDataDir, writePointer } from './location.ts';
 import { ensureDataDirs, PATHS, setDataDir } from './paths.ts';
 import { ensureDefaultPreset } from './presets.ts';
 import { resetSettingsCache } from './settings.ts';
+import { resetTournamentStore } from './tournaments.ts';
 import { moveLibrary, type TransferOutcome } from './transfer.ts';
 import { publishLibraryPointer } from './usage.ts';
 
@@ -69,6 +70,7 @@ export function degradedReason(): string | null {
 export function quiesce(): void {
   // Stores first: they hold prepared statements bound to the connection the next call closes.
   resetArenaStore();
+  resetTournamentStore();
   resetChatStore();
   resetCocreatorStore();
   closeDatabase();

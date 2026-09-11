@@ -15,7 +15,7 @@ import { PATHS } from './paths.ts';
  * an upgraded database is stamped with the CURRENT version — a literal in each test would
  * only pin that someone remembered to edit three files.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -154,6 +154,61 @@ CREATE TABLE IF NOT EXISTS arena_rounds (
 
 -- Ascending, because chronological replay is the only read the leaderboard makes.
 CREATE INDEX IF NOT EXISTS idx_arena_rounds_created ON arena_rounds(created ASC);
+
+-- Model Arena tournaments: the bracket definition.
+--
+-- This row is the *plan*, and it is the one Arena thing that may be edited — a name and
+-- an active/abandoned flag, that is all. Who advanced to a later stage is not stored:
+-- it is derived by replaying arena_matches, the same way a rating is derived from the
+-- rounds, so a bracket position cannot drift from the match that earned it. Completion
+-- is derived too (the final has a match), which is why status has no 'completed'.
+CREATE TABLE IF NOT EXISTS arena_tournaments (
+  id       TEXT    PRIMARY KEY,
+  created  INTEGER NOT NULL,
+  name     TEXT    NOT NULL,
+  -- active | abandoned. Abandoning freezes the bracket; the matches already played stay
+  -- on the career ladder, because evidence you can un-see was never evidence.
+  status   TEXT    NOT NULL,
+  -- 4 | 8 | 16. Powers of two only, so the bracket is balanced and no bye is invented.
+  size     INTEGER NOT NULL,
+  -- JSON arrays: the entrant ids in bracket-slot order, and the per-stage {characterId,
+  -- cue} plan. Read defensively; a hand-edited row must not invent a stage or an entrant.
+  entrants TEXT    NOT NULL,
+  stages   TEXT    NOT NULL
+);
+
+-- One row per completed elimination match. Write-once, exactly like arena_rounds, and for
+-- the same reason: a match is evidence, and evidence you can edit is not evidence.
+--
+-- verdict is only ever left or right. A dead heat is re-rolled once and then judged, so
+-- tie/bad are consumed by that flow and never become advancement evidence; the rerolled
+-- flag records that the match needed the second roll.
+CREATE TABLE IF NOT EXISTS arena_matches (
+  id             TEXT    PRIMARY KEY,
+  tournament_id  TEXT    NOT NULL REFERENCES arena_tournaments(id) ON DELETE CASCADE,
+  created        INTEGER NOT NULL,
+  stage          INTEGER NOT NULL,
+  match_index    INTEGER NOT NULL,
+  -- Denormalised from the stage plan, like a round's character_id/cue: the plan can be
+  -- edited away and a deleted card must not take its matches with it.
+  character_id   TEXT    NOT NULL,
+  cue            TEXT    NOT NULL,
+  left_id        TEXT    NOT NULL,
+  left_model     TEXT    NOT NULL,
+  left_provider  TEXT    NOT NULL,
+  left_text      TEXT    NOT NULL,
+  right_id       TEXT    NOT NULL,
+  right_model    TEXT    NOT NULL,
+  right_provider TEXT    NOT NULL,
+  right_text     TEXT    NOT NULL,
+  verdict        TEXT    NOT NULL,
+  rerolled       INTEGER NOT NULL DEFAULT 0
+);
+
+-- One match per bracket slot. The unique index is what makes a double-submit a rejected
+-- write rather than a second match nobody can place.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_arena_matches_slot
+  ON arena_matches(tournament_id, stage, match_index);
 `;
 
 export function createSchema(database: Database): void {

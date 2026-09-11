@@ -83,6 +83,116 @@ export interface ArenaRound {
 export const ARENA_MIN_COLUMNS = 2 as const;
 export const ARENA_MAX_COLUMNS = 4 as const;
 
+/* ------------------------------------------------------------------------- *
+ * Tournaments
+ *
+ * A structured elimination bracket, deliberately scored on its own ladder. The
+ * blind benchmark measures a contender's *rating* — an estimate of strength
+ * that a single loss should move only a little. A tournament measures what a
+ * contender *achieved* in one bracket: points accumulate with each stage won
+ * and a loss costs nothing at all, so a semi-final exit is a smaller total,
+ * never a demotion. The two never feed each other; see `ladder.ts`.
+ *
+ * Like rounds, a match is write-once evidence and there is no standings table
+ * — the career ladder is replayed from the stored matches on every render.
+ * Unlike rounds, the bracket *definition* (who entered, which card and cue
+ * each stage uses) is a plan, so it lives in its own row and is the one thing
+ * a tournament may edit before it is played.
+ * ------------------------------------------------------------------------- */
+
+/** Bracket sizes a tournament may run at. Powers of two only — nothing gets a bye. */
+export const TOURNAMENT_SIZES = [4, 8, 16] as const;
+export type TournamentSize = (typeof TOURNAMENT_SIZES)[number];
+
+/** One stage's fixed card and cue, chosen at creation and never edited after. */
+export interface TournamentStage {
+  /** The card's PNG filename, the identity chats, stats and rounds key on. */
+  characterId: string;
+  /**
+   * The cue every match in this stage is judged on, raw like a round's probe.
+   *
+   * A stage shares one cue so that every match at that depth is answering the
+   * same question — that is what makes a bracket comparable round to round.
+   */
+  cue: string;
+}
+
+/**
+ * A tournament's stored state, which is only ever the *plan*.
+ *
+ * Which entrant sits in a later stage's slot is not stored: it is derived by
+ * replaying the matches, the same way a rating is derived from rounds. Only
+ * `active` and `abandoned` are stored — completion is derived from the final
+ * match existing, so a stored "completed" cannot drift from the evidence.
+ */
+export type TournamentStatus = 'active' | 'abandoned';
+
+export interface Tournament {
+  id: string;
+  name: string;
+  created: number;
+  status: TournamentStatus;
+  size: TournamentSize;
+  /** Pool contender ids in bracket-slot order, as drawn at creation. */
+  entrants: string[];
+  /** `log2(size)` entries. Index 0 is the first round; the last is the final. */
+  stages: TournamentStage[];
+}
+
+/** A match in the bracket that was actually played and decided. */
+export type TournamentVerdict = 'left' | 'right';
+
+/**
+ * One completed elimination match. Write-once, like a round.
+ *
+ * `verdict` is only ever `left` or `right`. A dead heat is re-rolled once and,
+ * if it stays unresolved, the judge must pick who advances — so `tie` and
+ * `bad` are consumed by that flow and never reach storage as advancement
+ * evidence. `rerolled` is the honest note that this match needed the second
+ * roll; it is the only trace the dead heat leaves.
+ */
+export interface TournamentMatch {
+  id: string;
+  tournamentId: string;
+  created: number;
+  /** 0-based stage index into the tournament's `stages`. */
+  stage: number;
+  /** Slot within the stage, 0-based, left to right. */
+  matchIndex: number;
+  characterId: string;
+  cue: string;
+  left: RoundSide;
+  right: RoundSide;
+  verdict: TournamentVerdict;
+  rerolled: boolean;
+}
+
+/**
+ * A tournament together with the matches played in it.
+ *
+ * Every reader needs both — the bracket cannot be derived from the definition
+ * alone — so the list endpoint returns them folded together rather than making
+ * the client join two calls.
+ */
+export interface TournamentWithMatches extends Tournament {
+  matches: TournamentMatch[];
+}
+
+/** How many stages a bracket of `size` runs: `log2(size)`. */
+export function tournamentStages(size: TournamentSize): number {
+  return Math.log2(size);
+}
+
+/** How many matches a stage holds. Stage 0 has `size/2`, the final has one. */
+export function tournamentStageMatches(size: TournamentSize, stage: number): number {
+  return size / 2 ** (stage + 1);
+}
+
+/** What one win at `stage` is worth: 1, 2, 4, 8… — doubling every round. */
+export function tournamentStagePoints(stage: number): number {
+  return 2 ** stage;
+}
+
 export interface ArenaSettings {
   contenders: Contender[];
   /**
