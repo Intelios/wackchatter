@@ -66,7 +66,7 @@ export function degradedReason(): string | null {
 }
 
 /** Drop everything memoised from the old root, in the order their dependencies require. */
-function quiesce(): void {
+export function quiesce(): void {
   // Stores first: they hold prepared statements bound to the connection the next call closes.
   resetArenaStore();
   resetChatStore();

@@ -13,6 +13,7 @@
     "build": "tsc --noEmit && vite build",
     "build:app": "vite build --logLevel error",
     "start": "NODE_ENV=production bun run server/index.ts",
+    "stop": "bun scripts/stop.ts",
     "test": "bun test",
     "benchmark:nexus": "bun scripts/benchmark-nexus.ts",
     "lint": "biome check .",

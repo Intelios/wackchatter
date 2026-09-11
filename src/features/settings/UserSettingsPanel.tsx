@@ -44,6 +44,8 @@ export function UserSettingsPanel({
   const [status, setStatus] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [confirmShutdown, setConfirmShutdown] = useState(false);
+  const [shutdownStatus, setShutdownStatus] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -104,6 +106,20 @@ export function UserSettingsPanel({
       );
     } catch (err) {
       setStatus((err as Error).message);
+    }
+  }
+
+  async function handleShutdown() {
+    if (!confirmShutdown) {
+      setConfirmShutdown(true);
+      return;
+    }
+    setShutdownStatus('Shutting down…');
+    try {
+      await fetch('/api/shutdown', { method: 'POST' });
+      setShutdownStatus('Server stopped. You can close this tab.');
+    } catch {
+      setShutdownStatus('Server stopped. You can close this tab.');
     }
   }
 
@@ -356,6 +372,24 @@ export function UserSettingsPanel({
       <BackupSection />
 
       <DataLocationSection unsavedPreset={unsavedPreset} />
+
+      <Section title="Server">
+        <p className="wc-hint">
+          Stops the server and closes the app. Restart with <code>./start.sh</code> or{' '}
+          <code>bun run start</code>.
+        </p>
+        <button
+          type="button"
+          className={`wc-button ${confirmShutdown ? 'wc-button--danger' : 'wc-button--ghost'}`}
+          onClick={() => void handleShutdown()}
+          onBlur={() => {
+            setConfirmShutdown(false);
+          }}
+          disabled={shutdownStatus !== ''}
+        >
+          {shutdownStatus || (confirmShutdown ? 'Click again to shut down' : 'Shut down WackChatter')}
+        </button>
+      </Section>
     </div>
   );
 }
