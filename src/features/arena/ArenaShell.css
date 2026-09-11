@@ -1655,8 +1655,8 @@
 .arena-board__head,
 .arena-board > .wc-hint,
 .arena-board > .wc-empty,
-.arena-bench > .arena-log > .wc-empty,
-.arena-blind > .wc-empty {
+.arena-blind > .wc-empty,
+.arena-bench > .arena-log > .wc-empty {
   padding: var(--wc-space-4);
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
@@ -4089,6 +4089,7 @@
   vertical-align: middle;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: compared against .arena-ranks tbody selectors, which never match a thead cell */
 .arena-tour__ladder thead th {
   border-bottom: var(--wc-border-width) solid var(--wc-border);
   color: var(--wc-text-faint);

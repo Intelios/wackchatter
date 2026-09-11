@@ -268,8 +268,8 @@
   box-shadow: inset 2px 0 0 var(--menu-hue);
 }
 
-.menu__group[data-hue] .menu__item:hover:not(:disabled) .menu__icon,
-.menu__group[data-hue] .menu__item:focus-visible .menu__icon {
+.menu__group[data-hue] .menu__item:focus-visible .menu__icon,
+.menu__group[data-hue] .menu__item:hover:not(:disabled) .menu__icon {
   color: var(--menu-hue);
   opacity: 1;
 }
