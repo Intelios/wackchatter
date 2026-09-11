@@ -1,4 +1,5 @@
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import type { ComposerLabelMode, ComposerLayout } from '@shared/composer/layout.ts';
 import { formatRoll, rollDice } from '@shared/prompt/dice.ts';
 import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
@@ -15,6 +16,7 @@ import type {
 import {
   type ComponentProps,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -22,9 +24,23 @@ import {
   useRef,
   useState,
 } from 'react';
-import { NexusIcon, RefreshIcon } from '../../layout/icons.tsx';
+import {
+  BoltIcon,
+  BookIcon,
+  BranchIcon,
+  CardIcon,
+  CloseIcon,
+  ContinueIcon,
+  DownloadIcon,
+  MessagesIcon,
+  NexusIcon,
+  PlusIcon,
+  RefreshIcon,
+  UserIcon,
+} from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
-import { characterApi, personaApi } from '../../lib/api.ts';
+import { characterApi, chatApi, personaApi } from '../../lib/api.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
 import { matchPersonaByName, personaDisplayName } from '../persona/personaRoster.ts';
 import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
@@ -32,6 +48,7 @@ import { BranchTree } from './BranchTree.tsx';
 import { CardReader, type CardReaderInit } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
 import { Composer, type ComposerHandle } from './Composer.tsx';
+import { ComposerImportControl, ComposerRenameControl } from './ComposerUtilityControls.tsx';
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { QuickCommands } from './QuickCommands.tsx';
@@ -90,6 +107,8 @@ interface ChatViewProps {
   /** App-wide user-defined quick commands, inserted into the composer from the chat menu. */
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  composerLayout: ComposerLayout;
+  onComposerLayoutSave: (layout: ComposerLayout) => Promise<void>;
   /** Reads a chat export into this character as a new chat, from the chat menu. */
   onImportChat: (file: File) => void;
   /**
@@ -126,6 +145,8 @@ export function ChatView({
   dialogueColors,
   quickCommands,
   onQuickCommandsChange,
+  composerLayout,
+  onComposerLayoutSave,
   onImportChat,
   regexScripts,
 }: ChatViewProps) {
@@ -158,6 +179,26 @@ export function ChatView({
     dialogueColors.enabled,
     characterOverride,
     characterAutoColor,
+  );
+
+  const controlButton = (
+    label: string,
+    icon: ReactNode,
+    display: ComposerLabelMode,
+    onClick: () => void,
+    disabledReason?: string,
+  ) => (
+    <button
+      type="button"
+      className="wc-button wc-button--ghost composer__icon composer__layout-button"
+      onClick={onClick}
+      disabled={Boolean(disabledReason)}
+      title={disabledReason ?? label}
+      aria-label={label}
+    >
+      {icon}
+      {display === 'label' ? <span>{label}</span> : null}
+    </button>
   );
 
   // Who "you" are can change mid-conversation, but a message keeps the face it was
@@ -954,6 +995,7 @@ export function ChatView({
         ) : null}
 
         <Composer
+          key={state.chatId}
           ref={composerRef}
           onDraftChange={chat.nexus.draftChanged}
           onSend={handleSend}
@@ -980,61 +1022,248 @@ export function ChatView({
           }
           busy={generationBlocked}
           disabled={!ready || loadBlocksChat}
-          // Who you are writing as. `chat.persona` rather than the raw setting, because a
-          // loaded chat adopts its own recorded persona — the chip has to show the one that
-          // will actually be stamped onto the next message.
-          identity={
-            <PersonaChip
-              personas={personas}
-              active={chat.persona}
-              recentIds={recentPersonaIds}
-              avatarVersions={personaAvatarVersions ?? {}}
-              onSelect={onSelectPersona}
-              onManage={() => onOpenPanel('persona')}
-            />
-          }
-          // Deliberately not gated on `ready`: closing or starting a chat has to work
-          // before a connection is configured.
-          leading={
-            <>
-              <ChatMenu
-                chat={chat}
-                onCloseChat={onCloseChat}
-                onOpenPanel={onOpenPanel}
-                onImportChat={onImportChat}
-                onOpenCard={openCardReader}
-                onOpenBranchTree={openBranchTree}
-              />
-              <QuickCommands
-                quickCommands={quickCommands}
-                onInsertCommand={(text) => composerRef.current?.insert(text)}
-                onQuickCommandsChange={onQuickCommandsChange}
-              />
-              {chat.memoryMode === 'nexus' ? (
-                <button
-                  type="button"
-                  className="wc-button wc-button--ghost composer__icon"
-                  aria-label="Memory Nexus"
-                  title="Memory Nexus"
-                  onClick={() => chat.nexus.show('explore')}
-                >
-                  <NexusIcon />
-                </button>
-              ) : null}
-            </>
-          }
-          // Persistent guides sits with the draft actions, not with the menus: it and the
-          // wand are one idea — a standing instruction and a per-turn one — and they used
-          // to sit on opposite sides of the field with the whole input between them.
-          trailing={
-            <GuidesPopover
-              guides={guides}
-              onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
-              guidance={guidance}
-              onGuidanceChange={onGuidanceChange}
-              disabled={!state.chatId}
-            />
-          }
+          kind="single"
+          layout={composerLayout}
+          onLayoutSave={onComposerLayoutSave}
+          controls={[
+            {
+              id: 'persona',
+              label: 'Persona',
+              render: (display) => (
+                <PersonaChip
+                  compact={display === 'icon'}
+                  personas={personas}
+                  active={chat.persona}
+                  recentIds={recentPersonaIds}
+                  avatarVersions={personaAvatarVersions ?? {}}
+                  onSelect={onSelectPersona}
+                  onManage={() => onOpenPanel('persona')}
+                />
+              ),
+            },
+            {
+              id: 'menu',
+              label: 'Chat menu',
+              render: (display) => (
+                <ChatMenu
+                  showLabel={display === 'label'}
+                  chat={chat}
+                  onCloseChat={onCloseChat}
+                  onOpenPanel={onOpenPanel}
+                  onImportChat={onImportChat}
+                  onOpenCard={openCardReader}
+                  onOpenBranchTree={openBranchTree}
+                  onCustomiseComposer={() => composerRef.current?.customise()}
+                  onComposerAction={(id) => composerRef.current?.activate(id)}
+                />
+              ),
+            },
+            {
+              id: 'quickCommands',
+              label: 'Quick commands',
+              render: (display) => (
+                <QuickCommands
+                  showLabel={display === 'label'}
+                  quickCommands={quickCommands}
+                  onInsertCommand={(text) => composerRef.current?.insert(text)}
+                  onQuickCommandsChange={onQuickCommandsChange}
+                />
+              ),
+            },
+            {
+              id: 'nexus',
+              label: 'Memory Nexus',
+              render: (display) =>
+                controlButton(
+                  'Memory Nexus',
+                  <NexusIcon />,
+                  display,
+                  () => chat.nexus.show('explore'),
+                  chat.memoryMode === 'nexus' ? undefined : 'This chat is not using Memory Nexus.',
+                ),
+            },
+            {
+              id: 'guides',
+              label: 'Persistent guides',
+              render: (display) => (
+                <GuidesPopover
+                  showLabel={display === 'label'}
+                  guides={guides}
+                  onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
+                  guidance={guidance}
+                  onGuidanceChange={onGuidanceChange}
+                  disabled={!state.chatId}
+                />
+              ),
+            },
+            {
+              id: 'newChat',
+              label: 'New chat',
+              render: (display) =>
+                controlButton(
+                  'New chat',
+                  <PlusIcon />,
+                  display,
+                  () => void chat.newChat(),
+                  busy ? 'Wait for the current reply to finish.' : undefined,
+                ),
+            },
+            {
+              id: 'rename',
+              label: 'Rename chat',
+              render: (display) => (
+                <ComposerRenameControl
+                  title={state.title}
+                  display={display}
+                  disabledReason={
+                    busy
+                      ? 'Wait for the current reply to finish.'
+                      : !state.chatId
+                        ? 'No chat is open.'
+                        : undefined
+                  }
+                  onRename={(title) => void chat.renameChat(title)}
+                />
+              ),
+            },
+            {
+              id: 'export',
+              label: 'Export chat',
+              render: (display) =>
+                controlButton(
+                  'Export chat',
+                  <DownloadIcon />,
+                  display,
+                  () => state.chatId && downloadUrl(chatApi.exportUrl(state.chatId)),
+                  busy
+                    ? 'Wait for the current reply to finish.'
+                    : !state.chatId
+                      ? 'No chat is open.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'import',
+              label: 'Import chat',
+              render: (display) => (
+                <ComposerImportControl
+                  display={display}
+                  disabledReason={busy ? 'Wait for the current reply to finish.' : undefined}
+                  onImport={onImportChat}
+                />
+              ),
+            },
+            {
+              id: 'checkpoint',
+              label: 'Save checkpoint',
+              render: (display) =>
+                controlButton(
+                  'Save checkpoint',
+                  <BranchIcon />,
+                  display,
+                  () => lastId && void chat.branchFrom(lastId),
+                  busy
+                    ? 'Wait for the current reply to finish.'
+                    : !lastId
+                      ? 'This chat has no messages yet.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'regenerate',
+              label: 'Regenerate',
+              render: (display) =>
+                controlButton(
+                  'Regenerate',
+                  <RefreshIcon />,
+                  display,
+                  () => void chat.regenerate(),
+                  generationBlocked
+                    ? 'Wait for the current operation to finish.'
+                    : !lastId
+                      ? 'This chat has no messages yet.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'continue',
+              label: 'Continue',
+              render: (display) =>
+                controlButton(
+                  'Continue',
+                  <ContinueIcon />,
+                  display,
+                  () => void chat.continueLast(),
+                  generationBlocked
+                    ? 'Wait for the current operation to finish.'
+                    : !lastId
+                      ? 'This chat has no messages yet.'
+                      : awaitingReply
+                        ? 'The last message is yours.'
+                        : undefined,
+                ),
+            },
+            {
+              id: 'card',
+              label: 'Character card',
+              render: (display) =>
+                controlButton('Character card', <CardIcon />, display, () => openCardReader()),
+            },
+            {
+              id: 'branches',
+              label: 'Branch timeline',
+              render: (display) =>
+                controlButton(
+                  'Branch timeline',
+                  <BranchIcon />,
+                  display,
+                  openBranchTree,
+                  state.chatId ? undefined : 'No chat is open.',
+                ),
+            },
+            {
+              id: 'context',
+              label: 'Chat context',
+              render: (display) =>
+                controlButton('Chat context', <MessagesIcon />, display, () =>
+                  onOpenPanel('characters'),
+                ),
+            },
+            {
+              id: 'lore',
+              label: 'Lore',
+              render: (display) =>
+                controlButton('Lore', <BookIcon />, display, () => onOpenPanel('lorebooks')),
+            },
+            {
+              id: 'personas',
+              label: 'Personas',
+              render: (display) =>
+                controlButton('Personas', <UserIcon />, display, () => onOpenPanel('persona')),
+            },
+            {
+              id: 'close',
+              label: 'Close chat',
+              render: (display) =>
+                controlButton(
+                  'Close chat',
+                  <CloseIcon />,
+                  display,
+                  onCloseChat,
+                  busy ? 'Wait for the current reply to finish.' : undefined,
+                ),
+            },
+            ...quickCommands
+              .filter((command) => command.text.trim())
+              .map((command) => ({
+                id: `quick:${command.id}`,
+                label: command.name.trim() || command.text.trim().slice(0, 32),
+                render: (display: ComposerLabelMode) =>
+                  controlButton(command.name.trim() || 'Quick command', <BoltIcon />, display, () =>
+                    composerRef.current?.insert(command.text),
+                  ),
+              })),
+          ]}
           placeholder={
             loadBlocksChat
               ? 'Retry loading this character before sending a message.'

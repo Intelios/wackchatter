@@ -105,6 +105,7 @@ interface MenuProps {
    * grows out of the burger itself.
    */
   triggerRef?: RefObject<HTMLButtonElement | null>;
+  showLabel?: boolean;
 }
 
 /** Identity of an entry that may not have a `key`: the label, which is then unique enough. */
@@ -141,6 +142,7 @@ export function Menu({
   placement = 'top-start',
   onOpenChange,
   triggerRef: externalTriggerRef,
+  showLabel,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
 
@@ -302,6 +304,7 @@ export function Menu({
     <Popover
       label={label}
       icon={icon}
+      triggerText={showLabel ? label : undefined}
       open={open}
       onOpenChange={setOpenState}
       className={`menu${className ? ` ${className}` : ''}`}

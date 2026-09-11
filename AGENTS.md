@@ -569,11 +569,13 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   `grid-template-columns` stays the only animated property. **Closing a chat leaves the
   panels alone** — the character browser stays open and scrolled where it was, so browsing
   survives hopping in and out of chats (same rule as `handleDeleted`).
-- **The composer is a field with a tray under it**, not a row of controls around a
-  field. Everything except typing — persona chip, menus, guided actions, Send — sits in
-  a `--wc-control`-height tray beneath, and the tray's height comes out of the input's
-  growth budget: `MAX_VIEWPORT_SHARE` ceilings the *whole* composer, so
-  `composerGrowth.ts` subtracts a *measured* `trayBlock`, not a constant.
+- **The composer is a field with a customisable tray under it**, not a row of controls
+  around a field. `AppSettings.composerLayouts` stores independent one-to-one and group
+  layouts, each with at most three rows and left/centre/right groups. Menu and Send/Stop
+  are required; every other control is optional. The editor changes layout only: the
+  composer keeps sole ownership of the draft and stream. The tray's measured full height,
+  including wrapped rows, comes out of the input's growth budget; never replace
+  `trayBlock` with a constant.
   `--wc-composer-row` is the input's `min-height` and the one-row floor the clamp
   refuses to go below.
 - **Presets save explicitly, characters autosave.** Editing a preset raises a Save/Revert
@@ -602,9 +604,11 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   **error, never a silent send**. Indexes/ranges are zero-based and inclusive, matching
   ST. `/hide` is an atomic single-revision set. Commands are blocked while a reply or
   summary runs; autocomplete is the discovery path.
-- Quick commands are normalised app settings (id opaque, name editable) reachable only
-  from the burger menu; picking one fills the composer and is not gated on `busy`. The
-  composer's draft has exactly one write path: `ComposerHandle.insert`.
+- Quick commands are normalised app settings (id opaque, name editable) available from
+  the burger menu and as optional individual composer controls. Picking one fills the
+  composer and never sends automatically. Deleting one also removes its `quick:<id>`
+  layout entries during settings normalisation. The composer's draft still has exactly
+  one insertion path: `ComposerHandle.insert`.
 - **The branch timeline is a read-only map** (`branchTree.ts` pure, `BranchTree.tsx` renders).
   The burger's "Branch timeline…" takes the chat column the way the card reader does (portal
   into the overlay root, non-modal, Escape), and like "Character card…" it is deliberately

@@ -18,6 +18,8 @@ import {
   ContinueIcon,
   DownloadIcon,
   EditIcon,
+  GuidedSwipeIcon,
+  ImpersonateIcon,
   MenuIcon,
   MessagesIcon,
   NexusIcon,
@@ -25,6 +27,7 @@ import {
   RefreshIcon,
   UploadIcon,
   UserIcon,
+  WandIcon,
 } from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { chatApi } from '../../lib/api.ts';
@@ -61,6 +64,8 @@ export interface ChatMenuActions {
   importChat: () => void;
   openCard: () => void;
   openBranchTree: () => void;
+  customiseComposer?: () => void;
+  composerAction?: (id: 'impersonate' | 'guide' | 'guidedSwipe') => void;
 }
 
 const BUSY = 'Wait for the current reply to finish.';
@@ -191,6 +196,40 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       disabledReason: 'No chat is open.',
       onSelect: actions.openBranchTree,
     },
+    {
+      label: 'Customise composer…',
+      icon: <EditIcon />,
+      disabled: busy,
+      disabledReason: BUSY,
+      onSelect: actions.customiseComposer ?? (() => {}),
+    },
+    {
+      label: 'Impersonate',
+      icon: <ImpersonateIcon />,
+      disabled: generationBlocked,
+      disabledReason: generationBlocked ? generationBlockedReason : undefined,
+      onSelect: () => actions.composerAction?.('impersonate'),
+    },
+    {
+      label: 'Guide next reply',
+      icon: <WandIcon />,
+      disabled: generationBlocked,
+      disabledReason: generationBlocked ? generationBlockedReason : undefined,
+      onSelect: () => actions.composerAction?.('guide'),
+    },
+    {
+      label: 'Guided swipe',
+      icon: <GuidedSwipeIcon />,
+      disabled: generationBlocked || empty || lastIsUser,
+      disabledReason: generationBlocked
+        ? generationBlockedReason
+        : empty
+          ? EMPTY
+          : lastIsUser
+            ? 'The last message is yours.'
+            : undefined,
+      onSelect: () => actions.composerAction?.('guidedSwipe'),
+    },
 
     // Jumps, not actions — these open the panel where the tool already lives, rather than
     // growing a second copy of it in here.
@@ -224,6 +263,9 @@ interface ChatMenuProps {
   onOpenCard: () => void;
   /** Opens the branch timeline — reads only, like the card reader. */
   onOpenBranchTree: () => void;
+  onCustomiseComposer: () => void;
+  onComposerAction: (id: 'impersonate' | 'guide' | 'guidedSwipe') => void;
+  showLabel?: boolean;
 }
 
 export function ChatMenu({
@@ -233,6 +275,9 @@ export function ChatMenu({
   onImportChat,
   onOpenCard,
   onOpenBranchTree,
+  onCustomiseComposer,
+  onComposerAction,
+  showLabel,
 }: ChatMenuProps) {
   const { messages } = chat.state;
   const last = messages[messages.length - 1] ?? null;
@@ -261,6 +306,8 @@ export function ChatMenu({
       closeChat: onCloseChat,
       openCard: onOpenCard,
       openBranchTree: onOpenBranchTree,
+      customiseComposer: onCustomiseComposer,
+      composerAction: onComposerAction,
       openNexus: () => chat.nexus.show(),
       importChat: () => importInput.current?.click(),
       exportChat: () => {
@@ -277,6 +324,7 @@ export function ChatMenu({
         label="Chat options"
         icon={<MenuIcon />}
         entries={entries}
+        showLabel={showLabel}
         triggerRef={menuTriggerRef}
       />
       <RenameChatPopover

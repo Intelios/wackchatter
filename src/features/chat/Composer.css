@@ -38,10 +38,184 @@
  * to the field, which is what it is.
  */
 .composer__tray {
+  max-height: min(34vh, 280px);
+  overflow-y: auto;
+}
+
+/*
+ * Popovers are absolutely positioned from their controls. Let an open one escape the
+ * tray's own scrollport; the chat column remains the outer clipping boundary and Popover
+ * measures against it. Without this, the popup exists and receives keyboard focus but is
+ * painted entirely outside the tray — a pointer click lands on the transcript underneath.
+ */
+.composer__tray:has(.popover__popup) {
+  overflow: visible;
+}
+
+.composer__layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.composer__layout-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.composer__layout-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.composer__layout-group[data-area="centre"] {
+  margin-inline: auto;
+  justify-content: center;
+}
+.composer__layout-group[data-area="right"] {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.composer__layout-control {
+  display: contents;
+}
+.composer__layout-button {
+  max-width: 190px;
+}
+.composer__layout-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+.composer-editor__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+}
+.composer-editor__head span {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.composer-editor__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+.composer-editor__row {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr)) auto;
+  gap: var(--wc-space-1);
+  align-items: stretch;
+}
+.composer-editor__row-label,
+.composer-editor__area-label {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  text-transform: capitalize;
+}
+.composer-editor__row-label {
+  align-self: center;
+}
+.composer-editor__area {
+  min-height: var(--wc-control);
+  padding: var(--wc-space-1);
+  border: 1px dashed var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1);
+  align-items: center;
+}
+.composer-editor__area-label {
+  width: 100%;
+}
+.composer-editor__tile {
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text);
+  min-height: var(--wc-control);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding-inline: var(--wc-space-2);
+  cursor: grab;
+}
+.composer-editor__tile[data-selected] {
+  border-color: var(--wc-accent);
+}
+.composer-editor__tile svg {
+  width: var(--wc-icon-sm);
+}
+.composer-editor__tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--wc-space-2);
+}
+.composer-editor__picker,
+.composer-editor__selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-1);
+}
+.composer-editor__picker > .wc-input {
+  width: 180px;
+}
+.composer-editor__available {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-1);
+}
+.composer-editor__selection label {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.composer-editor__selection select {
+  min-height: var(--wc-control);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text);
+}
+.composer-editor__footer {
   display: flex;
   align-items: center;
   gap: var(--wc-space-2);
-  flex-wrap: wrap;
+}
+.composer-editor__footer-spacer {
+  flex: 1;
+}
+
+@media (max-width: 700px) {
+  .composer-editor__row {
+    grid-template-columns: auto 1fr auto;
+  }
+  .composer-editor__area {
+    grid-column: 2;
+  }
+  .composer-editor__remove-row {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .composer-editor__tools {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Splits "who you are" from "what you can open" — the tray's left half holds both. */

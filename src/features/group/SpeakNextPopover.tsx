@@ -30,6 +30,7 @@ interface SpeakNextPopoverProps {
   /** The reply limit is spent or the cast is at its concurrency ceiling. */
   busyReason?: string;
   onSpeak: (id: string) => void;
+  compact?: boolean;
 }
 
 export function SpeakNextPopover({
@@ -39,6 +40,7 @@ export function SpeakNextPopover({
   disabledReason,
   busyReason,
   onSpeak,
+  compact,
 }: SpeakNextPopoverProps) {
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
@@ -116,8 +118,10 @@ export function SpeakNextPopover({
               <UsersIcon />
             </span>
           )}
-          <span className="speak-next__name">{selected ? selected.name : 'Speak next'}</span>
-          <ChevronIcon className="speak-next__chevron" />
+          <span className="speak-next__name" hidden={compact}>
+            {selected ? selected.name : 'Speak next'}
+          </span>
+          {!compact ? <ChevronIcon className="speak-next__chevron" /> : null}
         </button>
       )}
       onKeyDown={(event) => {

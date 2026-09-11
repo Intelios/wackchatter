@@ -72,7 +72,13 @@ describe('buildChatMenu', () => {
       'Rename chat…',
       'Export chat',
       'Import chat',
-      ...ALWAYS_OPEN,
+      'Character card…',
+      'Branch timeline…',
+      'Customise composer…',
+      'Impersonate',
+      'Guide next reply',
+      'Guided swipe',
+      ...JUMPS,
       'Close chat',
     ]);
     for (const label of actionLabels(entries)) {

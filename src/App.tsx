@@ -1,4 +1,9 @@
 import { greetingTexts } from '@shared/chat/message.ts';
+import {
+  type ComposerLayout,
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+} from '@shared/composer/layout.ts';
 import { DEFAULT_NEXUS } from '@shared/nexus/types.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
@@ -678,9 +683,7 @@ export function App() {
     // A pick in a group scene writes the same two settings a one-on-one pick does, through
     // the same helper — `groupChat.setPersona` is the door, this is the effect.
     onPersonaSwitch: (id) =>
-      void patchSettings(
-        personaPickSettings(personas, settings?.recentPersonaIds ?? [], id),
-      ),
+      void patchSettings(personaPickSettings(personas, settings?.recentPersonaIds ?? [], id)),
     globalVariables: settings?.variables ?? {},
     commitGlobalVariables,
     globalBookIds,
@@ -1579,6 +1582,12 @@ export function App() {
             dialogueColors={dialogueColorSettings}
             quickCommands={quickCommands}
             onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            composerLayout={settings?.composerLayouts.group ?? DEFAULT_GROUP_COMPOSER_LAYOUT}
+            onComposerLayoutSave={async (layout: ComposerLayout) => {
+              await saveSettingsStrict({
+                composerLayouts: { group: layout },
+              });
+            }}
             // Through the controller, so the scene records the switch; the controller's
             // `onPersonaSwitch` is what moves the app-wide persona and its recents.
             onSelectPersona={(id) => groupChat.setPersona(id)}
@@ -1621,6 +1630,12 @@ export function App() {
             dialogueColors={dialogueColorSettings}
             quickCommands={quickCommands}
             onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            composerLayout={settings?.composerLayouts.single ?? DEFAULT_SINGLE_COMPOSER_LAYOUT}
+            onComposerLayoutSave={async (layout: ComposerLayout) => {
+              await saveSettingsStrict({
+                composerLayouts: { single: layout },
+              });
+            }}
             onImportChat={(file) => void handleImportChat(file)}
             regexScripts={regexScripts}
           />

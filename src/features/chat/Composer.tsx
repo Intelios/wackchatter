@@ -1,3 +1,14 @@
+import type {
+  ComposerKind,
+  ComposerLabelMode,
+  ComposerLayout,
+  ComposerLayoutItem,
+} from '@shared/composer/layout.ts';
+import {
+  cloneComposerLayout,
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+} from '@shared/composer/layout.ts';
 import {
   type ReactNode,
   type Ref,
@@ -22,6 +33,7 @@ import {
   StopIcon,
   WandIcon,
 } from '../../layout/icons.tsx';
+import { type ComposerControlSpec, ComposerLayoutEditor } from './ComposerLayoutEditor.tsx';
 import { composerMaxHeight, rowCap } from './composerGrowth.ts';
 import { type SlashCommandHelp, slashCompletion } from './slashCommands.ts';
 import type { StreamSnapshot, StreamStore } from './state/streamStore.ts';
@@ -41,6 +53,10 @@ export interface ComposerHandle {
    * takes the field rather than joining it.
    */
   replace: (text: string) => void;
+  /** Open the in-place tray editor without exposing or replacing the private draft. */
+  customise: () => void;
+  /** Run a draft-aware composer action from another surface such as the chat menu. */
+  activate: (id: 'impersonate' | 'guide' | 'guidedSwipe') => void;
 }
 
 /** Stable snapshot for the unsubscribed case; a fresh object would loop React forever. */
@@ -86,25 +102,16 @@ interface ComposerProps {
   busy: boolean;
   disabled: boolean;
   placeholder: string;
-  /**
-   * Who you are writing as, at the head of the tray. A slot for the same reason `leading`
-   * is one: the composer owns a draft, and knows nothing about personas.
-   */
-  identity?: ReactNode;
-  /**
-   * Rendered at the start of the tray. A slot rather than a concrete menu so the composer
-   * stays ignorant of the chat hook.
-   */
-  leading?: ReactNode;
-  /**
-   * Rendered at the head of the tray's right-hand cluster, before the draft actions.
-   *
-   * That side is "what happens to this draft", which is why the persistent-guides popover
-   * belongs here rather than beside the menus: it and the wand are the same idea, one
-   * standing and one for this turn, and they used to sit on opposite sides of the field.
-   */
-  trailing?: ReactNode;
+  kind: ComposerKind;
+  layout: ComposerLayout;
+  /** Controls whose state and actions live in the chat view. Draft actions remain internal. */
+  controls: ComposerControlBinding[];
+  onLayoutSave: (layout: ComposerLayout) => Promise<void>;
   ref?: Ref<ComposerHandle>;
+}
+
+export interface ComposerControlBinding extends ComposerControlSpec {
+  render: (display: ComposerLabelMode) => ReactNode;
 }
 
 export function Composer({
@@ -120,12 +127,16 @@ export function Composer({
   busy,
   disabled,
   placeholder,
-  identity,
-  leading,
-  trailing,
+  kind,
+  layout,
+  controls,
+  onLayoutSave,
   ref,
 }: ComposerProps) {
   const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [layoutDraft, setLayoutDraft] = useState<ComposerLayout | null>(null);
+  const [layoutError, setLayoutError] = useState('');
 
   /*
    * The live impersonation text.
@@ -286,8 +297,27 @@ export function Composer({
         // render, so the focus waits a tick to land after `disabled` lifts.
         setTimeout(() => textarea.current?.focus({ preventScroll: true }), 0);
       },
+      customise() {
+        if (busy) return;
+        setLayoutDraft(cloneComposerLayout(layout));
+        setLayoutError('');
+        setEditing(true);
+      },
+      activate(id) {
+        if (id === 'impersonate' && onImpersonate && !busy && !disabled) onImpersonate(text);
+        const trimmed = text.trim();
+        if (!trimmed || busy || disabled) return;
+        if (id === 'guide' && onGuide) {
+          focusBeforeGenerate.current = document.activeElement;
+          onGuide(trimmed);
+        }
+        if (id === 'guidedSwipe' && onGuidedSwipe) {
+          focusBeforeGenerate.current = document.activeElement;
+          onGuidedSwipe(trimmed);
+        }
+      },
     }),
-    [macro.dismiss],
+    [macro.dismiss, busy, disabled, layout, onGuide, onGuidedSwipe, onImpersonate, text],
   );
 
   /**
@@ -477,6 +507,102 @@ export function Composer({
   // Recoverable with the transcript's retry, and better than the button lying about being
   // Send for the first moments of a generation.
   const showStop = busy;
+  const externalControls = new Map(controls.map((control) => [control.id, control]));
+  const internalCatalog: ComposerControlSpec[] = [
+    { id: 'send', label: 'Send / Stop' },
+    ...(onImpersonate ? [{ id: 'impersonate', label: 'Impersonate' }] : []),
+    ...(onGuide ? [{ id: 'guide', label: 'Guide next reply' }] : []),
+    ...(onGuidedSwipe ? [{ id: 'guidedSwipe', label: 'Guided swipe' }] : []),
+  ];
+  const catalog = [...controls, ...internalCatalog].map(({ id, label }) => ({ id, label }));
+
+  function actionButton(
+    item: ComposerLayoutItem,
+    label: string,
+    icon: ReactNode,
+    action: () => void,
+    unavailable?: string,
+  ) {
+    return (
+      <button
+        type="button"
+        className="wc-button wc-button--ghost composer__icon composer__layout-button"
+        disabled={Boolean(unavailable)}
+        title={unavailable ?? label}
+        aria-label={label}
+        onClick={action}
+      >
+        {icon}
+        {item.display === 'label' ? <span>{label}</span> : null}
+      </button>
+    );
+  }
+
+  function renderControl(item: ComposerLayoutItem): ReactNode {
+    const external = externalControls.get(item.id);
+    if (external) return external.render(item.display);
+    if (item.id === 'impersonate' && onImpersonate)
+      return actionButton(
+        item,
+        'Impersonate',
+        <ImpersonateIcon />,
+        () => onImpersonate(text),
+        disabled
+          ? 'Composer unavailable.'
+          : busy
+            ? 'Wait for the current reply to finish.'
+            : undefined,
+      );
+    if (item.id === 'guide' && onGuide)
+      return actionButton(
+        item,
+        'Guide next reply',
+        <WandIcon />,
+        () => guided(onGuide),
+        disabled
+          ? 'Composer unavailable.'
+          : busy
+            ? 'Wait for the current reply to finish.'
+            : !text.trim()
+              ? 'Type an instruction to guide the next reply.'
+              : undefined,
+      );
+    if (item.id === 'guidedSwipe' && onGuidedSwipe)
+      return actionButton(
+        item,
+        'Guided swipe',
+        <GuidedSwipeIcon />,
+        () => guided(onGuidedSwipe),
+        guidedSwipeDisabledReason ??
+          (disabled
+            ? 'Composer unavailable.'
+            : busy
+              ? 'Wait for the current reply to finish.'
+              : !text.trim()
+                ? 'Type an instruction to steer a new alternate.'
+                : undefined),
+      );
+    if (item.id === 'send')
+      return (
+        <button
+          type="button"
+          className={`wc-button composer__button ${showStop ? 'wc-button--danger' : 'wc-button--primary'}`}
+          onClick={showStop ? onStop : () => void submit()}
+          disabled={disabled || (!showStop && !text.trim())}
+          title={showStop ? 'Stop generating' : 'Send (Enter)'}
+        >
+          <span className="composer__button-face" data-hidden={showStop || undefined}>
+            {showStop ? null : <SendIcon />}
+            {item.display === 'label' ? 'Send' : null}
+          </span>
+          <span className="composer__button-face" data-hidden={!showStop || undefined}>
+            {showStop ? <StopIcon /> : null}
+            {item.display === 'label' ? 'Stop' : null}
+          </span>
+        </button>
+      );
+    return null;
+  }
 
   return (
     <div
@@ -616,101 +742,58 @@ export function Composer({
         />
       </div>
 
-      {/*
-       * The tray.
-       *
-       * Below the field rather than either side of it, which is what gives the input the
-       * column's full width. It is also the composer's FIXED end: the dock is
-       * `flex-shrink: 0` at the bottom of the chat column, so the composer grows upward and
-       * whatever sits at its bottom holds a constant screen position however tall the draft
-       * gets. Nothing here moves while you type.
-       *
-       * Left is who you are and what you can open; right is what happens to this draft.
-       */}
       <div className="composer__tray" ref={trayRef}>
-        {identity}
-        {identity && leading ? <span className="composer__tray-rule" aria-hidden="true" /> : null}
-        {leading}
-
-        <span className="composer__tray-spacer" />
-
-        {trailing}
-
-        {/* Hidden mid-generation rather than disabled: Send has already become Stop, and two
-            dead buttons beside it is noise where the row should read as one action. */}
-        {!busy && onImpersonate ? (
-          <button
-            type="button"
-            className="wc-button wc-button--ghost composer__icon"
-            onClick={() => onImpersonate(text)}
-            disabled={disabled}
-            aria-label="Impersonate"
-            title={
-              text.trim()
-                ? 'Impersonate — the model writes my next message, steered by this and left here to edit'
-                : 'Impersonate — the model writes my next message and leaves it here to edit'
+        {editing && layoutDraft && !busy ? (
+          <ComposerLayoutEditor
+            kind={kind}
+            layout={layoutDraft}
+            controls={catalog}
+            onChange={setLayoutDraft}
+            onCancel={() => {
+              setEditing(false);
+              setLayoutDraft(null);
+              setLayoutError('');
+            }}
+            onReset={() =>
+              setLayoutDraft(
+                cloneComposerLayout(
+                  kind === 'single'
+                    ? DEFAULT_SINGLE_COMPOSER_LAYOUT
+                    : DEFAULT_GROUP_COMPOSER_LAYOUT,
+                ),
+              )
             }
-          >
-            <ImpersonateIcon />
-          </button>
-        ) : null}
-
-        {!busy && onGuide ? (
-          <button
-            type="button"
-            className="wc-button wc-button--ghost composer__icon"
-            onClick={() => guided(onGuide)}
-            disabled={disabled || !text.trim()}
-            aria-label="Guide the next reply"
-            title={
-              text.trim()
-                ? 'Guide the next reply — steers it without sending this as a message'
-                : 'Type an instruction to guide the next reply'
-            }
-          >
-            <WandIcon />
-          </button>
-        ) : null}
-
-        {!busy && onGuidedSwipe ? (
-          <button
-            type="button"
-            className="wc-button wc-button--ghost composer__icon"
-            onClick={() => guided(onGuidedSwipe)}
-            disabled={disabled || !text.trim() || Boolean(guidedSwipeDisabledReason)}
-            aria-label="Guided swipe"
-            title={
-              guidedSwipeDisabledReason ??
-              (text.trim()
-                ? 'Guided swipe — a new alternate for the last reply, steered by this'
-                : 'Type an instruction to steer a new alternate')
-            }
-          >
-            <GuidedSwipeIcon />
-          </button>
-        ) : null}
-
-        {/* One persistent button, two faces: Send turns into Stop with a crossfade in
-            place, the surface morphing with it — no slot ever going empty, no remount. The
-            turn fires on the send frame itself (see `showStop`). */}
-        <button
-          type="button"
-          className={`wc-button composer__button ${
-            showStop ? 'wc-button--danger' : 'wc-button--primary'
-          }`}
-          onClick={showStop ? onStop : () => void submit()}
-          disabled={disabled || (!showStop && !text.trim())}
-          title={showStop ? 'Stop generating' : 'Send (Enter)'}
-        >
-          <span className="composer__button-face" data-hidden={showStop || undefined}>
-            <SendIcon />
-            Send
-          </span>
-          <span className="composer__button-face" data-hidden={!showStop || undefined}>
-            <StopIcon />
-            Stop
-          </span>
-        </button>
+            saveError={layoutError}
+            onSave={async () => {
+              try {
+                await onLayoutSave(layoutDraft);
+                setEditing(false);
+                setLayoutDraft(null);
+                setLayoutError('');
+              } catch (error) {
+                setLayoutError((error as Error).message);
+              }
+            }}
+          />
+        ) : (
+          <div className="composer__layout">
+            {layout.rows.map((row) => (
+              <div className="composer__layout-row" key={row.id}>
+                {(['left', 'centre', 'right'] as const).map((area) =>
+                  row[area].length ? (
+                    <div className="composer__layout-group" data-area={area} key={area}>
+                      {row[area].map((item) => (
+                        <span className="composer__layout-control" key={item.id}>
+                          {renderControl(item)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@
  * else's preset cannot silently repoint your endpoint, and exporting yours cannot leak it.
  */
 
+import { type ComposerLayouts, DEFAULT_COMPOSER_LAYOUTS } from '../composer/layout.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
@@ -144,6 +145,8 @@ export interface AppSettings {
    * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
    */
   quickCommands: QuickCommand[];
+  /** App-wide control trays, independently arranged for direct and group chats. */
+  composerLayouts: ComposerLayouts;
   /**
    * User regex scripts, in SillyTavern's format so files move between the two apps.
    *
@@ -527,6 +530,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hiddenTags: [],
   collapsedCharacterFolders: [],
   quickCommands: [],
+  composerLayouts: structuredClone(DEFAULT_COMPOSER_LAYOUTS),
   regexScripts: [],
   studioInspectorCollapsed: false,
 };

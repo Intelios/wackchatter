@@ -25,6 +25,7 @@ import {
   SummaryIcon,
   TrashIcon,
   UsersIcon,
+  WandIcon,
 } from '../../layout/icons.tsx';
 
 export interface GroupMenuState {
@@ -65,6 +66,8 @@ export interface GroupMenuActions {
   deleteScene: () => void;
   /** Leave the scene for the Start screen. */
   closeScene: () => void;
+  customiseComposer?: () => void;
+  guideReply?: () => void;
 }
 
 const GENERATING = 'Wait for the current replies to finish.';
@@ -166,6 +169,20 @@ export function buildGroupMenu(state: GroupMenuState, actions: GroupMenuActions)
       disabled: generating,
       disabledReason: GENERATING,
       onSelect: actions.exportScene,
+    },
+    {
+      label: 'Customise composer…',
+      icon: <EditIcon />,
+      disabled: generating,
+      disabledReason: GENERATING,
+      onSelect: actions.customiseComposer ?? (() => {}),
+    },
+    {
+      label: 'Guide next reply',
+      icon: <WandIcon />,
+      disabled: providerBlocked,
+      disabledReason: providerBlocked ? providerBlockedReason : undefined,
+      onSelect: actions.guideReply ?? (() => {}),
     },
 
     { kind: 'separator' },

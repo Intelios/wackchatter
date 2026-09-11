@@ -30,6 +30,9 @@ interface GroupChatMenuProps {
   onCloseScene: () => void;
   onDeleteScene: () => void;
   onSelectMember: (id: string) => void;
+  onCustomiseComposer: () => void;
+  onGuideReply: () => void;
+  showLabel?: boolean;
 }
 
 export function GroupChatMenu({
@@ -45,6 +48,9 @@ export function GroupChatMenu({
   onCloseScene,
   onDeleteScene,
   onSelectMember,
+  onCustomiseComposer,
+  onGuideReply,
+  showLabel,
 }: GroupChatMenuProps) {
   const scene = chat.state.metadata.group;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -81,6 +87,8 @@ export function GroupChatMenu({
       if (id) downloadUrl(chatApi.exportUrl(id));
     },
     selectMember: onSelectMember,
+    customiseComposer: onCustomiseComposer,
+    guideReply: onGuideReply,
     deleteScene: () => (confirmDelete ? onDeleteScene() : setConfirmDelete(true)),
     closeScene: onCloseScene,
   };
@@ -93,6 +101,7 @@ export function GroupChatMenu({
         placement="top-start"
         triggerRef={menuTriggerRef}
         entries={buildGroupMenu(state, actions)}
+        showLabel={showLabel}
         // The delete confirm is armed in here, so the menu's own close is the hook that
         // must disarm it — a dismissal without confirming must not leave the next open
         // one click away from deleting the scene.

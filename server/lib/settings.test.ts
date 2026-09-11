@@ -2,6 +2,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+} from '../../shared/composer/layout.ts';
 import type { Connection } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import {
@@ -52,6 +56,40 @@ function base(): AppSettings {
 }
 
 describe('mergeSettings', () => {
+  test('composer layouts update independently and preserve required controls', () => {
+    const single = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    single.rows[0]!.centre.push(single.rows[0]!.right.splice(0, 1)[0]!);
+    const next = mergeSettings(base(), {
+      composerLayouts: { single, group: DEFAULT_GROUP_COMPOSER_LAYOUT },
+    });
+    expect(next.composerLayouts.single).toEqual(single);
+    expect(next.composerLayouts.group).toEqual(DEFAULT_GROUP_COMPOSER_LAYOUT);
+  });
+
+  test('a malformed composer layout cannot wipe a saved layout', () => {
+    const current = base();
+    const next = mergeSettings(current, {
+      composerLayouts: { single: { rows: [] }, group: current.composerLayouts.group } as never,
+    });
+    expect(next.composerLayouts.single).toEqual(current.composerLayouts.single);
+  });
+
+  test('deleting a quick command removes its pinned composer shortcut', () => {
+    const current = base();
+    current.quickCommands = [
+      { id: 'kept', name: 'Kept', text: 'a' },
+      { id: 'gone', name: 'Gone', text: 'b' },
+    ];
+    current.composerLayouts.single.rows[0]!.centre = [
+      { id: 'quick:kept', display: 'label' },
+      { id: 'quick:gone', display: 'icon' },
+    ];
+    const next = mergeSettings(current, { quickCommands: [current.quickCommands[0]!] });
+    expect(next.composerLayouts.single.rows[0]!.centre).toEqual([
+      { id: 'quick:kept', display: 'label' },
+    ]);
+  });
+
   test('a partial worldInfo patch keeps every untouched field', () => {
     // The bug a shallow spread would cause: changing the scan depth in the UI silently
     // resets the budget, recursion and both match settings.

@@ -11,6 +11,11 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import {
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+  normalizeComposerLayout,
+} from '../../shared/composer/layout.ts';
 import { normalizeNexusSettings } from '../../shared/nexus/settings.ts';
 import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
@@ -648,6 +653,29 @@ function normalizeQuickCommands(value: unknown): QuickCommand[] {
   return commands;
 }
 
+function normalizeComposerLayouts(
+  value: unknown,
+  current?: AppSettings['composerLayouts'],
+  commands: QuickCommand[] = [],
+): AppSettings['composerLayouts'] {
+  const stored = isRecord(value) ? value : {};
+  const quickIds = new Set(commands.map((command) => command.id));
+  return {
+    single: normalizeComposerLayout(
+      stored.single,
+      'single',
+      current?.single ?? DEFAULT_SINGLE_COMPOSER_LAYOUT,
+      quickIds,
+    ),
+    group: normalizeComposerLayout(
+      stored.group,
+      'group',
+      current?.group ?? DEFAULT_GROUP_COMPOSER_LAYOUT,
+      quickIds,
+    ),
+  };
+}
+
 /**
  * Coerce a stored regex-script list, on the same terms as quick commands: an entry with no
  * usable id is dropped, because the id is what edits, deletes and reorders address.
@@ -695,6 +723,7 @@ export function getSettings(): AppSettings {
       ? DEFAULT_SETTINGS.connections.map((connection) => ({ ...connection }))
       : normalizeConnections(stored.connections);
 
+  const quickCommands = normalizeQuickCommands(stored.quickCommands);
   cache = {
     ...DEFAULT_SETTINGS,
     ...stored,
@@ -724,7 +753,8 @@ export function getSettings(): AppSettings {
     backgroundEffectLayer: stored.backgroundEffectLayer === 'front' ? 'front' : 'behind',
     characterListSort: stored.characterListSort === 'rating' ? 'rating' : 'name',
     hiddenTags: normalizeHiddenTags(stored.hiddenTags),
-    quickCommands: normalizeQuickCommands(stored.quickCommands),
+    quickCommands,
+    composerLayouts: normalizeComposerLayouts(stored.composerLayouts, undefined, quickCommands),
     recentPersonaIds: normalizeRecentPersonaIds(stored.recentPersonaIds),
     // Pinned to the two legal values, the same shape as `characterListSort` above: anything
     // else is a stale or hand-edited file, and rows are the safe default.
@@ -749,6 +779,9 @@ export function getSettings(): AppSettings {
  * deletion would make that irreversible. This is the character-book rule.
  */
 export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
+  const quickCommands = Array.isArray(patch.quickCommands)
+    ? normalizeQuickCommands(patch.quickCommands)
+    : current.quickCommands;
   return {
     ...current,
     ...patch,
@@ -828,9 +861,17 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       : current.dialogueColors,
     // A wholesale array like `collapsedCharacterFolders`, but normalised: a stale tab or a
     // malformed body like `{"quickCommands": null}` must not wipe the user's commands.
-    quickCommands: Array.isArray(patch.quickCommands)
-      ? normalizeQuickCommands(patch.quickCommands)
-      : current.quickCommands,
+    quickCommands,
+    composerLayouts: isRecord(patch.composerLayouts)
+      ? normalizeComposerLayouts(
+          {
+            single: patch.composerLayouts.single ?? current.composerLayouts.single,
+            group: patch.composerLayouts.group ?? current.composerLayouts.group,
+          },
+          current.composerLayouts,
+          quickCommands,
+        )
+      : normalizeComposerLayouts(current.composerLayouts, current.composerLayouts, quickCommands),
     // Normalised on the way in as well as on read, so the cap is enforced where the client
     // cannot skip it — this list is appended to on every persona switch.
     recentPersonaIds: Array.isArray(patch.recentPersonaIds)

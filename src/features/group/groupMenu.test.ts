@@ -76,6 +76,8 @@ describe('buildGroupMenu', () => {
       ...ALWAYS_OPEN,
       'Rename scene…',
       'Export scene',
+      'Customise composer…',
+      'Guide next reply',
       'Macro character',
       'Delete scene',
       'Close scene',

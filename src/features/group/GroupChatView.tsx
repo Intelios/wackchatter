@@ -1,17 +1,42 @@
 import type { MessageState } from '@shared/chat/message.ts';
+import type { ComposerLabelMode, ComposerLayout } from '@shared/composer/layout.ts';
 import type { Persona } from '@shared/types/chat.ts';
+import { memberLabel } from '@shared/types/group.ts';
 import type {
   DialogueColorOverride,
   DialogueColorSettings,
   QuickCommand,
 } from '@shared/types/settings.ts';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ContinueIcon, NexusIcon, PauseIcon } from '../../layout/icons.tsx';
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Menu } from '../../components/Menu.tsx';
+import {
+  BoltIcon,
+  BranchIcon,
+  CloseIcon,
+  ContinueIcon,
+  DownloadIcon,
+  MessagesIcon,
+  NexusIcon,
+  PauseIcon,
+  SummaryIcon,
+  UsersIcon,
+} from '../../layout/icons.tsx';
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi, chatApi, personaApi } from '../../lib/api.ts';
+import { downloadUrl } from '../../lib/download.ts';
 import { resolveDialogueColor, useAvatarColor } from '../chat/avatarColor.ts';
 import { BranchTree } from '../chat/BranchTree.tsx';
 import { Composer, type ComposerHandle } from '../chat/Composer.tsx';
+import { ComposerRenameControl } from '../chat/ComposerUtilityControls.tsx';
 import { MessageBubble } from '../chat/MessageBubble.tsx';
 import { QuickCommands } from '../chat/QuickCommands.tsx';
 import type { GenMode } from '../chat/state/chatReducer.ts';
@@ -46,6 +71,8 @@ interface GroupChatViewProps {
   dialogueColors: DialogueColorSettings;
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  composerLayout: ComposerLayout;
+  onComposerLayoutSave: (layout: ComposerLayout) => Promise<void>;
   /** Sets the app-wide persona and this scene's, together. */
   onSelectPersona: (id: string | null) => void;
   /** Opens a right panel — the cast, memory, or the persona manager. */
@@ -80,6 +107,8 @@ export function GroupChatView({
   dialogueColors,
   quickCommands,
   onQuickCommandsChange,
+  composerLayout,
+  onComposerLayoutSave,
   onSelectPersona,
   onOpenPanel,
   onInspect,
@@ -106,6 +135,25 @@ export function GroupChatView({
   );
   const busyMemberIds = jobList.map((job) => job.memberId);
   const blocked = chat.busy || chat.nexus.run.running || chat.summaryStatus.running;
+  const controlButton = (
+    label: string,
+    icon: ReactNode,
+    display: ComposerLabelMode,
+    onClick: () => void,
+    disabledReason?: string,
+  ) => (
+    <button
+      type="button"
+      className="wc-button wc-button--ghost composer__icon composer__layout-button"
+      onClick={onClick}
+      disabled={Boolean(disabledReason)}
+      title={disabledReason ?? label}
+      aria-label={label}
+    >
+      {icon}
+      {display === 'label' ? <span>{label}</span> : null}
+    </button>
+  );
   const act = (work: () => Promise<unknown>) => {
     void work().catch((e) => setError((e as Error).message));
   };
@@ -523,114 +571,224 @@ export function GroupChatView({
           busy={running || chat.busy}
           disabled={chat.loading || chat.nexus.run.running || chat.summaryStatus.running}
           placeholder="Join the conversation…"
-          identity={
-            <PersonaChip
-              personas={personas}
-              active={chat.persona}
-              recentIds={recentPersonaIds}
-              avatarVersions={personaAvatarVersions ?? {}}
-              onSelect={onSelectPersona}
-              onManage={() => onOpenPanel('persona')}
-            />
-          }
-          leading={
-            <>
-              <GroupChatMenu
-                chat={chat}
-                directorConfigured={directorConfigured}
-                onStopAll={() => coordinator?.stopAll()}
-                onPause={() => coordinator?.pause()}
-                onContinue={() => coordinator?.start()}
-                onOpenCast={() => onOpenPanel('groups')}
-                onOpenMemory={() => onOpenPanel('summary')}
-                onOpenInspect={onInspect}
-                onOpenBranchTree={() => setTimeline(true)}
-                onCloseScene={onClose}
-                onDeleteScene={() =>
-                  act(async () => {
-                    await chat.saveNow();
-                    await chatApi.remove(chat.state.chatId!);
-                    onClose();
-                  })
-                }
-                onSelectMember={(id) => chat.selectMember(id)}
-              />
-              <QuickCommands
-                quickCommands={quickCommands}
-                onInsertCommand={(text) => composerRef.current?.insert(text)}
-                onQuickCommandsChange={onQuickCommandsChange}
-              />
-              {chat.memoryMode === 'nexus' ? (
-                <button
-                  type="button"
-                  className="wc-button wc-button--ghost composer__icon"
-                  aria-label="Memory Nexus"
-                  title="Memory Nexus"
-                  onClick={() => chat.nexus.show('explore')}
-                >
-                  <NexusIcon />
-                </button>
-              ) : null}
-            </>
-          }
-          trailing={
-            <>
-              {/*
-                Both conversation controls are always mounted and always labelled.
-                Labelled, because "continue the conversation" is the group's headline action
-                and a bare fast-forward glyph does not read as a button you can press to
-                nudge a director that has gone quiet — which is a real state, and the reason
-                this pair exists at all.
-                Both mounted, because appearing and disappearing would shift the speaker
-                chip and the wand sideways every time an exchange starts; a disabled Pause
-                says "nothing to pause" without moving anything.
-              */}
-              <button
-                type="button"
-                className="wc-button group-conversation"
-                aria-label="Continue conversation"
-                title={continueReason}
-                disabled={continueDisabled}
-                onClick={() => {
-                  chat.dispatch({ type: 'error/cleared' });
-                  coordinator?.start();
-                }}
-              >
-                <ContinueIcon />
-                {continueLabel}
-              </button>
-              <button
-                type="button"
-                className="wc-button group-conversation"
-                aria-label="Pause conversation"
-                // A stalled director is the case this button is for, so it says what
-                // pausing actually does from where the user is standing.
-                title={
-                  coordinator?.selecting
-                    ? 'Pause conversation — stop waiting on the director'
-                    : 'Pause conversation — replies already running will finish'
-                }
-                disabled={!running}
-                onClick={() => coordinator?.pause()}
-              >
-                <PauseIcon />
-                Pause
-              </button>
-              <SpeakNextPopover
-                members={scene.members}
-                selectedId={chat.selectedMemberId}
-                busyIds={busyMemberIds}
-                disabledReason={speakerBlockedReason}
-                busyReason={
-                  pausedAtLimit ? 'The conversation is already running its replies.' : undefined
-                }
-                onSpeak={(id) => {
-                  chat.selectMember(id);
-                  coordinator?.manual(id);
-                }}
-              />
-            </>
-          }
+          kind="group"
+          layout={composerLayout}
+          onLayoutSave={onComposerLayoutSave}
+          controls={[
+            {
+              id: 'persona',
+              label: 'Persona',
+              render: (display) => (
+                <PersonaChip
+                  compact={display === 'icon'}
+                  personas={personas}
+                  active={chat.persona}
+                  recentIds={recentPersonaIds}
+                  avatarVersions={personaAvatarVersions ?? {}}
+                  onSelect={onSelectPersona}
+                  onManage={() => onOpenPanel('persona')}
+                />
+              ),
+            },
+            {
+              id: 'menu',
+              label: 'Scene menu',
+              render: (display) => (
+                <GroupChatMenu
+                  showLabel={display === 'label'}
+                  chat={chat}
+                  directorConfigured={directorConfigured}
+                  onStopAll={() => coordinator?.stopAll()}
+                  onPause={() => coordinator?.pause()}
+                  onContinue={() => coordinator?.start()}
+                  onOpenCast={() => onOpenPanel('groups')}
+                  onOpenMemory={() => onOpenPanel('summary')}
+                  onOpenInspect={onInspect}
+                  onOpenBranchTree={() => setTimeline(true)}
+                  onCloseScene={onClose}
+                  onDeleteScene={() =>
+                    act(async () => {
+                      await chat.saveNow();
+                      await chatApi.remove(chat.state.chatId!);
+                      onClose();
+                    })
+                  }
+                  onSelectMember={(id) => chat.selectMember(id)}
+                  onCustomiseComposer={() => composerRef.current?.customise()}
+                  onGuideReply={() => composerRef.current?.activate('guide')}
+                />
+              ),
+            },
+            {
+              id: 'quickCommands',
+              label: 'Quick commands',
+              render: (display) => (
+                <QuickCommands
+                  showLabel={display === 'label'}
+                  quickCommands={quickCommands}
+                  onInsertCommand={(text) => composerRef.current?.insert(text)}
+                  onQuickCommandsChange={onQuickCommandsChange}
+                />
+              ),
+            },
+            {
+              id: 'nexus',
+              label: 'Memory Nexus',
+              render: (display) =>
+                controlButton(
+                  'Memory Nexus',
+                  <NexusIcon />,
+                  display,
+                  () => chat.nexus.show('explore'),
+                  chat.memoryMode === 'nexus' ? undefined : 'This scene is not using Memory Nexus.',
+                ),
+            },
+            {
+              id: 'continueConversation',
+              label: continueLabel,
+              render: (display) =>
+                controlButton(
+                  continueLabel,
+                  <ContinueIcon />,
+                  display,
+                  () => {
+                    chat.dispatch({ type: 'error/cleared' });
+                    coordinator?.start();
+                  },
+                  continueDisabled ? continueReason : undefined,
+                ),
+            },
+            {
+              id: 'pauseConversation',
+              label: 'Pause',
+              render: (display) =>
+                controlButton(
+                  'Pause',
+                  <PauseIcon />,
+                  display,
+                  () => coordinator?.pause(),
+                  running ? undefined : 'The conversation is not running.',
+                ),
+            },
+            {
+              id: 'speakNext',
+              label: 'Speak next',
+              render: (display) => (
+                <SpeakNextPopover
+                  compact={display === 'icon'}
+                  members={scene.members}
+                  selectedId={chat.selectedMemberId}
+                  busyIds={busyMemberIds}
+                  disabledReason={speakerBlockedReason}
+                  busyReason={
+                    pausedAtLimit ? 'The conversation is already running its replies.' : undefined
+                  }
+                  onSpeak={(id) => {
+                    chat.selectMember(id);
+                    coordinator?.manual(id);
+                  }}
+                />
+              ),
+            },
+            {
+              id: 'cast',
+              label: 'Cast & settings',
+              render: (display) =>
+                controlButton('Cast & settings', <UsersIcon />, display, () =>
+                  onOpenPanel('groups'),
+                ),
+            },
+            {
+              id: 'memory',
+              label: 'Memory',
+              render: (display) =>
+                controlButton('Memory', <SummaryIcon />, display, () => onOpenPanel('summary')),
+            },
+            {
+              id: 'inspect',
+              label: 'Inspect prompt',
+              render: (display) =>
+                controlButton('Inspect prompt', <MessagesIcon />, display, onInspect),
+            },
+            {
+              id: 'branches',
+              label: 'Branch timeline',
+              render: (display) =>
+                controlButton(
+                  'Branch timeline',
+                  <BranchIcon />,
+                  display,
+                  () => setTimeline(true),
+                  chat.state.chatId ? undefined : 'No scene is open.',
+                ),
+            },
+            {
+              id: 'rename',
+              label: 'Rename scene',
+              render: (display) => (
+                <ComposerRenameControl
+                  title={chat.state.title}
+                  display={display}
+                  disabledReason={chat.busy ? 'Wait for the current replies to finish.' : undefined}
+                  onRename={(title) => chat.dispatch({ type: 'chat/renamed', title })}
+                />
+              ),
+            },
+            {
+              id: 'export',
+              label: 'Export scene',
+              render: (display) =>
+                controlButton(
+                  'Export scene',
+                  <DownloadIcon />,
+                  display,
+                  () => chat.state.chatId && downloadUrl(chatApi.exportUrl(chat.state.chatId)),
+                  chat.busy
+                    ? 'Wait for the current replies to finish.'
+                    : !chat.state.chatId
+                      ? 'No scene is open.'
+                      : undefined,
+                ),
+            },
+            {
+              id: 'macroCharacter',
+              label: 'Macro character',
+              render: (display) => (
+                <Menu
+                  label="Macro character"
+                  icon={<UsersIcon />}
+                  showLabel={display === 'label'}
+                  entries={scene.members.map((member) => ({
+                    label: memberLabel(member, scene.members),
+                    hint: member.id === chat.selectedMemberId ? 'current' : undefined,
+                    onSelect: () => chat.selectMember(member.id),
+                  }))}
+                />
+              ),
+            },
+            {
+              id: 'close',
+              label: 'Close scene',
+              render: (display) =>
+                controlButton(
+                  'Close scene',
+                  <CloseIcon />,
+                  display,
+                  onClose,
+                  chat.busy ? 'Wait for the current replies to finish.' : undefined,
+                ),
+            },
+            ...quickCommands
+              .filter((command) => command.text.trim())
+              .map((command) => ({
+                id: `quick:${command.id}`,
+                label: command.name.trim() || command.text.trim().slice(0, 32),
+                render: (display: ComposerLabelMode) =>
+                  controlButton(command.name.trim() || 'Quick command', <BoltIcon />, display, () =>
+                    composerRef.current?.insert(command.text),
+                  ),
+              })),
+          ]}
         />
       </div>
 
