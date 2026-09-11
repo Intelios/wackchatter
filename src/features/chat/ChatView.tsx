@@ -925,6 +925,10 @@ export function ChatView({
           meta={recapMeta}
           stream={stream}
           title={state.title}
+          characterName={characterName}
+          characterDialogueColor={characterDialogue.color}
+          personaName={chatPersona?.name}
+          episode={recapMeta?.total ?? state.messages.length}
           onClose={closeRecap}
         />
       ) : null}

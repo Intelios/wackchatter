@@ -1,11 +1,17 @@
 /**
- * "Previously on…" — the recap, at reading width over the chat column.
+ * "Previously on…" — the recap, as a broadcast title card floating over the chat column.
  *
  * Takes the chat column the way `CardReader` and `BranchTree` do: portaled into the shell's
  * overlay root and pinned to the column's grid cell, so the top bar and both panels stay
  * visible and opening a panel compresses this exactly as it compresses the chat underneath.
- * Not a modal — the conversation stays live, and nothing here needs the rest of the app
- * inert to be correct.
+ * Unlike those two it is sized to a card rather than the whole cell (see RecapOverlay.css),
+ * so the transcript stays visible around it. Not a modal — the conversation stays live, and
+ * nothing here needs the rest of the app inert to be correct.
+ *
+ * The episode framing is the point: an eyebrow, the chat title as the "show", an episode
+ * chip, a starring credit and a credits colophon. Nothing here is a metric the app tracks —
+ * the episode number is the message count, and the credit line is the character and the
+ * persona this chat is played as.
  *
  * Read-only. The recap is re-run by clicking the button again, so there is no action here
  * but closing; Stop belongs to the composer, where the one generation status lives.
@@ -46,12 +52,30 @@ interface RecapOverlayProps {
   view: RecapViewState;
   meta: RecapMeta | null;
   stream: StreamStore;
-  /** The chat's title, for the subtitle. */
+  /** The chat's title — the name of the "show" the card is titled after. */
   title?: string;
+  /** The character, for the starring credit. */
+  characterName: string;
+  /** Their dialogue colour, when dialogue colouring is on; tints only the name. */
+  characterDialogueColor?: string | null;
+  /** The persona this chat is played as, for the second credit. */
+  personaName?: string | null;
+  /** The "episode number": how many messages the recap was cut from. */
+  episode: number;
   onClose: () => void;
 }
 
-export function RecapOverlay({ view, meta, stream, title, onClose }: RecapOverlayProps) {
+export function RecapOverlay({
+  view,
+  meta,
+  stream,
+  title,
+  characterName,
+  characterDialogueColor,
+  personaName,
+  episode,
+  onClose,
+}: RecapOverlayProps) {
   // Captured on mount, while the control that opened this still holds focus, so closing
   // puts the overlay back where it came from — the burger or the composer tray.
   const openerRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
@@ -96,24 +120,18 @@ export function RecapOverlay({ view, meta, stream, title, onClose }: RecapOverla
   // teardown race, and rendering nothing beats throwing on the way out.
   if (!overlayRoot) return null;
 
-  // The lamp's caption: recording while it runs, and whatever the tape did afterwards.
-  const statusWord = live ? 'Rec' : view.status === 'failed' ? 'Off air' : 'Replay';
-
   return createPortal(
     <ErrorBoundary where="the recap" resetKeys={[view.status]}>
       <div
         ref={surfaceRef}
-        className={`recap${live ? ' recap--live' : ''}${view.status === 'failed' ? ' recap--off-air' : ''}`}
+        className={`recap${live ? ' recap--live' : ''}`}
         role="dialog"
         aria-modal="false"
         aria-label="Previously on"
         tabIndex={-1}
       >
-        <div className="recap__bar">
-          <p className="recap__status">
-            <span className="recap__lamp" aria-hidden="true" />
-            {statusWord}
-          </p>
+        <div className="recap__head">
+          <p className="recap__eyebrow">Previously on</p>
           <button
             type="button"
             className="wc-button wc-button--ghost recap__close"
@@ -125,62 +143,72 @@ export function RecapOverlay({ view, meta, stream, title, onClose }: RecapOverla
           </button>
         </div>
 
+        {/* The show's name. `h2` carries it; the eyebrow above is the announcement. */}
+        <h2 className="recap__title">{title || 'This chat'}</h2>
+
         {/*
-         * The title card. `h2` carries the accessible name; everything decorative here —
-         * the sweep rule, the tracked-out casing — is presentation only.
+         * The credits. Decorative framing, not data the app tracks: the episode number is
+         * the message count, and the cast is the character and the persona. The character's
+         * name takes their own dialogue colour — the only colour in the card.
          */}
-        <header className="recap__card">
-          <h2 className="recap__title">Previously on…</h2>
-          <p className="recap__subtitle">{title || 'This chat'}</p>
-          <span className="recap__rule" aria-hidden="true" />
-        </header>
+        <p className="recap__credits">
+          <span className="recap__episode">Episode {episode}</span>
+          <span className="recap__starring">
+            Starring{' '}
+            <span
+              className="recap__cast"
+              style={characterDialogueColor ? { color: characterDialogueColor } : undefined}
+            >
+              {characterName}
+            </span>{' '}
+            · and {personaName || 'you'}
+          </span>
+        </p>
+
+        <span className="recap__rule" aria-hidden="true" />
 
         {meta && meta.dropped > 0 ? (
           <p className="recap__advisory">
-            <span className="recap__advisory-tag">Advisory</span>
-            Earlier turns did not fit — recapping the last{' '}
-            {meta.total - meta.dropped} of {meta.total} messages.
+            <span className="recap__advisory-tag">Viewer advisory</span>
+            Earlier turns did not fit — recapping the last {meta.total - meta.dropped} of{' '}
+            {meta.total} messages.
           </p>
         ) : null}
 
         <div className="recap__body">
-          <div className="recap__measure">
-            {view.status === 'failed' && view.error ? (
-              <p className="recap__error">{view.error}</p>
-            ) : null}
+          {view.status === 'failed' && view.error ? (
+            <p className="recap__error">{view.error}</p>
+          ) : null}
 
-            {live && !text ? <p className="recap__waiting">Threading the reel…</p> : null}
+          {live && !text ? <p className="recap__waiting">Recapping…</p> : null}
 
-            {/*
-             * `StreamingText` behind the `active` gate, exactly as the composer does it for
-             * an impersonation: it reads the store raw, so without the gate a fresh recap
-             * would paint the previous generation's last frame before its own `begin()`.
-             * Markdown is deliberately not used mid-stream — it re-parses the whole growing
-             * string every tick, which is quadratic over a recap-sized reply.
-             */}
-            {live && snapshot.active ? (
-              <div className="recap__text">
-                <StreamingText store={stream} hideReasoning />
-              </div>
-            ) : null}
+          {/*
+           * `StreamingText` behind the `active` gate, exactly as the composer does it for
+           * an impersonation: it reads the store raw, so without the gate a fresh recap
+           * would paint the previous generation's last frame before its own `begin()`.
+           * Markdown is deliberately not used mid-stream — it re-parses the whole growing
+           * string every tick, which is quadratic over a recap-sized reply.
+           */}
+          {live && snapshot.active ? (
+            <div className="recap__text">
+              <StreamingText store={stream} hideReasoning />
+            </div>
+          ) : null}
 
-            {!live && !text && view.status === 'done' ? (
-              <p className="recap__waiting">Nothing came back. Try again.</p>
-            ) : null}
+          {!live && !text && view.status === 'done' ? (
+            <p className="recap__waiting">Nothing came back. Try again.</p>
+          ) : null}
 
-            {!live && text ? <Markdown text={text} className="recap__text" /> : null}
-          </div>
+          {!live && text ? <Markdown text={text} className="recap__text" /> : null}
         </div>
 
-        {/* Credits-style colophon: what this was cut from, and that it is over. */}
+        {/* Credits-style colophon: that it is over, and what it was cut from. */}
         <p className="recap__footer">
-          <span>{live ? 'Recording' : view.status === 'failed' ? 'Off air' : 'End of recap'}</span>
+          <span>{view.status === 'failed' ? 'Recap failed' : 'End of recap'}</span>
           <span className="recap__leader" aria-hidden="true" />
-          {meta ? (
-            <span>
-              {meta.total} {meta.total === 1 ? 'message' : 'messages'}
-            </span>
-          ) : null}
+          <span>
+            {episode} {episode === 1 ? 'message' : 'messages'}
+          </span>
         </p>
       </div>
     </ErrorBoundary>,

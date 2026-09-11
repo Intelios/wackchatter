@@ -1,188 +1,186 @@
 /*
- * "Previously on…" — a title card on a screen, over the chat column.
+ * "Previously on…" — the recap, as a broadcast title card floating over the chat column.
  *
- * A grid item pinned to the column's cell — row 2, column 2 — exactly like `.card-reader`,
- * `.branch-tree` and `.fullscreen-text`, so the grid sizes it and it inherits the
- * panel-open transition for free. z-index 3 for the same reason as the card reader: the
- * overlays can be up at once, and this one should be readable.
+ * A grid item pinned to the column's cell — row 2, column 2 — like `.card-reader` and
+ * `.branch-tree`, but sized to a card and centred in the cell rather than filling it, so the
+ * transcript and composer stay visible around it. z-index 3 for the same reason as the card
+ * reader: the overlays can be up at once, and this one should be readable.
  *
- * This is the one surface in the app that is not chrome, so it is the one surface with a
- * colour of its own (see the --wc-recap-* run in tokens.css). It is built to read as a
- * television: an opaque near-black screen with a projector's spill from the top, faint
- * scanlines, and a vignette in the corners; a tracked-out title card over an amber rule
- * with a light sweeping across it while the recap records; and a dotted-leader colophon at
- * the foot, like end credits. The prose itself is left alone — the costume is all in the
- * frame around it.
+ * It wears no colour of its own. The first cut was a sepia CRT screen — scanlines, vignette,
+ * projector spill — and read as a different app; this one is dressed in the app's tokens
+ * (--wc-surface-popup, --wc-text, the acid --wc-accent) and gets its character from episode
+ * *framing* instead: a tracked eyebrow, an episode chip, a starring credit and a
+ * dotted-leader colophon. There is no diegetic machinery — no tally lamp, no "recording"
+ * state — because the recap is a generation you can watch stream, not a broadcast, and the
+ * language of one read as a costume over the other.
  *
- * Legibility is not part of the costume: --wc-recap-ink on --wc-recap-screen is ~16:1, the
- * muted tone ~7:1, and both textures sit at ~2.5% alpha. Everything that moves has a
- * reduced-motion answer below, and the durations are zeroed in tokens.css besides.
+ * Two small beats of motion: the card rises in, and the rule is swept while the recap
+ * streams. Both have a reduced-motion answer below, and the entrance duration is a token
+ * that is zeroed for reduced motion besides.
  */
 
 .recap {
   grid-column: 2;
   grid-row: 2;
+  justify-self: center;
+  align-self: center;
   z-index: 3;
   position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--wc-space-4);
+  /* The reading measure *is* the card: narrower than --wc-measure, so no inner column. */
+  width: min(100% - var(--wc-space-6), 720px);
+  max-height: calc(100% - var(--wc-space-6));
   padding: var(--wc-space-5);
-  color: var(--wc-recap-ink);
-  background-color: var(--wc-recap-screen);
-  /* Topmost first: scanlines, then the vignette, then the lamp's spill from above. */
-  background-image:
-    repeating-linear-gradient(
-      to bottom,
-      var(--wc-recap-scanline) 0 1px,
-      transparent 1px 3px
-    ),
-    radial-gradient(130% 120% at 50% 45%, transparent 52%, var(--wc-recap-vignette)),
-    radial-gradient(90% 70% at 50% -12%, var(--wc-recap-accent-soft), transparent 70%);
-  box-shadow: var(--wc-shadow);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  /* Solid even in glass mode, like every other popup: this is a wall of prose to read. */
+  background: var(--wc-surface-popup);
+  box-shadow:
+    var(--wc-shadow),
+    0 14px 34px rgb(0 0 0 / 0.44);
+  color: var(--wc-text);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  /* Turns on like a tube warming up: a bright line, then it opens out. */
-  animation: recap-power-on var(--wc-recap-duration) var(--wc-ease) both;
-  transform-origin: center;
+  animation: recap-in var(--wc-duration-view) var(--wc-ease) both;
 }
 
-/* --- Bar: the tally lamp and the way out ------------------------------------ */
+/*
+ * Focus is placed on the surface on mount so Escape and the reading order have a home; it is
+ * not an interactive control, so a ring around the whole card would only be noise. Escape is
+ * handled on the document, so nothing here depends on the ring being visible.
+ */
+.recap:focus,
+.recap:focus-visible {
+  outline: none;
+}
 
-.recap__bar {
+/* --- Head: the announcement and the way out ----------------------------------- */
+
+.recap__head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--wc-space-3);
-  flex: none;
-}
-
-.recap__status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wc-space-2);
-  font-family: var(--wc-font-mono);
-  font-size: var(--wc-text-xs);
-  letter-spacing: var(--wc-recap-tracking);
-  text-transform: uppercase;
-  color: var(--wc-recap-muted);
-}
-
-.recap__lamp {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--wc-recap-accent);
-  box-shadow: 0 0 8px var(--wc-recap-accent);
-  flex: none;
-}
-
-/* Blinks while the recap is being written, steady once the tape is done. */
-.recap--live .recap__lamp {
-  animation: recap-pulse var(--wc-recap-pulse-duration) var(--wc-ease) infinite;
-}
-
-.recap--off-air .recap__lamp {
-  background: var(--wc-danger);
-  box-shadow: 0 0 8px var(--wc-danger);
-}
-
-/* The ghost button's greys are tuned for the app's surfaces, not this screen. Two classes
-   so it wins on specificity rather than on stylesheet order. */
-.recap__bar .recap__close {
-  color: var(--wc-recap-muted);
-  flex: none;
-}
-
-.recap__bar .recap__close:hover:not(:disabled) {
-  background: var(--wc-recap-hover);
-  color: var(--wc-recap-ink);
-}
-
-/* --- Title card -------------------------------------------------------------- */
-
-.recap__card {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--wc-space-1);
-  /* On the reading measure with the prose and the colophon, not out at the panel edge:
-     the title belongs to the recap, not to the screen's chrome. */
-  width: 100%;
-  max-width: var(--wc-measure);
-  margin: 0 auto;
   min-width: 0;
 }
 
+/*
+ * The chrome — eyebrow, credits and colophon — is the app's own sans in tracked caps, the
+ * same treatment the menus and panel titles use. The first cut set it in monospace, which
+ * read as a different app's voice; the episode framing does not need a second typeface.
+ */
+.recap__eyebrow {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+  color: var(--wc-accent);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The ghost button's greys are tuned for app surfaces, which this now is. */
+.recap__close {
+  flex: none;
+}
+
+/* --- Title and credits -------------------------------------------------------- */
+
 .recap__title {
+  flex: none;
+  margin: 0;
   font-size: var(--wc-text-display);
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.15;
+  color: var(--wc-text);
+  overflow-wrap: anywhere;
+}
+
+.recap__credits {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2) var(--wc-space-3);
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  font-weight: 500;
+  letter-spacing: var(--wc-letter-spacing);
   text-transform: uppercase;
-  letter-spacing: var(--wc-recap-tracking);
-  /* Tracking leaves a space after the last glyph; pull the block back so the line reads
-     flush at both ends instead of trailing off. */
-  margin-right: calc(var(--wc-recap-tracking) * -1);
-  color: var(--wc-recap-ink);
-  text-shadow: 0 0 18px var(--wc-recap-accent-soft);
-  animation: recap-title-in var(--wc-recap-duration) var(--wc-ease) both;
+  color: var(--wc-text-muted);
 }
 
-.recap__subtitle {
-  font-family: var(--wc-font-mono);
-  font-size: var(--wc-text-sm);
-  color: var(--wc-recap-muted);
-  overflow: hidden;
+.recap__episode {
+  display: inline-block;
+  padding: 2px var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-accent-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  font-weight: 600;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-/* The rule under the card, with a light that crosses it while recording. */
+/*
+ * The cast name is the only colour in the card, and it is the character's own dialogue
+ * colour — the same value that tints their speech in the transcript. The inline style
+ * supplies it when colouring is on; without it the name sits in plain text.
+ */
+.recap__cast {
+  color: var(--wc-text);
+  font-weight: 500;
+}
+
+/* The rule under the title, with a light crossing it while the recap records. */
 .recap__rule {
   position: relative;
+  flex: none;
   display: block;
   height: 1px;
-  margin-top: var(--wc-space-3);
-  background: linear-gradient(to right, transparent, var(--wc-recap-rule) 12%, var(--wc-recap-rule) 88%, transparent);
+  background: var(--wc-border);
   overflow: hidden;
 }
 
 .recap__rule::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 38%;
-  background: linear-gradient(to right, transparent, var(--wc-recap-accent), transparent);
+  width: 32%;
+  background: linear-gradient(to right, transparent, var(--wc-accent), transparent);
   transform: translateX(-110%);
 }
 
 .recap--live .recap__rule::after {
-  animation: recap-sweep var(--wc-recap-sweep-duration) var(--wc-ease) infinite;
+  animation: recap-sweep 2600ms var(--wc-ease) infinite;
 }
 
 /* --- Advisory: the tape is not the whole story -------------------------------- */
 
 .recap__advisory {
   flex: none;
-  align-self: center;
-  width: 100%;
-  max-width: var(--wc-measure);
-  margin: 0 auto;
+  margin: 0;
   padding: var(--wc-space-2) var(--wc-space-3);
-  border-left: 2px solid var(--wc-recap-rule);
-  background: var(--wc-recap-well);
+  border-left: 2px solid var(--wc-warning);
+  border-radius: 0 var(--wc-radius-sm) var(--wc-radius-sm) 0;
+  background: var(--wc-warning-subtle);
   font-size: var(--wc-text-xs);
-  color: var(--wc-recap-muted);
+  color: var(--wc-text-muted);
 }
 
 .recap__advisory-tag {
   display: inline-block;
   margin-right: var(--wc-space-2);
-  font-family: var(--wc-font-mono);
-  letter-spacing: var(--wc-recap-tracking);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
   text-transform: uppercase;
-  color: var(--wc-recap-accent);
+  color: var(--wc-warning);
 }
 
 /* --- Body --------------------------------------------------------------------- */
@@ -191,22 +189,14 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-}
-
-/*
- * The transcript's measure, centred: a recap read edge to edge on a wide screen is a worse
- * read than the column it replaces. Same rule as the card reader.
- */
-.recap__measure {
-  width: 100%;
-  max-width: var(--wc-measure);
-  margin: 0 auto;
+  /* Keep the scrollbar's space reserved so the text does not shift when streaming starts. */
+  scrollbar-gutter: stable;
 }
 
 .recap__text {
   font-size: var(--wc-text-base);
   line-height: 1.7;
-  color: var(--wc-recap-ink);
+  color: var(--wc-text);
   overflow-wrap: anywhere;
 }
 
@@ -246,20 +236,20 @@
 }
 
 .recap__text em {
-  color: var(--wc-recap-muted);
+  color: var(--wc-text-muted);
 }
 
 .recap__text blockquote {
   padding-left: var(--wc-space-3);
-  border-left: 2px solid var(--wc-recap-rule);
-  color: var(--wc-recap-muted);
+  border-left: 2px solid var(--wc-border-strong);
+  color: var(--wc-text-muted);
 }
 
 .recap__text pre {
   padding: var(--wc-space-3);
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
-  background: var(--wc-recap-well);
+  background: var(--wc-code-bg);
   overflow-x: auto;
 }
 
@@ -269,17 +259,19 @@
 }
 
 .recap__waiting {
-  font-family: var(--wc-font-mono);
+  margin: 0;
   font-size: var(--wc-text-sm);
-  color: var(--wc-recap-muted);
+  font-weight: 500;
+  color: var(--wc-text-muted);
 }
 
 .recap__error {
+  margin: 0;
   padding: var(--wc-space-3);
   border: var(--wc-border-width) solid var(--wc-danger);
   border-radius: var(--wc-radius);
   background: var(--wc-danger-subtle);
-  color: var(--wc-recap-ink);
+  color: var(--wc-text);
   font-size: var(--wc-text-sm);
 }
 
@@ -290,52 +282,35 @@
   display: flex;
   align-items: baseline;
   gap: var(--wc-space-3);
-  width: 100%;
-  max-width: var(--wc-measure);
-  margin: 0 auto;
-  font-family: var(--wc-font-mono);
+  margin: 0;
   font-size: var(--wc-text-xs);
-  letter-spacing: var(--wc-recap-tracking);
+  font-weight: 500;
+  letter-spacing: var(--wc-letter-spacing);
   text-transform: uppercase;
-  color: var(--wc-recap-muted);
+  color: var(--wc-text-muted);
+  white-space: nowrap;
 }
 
 /* The dotted leader that walks the eye from the status to the count. */
 .recap__leader {
   flex: 1;
+  min-width: var(--wc-space-4);
   height: 1px;
   transform: translateY(-0.25em);
-  border-bottom: 1px dotted var(--wc-recap-rule);
-  opacity: 0.6;
+  border-bottom: 1px dotted var(--wc-border-strong);
+  opacity: 0.7;
 }
 
 /* --- Motion ------------------------------------------------------------------- */
 
-@keyframes recap-power-on {
-  0% {
-    opacity: 0;
-    transform: scaleY(0.008);
-  }
-  30% {
-    opacity: 1;
-    transform: scaleY(0.008);
-  }
-  100% {
-    opacity: 1;
-    transform: scaleY(1);
-  }
-}
-
-@keyframes recap-title-in {
+@keyframes recap-in {
   from {
     opacity: 0;
-    letter-spacing: 0.06em;
-    filter: blur(3px);
+    transform: translateY(var(--wc-space-2)) scale(0.985);
   }
   to {
     opacity: 1;
-    letter-spacing: var(--wc-recap-tracking);
-    filter: blur(0);
+    transform: none;
   }
 }
 
@@ -348,25 +323,12 @@
   }
 }
 
-@keyframes recap-pulse {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0.25;
-  }
-}
-
 /*
  * A running rAF-free animation is not covered by the duration tokens alone: `infinite` at
- * 0ms is a busy loop, not a still frame. Stop them outright, and leave the lamp lit.
+ * 0ms is a busy loop, not a still frame. Stop it outright and leave the rule plain.
  */
 @media (prefers-reduced-motion: reduce) {
   .recap,
-  .recap__title,
-  .recap--live .recap__lamp,
   .recap--live .recap__rule::after {
     animation: none;
   }
