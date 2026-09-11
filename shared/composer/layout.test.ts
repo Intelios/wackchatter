@@ -2,10 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_GROUP_COMPOSER_LAYOUT,
   DEFAULT_SINGLE_COMPOSER_LAYOUT,
+  findComposerItem,
+  insertComposerItem,
+  insertComposerRow,
   moveComposerItem,
   normalizeComposerLayout,
+  pruneEmptyComposerRows,
   removeComposerItem,
+  removeComposerRow,
   removeMissingQuickCommands,
+  setComposerItemDisplay,
 } from './layout.ts';
 
 describe('composer layouts', () => {
@@ -68,5 +74,73 @@ describe('composer layouts', () => {
     expect(removeMissingQuickCommands(layout, new Set(['keep'])).rows[0]!.centre).toEqual([
       { id: 'quick:keep', display: 'label' },
     ]);
+  });
+
+  test('finds where a control sits, and reports an unplaced one', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    expect(findComposerItem(layout, 'menu')).toEqual({
+      rowId: 'single-main',
+      area: 'left',
+      index: 1,
+      item: { id: 'menu', display: 'icon' },
+    });
+    expect(findComposerItem(layout, 'checkpoint')).toBeNull();
+  });
+
+  test('inserting places a new control at the index and never duplicates', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const next = insertComposerItem(layout, 'checkpoint', 'single-main', 'centre', 0);
+    expect(next.rows[0]!.centre).toEqual([{ id: 'checkpoint', display: 'icon' }]);
+    // Already placed: the layout comes back untouched rather than holding the id twice.
+    expect(insertComposerItem(next, 'checkpoint', 'single-main', 'left')).toBe(next);
+    expect(findComposerItem(next, 'menu')?.area).toBe('left');
+  });
+
+  test('inserting appends when the index is left out and clamps past the end', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const once = insertComposerItem(layout, 'card', 'single-main', 'centre');
+    const twice = insertComposerItem(once, 'context', 'single-main', 'centre', 99);
+    expect(twice.rows[0]!.centre.map((item) => item.id)).toEqual(['card', 'context']);
+  });
+
+  test('rows are added, capped at three, and never duplicated', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const twoRows = insertComposerRow(layout, 'second', 0);
+    expect(twoRows.rows.map((row) => row.id)).toEqual(['second', 'single-main']);
+    expect(insertComposerRow(twoRows, 'second', 0)).toBe(twoRows);
+    const full = insertComposerRow(insertComposerRow(twoRows, 'third'), 'fourth');
+    expect(full.rows).toHaveLength(3);
+    expect(insertComposerRow(full, 'fourth')).toBe(full);
+  });
+
+  test('removing a row keeps the last one', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    expect(removeComposerRow(layout, 'single-main')).toBe(layout);
+    const twoRows = insertComposerRow(layout, 'second');
+    expect(removeComposerRow(twoRows, 'second').rows.map((row) => row.id)).toEqual(['single-main']);
+    expect(removeComposerRow(twoRows, 'missing')).toBe(twoRows);
+  });
+
+  test('pruning drops blank rows but keeps one behind', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const withBlank = insertComposerRow(layout, 'blank');
+    expect(pruneEmptyComposerRows(withBlank).rows.map((row) => row.id)).toEqual(['single-main']);
+    const allBlank = {
+      rows: [
+        { id: 'a', left: [], centre: [], right: [] },
+        { id: 'b', left: [], centre: [], right: [] },
+      ],
+    };
+    expect(pruneEmptyComposerRows(allBlank).rows.map((row) => row.id)).toEqual(['a']);
+    // Nothing to prune: the same object comes back, so callers can skip a render.
+    expect(pruneEmptyComposerRows(layout)).toBe(layout);
+  });
+
+  test('display style is set in place and ignored for an unplaced control', () => {
+    const layout = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const labelled = setComposerItemDisplay(layout, 'menu', 'label');
+    expect(findComposerItem(labelled, 'menu')?.item.display).toBe('label');
+    expect(findComposerItem(labelled, 'persona')?.item.display).toBe('label');
+    expect(setComposerItemDisplay(layout, 'checkpoint', 'label')).toBe(layout);
   });
 });

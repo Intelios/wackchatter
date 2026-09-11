@@ -33,7 +33,7 @@ import {
   StopIcon,
   WandIcon,
 } from '../../layout/icons.tsx';
-import { type ComposerControlSpec, ComposerLayoutEditor } from './ComposerLayoutEditor.tsx';
+import { type ComposerControlSpec, ComposerCustomizer } from './ComposerCustomizer.tsx';
 import { composerMaxHeight, rowCap } from './composerGrowth.ts';
 import { type SlashCommandHelp, slashCompletion } from './slashCommands.ts';
 import type { StreamSnapshot, StreamStore } from './state/streamStore.ts';
@@ -744,10 +744,11 @@ export function Composer({
 
       <div className="composer__tray" ref={trayRef}>
         {editing && layoutDraft && !busy ? (
-          <ComposerLayoutEditor
+          <ComposerCustomizer
             kind={kind}
             layout={layoutDraft}
             controls={catalog}
+            renderControl={renderControl}
             onChange={setLayoutDraft}
             onCancel={() => {
               setEditing(false);
