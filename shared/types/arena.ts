@@ -112,6 +112,25 @@ export interface ArenaSettings {
    * because it produces numbers you would trust.
    */
   holdBlindUntilComplete: boolean;
+  /**
+   * Contender id → the id its recorded rounds count under. Empty means nothing is merged.
+   *
+   * One LLM served by two providers is two entries in the pool — right for the bench, which
+   * runs physical endpoints, and wrong for the leaderboard, which would otherwise rank the
+   * same model against itself with two half-histories. Merging folds both into one row.
+   *
+   * A map on the settings rather than a `mergedInto` field on the `Contender`, because the
+   * merge has to outlive pool membership: removing the folded entry from the pool (which is
+   * exactly what you do once it has been merged) keeps its rounds, and a field on a row that
+   * no longer exists would silently split the history back in two. Rounds key on the id, so
+   * this keys on the id too — the same reasoning as `characterRatings`.
+   *
+   * Nothing is rewritten to record a merge: the rounds keep both contenders' ids and the
+   * rewrite happens on the way into a reader (`merges.ts`), so unmerging restores the split
+   * exactly and for free. Chains are followed to their root and a loop is broken
+   * deterministically, though the Pool only ever writes a direct link to an unmerged entry.
+   */
+  mergedContenders: Record<string, string>;
 }
 
 export const DEFAULT_ARENA: Readonly<ArenaSettings> = {
@@ -122,4 +141,5 @@ export const DEFAULT_ARENA: Readonly<ArenaSettings> = {
   personaId: null,
   columns: ARENA_MIN_COLUMNS,
   holdBlindUntilComplete: true,
+  mergedContenders: {},
 };

@@ -636,6 +636,54 @@ describe('arena settings', () => {
     expect(next.arena.contenders[0]?.connectionId).toBe('deleted-long-ago');
   });
 
+  test('the merge map keeps only genuine id → id links', () => {
+    const next = mergeSettings(base(), {
+      arena: {
+        mergedContenders: {
+          b: 'a',
+          self: 'self',
+          blank: '',
+          '': 'a',
+          numeric: 7,
+          nested: { id: 'a' },
+          ok: 'c',
+        },
+      },
+    } as never);
+
+    // Self-references are dropped: they are not merges, and they would make the Pool's
+    // "already merged" checks lie about an entry that fights as itself.
+    expect(next.arena.mergedContenders).toEqual({ b: 'a', ok: 'c' });
+  });
+
+  test('a merge target that is not in the pool is kept, not dropped', () => {
+    // Same terms as a contender on a deleted connection: unresolvable, not invalid. The
+    // rounds still name it, and the row you folded away is exactly the one you are likely
+    // to remove — so a kept link has to survive that, or the history splits silently.
+    const next = mergeSettings(base(), {
+      arena: { contenders: [{ id: 'b', name: 'B' }], mergedContenders: { b: 'a' } },
+    } as never);
+
+    expect(next.arena.mergedContenders).toEqual({ b: 'a' });
+  });
+
+  test('a null merge map does not wipe the links, and a real one replaces wholesale', () => {
+    const current = mergeSettings(base(), {
+      arena: { mergedContenders: { b: 'a', c: 'a' } },
+    } as never);
+
+    expect(
+      mergeSettings(current, { arena: { mergedContenders: null } } as never).arena.mergedContenders,
+    ).toEqual({ b: 'a', c: 'a' });
+
+    // The client always sends the whole map (it holds the loaded settings), so an unmerge
+    // is an honest object that omits the link — the `backgroundEffects` semantics.
+    expect(
+      mergeSettings(current, { arena: { mergedContenders: { c: 'a' } } } as never).arena
+        .mergedContenders,
+    ).toEqual({ c: 'a' });
+  });
+
   test('columns are clamped rather than rejected', () => {
     expect(mergeSettings(base(), { arena: { columns: 9 } } as never).arena.columns).toBe(4);
     expect(mergeSettings(base(), { arena: { columns: 1 } } as never).arena.columns).toBe(2);

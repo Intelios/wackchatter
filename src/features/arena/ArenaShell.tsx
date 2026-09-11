@@ -43,6 +43,7 @@ import { createArenaDisplay, PASSTHROUGH_DISPLAY } from './display.ts';
 import type { VerdictPreview } from './elo.ts';
 import { previewVerdict, replay } from './elo.ts';
 import { Leaderboard } from './Leaderboard.tsx';
+import { applyMerges, canonicalSide, drawable, withoutContender } from './merges.ts';
 import { PoolPanel } from './PoolPanel.tsx';
 import { drawRound, type RoundDraw } from './pairing.ts';
 import { buildScene, sceneSeedId } from './scene.ts';
@@ -195,6 +196,31 @@ export function ArenaShell({
     [connections, settings.contenders],
   );
 
+  /**
+   * The history as the boards read it: contenders merged into one identity folded together.
+   *
+   * Applied once here and handed down, rather than repeated inside each reader — `replay`,
+   * the bootstrap and `headToHead` all key on the id, so one rewrite at the door is what
+   * makes every one of them agree about a merge. See `merges.ts`.
+   */
+  const merged = useMemo(
+    () => applyMerges(rounds, settings.contenders, settings.mergedContenders),
+    [rounds, settings.contenders, settings.mergedContenders],
+  );
+
+  /**
+   * The entrants a blind draw may use.
+   *
+   * A folded contender is dropped: its rounds are already being counted under the identity
+   * that absorbed it, so drawing it too would let one model fight itself and hand the pair a
+   * round the leaderboard then discards. It stays usable in the bench, which runs physical
+   * endpoints and is where you would go to compare the two providers directly.
+   */
+  const eligible = useMemo(
+    () => eligibleContenders(resolved).filter((entry) => drawable(merged.canonical, entry.id)),
+    [merged.canonical, resolved],
+  );
+
   const persona = useMemo(
     () => personas.find((entry) => entry.id === settings.personaId) ?? null,
     [personas, settings.personaId],
@@ -208,7 +234,7 @@ export function ArenaShell({
    * no second calculation here, only a second reader. The Leaderboard still replays its own,
    * because it can be filtered to one card and that is a different question.
    */
-  const board = useMemo(() => replay(rounds, settings.contenders), [rounds, settings.contenders]);
+  const board = useMemo(() => replay(merged.rounds, merged.contenders), [merged]);
 
   /**
    * Preferred corner colours, by pool order.
@@ -393,21 +419,21 @@ export function ArenaShell({
 
   const blindReason = useMemo(() => {
     if (setupReason) return setupReason;
-    if (eligibleContenders(resolved).length < 2) {
+    if (eligible.length < 2) {
       return 'At least two contenders must be enabled for the blind draw.';
     }
     if (drawableCards.length === 0) return 'No cards to draw from. Add some in Pool.';
     if (settings.probes.length === 0) return 'No probes to ask. Add one in Pool.';
     return null;
-  }, [drawableCards.length, resolved, settings.probes.length, setupReason]);
+  }, [drawableCards.length, eligible.length, settings.probes.length, setupReason]);
 
   const nextRound = useCallback(() => {
     if (blindReason || pendingRun || blindRun.busy) return;
     const next = drawRound({
-      contenders: eligibleContenders(resolved),
+      contenders: eligible,
       cards: drawableCards,
       probes: settings.probes,
-      rounds,
+      rounds: merged.rounds,
       seed: crypto.randomUUID(),
     });
     if (!next) return;
@@ -424,10 +450,10 @@ export function ArenaShell({
     blindReason,
     blindRun.busy,
     drawableCards,
+    eligible,
+    merged.rounds,
     pendingRun,
     requestRun,
-    resolved,
-    rounds,
     settings.probes,
   ]);
 
@@ -464,10 +490,28 @@ export function ArenaShell({
       // Revealed immediately. The decision is already made, and making someone wait on a
       // local round-trip to learn who wrote what would be theatre.
       setRevealed(true);
-      // What the vote bought, from the same replay every other rating comes from. Computed
-      // against the history as it stands *before* the POST, which is exactly the history the
-      // recorded round will be appended to.
-      setPreview(previewVerdict(rounds, settings.contenders, record));
+      /*
+       * What the vote bought, from the same replay every other rating comes from. Computed
+       * against the history as it stands *before* the POST, which is exactly the history the
+       * recorded round will be appended to.
+       *
+       * The preview folds through the merge map, so the deltas read against the board the
+       * user is actually looking at. The round itself is recorded with the raw ids — the
+       * merge is a lens on history, and a round has to name the endpoint that served it.
+       */
+      const sided = {
+        ...record,
+        left: canonicalSide(merged.canonical, record.left),
+        right: canonicalSide(merged.canonical, record.right),
+      };
+      // Both sides one identity: the board discards this round, so quoting a delta for it
+      // would promise a number that never appears. Only reachable if a merge landed between
+      // drawing the round and voting on it.
+      setPreview(
+        sided.left.contenderId === sided.right.contenderId
+          ? null
+          : previewVerdict(merged.rounds, merged.contenders, sided),
+      );
       setSessionVerdicts((current) => [...current, verdict]);
       setRecording(true);
       setRecordError(null);
@@ -481,7 +525,7 @@ export function ArenaShell({
         })
         .finally(() => setRecording(false));
     },
-    [blindRun.state.runs, refreshRounds, rounds, settings.contenders],
+    [blindRun.state.runs, merged, refreshRounds],
   );
 
   const clearHistory = useCallback(() => {
@@ -493,9 +537,18 @@ export function ArenaShell({
 
   const purgeContender = useCallback(
     (contenderId: string) => {
-      if (settings.contenders.some((entry) => entry.id === contenderId)) {
+      const inPool = settings.contenders.some((entry) => entry.id === contenderId);
+      const wasMerged =
+        contenderId in settings.mergedContenders ||
+        Object.values(settings.mergedContenders).includes(contenderId);
+
+      if (inPool || wasMerged) {
         onSettingsChange({
           contenders: settings.contenders.filter((entry) => entry.id !== contenderId),
+          // The rounds are about to be erased, so a link that pointed here — or one this
+          // entry owned — has nothing left to fold and would label everyone under it with a
+          // bare uuid. Losing the link with the rounds is the whole of the cleanup.
+          mergedContenders: withoutContender(settings.mergedContenders, contenderId),
         });
       }
       void arenaApi
@@ -503,7 +556,7 @@ export function ArenaShell({
         .then(() => refreshRounds())
         .catch((err) => setRecordError((err as Error).message));
     },
-    [onSettingsChange, refreshRounds, settings.contenders],
+    [onSettingsChange, refreshRounds, settings.contenders, settings.mergedContenders],
   );
 
   // --- rendering ------------------------------------------------------------
@@ -608,6 +661,7 @@ export function ArenaShell({
             onRun={startBench}
             blockedReason={setupReason}
             rows={board.rows}
+            canonical={merged.canonical}
             preferredSlots={preferredSlots}
             wide={wide}
             onWideChange={setWide}
@@ -638,6 +692,7 @@ export function ArenaShell({
           <Leaderboard
             rounds={rounds}
             contenders={settings.contenders}
+            merged={settings.mergedContenders}
             characters={characters}
             loading={roundsLoading}
             preferredSlots={preferredSlots}
@@ -659,6 +714,7 @@ export function ArenaShell({
             preset={preset}
             rounds={rounds}
             rows={board.rows}
+            merged={merged}
             colours={poolColours}
             hiddenTags={hiddenTags}
             onClearHistory={clearHistory}

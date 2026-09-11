@@ -715,6 +715,26 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
 - Ratings under `PROVISIONAL_ROUNDS` rank **below** established ones however high the
   number goes.
 - **Only blind rounds are scored.** The open Arena writes nothing.
+- **A merge is a lens on history, never an edit to it.** One LLM behind two providers is two
+  contenders — right for the bench, which runs physical endpoints, and wrong for the board,
+  which would otherwise rank the same weights against itself. `ArenaSettings.mergedContenders`
+  (contender id → the id it counts under) is a **map on the settings, not a field on the
+  `Contender`**, so the fold survives removing the merged row from the pool — which is the
+  natural thing to do once it is merged, and a field on a row that no longer exists would
+  split the history back in two. Nothing is rewritten: `applyMerges` folds both sides' ids on
+  the way into a reader, so `replay`, `ratingIntervals`, `headToHead` and `viewSeries` need
+  no merge logic and cannot disagree about one, and unmerging restores the split exactly and
+  for free. Self-references are dropped on read; a target that is no longer in the pool is
+  **kept** (unresolvable, not invalid), which is what lets a fold outlive its own pool row.
+  A round that collapses to a self-pair — two providers of one model that fought *each
+  other* before the merge — is **excluded from every merged reader and counted aloud** (the
+  Pool's History note); it is recorded evidence, and a model cannot be compared with itself.
+  The fold's own rules: a **folded contender is never drawn** by the blind round
+  (`drawable`), or the pair would spend two paid generations on a round the board discards —
+  but the bench still offers it, since that is where two providers are compared on purpose.
+  Purging a contender clears the links it owns and the ones pointing at it. Every place a
+  record is displayed resolves through the map (`rowFor` in Pool and Bench), or a folded
+  entry would report "no blind rounds yet" while its rounds sit on the board.
 - **The blind is a real blind.** While masked, nothing identifying reaches the DOM — no
   name, model, provider, reasoning text or timings, and by default no streaming (token
   cadence identifies a model as surely as a label). `hold` withholds a *settled* reply

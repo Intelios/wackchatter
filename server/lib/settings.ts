@@ -536,6 +536,7 @@ function normalizeArena(value: unknown): ArenaSettings {
       ? Math.min(ARENA_MAX_COLUMNS, Math.max(ARENA_MIN_COLUMNS, Math.round(columns)))
       : DEFAULT_ARENA.columns,
     holdBlindUntilComplete: value.holdBlindUntilComplete !== false,
+    mergedContenders: normalizeMergedContenders(value.mergedContenders),
   };
 }
 
@@ -583,6 +584,27 @@ function normalizeBackgroundEffects(value: unknown): Record<string, string> {
   for (const [background, candidate] of Object.entries(value)) {
     if (!background || typeof candidate !== 'string' || !candidate) continue;
     entries.push([background, candidate]);
+  }
+  return Object.fromEntries(entries);
+}
+
+/**
+ * Coerce the contender merge map. String→string, self-references dropped: an entry pointing
+ * at itself is not a merge and would only make the Pool's own "already merged" checks lie.
+ *
+ * A target id that is not in the pool is deliberately KEPT, on the same terms as a contender
+ * whose connection was deleted — it is unresolvable, not invalid. The rounds still name it,
+ * and the pool row that was folded away is exactly the one you are likely to remove; the
+ * `merges.ts` reader treats a missing target as "not merged" for display, so a kept link is
+ * inert rather than wrong, and re-adding the target restores the merge untouched.
+ */
+function normalizeMergedContenders(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+
+  const entries: Array<[string, string]> = [];
+  for (const [id, target] of Object.entries(value)) {
+    if (!id || typeof target !== 'string' || !target || target === id) continue;
+    entries.push([id, target]);
   }
   return Object.fromEntries(entries);
 }
@@ -829,9 +851,10 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
         )
       : normalizeCoCreator(current.coCreator, current.connections),
     // Field-wise like coCreator, and for the same reason — but note the three array
-    // sub-fields are guarded on `Array.isArray` rather than merely spread: `normalizeArena`
-    // turns a non-array into an empty one, so `{"arena": {"contenders": null}}` from a
-    // stale tab would otherwise wipe a pool whose ratings history it cannot restore.
+    // sub-fields are guarded on `Array.isArray` rather than merely spread, and the merge map
+    // on `isRecord` the way `characterRatings` is: `normalizeArena` turns a non-array into an
+    // empty one, so `{"arena": {"contenders": null}}` from a stale tab would otherwise wipe a
+    // pool whose ratings history it cannot restore.
     arena: patch.arena
       ? normalizeArena({
           ...current.arena,
@@ -843,6 +866,12 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
             ? patch.arena.cardPool
             : current.arena.cardPool,
           probes: Array.isArray(patch.arena.probes) ? patch.arena.probes : current.arena.probes,
+          // The client sends the whole map (it holds the loaded settings), so a real object
+          // replaces wholesale — the `backgroundEffects` semantics — while a `null` keeps it.
+          mergedContenders:
+            isRecord(patch.arena.mergedContenders) || patch.arena.mergedContenders === undefined
+              ? (patch.arena.mergedContenders ?? current.arena.mergedContenders)
+              : current.arena.mergedContenders,
         })
       : current.arena,
     dialogueColors: patch.dialogueColors

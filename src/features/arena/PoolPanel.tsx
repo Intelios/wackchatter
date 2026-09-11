@@ -44,10 +44,13 @@ import { personaDisplayName } from '../persona/personaRoster.ts';
 import { CardPicker } from './CardPicker.tsx';
 import { CueField } from './CueField.tsx';
 import type { ResolvedContender } from './contenders.ts';
+import { contenderLabel } from './contenders.ts';
 import { ExampleCuePicker } from './ExampleCuePicker.tsx';
 import type { LeaderboardRow } from './elo.ts';
 import { PROVISIONAL_ROUNDS } from './elo.ts';
+import { MergePicker } from './MergePicker.tsx';
 import { headToHead, unplayedPairings } from './matchups.ts';
+import { canonicalId, drawable, type MergedView, type MergeMap } from './merges.ts';
 import { colourOf } from './series.ts';
 
 interface PoolPanelProps {
@@ -63,6 +66,8 @@ interface PoolPanelProps {
   preset: Preset | null;
   rounds: readonly ArenaRound[];
   rows: readonly LeaderboardRow[];
+  /** The history as the boards read it, with merges folded — for the coverage strip. */
+  merged: MergedView;
   colours: ReadonlyMap<string, string>;
   hiddenTags: readonly string[];
   onClearHistory: () => void;
@@ -75,11 +80,34 @@ interface EntrantProps {
   row: LeaderboardRow | null;
   connections: readonly Connection[];
   models: ProviderModel[];
+  /** The whole pool, for the merge picker's target list and its naming. */
+  pool: readonly ResolvedContender[];
+  merged: MergeMap;
+  /** The contender this one's rounds are folded under, resolved, or null when standalone. */
+  mergedInto: ResolvedContender | null;
+  /** Contenders folded *into* this one, for the chip. Empty unless it is a merge root. */
+  mergedFrom: readonly ResolvedContender[];
+  onMerge: (targetId: string) => void;
+  onUnmerge: () => void;
   onPatch: (patch: Partial<Contender>) => void;
   onRemove: () => void;
 }
 
-function Entrant({ resolved, colour, row, connections, models, onPatch, onRemove }: EntrantProps) {
+function Entrant({
+  resolved,
+  colour,
+  row,
+  connections,
+  models,
+  pool,
+  merged,
+  mergedInto,
+  mergedFrom,
+  onMerge,
+  onUnmerge,
+  onPatch,
+  onRemove,
+}: EntrantProps) {
   const { contender, unavailableReason } = resolved;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: contender.id,
@@ -91,6 +119,7 @@ function Entrant({ resolved, colour, row, connections, models, onPatch, onRemove
       className="arena-entrant"
       data-unavailable={unavailableReason !== null}
       data-dragging={isDragging}
+      data-merged={mergedInto !== null}
       style={
         {
           '--wc-corner': colour,
@@ -119,10 +148,21 @@ function Entrant({ resolved, colour, row, connections, models, onPatch, onRemove
           onChange={(event) => onPatch({ name: event.target.value })}
         />
 
-        <label className="arena-entrant__enabled">
+        <label
+          className="arena-entrant__enabled"
+          title={
+            mergedInto
+              ? `${contenderLabel(mergedInto.contender, mergedInto.connection)} fights for both in the blind draw.`
+              : undefined
+          }
+        >
           <input
             type="checkbox"
             checked={contender.enabled}
+            // A folded entry cannot be drawn: its rounds already count under the identity
+            // that absorbed it, so drawing both would pay for a round the board discards.
+            // The bench still offers it — that is where the two providers are compared.
+            disabled={mergedInto !== null}
             onChange={(event) => onPatch({ enabled: event.target.checked })}
           />
           <span>In draw</span>
@@ -161,6 +201,24 @@ function Entrant({ resolved, colour, row, connections, models, onPatch, onRemove
         <p className="arena-entrant__warn">⚠ {unavailableReason} Its recorded rounds are kept.</p>
       ) : null}
 
+      {mergedInto ? (
+        <p className="arena-entrant__folded">
+          Counted under{' '}
+          <strong>{contenderLabel(mergedInto.contender, mergedInto.connection)}</strong> — one
+          rating over both.{' '}
+          <button type="button" className="arena-entrant__unmerge" onClick={onUnmerge}>
+            Split apart
+          </button>
+        </p>
+      ) : null}
+
+      {mergedFrom.length > 0 ? (
+        <p className="arena-entrant__foldin">
+          Includes{' '}
+          {mergedFrom.map((entry) => contenderLabel(entry.contender, entry.connection)).join(', ')}.
+        </p>
+      ) : null}
+
       <div className="arena-entrant__record">
         {row && row.rounds + row.rejected > 0 ? (
           <>
@@ -184,7 +242,12 @@ function Entrant({ resolved, colour, row, connections, models, onPatch, onRemove
         ) : (
           <span className="arena-entrant__unrated">No blind rounds yet</span>
         )}
+      </div>
 
+      <div className="arena-entrant__actions">
+        {mergedInto ? null : (
+          <MergePicker source={contender} resolved={pool} merged={merged} onMerge={onMerge} />
+        )}
         <button
           type="button"
           className="wc-button wc-button--ghost wc-button--danger arena-entrant__remove"
@@ -211,6 +274,7 @@ export function PoolPanel({
   preset,
   rounds,
   rows,
+  merged,
   colours,
   hiddenTags,
   onClearHistory,
@@ -316,6 +380,35 @@ export function PoolPanel({
     [onSettingsChange, settings.contenders],
   );
 
+  /**
+   * Fold one contender's rounds under another.
+   *
+   * Written as an id → id map rather than a field on the entry, so the fold outlives removing
+   * the merged entry from the pool — which is the natural thing to do once it is merged, and
+   * would otherwise silently split the history back in two. See `ArenaSettings`.
+   */
+  const mergeInto = useCallback(
+    (sourceId: string, targetId: string) => {
+      onSettingsChange({
+        mergedContenders: { ...settings.mergedContenders, [sourceId]: targetId },
+      });
+    },
+    [onSettingsChange, settings.mergedContenders],
+  );
+
+  /** Split a contender back out. Exact and free: no round was ever rewritten. */
+  const unmerge = useCallback(
+    (sourceId: string) => {
+      const next: Record<string, string> = {};
+      for (const [from, to] of Object.entries(settings.mergedContenders)) {
+        if (from === sourceId) continue;
+        next[from] = to;
+      }
+      onSettingsChange({ mergedContenders: next });
+    },
+    [onSettingsChange, settings.mergedContenders],
+  );
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -369,15 +462,30 @@ export function PoolPanel({
 
   const everyCard = settings.cardPool.length === 0;
 
+  /**
+   * The record shown on a contender's row.
+   *
+   * Resolved through the merge map, so a folded entry reports the merged model's record
+   * rather than "no blind rounds yet". Its own rounds are still its own — they are just
+   * counted under the identity that absorbed them, and showing a separate number here would
+   * be the second, disagreeing copy the no-ratings-table rule exists to prevent.
+   */
   const rowFor = useCallback(
-    (id: string) => rows.find((entry) => entry.contenderId === id) ?? null,
-    [rows],
+    (id: string) =>
+      rows.find((entry) => entry.contenderId === canonicalId(merged.canonical, id)) ?? null,
+    [merged.canonical, rows],
   );
 
   const retiredRows = useMemo(() => {
     const activeIds = new Set(settings.contenders.map((c) => c.id));
-    return rows.filter((r) => !activeIds.has(r.contenderId) && r.rounds + r.rejected > 0);
-  }, [rows, settings.contenders]);
+    // Rows are keyed by the merged identity, so a contender folded into another has no row
+    // of its own — and must not be reported as retired for having "lost" one. Membership is
+    // judged by the id it actually appears under.
+    return rows.filter(
+      (r) =>
+        !activeIds.has(canonicalId(merged.canonical, r.contenderId)) && r.rounds + r.rejected > 0,
+    );
+  }, [merged.canonical, rows, settings.contenders]);
 
   const playCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -401,17 +509,26 @@ export function PoolPanel({
    * Two generations a round, the reply cap both sides share, and how many pairings have
    * never met — the number that actually answers "how much longer until this means
    * something", since least-played pairing brings it down steadily rather than at random.
+   *
+   * Counted over the *merged* identities, because that is what the draw does: a folded
+   * contender does not get pulled, so including it here would promise coverage the draw
+   * will never deliver.
    */
   const eligibleIds = useMemo(
     () =>
       resolved
-        .filter((entry) => entry.contender.enabled && entry.connection !== null)
+        .filter(
+          (entry) =>
+            entry.contender.enabled &&
+            entry.connection !== null &&
+            drawable(merged.canonical, entry.contender.id),
+        )
         .map((entry) => entry.contender.id),
-    [resolved],
+    [merged.canonical, resolved],
   );
   const unplayed = useMemo(
-    () => unplayedPairings(headToHead(rounds), eligibleIds),
-    [eligibleIds, rounds],
+    () => unplayedPairings(headToHead(merged.rounds), eligibleIds),
+    [eligibleIds, merged.rounds],
   );
   const stillProvisional = rows.filter(
     (row) => row.provisional && eligibleIds.includes(row.contenderId),
@@ -450,18 +567,41 @@ export function PoolPanel({
               strategy={rectSortingStrategy}
             >
               <ul className="arena-roster">
-                {resolved.map((entry) => (
-                  <Entrant
-                    key={entry.contender.id}
-                    resolved={entry}
-                    colour={colourOf(colours, entry.contender.id)}
-                    row={rowFor(entry.contender.id)}
-                    connections={connections}
-                    models={models[entry.contender.connectionId] ?? []}
-                    onPatch={(patch) => patchContender(entry.contender.id, patch)}
-                    onRemove={() => removeContender(entry.contender.id)}
-                  />
-                ))}
+                {resolved.map((entry) => {
+                  const root = canonicalId(merged.canonical, entry.contender.id);
+                  const targetId = settings.mergedContenders[entry.contender.id];
+                  const mergedInto =
+                    resolved.find((item) => item.contender.id === targetId) ?? null;
+                  // Only the identity that absorbed the others lists them. A folded row
+                  // reports where it went instead ("Counted under …"), and naming its root's
+                  // members on both rows would read as two models each containing the other.
+                  const mergedFrom =
+                    mergedInto === null
+                      ? resolved.filter(
+                          (item) =>
+                            item.contender.id !== entry.contender.id &&
+                            canonicalId(merged.canonical, item.contender.id) === root,
+                        )
+                      : [];
+                  return (
+                    <Entrant
+                      key={entry.contender.id}
+                      resolved={entry}
+                      colour={colourOf(colours, entry.contender.id)}
+                      row={rowFor(entry.contender.id)}
+                      connections={connections}
+                      models={models[entry.contender.connectionId] ?? []}
+                      pool={resolved}
+                      merged={settings.mergedContenders}
+                      mergedInto={mergedInto}
+                      mergedFrom={mergedFrom}
+                      onMerge={(targetId) => mergeInto(entry.contender.id, targetId)}
+                      onUnmerge={() => unmerge(entry.contender.id)}
+                      onPatch={(patch) => patchContender(entry.contender.id, patch)}
+                      onRemove={() => removeContender(entry.contender.id)}
+                    />
+                  );
+                })}
               </ul>
             </SortableContext>
           </DndContext>
@@ -765,6 +905,14 @@ export function PoolPanel({
             ? 'No blind rounds recorded yet.'
             : `${rounds.length} blind ${rounds.length === 1 ? 'round' : 'rounds'} recorded. The leaderboard is replayed from them, so clearing this resets every rating.`}
         </p>
+        {merged.collapsed > 0 ? (
+          <p className="wc-hint">
+            {merged.collapsed} of them ran two providers of one merged model against each other. The
+            round is still recorded, but the leaderboard leaves it out — a model cannot be compared
+            with itself, and scoring it either way would move a rating on evidence that contains no
+            comparison.
+          </p>
+        ) : null}
         <button
           type="button"
           className="wc-button wc-button--ghost wc-button--danger"

@@ -2856,6 +2856,12 @@
   white-space: nowrap;
 }
 
+/* Folded into another contender: it cannot be drawn, and the row above says why. */
+.arena-entrant__enabled:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .arena-entrant__where {
   display: grid;
   gap: var(--wc-space-2);
@@ -2899,8 +2905,139 @@
   color: var(--wc-text-faint);
 }
 
+.arena-entrant__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding-top: var(--wc-space-1);
+}
+
 .arena-entrant__remove {
   margin-left: auto;
+}
+
+/*
+ * A merged entry: dimmed, because its rounds are counted somewhere else now and the row is
+ * no longer an independent contender. The fold statement below carries the reason.
+ */
+.arena-entrant[data-merged="true"] {
+  background: var(--wc-surface);
+}
+
+.arena-entrant[data-merged="true"]::before {
+  opacity: 0.4;
+}
+
+.arena-entrant__folded,
+.arena-entrant__foldin {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+}
+
+.arena-entrant__folded strong {
+  color: var(--wc-text);
+  font-weight: 600;
+}
+
+/* Unmerging is not a destructive action — nothing was rewritten — so it is a plain link. */
+.arena-entrant__unmerge {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--wc-accent);
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.arena-entrant__unmerge:hover,
+.arena-entrant__unmerge:focus-visible {
+  color: var(--wc-accent-hover);
+}
+
+.arena-entrant__foldin {
+  color: var(--wc-text-faint);
+}
+
+/* ------------------------------------------------------------- merge picker */
+
+.arena-mergepicker__popup {
+  /* Wide enough that the hint reads on one line and a contender name is not ellipsised to
+     nothing — the popup has no other content to establish a width for it. */
+  min-width: min(260px, calc(100vw - var(--wc-space-6)));
+  max-width: min(360px, calc(100vw - var(--wc-space-6)));
+}
+
+.arena-mergepicker__hint,
+.arena-mergepicker__note {
+  margin: 0;
+  padding: 0 var(--wc-space-3);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.arena-mergepicker__hint {
+  padding-top: var(--wc-space-2);
+  padding-bottom: var(--wc-space-1);
+}
+
+.arena-mergepicker__note {
+  padding-top: var(--wc-space-2);
+  padding-bottom: var(--wc-space-2);
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.arena-mergepicker__list {
+  display: grid;
+  gap: 2px;
+}
+
+.arena-mergepicker__option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.arena-mergepicker__option:hover,
+.arena-mergepicker__option:focus-visible {
+  background: var(--wc-surface-hover);
+}
+
+.arena-mergepicker__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- merged rows, board */
+
+/*
+ * Which two endpoints are behind a merged rating. Quiet — it is a footnote to the name, not
+ * a second name — but present, because a board that silently folded two rows would read as
+ * one of them having vanished.
+ */
+.arena-ranks__merged {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--wc-text-faint);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* -------------------------------------------------------- retired contenders */

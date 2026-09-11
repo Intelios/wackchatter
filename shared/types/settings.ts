@@ -530,6 +530,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     contenders: [],
     cardPool: [],
     probes: [],
+    mergedContenders: {},
   },
   dialogueColors: {
     enabled: DEFAULT_DIALOGUE_COLORS.enabled,
