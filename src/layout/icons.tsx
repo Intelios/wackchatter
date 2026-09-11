@@ -432,6 +432,20 @@ export function ImpersonateIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Previously on… — a screen with a play triangle: the story so far, played back rather
+ * than read.
+ */
+export function RecapIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="5" width="18" height="12" rx="2" />
+      <path d="m10 8.5 4 2.5-4 2.5Z" />
+      <path d="M8 20h8" />
+    </svg>
+  );
+}
+
 /** Quick commands — a bolt. */
 export function BoltIcon({ className }: IconProps) {
   return (

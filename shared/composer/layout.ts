@@ -35,6 +35,7 @@ export const SINGLE_COMPOSER_CONTROLS = [
   'nexus',
   'guides',
   'impersonate',
+  'recap',
   'guide',
   'guidedSwipe',
   'send',

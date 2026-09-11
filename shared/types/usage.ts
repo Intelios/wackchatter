@@ -23,7 +23,9 @@ export type UsageFeature =
   | 'arena'
   | 'persona'
   /** A message written as the user for the composer. Billed like any other generation. */
-  | 'impersonate';
+  | 'impersonate'
+  /** A "Previously on…" recap. Read in an overlay; produces no swipe. */
+  | 'recap';
 
 export const USAGE_FEATURES: readonly UsageFeature[] = [
   'groupDirector',
@@ -35,6 +37,7 @@ export const USAGE_FEATURES: readonly UsageFeature[] = [
   'arena',
   'persona',
   'impersonate',
+  'recap',
 ];
 
 export function isUsageFeature(value: unknown): value is UsageFeature {

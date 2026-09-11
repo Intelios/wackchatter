@@ -266,6 +266,29 @@ byte-identically. The quirks are load-bearing and each has a named test.
   it bills like a chat generation but produces no swipe. Auto memory-extraction is **not**
   armed: an impersonation adds no turn to extract.
 
+**"Previously on" recap** (`shared/chat/recap.ts`, `src/features/chat/RecapOverlay.tsx`)
+- **The request is the transcript and nothing else.** `buildRecapRequest` emits exactly
+  `[system instruction, user transcript]`, and `useChat.recap` sends it with
+  `createDefaultPreset()` — no preset prompts, card, persona, lore, memory or macros. That
+  is why it bypasses `assemblePrompt`, exactly as memory extraction and persona derivation
+  do; the instruction is a fixed constant, not a preset field, so a preset swap cannot
+  reach it. The transcript is `Name: text` lines over the visible turns
+  (`!is_system && mes.trim()`); on overflow the **oldest** turns drop first and the
+  omission is disclosed to the model, because a recap that lost its ending has nothing to
+  recap. Names come from the transcript, never the card.
+- It borrows impersonation's reducer contract instead of adding a `GenMode`:
+  `gen/started` with `mode: 'impersonate'`, so `streamingId` stays null and every settle
+  path clears the status without touching a message, the revision or the save queue. The
+  mode is the mechanism, not the meaning — usage is tagged `recap`, and the text goes to
+  `RecapOverlay` through `handlers.onText`, never the composer.
+- One generation at a time, like a reply: busy-gated at both doors (the burger's Inspect
+  family and the optional `recap` composer control), stopped by the composer's existing
+  Stop, and a stopped run keeps whatever partial text arrived. Nothing is persisted;
+  re-running is clicking the button again. The overlay streams through `StreamingText`
+  gated on the store's `active` flag, and swaps to `Markdown` when it settles.
+- `recap` is a **single-chat** composer control only (`SINGLE_COMPOSER_CONTROLS`). Group
+  chats keep their own summary tooling and deliberately do not get one.
+
 **Story memory** (`shared/nexus/`, `src/features/nexus/`, `src/features/summary/`)
 - **One per-chat slot:** `ChatMetadata.memoryMode` is `classic` (Summary), `nexus`, or `off`.
   App settings provide the default for new chats only. Migration stamps existing chats once

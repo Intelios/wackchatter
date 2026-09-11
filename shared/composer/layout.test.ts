@@ -54,6 +54,32 @@ describe('composer layouts', () => {
     expect(next.rows[0]!.right.some((item) => item.id === 'impersonate')).toBe(false);
   });
 
+  /*
+   * `recap` is a single-chat control only — the group tray has its own memory tooling and
+   * groups deliberately do not get a transcript recap. The id being accepted for one kind
+   * and rejected for the other is the whole contract, since the same shared registry is
+   * what the server's settings normalisation reads.
+   */
+  test('recap is a valid single control, not a group one, and survives a save', () => {
+    const withRecap = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    withRecap.rows[0]!.left.push({ id: 'recap', display: 'label' });
+    const normalized = normalizeComposerLayout(withRecap, 'single', DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    expect(findComposerItem(normalized, 'recap')).toEqual({
+      rowId: 'single-main',
+      area: 'left',
+      index: 4,
+      item: { id: 'recap', display: 'label' },
+    });
+
+    const group = structuredClone(DEFAULT_GROUP_COMPOSER_LAYOUT);
+    group.rows[0]!.left.push({ id: 'recap', display: 'icon' });
+    expect(
+      normalizeComposerLayout(group, 'group', DEFAULT_GROUP_COMPOSER_LAYOUT).rows[0]!.left.map(
+        (item) => item.id,
+      ),
+    ).toEqual(['persona', 'menu', 'quickCommands', 'nexus']);
+  });
+
   test('required controls cannot be removed', () => {
     expect(removeComposerItem(DEFAULT_SINGLE_COMPOSER_LAYOUT, 'send')).toEqual(
       DEFAULT_SINGLE_COMPOSER_LAYOUT,

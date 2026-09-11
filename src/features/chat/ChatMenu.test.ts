@@ -42,6 +42,7 @@ function spies() {
     importChat: () => calls.push('importChat'),
     openCard: () => calls.push('openCard'),
     openBranchTree: () => calls.push('openBranchTree'),
+    openRecap: () => calls.push('openRecap'),
   };
   return { calls, panels, actions };
 }
@@ -99,6 +100,7 @@ describe('buildChatMenu', () => {
       'Guided swipe',
       'Character card…',
       'Branch timeline…',
+      'Previously on…',
       'Customise composer…',
       ...JUMPS,
       'Close chat',
@@ -277,6 +279,9 @@ describe('buildChatMenu', () => {
 
     item(entries, 'Branch timeline…').onSelect();
     expect(calls[calls.length - 1]).toBe('openBranchTree');
+
+    item(entries, 'Previously on…').onSelect();
+    expect(calls[calls.length - 1]).toBe('openRecap');
   });
 
   /*
@@ -304,6 +309,35 @@ describe('buildChatMenu', () => {
     const entry = item(build({ chatId: null }), 'Branch timeline…');
     expect(entry.disabled).toBe(true);
     expect(entry.disabledReason).toBe('No chat is open.');
+  });
+
+  /*
+   * The recap is a provider generation, so it waits for the current reply; it is not a
+   * reader like its neighbours in the family, so `busy` is a real reason to disable it
+   * rather than something it can ignore.
+   */
+  test('Previously on needs a non-empty chat and waits for the current reply', () => {
+    expect(item(build(), 'Previously on…').disabled).toBeFalsy();
+
+    const empty = item(build({ messageCount: 0, lastMessageId: null }), 'Previously on…');
+    expect(empty.disabled).toBe(true);
+    expect(empty.disabledReason).toBe('This chat has no messages yet.');
+
+    const noChat = item(build({ chatId: null }), 'Previously on…');
+    expect(noChat.disabled).toBe(true);
+    expect(noChat.disabledReason).toBe('No chat is open.');
+
+    const busyEntry = item(build({ busy: true }), 'Previously on…');
+    expect(busyEntry.disabled).toBe(true);
+    expect(busyEntry.disabledReason).toBe('Wait for the current reply to finish.');
+
+    const summarizing = item(build({ summaryRunning: true }), 'Previously on…');
+    expect(summarizing.disabled).toBe(true);
+    expect(summarizing.disabledReason).toBe('Cancel or finish the current summary first.');
+
+    const extracting = item(build({ memoryRunning: true }), 'Previously on…');
+    expect(extracting.disabled).toBe(true);
+    expect(extracting.disabledReason).toBe('Cancel or finish the current memory extraction first.');
   });
 
   test('Rename chat needs an open chat but not a message', () => {

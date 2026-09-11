@@ -35,6 +35,7 @@ import {
   MessagesIcon,
   NexusIcon,
   PlusIcon,
+  RecapIcon,
   RefreshIcon,
   UserIcon,
 } from '../../layout/icons.tsx';
@@ -52,6 +53,7 @@ import { ComposerImportControl, ComposerRenameControl } from './ComposerUtilityC
 import { GuidesPopover } from './GuidesPopover.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { QuickCommands } from './QuickCommands.tsx';
+import { type RecapMeta, RecapOverlay, type RecapViewState } from './RecapOverlay.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
 import { createCardStore } from './state/cardStore.ts';
 import {
@@ -518,6 +520,51 @@ export function ChatView({
   const openBranchTree = useCallback(() => setBranchTreeOpen(true), []);
   const closeBranchTree = useCallback(() => setBranchTreeOpen(false), []);
 
+  // --- "Previously on…" ------------------------------------------------------
+
+  /*
+   * The recap has two doors (the burger and the composer tray) and one destination. The
+   * text is held here rather than in `useChat` because it belongs to a reading surface,
+   * not to the chat: `chat.recap` deliberately keeps it out of the transcript and the save
+   * queue, so this component is its only home for as long as the overlay is up.
+   *
+   * `status` starts `active` because opening the overlay is what starts the run — there is
+   * no visible empty state. A failed run keeps its own reason; a stopped one settles as
+   * `done` with whatever text arrived, and the overlay says so if nothing did.
+   */
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [recapView, setRecapView] = useState<RecapViewState>({
+    status: 'active',
+    text: '',
+    error: null,
+  });
+  const [recapMeta, setRecapMeta] = useState<RecapMeta | null>(null);
+
+  const runRecap = useCallback(() => {
+    setRecapOpen(true);
+    setRecapMeta(null);
+    setRecapView({ status: 'active', text: '', error: null });
+    void chat.recap({
+      onText: (text) => setRecapView((prev) => ({ ...prev, text })),
+      onMeta: (meta) => setRecapMeta(meta),
+      onError: (error) => setRecapView({ status: 'failed', text: '', error }),
+      // Partial text is a result, not a failure: only a run that failed outright keeps its
+      // `failed` face. Everything else settles as done, empty or not.
+      onDone: () =>
+        setRecapView((prev) => (prev.status === 'failed' ? prev : { ...prev, status: 'done' })),
+    });
+  }, [chat]);
+  const closeRecap = useCallback(() => setRecapOpen(false), []);
+
+  // A recap belongs to the chat it was written for. Closing on a switch stops the previous
+  // story's text sitting over a different transcript while its run is still settling.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on chat identity on purpose — the body only calls setters
+  useEffect(() => {
+    setRecapOpen(false);
+    setRecapView({ status: 'done', text: '', error: null });
+    setRecapMeta(null);
+  }, [state.chatId]);
+
   /**
    * Impersonate. The model writes the user's next message; the draft steers it (exactly
    * like a guided reply) and the result replaces the draft, so it is editable before it is
@@ -871,6 +918,17 @@ export function ChatView({
       {/* Same takeover, for the branch family. Unmounts with the chat it is centred on. */}
       {branchTreeOpen && state.chatId ? <BranchTree chat={chat} onClose={closeBranchTree} /> : null}
 
+      {/* The recap reads over the column, and survives a panel opening like the others. */}
+      {recapOpen ? (
+        <RecapOverlay
+          view={recapView}
+          meta={recapMeta}
+          stream={stream}
+          title={state.title}
+          onClose={closeRecap}
+        />
+      ) : null}
+
       <div className="chat-view__scroll" ref={scrollRef}>
         <div className="chat-view__content" ref={contentRef}>
           {state.messages.length === 0 ? (
@@ -1062,6 +1120,7 @@ export function ChatView({
                   onImportChat={onImportChat}
                   onOpenCard={openCardReader}
                   onOpenBranchTree={openBranchTree}
+                  onOpenRecap={runRecap}
                   onCustomiseComposer={() => composerRef.current?.customise()}
                   onComposerAction={(id) => composerRef.current?.activate(id)}
                   collapsedMenuGroups={collapsedMenuGroups}
@@ -1106,6 +1165,22 @@ export function ChatView({
                   disabled={!state.chatId}
                 />
               ),
+            },
+            {
+              id: 'recap',
+              label: 'Previously on',
+              render: (display) =>
+                controlButton(
+                  'Previously on',
+                  <RecapIcon />,
+                  display,
+                  runRecap,
+                  generationBlocked
+                    ? 'Wait for the current operation to finish.'
+                    : state.messages.length
+                      ? undefined
+                      : 'This chat has no messages yet.',
+                ),
             },
             {
               id: 'newChat',

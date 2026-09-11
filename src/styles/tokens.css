@@ -106,6 +106,43 @@
   --wc-code-bg: rgb(0 0 0 / 0.45);
   --wc-code-color: #51a0de;
 
+  /*
+   * The "Previously on…" recap — a title card on a screen.
+   *
+   * The second deliberate exception to the achromatic rule (the code chip above is the
+   * first), scoped the same way: one surface reads these, and that surface is a *screen*
+   * rather than chrome. A recap is a piece of television, and a neutral grey panel with
+   * prose in it is not. Warm sepia rather than the app's --wc-accent, because the accent
+   * means "active control" everywhere else and a title card is not a button.
+   *
+   * The screen stays opaque, like --wc-surface-popup and for the same reason: this is a
+   * wall of prose to read, not a pane for the wallpaper to show through. It is also
+   * deliberately not redefined in the glass block above.
+   *
+   * These are read by RecapOverlay.css alone, so a future restyle of the app's chrome can
+   * delete the whole run without touching anything else.
+   */
+  --wc-recap-screen: #0b0a09;
+  --wc-recap-ink: #f4ead8;
+  --wc-recap-muted: #a3947a;
+  --wc-recap-accent: #e8a34a;
+  /* The projector's spill from the top of the screen, and the rule under the title. */
+  --wc-recap-accent-soft: rgb(232 163 74 / 0.14);
+  --wc-recap-rule: rgb(232 163 74 / 0.4);
+  /* Both textures are near-invisible on purpose: they sell the screen, they never compete
+     with the prose. The vignette is the topmost layer and darkens the corners. */
+  --wc-recap-scanline: rgb(255 255 255 / 0.025);
+  --wc-recap-vignette: rgb(0 0 0 / 0.55);
+  /* An inset on the screen — the advisory strip and a code fence — and the close button's
+     hover, which cannot use --wc-surface-hover or it lands as a cool grey on a warm black. */
+  --wc-recap-well: rgb(0 0 0 / 0.32);
+  --wc-recap-hover: rgb(255 255 255 / 0.07);
+  --wc-recap-tracking: 0.26em;
+  /* Unhurried: the turn-on settles, then the sweep keeps time while the recap records. */
+  --wc-recap-duration: 520ms;
+  --wc-recap-sweep-duration: 2600ms;
+  --wc-recap-pulse-duration: 1400ms;
+
   /* Status */
   --wc-danger: #e5484d;
   --wc-danger-subtle: rgba(229, 72, 77, 0.12);
@@ -279,6 +316,9 @@
     --wc-duration: 0ms;
     --wc-duration-fast: 0ms;
     --wc-duration-view: 0ms;
+    --wc-recap-duration: 0ms;
+    --wc-recap-sweep-duration: 0ms;
+    --wc-recap-pulse-duration: 0ms;
   }
 }
 

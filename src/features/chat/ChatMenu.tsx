@@ -25,6 +25,7 @@ import {
   MessagesIcon,
   NexusIcon,
   PlusIcon,
+  RecapIcon,
   RefreshIcon,
   UploadIcon,
   UserIcon,
@@ -74,6 +75,8 @@ export interface ChatMenuActions {
   importChat: () => void;
   openCard: () => void;
   openBranchTree: () => void;
+  /** Opens the "Previously on…" overlay and starts the recap. */
+  openRecap: () => void;
   customiseComposer?: () => void;
   composerAction?: (id: 'impersonate' | 'guide' | 'guidedSwipe') => void;
 }
@@ -252,6 +255,28 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       disabledReason: 'No chat is open.',
       onSelect: actions.openBranchTree,
     },
+
+    /*
+     * A recap is a provider generation, so unlike the two reads above it waits for the
+     * reply like its neighbours in the Reply family would — one generation at a time is
+     * the reducer's rule, and there is only one Stop. It still belongs here rather than
+     * beside Regenerate: it writes nothing, and what it produces is a way of reading the
+     * story you already have.
+     *
+     * It does need a transcript to read, so no chat or an empty one disables it for the
+     * same reason Save checkpoint does.
+     */
+    {
+      label: 'Previously on…',
+      icon: <RecapIcon />,
+      disabled: generationBlocked || empty || !chatId,
+      disabledReason: generationBlocked
+        ? generationBlockedReason
+        : !chatId
+          ? 'No chat is open.'
+          : EMPTY,
+      onSelect: actions.openRecap,
+    },
     {
       label: 'Customise composer…',
       icon: <EditIcon />,
@@ -292,6 +317,8 @@ interface ChatMenuProps {
   onOpenCard: () => void;
   /** Opens the branch timeline — reads only, like the card reader. */
   onOpenBranchTree: () => void;
+  /** Opens the recap overlay and starts the generation behind it. */
+  onOpenRecap: () => void;
   onCustomiseComposer: () => void;
   onComposerAction: (id: 'impersonate' | 'guide' | 'guidedSwipe') => void;
   showLabel?: boolean;
@@ -321,6 +348,7 @@ export function ChatMenu({
   onImportChat,
   onOpenCard,
   onOpenBranchTree,
+  onOpenRecap,
   onCustomiseComposer,
   onComposerAction,
   showLabel,
@@ -360,6 +388,7 @@ export function ChatMenu({
       closeChat: onCloseChat,
       openCard: onOpenCard,
       openBranchTree: onOpenBranchTree,
+      openRecap: onOpenRecap,
       customiseComposer: onCustomiseComposer,
       composerAction: onComposerAction,
       openNexus: () => chat.nexus.show(),

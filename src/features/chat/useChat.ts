@@ -10,6 +10,7 @@ import { type NexusController, useNexus } from '../nexus/useNexus.ts';
  */
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import { buildRecapRequest } from '@shared/chat/recap.ts';
 import {
   buildExtractionMessages,
   memoryBacklog,
@@ -24,7 +25,7 @@ import {
 } from '@shared/memory/memories.ts';
 import type { MemoryRecall } from '@shared/memory/source.ts';
 import { assemblePrompt, DEFAULT_USER_NAME, sanitizeName } from '@shared/prompt/assemble.ts';
-import { DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
+import { createDefaultPreset, DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
@@ -153,6 +154,25 @@ export interface UseChatOptions {
   regexScripts?: readonly RegexScript[];
 }
 
+/**
+ * Where a "Previously on…" recap's text goes.
+ *
+ * The recap has no transcript home, so — like `impersonate`'s `onText` — the result is
+ * handed back through callbacks instead of a reducer dispatch. `onDone` fires once for the
+ * run that was started, after the reducer has settled, so the overlay can leave its
+ * streaming state on every outcome including a stop that produced nothing.
+ */
+export interface RecapHandlers {
+  /** The settled text, or the partial text of a stopped or failed attempt. */
+  onText?: (text: string) => void;
+  /** How much of a long chat had to be dropped to fit the declared context. */
+  onMeta?: (meta: { dropped: number; total: number }) => void;
+  /** The run produced nothing. The reason, for the overlay. */
+  onError?: (message: string) => void;
+  /** The run is over, whatever the outcome. */
+  onDone?: () => void;
+}
+
 export interface UseChat {
   nexus: NexusController;
   memoryMode: MemoryMode;
@@ -202,6 +222,15 @@ export interface UseChat {
    * is optional steering, injected exactly like a guided reply's guidance.
    */
   impersonate(instruction?: string, onText?: (text: string) => void): Promise<void>;
+  /**
+   * Write a "Previously on…" recap of the visible transcript.
+   *
+   * The request is built from the transcript alone — no preset prompts, card, persona,
+   * lore or macros — and nothing reaches the transcript. Busy-gated against replies and
+   * summaries, and stopped by the same `abort()`. `handlers.onText` receives the settled
+   * text, or the partial text of a stopped attempt; the overlay owns where it is shown.
+   */
+  recap(handlers?: RecapHandlers): Promise<void>;
   abort(): void;
 
   summaryStatus: SummaryRunStatus;
@@ -1309,6 +1338,202 @@ export function useChat(options: UseChatOptions): UseChat {
     [character, preset, connection, generate, resolveDraft],
   );
 
+  /**
+   * "Previously on…": a recap of the visible transcript, read in an overlay.
+   *
+   * Deliberately not routed through `generate`. That path exists to assemble a *chat turn*
+   * — preset prompts, card, persona, lore, memory, macros — and the recap's whole premise
+   * is that none of it is in the request. So the prompt is built by hand in
+   * `shared/chat/recap.ts` and the body assembled from a default preset: the same shape as
+   * memory extraction and persona derivation, which bypass assembly for the same reason.
+   *
+   * It does borrow impersonation's reducer contract — `gen/started` with no transcript
+   * home, so `streamingId` stays null and every settle path clears the status without
+   * touching a message. The mode is the mechanism, not the meaning: the result goes to the
+   * overlay through `handlers.onText` and the usage log tags it `recap`, so nothing else
+   * has to know a second home-less mode exists.
+   */
+  const recap = useCallback(
+    async (handlers?: RecapHandlers) => {
+      const current = stateRef.current;
+      // Every bail still reports back: the caller has already opened its overlay in the
+      // `active` shape, and a refusal with no `onDone` would leave it waiting forever.
+      const refuse = (reason: string) => {
+        handlers?.onError?.(reason);
+        handlers?.onDone?.();
+      };
+
+      if (current.status !== 'idle' || summaryAbortRef.current || memoryAbortRef.current) {
+        refuse('Wait for the current reply to finish.');
+        return;
+      }
+      if (!current.chatId || !character || !preset || !connection) {
+        refuse('Open a chat with a connection before asking for a recap.');
+        return;
+      }
+
+      // Snapshot the connection like `generate` does: settings can change while the prompt
+      // is being built, and a body and its server-side key lookup must agree on one.
+      const requestConnection: Connection = { ...connection };
+
+      const startAction: ChatAction = {
+        type: 'gen/started',
+        mode: 'impersonate',
+        newId: crypto.randomUUID(),
+        name: character.name,
+      };
+      const started = chatReducer(current, startAction);
+      if (started.status === 'idle') {
+        refuse('Wait for the current reply to finish.');
+        return;
+      }
+      dispatch(startAction);
+
+      const maxTokens = preset.openai_max_tokens ?? 300;
+      const built = buildRecapRequest({
+        messages: toChatMessages(started),
+        counter: countTokens,
+        maxContext: preset.openai_max_context ?? 4095,
+        maxTokens,
+      });
+      handlers?.onMeta?.({ dropped: built.dropped, total: built.total });
+
+      // Nothing visible to recap, or an instruction that cannot fit the declared context.
+      // Both are settled with a reason rather than sent: a paid request whose only possible
+      // answer is "there is nothing here" is worse than saying so.
+      if (!built.total) {
+        refuse('This chat has nothing to recap yet.');
+        return;
+      }
+      if (!built.fits) {
+        refuse(
+          "The recap does not fit in the selected connection's context. Increase the context size in the preset.",
+        );
+        return;
+      }
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const generationId = crypto.randomUUID();
+      const ownsGeneration = () =>
+        abortRef.current === controller && stateRef.current.chatId === started.chatId;
+      const ensureGenerationActive = () => {
+        if (!ownsGeneration()) return false;
+        if (controller.signal.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+        return true;
+      };
+
+      let streamStarted = false;
+      let text = '';
+      const streamed = preset.stream_openai !== false;
+      // Default samplers, with only the declared context and the streaming preference
+      // carried over. Temperature, seed and `n` belong to writing a reply; a recap is a
+      // reading, and `completions: 1` below forces a single take regardless of `preset.n`.
+      const recapPreset: Preset = {
+        ...createDefaultPreset(),
+        openai_max_context: preset.openai_max_context ?? 4095,
+        openai_max_tokens: maxTokens,
+        stream_openai: streamed,
+      };
+
+      try {
+        const body = buildRequestBody({
+          messages: built.messages,
+          preset: recapPreset,
+          connection: requestConnection,
+          stream: streamed,
+          completions: 1,
+        });
+
+        stream.begin('', streamed);
+        streamStarted = true;
+
+        const final = await streamGenerate(
+          body,
+          controller.signal,
+          {
+            onFirstToken: () => {
+              if (ownsGeneration() && !controller.signal.aborted) {
+                dispatch({ type: 'gen/streaming' });
+              }
+            },
+            onTick: (streamState) => {
+              if (!ownsGeneration() || controller.signal.aborted) return;
+              text = streamState.content;
+              stream.set(streamState.content, streamState.reasoning);
+            },
+          },
+          '',
+          requestConnection.id,
+          {
+            feature: 'recap',
+            generationId,
+            ...(started.chatId ? { sessionId: started.chatId } : {}),
+            ...(characterId ? { character: characterId } : {}),
+            countText: countTokens.countText,
+          },
+        );
+
+        if (!ensureGenerationActive()) return;
+        stream.end();
+        streamStarted = false;
+
+        // The same partial-text rule as impersonation: anything the model produced is the
+        // user's result. Nothing produced means `onError` is not raised either — an empty
+        // completion settles as "came back empty" in the overlay, not as a failure.
+        if (final.content.trim()) handlers?.onText?.(final.content);
+
+        // The extra is carried for the reducer's contract, not persisted: settle returns
+        // early on the null `streamingId` and writes nothing.
+        dispatch({
+          type: 'gen/finished',
+          text: final.content,
+          finishReason: final.finishReason,
+          extra: {
+            model: final.model ?? requestConnection.model,
+            connection_id: requestConnection.id,
+            ...(final.reasoning ? { reasoning: final.reasoning } : {}),
+          },
+        });
+      } catch (error) {
+        if (ownsGeneration()) {
+          stream.end();
+          streamStarted = false;
+        }
+        // A stopped recap keeps whatever arrived, exactly as a stopped impersonation does.
+        if (ownsGeneration() && text.trim()) handlers?.onText?.(text);
+        if (ownsGeneration() && controller.signal.aborted) {
+          dispatch({ type: 'gen/aborted', text, generationId });
+        } else if (ownsGeneration()) {
+          const message = (error as Error).message;
+          dispatch({
+            type: 'gen/failed',
+            generationId,
+            message,
+            text,
+          });
+          // Partial text is the user's result and speaks for itself; with nothing on
+          // screen the failure is the only thing there is to show.
+          if (!text.trim()) handlers?.onError?.(message);
+        }
+      } finally {
+        // Captured before the ref is cleared: `ownsGeneration` reads that ref, so asking it
+        // afterwards would always say no and the overlay would never leave its stream.
+        const stillOwns = abortRef.current === controller;
+        if (stillOwns) {
+          if (streamStarted) stream.end();
+          abortRef.current = null;
+        }
+        // Only the run that still owns the hooks reports back. A stale run left behind by
+        // navigation must not settle the overlay the new chat is showing.
+        if (stillOwns && stateRef.current.chatId === started.chatId) handlers?.onDone?.();
+      }
+    },
+    [character, characterId, preset, connection, countTokens, stream],
+  );
+
   const abort = useCallback(() => {
     abortRef.current?.abort();
     // Stop the shared display immediately. A pending throttled frame must not remain visible
@@ -2125,6 +2350,7 @@ export function useChat(options: UseChatOptions): UseChat {
     guidedRespond,
     guidedSwipe,
     impersonate,
+    recap,
     abort,
     summaryStatus,
     summaryPending,
