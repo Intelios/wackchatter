@@ -7,7 +7,8 @@
  * `useLorebooks` handles the same problem.
  */
 
-import { useRef, useState } from 'react';
+import type { MemoryMode } from '@shared/types/settings.ts';
+import { useMemo, useRef, useState } from 'react';
 import type { MenuEntry } from '../../components/Menu.tsx';
 import { Menu } from '../../components/Menu.tsx';
 import {
@@ -34,6 +35,7 @@ import { chatApi } from '../../lib/api.ts';
 import { downloadUrl } from '../../lib/download.ts';
 import { RenameChatPopover } from './RenameChatPopover.tsx';
 import type { UseChat } from './useChat.ts';
+import './ChatMenu.css';
 
 export interface ChatMenuState {
   /** A generation is in flight. */
@@ -42,6 +44,14 @@ export interface ChatMenuState {
   summaryRunning?: boolean;
   /** A blocking memory extraction prevents only provider-generating actions. */
   memoryRunning?: boolean;
+  /**
+   * The chat's effective story-memory mode — the resolved one `useChat` exposes, where a
+   * legacy `memories` already reads as `nexus`. The Memory family, header and entry
+   * together, exists only for a Nexus chat: a Summary or Off chat has no explorer behind
+   * the entry, and a lone "Memory" eyebrow over nothing would be worse than the entry
+   * simply not being there.
+   */
+  memoryMode: MemoryMode;
   /** The open chat — the branch timeline has nothing to centre on without one. */
   chatId: string | null;
   messageCount: number;
@@ -78,6 +88,7 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
     busy,
     summaryRunning = false,
     memoryRunning = false,
+    memoryMode,
     chatId,
     messageCount,
     lastMessageId,
@@ -91,9 +102,24 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       ? MEMORY_BUSY
       : BUSY;
 
+  /*
+   * Entries are laid out as labelled families rather than one flat column: everything that
+   * works on the chat document sits together, everything that produces the next message
+   * sits together, and everything that only opens a view sits together. The headers are
+   * what the menu tints each run with, so the grouping is not decoration — it is the only
+   * thing that tells grouping and gating apart at a glance.
+   *
+   * The order is the reading order of a turn: set the chat up, get a reply, then go look at
+   * something. `Close chat` stays outside every family, after a separator, so its danger
+   * styling is never overpainted by a family tint.
+   */
   return [
-    ...(actions.openNexus
+    // The one family gated on what the chat *is* rather than what it is doing: the Nexus is
+    // the memory model in use, or there is nothing to explore. The header leaves with the
+    // entry — an eyebrow over an absent family is a phantom section.
+    ...(actions.openNexus && memoryMode === 'nexus'
       ? [
+          { kind: 'header' as const, key: 'memory', label: 'Memory', hue: 1 as const },
           {
             label: 'Memory Nexus',
             icon: <NexusIcon />,
@@ -103,6 +129,9 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
           },
         ]
       : []),
+
+    { kind: 'header', key: 'chat', label: 'Chat', hue: 3 },
+
     {
       label: 'New chat',
       icon: <PlusIcon />,
@@ -117,27 +146,6 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       disabledReason: busy ? BUSY : EMPTY,
       // Guarded above, but a checkpoint of nothing is worse than a no-op.
       onSelect: () => lastMessageId && actions.checkpoint(lastMessageId),
-    },
-
-    { kind: 'separator' },
-
-    {
-      label: 'Regenerate',
-      icon: <RefreshIcon />,
-      disabled: generationBlocked || empty,
-      disabledReason: generationBlocked ? generationBlockedReason : EMPTY,
-      onSelect: actions.regenerate,
-    },
-    {
-      label: 'Continue',
-      icon: <ContinueIcon />,
-      disabled: generationBlocked || empty || lastIsUser,
-      disabledReason: generationBlocked
-        ? generationBlockedReason
-        : empty
-          ? EMPTY
-          : 'The last message is yours.',
-      onSelect: actions.continueLast,
     },
     {
       // A rename is a real mutation — a revision bump and a save — so it waits for the
@@ -168,7 +176,55 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       onSelect: actions.importChat,
     },
 
-    { kind: 'separator' },
+    { kind: 'header', key: 'reply', label: 'Reply', hue: 4 },
+
+    {
+      label: 'Regenerate',
+      icon: <RefreshIcon />,
+      disabled: generationBlocked || empty,
+      disabledReason: generationBlocked ? generationBlockedReason : EMPTY,
+      onSelect: actions.regenerate,
+    },
+    {
+      label: 'Continue',
+      icon: <ContinueIcon />,
+      disabled: generationBlocked || empty || lastIsUser,
+      disabledReason: generationBlocked
+        ? generationBlockedReason
+        : empty
+          ? EMPTY
+          : 'The last message is yours.',
+      onSelect: actions.continueLast,
+    },
+    {
+      label: 'Impersonate',
+      icon: <ImpersonateIcon />,
+      disabled: generationBlocked,
+      disabledReason: generationBlocked ? generationBlockedReason : undefined,
+      onSelect: () => actions.composerAction?.('impersonate'),
+    },
+    {
+      label: 'Guide next reply',
+      icon: <WandIcon />,
+      disabled: generationBlocked,
+      disabledReason: generationBlocked ? generationBlockedReason : undefined,
+      onSelect: () => actions.composerAction?.('guide'),
+    },
+    {
+      label: 'Guided swipe',
+      icon: <GuidedSwipeIcon />,
+      disabled: generationBlocked || empty || lastIsUser,
+      disabledReason: generationBlocked
+        ? generationBlockedReason
+        : empty
+          ? EMPTY
+          : lastIsUser
+            ? 'The last message is yours.'
+            : undefined,
+      onSelect: () => actions.composerAction?.('guidedSwipe'),
+    },
+
+    { kind: 'header', key: 'inspect', label: 'Inspect', hue: 2 },
 
     /*
      * Deliberately not gated on `busy`, unlike everything above it.
@@ -202,33 +258,6 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
       disabled: busy,
       disabledReason: BUSY,
       onSelect: actions.customiseComposer ?? (() => {}),
-    },
-    {
-      label: 'Impersonate',
-      icon: <ImpersonateIcon />,
-      disabled: generationBlocked,
-      disabledReason: generationBlocked ? generationBlockedReason : undefined,
-      onSelect: () => actions.composerAction?.('impersonate'),
-    },
-    {
-      label: 'Guide next reply',
-      icon: <WandIcon />,
-      disabled: generationBlocked,
-      disabledReason: generationBlocked ? generationBlockedReason : undefined,
-      onSelect: () => actions.composerAction?.('guide'),
-    },
-    {
-      label: 'Guided swipe',
-      icon: <GuidedSwipeIcon />,
-      disabled: generationBlocked || empty || lastIsUser,
-      disabledReason: generationBlocked
-        ? generationBlockedReason
-        : empty
-          ? EMPTY
-          : lastIsUser
-            ? 'The last message is yours.'
-            : undefined,
-      onSelect: () => actions.composerAction?.('guidedSwipe'),
     },
 
     // Jumps, not actions — these open the panel where the tool already lives, rather than
@@ -266,6 +295,23 @@ interface ChatMenuProps {
   onCustomiseComposer: () => void;
   onComposerAction: (id: 'impersonate' | 'guide' | 'guidedSwipe') => void;
   showLabel?: boolean;
+  /**
+   * Families the user has collapsed, by header key. Read from app settings rather than kept
+   * here: the popup unmounts on close, so local state would forget the choice every time.
+   */
+  collapsedMenuGroups?: readonly string[];
+  /**
+   * Written back to settings with the next collapsed set, the way collapsed character
+   * folders are — the caller's list plus or minus the clicked key.
+   */
+  onCollapsedMenuGroupsChange?: (next: string[]) => void;
+}
+
+/** Add or remove a family key. Pure, so the toggle rule is pinned without a DOM. */
+export function toggleGroupKey(collapsed: readonly string[], key: string): string[] {
+  return collapsed.includes(key)
+    ? collapsed.filter((candidate) => candidate !== key)
+    : [...collapsed, key];
 }
 
 export function ChatMenu({
@@ -278,6 +324,8 @@ export function ChatMenu({
   onCustomiseComposer,
   onComposerAction,
   showLabel,
+  collapsedMenuGroups,
+  onCollapsedMenuGroupsChange,
 }: ChatMenuProps) {
   const { messages } = chat.state;
   const last = messages[messages.length - 1] ?? null;
@@ -285,12 +333,18 @@ export function ChatMenu({
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const collapsedKeys = useMemo(() => new Set(collapsedMenuGroups ?? []), [collapsedMenuGroups]);
+  // Headers stay inert unless there is somewhere to record the choice.
+  const handleToggleGroup = onCollapsedMenuGroupsChange
+    ? (key: string) => onCollapsedMenuGroupsChange(toggleGroupKey(collapsedMenuGroups ?? [], key))
+    : undefined;
 
   const entries = buildChatMenu(
     {
       busy: chat.busy,
       summaryRunning: chat.summaryStatus.running,
       memoryRunning: chat.memoryStatus.running,
+      memoryMode: chat.memoryMode,
       chatId: chat.state.chatId,
       messageCount: messages.length,
       lastMessageId: last?.id ?? null,
@@ -326,6 +380,9 @@ export function ChatMenu({
         entries={entries}
         showLabel={showLabel}
         triggerRef={menuTriggerRef}
+        popupClassName="chat-menu-pop"
+        collapsedKeys={collapsedKeys}
+        onToggleGroup={handleToggleGroup}
       />
       <RenameChatPopover
         open={renameOpen}

@@ -116,6 +116,13 @@ interface ChatViewProps {
    * dialogue colours are: an unrelated settings change must not re-render the transcript.
    */
   regexScripts: readonly RegexScript[];
+  /**
+   * Chat-menu families the user has collapsed, by header key, and the write-back. Passed
+   * straight through to the burger: the menu popup unmounts on close, so the choice has to
+   * be owned above it to survive.
+   */
+  collapsedMenuGroups: readonly string[];
+  onCollapsedMenuGroupsChange: (next: string[]) => void;
 }
 
 interface TranscriptWindowState {
@@ -149,6 +156,8 @@ export function ChatView({
   onComposerLayoutSave,
   onImportChat,
   regexScripts,
+  collapsedMenuGroups,
+  onCollapsedMenuGroupsChange,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1055,6 +1064,8 @@ export function ChatView({
                   onOpenBranchTree={openBranchTree}
                   onCustomiseComposer={() => composerRef.current?.customise()}
                   onComposerAction={(id) => composerRef.current?.activate(id)}
+                  collapsedMenuGroups={collapsedMenuGroups}
+                  onCollapsedMenuGroupsChange={onCollapsedMenuGroupsChange}
                 />
               ),
             },

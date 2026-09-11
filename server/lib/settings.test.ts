@@ -56,6 +56,22 @@ function base(): AppSettings {
 }
 
 describe('mergeSettings', () => {
+  test('collapsed chat-menu families round-trip and default to open', () => {
+    // The collapsed set, not the expanded one: an empty default means a family added by a
+    // later build arrives visible rather than pre-collapsed.
+    expect(DEFAULT_SETTINGS.collapsedChatMenuGroups).toEqual([]);
+
+    const next = mergeSettings(base(), { collapsedChatMenuGroups: ['inspect', 'reply'] });
+    expect(next.collapsedChatMenuGroups).toEqual(['inspect', 'reply']);
+
+    // An unrelated patch leaves the list alone rather than resetting it — the spread carries
+    // it, exactly like collapsedCharacterFolders.
+    expect(mergeSettings(next, { usageLog: true }).collapsedChatMenuGroups).toEqual([
+      'inspect',
+      'reply',
+    ]);
+  });
+
   test('composer layouts update independently and preserve required controls', () => {
     const single = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
     single.rows[0]!.centre.push(single.rows[0]!.right.splice(0, 1)[0]!);

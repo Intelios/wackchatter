@@ -140,6 +140,17 @@ export interface AppSettings {
    */
   collapsedCharacterFolders: string[];
   /**
+   * Chat-menu families the user has collapsed in the burger menu, by the header's key
+   * (`chat`, `reply`, …).
+   *
+   * The same shape and the same reasoning as `collapsedCharacterFolders`: the collapsed set
+   * is stored rather than the expanded one, so the default is open and a family added by a
+   * later build cannot arrive already hidden. A flat array, so `mergeSettings`'s spread
+   * carries it and no field-wise branch is needed. Nothing keys on it, so a stale entry for
+   * a family that has been renamed away is inert.
+   */
+  collapsedChatMenuGroups: string[];
+  /**
    * User-defined quick commands: named snippets inserted into the composer from the chat
    * menu. App-wide, and never bundled — an empty list is the default, users add their own.
    * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
@@ -529,6 +540,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterListSort: 'name',
   hiddenTags: [],
   collapsedCharacterFolders: [],
+  collapsedChatMenuGroups: [],
   quickCommands: [],
   composerLayouts: structuredClone(DEFAULT_COMPOSER_LAYOUTS),
   regexScripts: [],

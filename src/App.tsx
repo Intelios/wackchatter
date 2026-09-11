@@ -462,6 +462,16 @@ export function App() {
     [settings?.collapsedCharacterFolders],
   );
 
+  // Which chat-menu families are shut. The same collapsed-set shape and the same round-trip
+  // as the folders above: a family added by a later build must not arrive already hidden.
+  const collapsedChatMenuGroups = useMemo(
+    () =>
+      Array.isArray(settings?.collapsedChatMenuGroups)
+        ? (settings.collapsedChatMenuGroups as string[])
+        : [],
+    [settings?.collapsedChatMenuGroups],
+  );
+
   // Global books are opt-in per book; nothing is global until the user says so. Stored in
   // settings so the choice survives a reload.
   const globalBookIds = useMemo(
@@ -1638,6 +1648,10 @@ export function App() {
             }}
             onImportChat={(file) => void handleImportChat(file)}
             regexScripts={regexScripts}
+            collapsedMenuGroups={collapsedChatMenuGroups}
+            onCollapsedMenuGroupsChange={(next) =>
+              void patchSettings({ collapsedChatMenuGroups: next })
+            }
           />
         ) : (
           <StartScreen

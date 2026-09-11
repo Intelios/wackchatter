@@ -1,0 +1,78 @@
+/*
+ * The chat burger's own skin.
+ *
+ * Everything structural — row layout, the family eyebrow, the hue tinting — lives in
+ * components/Menu.css, driven by the `header` entries `buildChatMenu` emits. What is here is
+ * only what this one menu asks for on top: a roomier shell and the opening cascade. A menu
+ * that does not add `.chat-menu-pop` is untouched.
+ */
+
+.popover__popup.chat-menu-pop {
+  min-width: 238px;
+  padding: var(--wc-space-2);
+  border-radius: var(--wc-radius-lg);
+  /* A deeper drop than the shared popup shadow: this menu is tall and often over prose. */
+  box-shadow:
+    var(--wc-shadow),
+    0 14px 34px rgb(0 0 0 / 0.44);
+}
+
+/* Softer rows than the base menu, to match the larger shell. */
+.chat-menu-pop .menu__item {
+  border-radius: var(--wc-radius);
+  min-height: 34px;
+}
+
+/* A hair of separation between families, so each run reads as its own block. */
+.chat-menu-pop .menu__group + .menu__group {
+  margin-top: var(--wc-space-2);
+}
+
+/*
+ * The cascade. Rows rise one after another *within their family* — the ordinal `--i` is
+ * per-group, so re-opening a collapsed family replays the same quick reveal the initial
+ * open had, starting immediately rather than queued behind the families above it. The
+ * curve carries a whisper of overshoot so each row settles into its slot instead of gliding
+ * to a dead stop; the 16 ms step is capped, keeping the whole menu arrived in well under
+ * half a second. `backwards` is what holds a row at its `from` frame during its delay
+ * rather than flashing at full opacity first.
+ *
+ * The child combinators keep a flyout's rows out of it: they sit under the same popup in
+ * the DOM, but a flyout is not this cascade's to animate.
+ */
+.chat-menu-pop .menu__group > .menu__header,
+.chat-menu-pop .menu__group-inner > .menu__item,
+.chat-menu-pop .menu__group-inner > .menu__item-wrap > .menu__item {
+  animation: wc-menu-rise 200ms cubic-bezier(0.3, 1.3, 0.3, 1) backwards;
+  animation-delay: calc(min(var(--i, 0), 8) * 16ms);
+}
+
+/*
+ * The way out. A closing family's rows sink and fade while the body's grid track collapses
+ * over them (Menu.css); Menu unmounts them once its exit timer fires. Losing
+ * `data-collapsed` — re-expanding inside that window — switches the animation back to the
+ * rise, which restarts from invisible, so a fast toggle cannot flash fully-lit rows.
+ */
+.chat-menu-pop .menu__group[data-collapsed] .menu__item {
+  animation: wc-menu-fade-out 140ms ease forwards;
+}
+
+/*
+ * The rows' focus ring draws inward. The group body clips at its edges — the collapsing
+ * height needs `overflow: hidden` — so the usual outward ring would be cut down the sides;
+ * an inward one keeps the ring whole on the row itself.
+ */
+.chat-menu-pop .menu__item:focus-visible,
+.chat-menu-pop .menu__header--toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+/* A 0ms animation would still flash its `from` frame on mount. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-menu-pop .menu__group > .menu__header,
+  .chat-menu-pop .menu__group-inner > .menu__item,
+  .chat-menu-pop .menu__group-inner > .menu__item-wrap > .menu__item,
+  .chat-menu-pop .menu__group[data-collapsed] .menu__item {
+    animation: none;
+  }
+}

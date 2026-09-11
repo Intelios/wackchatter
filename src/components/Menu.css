@@ -117,6 +117,187 @@
   background: var(--wc-border);
 }
 
+/* --- Family groups -------------------------------------------------------- */
+
+/*
+ * A header-led run. The wrapper is a plain block, so a menu without headers lays out
+ * exactly as before — grouping is opt-in by putting a header in the entry list, and only
+ * the menu that does so gets the tint and the eyebrow.
+ */
+.menu__group[data-hue="1"] {
+  --menu-hue: var(--wc-series-1);
+}
+.menu__group[data-hue="2"] {
+  --menu-hue: var(--wc-series-2);
+}
+.menu__group[data-hue="3"] {
+  --menu-hue: var(--wc-series-3);
+}
+.menu__group[data-hue="4"] {
+  --menu-hue: var(--wc-series-4);
+}
+.menu__group[data-hue="5"] {
+  --menu-hue: var(--wc-series-5);
+}
+.menu__group[data-hue="6"] {
+  --menu-hue: var(--wc-series-6);
+}
+.menu__group[data-hue="7"] {
+  --menu-hue: var(--wc-series-7);
+}
+.menu__group[data-hue="8"] {
+  --menu-hue: var(--wc-series-8);
+}
+
+/*
+ * The family's collapsible body. The height animates on the grid track rather than a
+ * measured `max-height`: `0fr` → `1fr` needs no JS and no guessed pixel number, and the
+ * inner wrapper's `min-height: 0` is what lets the track shrink at all — a grid item's
+ * minimum is its content otherwise. `overflow: hidden` is the other half of the trick, and
+ * it cannot clip the submenu flyout: that is `position: fixed`, and no ancestor here
+ * carries the transform or filter that would make it a containing block.
+ *
+ * Structural for every menu — a group that never collapses simply sits at `1fr`.
+ */
+.menu__group-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--wc-duration) var(--wc-ease);
+}
+
+.menu__group[data-collapsed] .menu__group-body {
+  grid-template-rows: 0fr;
+}
+
+.menu__group-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * The family label: an eyebrow, not an action. It sits a little tighter to the row below it
+ * than to the row above, so the group reads as one unit.
+ */
+.menu__header {
+  padding: var(--wc-space-2) var(--wc-space-2) var(--wc-space-1);
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+  color: var(--wc-text-faint);
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+/* Tinted by its family, and it wakes up when the pointer is anywhere in the run. */
+.menu__group[data-hue] .menu__header {
+  color: var(--menu-hue);
+  opacity: 0.76;
+}
+
+.menu__group[data-hue]:hover .menu__header {
+  opacity: 1;
+}
+
+/*
+ * The toggle form. A real button, reset back to the eyebrow's own look — a button inherits
+ * neither type nor colour, and this is an eyebrow first. Only the chat menu's headers are
+ * toggles, so every other menu's eyebrows are untouched.
+ */
+.menu__header--toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--wc-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--wc-letter-spacing);
+  text-transform: uppercase;
+}
+
+/* The arrow: pointing right is closed, down is open — the tree-view convention. The turn
+   takes the app's overshoot curve (the Start screen's shake, the stat bars' grow), so the
+   chevron flicks rather than glides. */
+.menu__header-chevron {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  flex-shrink: 0;
+  color: var(--menu-hue, var(--wc-text-faint));
+  transform: rotate(90deg);
+  transition: transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.menu__group[data-collapsed] .menu__header-chevron {
+  transform: rotate(0deg);
+}
+
+/*
+ * The one pointer affordance the eyebrow needs: hovering the header itself is what tells a
+ * mouse user it is clickable, before they have tried it. Group hover brightens the hue; this
+ * adds the chevron's own lift so the control reads as a control.
+ */
+.menu__header--toggle:hover .menu__header-chevron {
+  opacity: 1;
+}
+
+/* The icon keeps the family colour at rest, dimmed rather than desaturated — mixing the hue
+   toward the faint text grey just produced another grey icon. `:not([data-danger])` so a
+   destructive row's own red is never over-tinted. */
+.menu__group[data-hue] .menu__item:not([data-danger]) .menu__icon {
+  color: var(--menu-hue);
+  opacity: 0.78;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+/*
+ * The hover wash. The tint rides on a background-image over the ordinary hover surface, so
+ * the background-color stays the shared token and a row with no family simply has no image
+ * layered. The `:not([data-danger])` keeps a destructive row's own red from being overpainted
+ * if it is ever placed inside a family.
+ */
+.menu__group[data-hue] .menu__item:not([data-danger]):hover:not(:disabled),
+.menu__group[data-hue] .menu__item:not([data-danger]):focus-visible {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--menu-hue) 16%, transparent),
+    color-mix(in srgb, var(--menu-hue) 16%, transparent)
+  );
+  box-shadow: inset 2px 0 0 var(--menu-hue);
+}
+
+.menu__group[data-hue] .menu__item:hover:not(:disabled) .menu__icon,
+.menu__group[data-hue] .menu__item:focus-visible .menu__icon {
+  color: var(--menu-hue);
+  opacity: 1;
+}
+
+/*
+ * The cascade a caller opts into by adding a class (`.chat-menu-pop`). The keyframes live
+ * here, beside the rest of the menu's motion, but nothing plays them by default — a menu
+ * that does not ask is unchanged. `--i` is the row's ordinal within its family, set by the
+ * renderer.
+ *
+ * The rise starts slightly further down than the pop-in's own 4px and adds a hair of scale,
+ * so a row reads as arriving rather than merely fading; the way out is its mirror — rows
+ * sink into the shrinking body rather than blinking off.
+ */
+@keyframes wc-menu-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
+@keyframes wc-menu-fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
 /* --- Submenu flyout ------------------------------------------------------- */
 
 /* Groups a submenu's trigger with its flyout, so closing the menu unmounts both. */
@@ -183,6 +364,12 @@
 @media (prefers-reduced-motion: reduce) {
   .menu__submenu-box {
     animation: none;
+  }
+  /* The collapse becomes an instant snap: the rows unmount on the same timer, which under
+     reduced motion simply reads as the group closing with no theatre. */
+  .menu__group-body,
+  .menu__header-chevron {
+    transition: none;
   }
 }
 
