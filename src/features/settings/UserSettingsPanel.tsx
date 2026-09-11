@@ -387,7 +387,8 @@ export function UserSettingsPanel({
           }}
           disabled={shutdownStatus !== ''}
         >
-          {shutdownStatus || (confirmShutdown ? 'Click again to shut down' : 'Shut down WackChatter')}
+          {shutdownStatus ||
+            (confirmShutdown ? 'Click again to shut down' : 'Shut down WackChatter')}
         </button>
       </Section>
     </div>

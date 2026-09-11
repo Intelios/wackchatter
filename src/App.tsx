@@ -782,7 +782,7 @@ export function App() {
       setEditing(editing);
       setRightPanel(options?.panel === undefined ? 'characters' : options.panel);
     },
-    [chat, selected],
+    [chat, groupChat.flushSaves, selected],
   );
 
   const handleSelect = useCallback(
@@ -800,7 +800,7 @@ export function App() {
       }
       void transitionToCharacter(avatar, { chatId, panel: null });
     },
-    [transitionToCharacter],
+    [openGroup, transitionToCharacter],
   );
 
   /**
@@ -891,7 +891,7 @@ export function App() {
         void refreshBackups();
       }
     },
-    [chat, selected, transitionToCharacter, refreshBackups],
+    [chat, openGroup, refreshBackups, selected, transitionToCharacter],
   );
 
   /** Empty one slot of the bin for good. */
@@ -989,7 +989,7 @@ export function App() {
       }
       void refresh();
     },
-    [chat, refresh, selected],
+    [chat, groupChat.flushSaves, refresh, selected],
   );
 
   const handleDeleted = useCallback(() => {
@@ -1040,7 +1040,7 @@ export function App() {
     // handoff the user has already left must not be re-opened by a later, unrelated entry.
     setStudioInitialAvatar(null);
     setView('studio');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   const exitStudio = useCallback(async () => {
     try {
@@ -1072,7 +1072,7 @@ export function App() {
     // one the user has already left behind must not seed a later, unrelated entry.
     setCocreatorSeedAvatar(null);
     setView('cocreator');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /**
    * The Studio's half of the handoff: leave for the Co-Creator, seeded on the open card.
@@ -1139,7 +1139,7 @@ export function App() {
       return;
     }
     setView('stats');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /** Read-only throughout, so there is nothing of its own to flush on the way out. */
   const exitStats = useCallback(() => {
@@ -1160,7 +1160,7 @@ export function App() {
       return;
     }
     setView('arena');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /*
    * Nothing of its own to flush either. The run log is session work, and a blind verdict is

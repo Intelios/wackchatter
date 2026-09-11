@@ -26,8 +26,7 @@ try {
 } catch (error) {
   // Connection refused means the server is already down — goal met.
   const code =
-    (error as { code?: string }).code ??
-    (error as { cause?: { code?: string } }).cause?.code;
+    (error as { code?: string }).code ?? (error as { cause?: { code?: string } }).cause?.code;
   if (code !== 'ECONNREFUSED') {
     console.error(`  Could not reach WackChatter on port ${port}:`, (error as Error).message);
     process.exit(1);

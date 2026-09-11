@@ -17,8 +17,10 @@
    * group row is exactly as tall as a one-on-one row and only slightly wider.
    */
   width: calc(
-    var(--wc-stack-faces) * var(--wc-avatar-sm) - (var(--wc-stack-faces) - 1) *
-      var(--wc-avatar-overlap)
+    var(--wc-stack-faces) *
+    var(--wc-avatar-sm) -
+    (var(--wc-stack-faces) - 1) *
+    var(--wc-avatar-overlap)
   );
   height: var(--wc-avatar-md);
   flex-shrink: 0;

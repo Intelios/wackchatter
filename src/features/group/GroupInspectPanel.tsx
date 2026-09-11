@@ -8,6 +8,7 @@ export function GroupInspectPanel({ chat }: { chat: GroupChatController }) {
   const [preview, setPreview] = useState<PromptInspection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: member and chat identity are the reset triggers
   useEffect(() => {
     setPreview(null);
     request.current++;

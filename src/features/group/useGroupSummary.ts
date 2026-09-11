@@ -42,6 +42,7 @@ export function useGroupSummary(
     [state.messages, state.jobs, state.metadata.summary],
   );
   const cancelSummary = useCallback(() => abort.current?.abort(), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: state.chatId is the abort trigger
   useEffect(() => {
     return () => abort.current?.abort();
   }, [state.chatId]);

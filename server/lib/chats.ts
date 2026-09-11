@@ -206,7 +206,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
      * carry public profiles and per-member overrides; none of that is a summary's business,
      * and shipping it would bloat every recents fetch with prose nobody reads there.
      */
-    const cast = row.groupMembers === null ? null : parseJson<GroupMember[] | null>(row.groupMembers, null);
+    const cast =
+      row.groupMembers === null ? null : parseJson<GroupMember[] | null>(row.groupMembers, null);
     const groupMembers = cast
       ?.map((member) => member?.characterId)
       .filter((id): id is string => typeof id === 'string');

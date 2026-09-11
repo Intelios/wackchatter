@@ -92,7 +92,7 @@ export function BranchTree({ chat, onClose }: BranchTreeProps) {
           message: error instanceof Error ? error.message : 'The chat list could not be loaded.',
         });
       });
-  }, [characterId]);
+  }, [characterId, chatId]);
 
   useEffect(() => {
     loadFamily();

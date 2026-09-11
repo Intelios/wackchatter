@@ -30,7 +30,7 @@ for (const name of files) {
 }
 await Bun.write(
   new URL('manifest.json', root),
-  JSON.stringify(
+  `${JSON.stringify(
     {
       model,
       revision: info.sha,
@@ -43,7 +43,7 @@ await Bun.write(
     },
     null,
     2,
-  ) + '\n',
+  )}\n`,
 );
 const license = await fetch(
   'https://raw.githubusercontent.com/FlagOpen/FlagEmbedding/master/LICENSE',

@@ -110,7 +110,7 @@ test('a ubiquitous protagonist does not activate every memory', () => {
   ).toHaveLength(0);
 });
 test('transcript passage excerpts follow their chunk and exclude hidden messages', () => {
-  const m = { ...messages[0]!, mes: 'a'.repeat(900) + 'the secret code' };
+  const m = { ...messages[0]!, mes: `${'a'.repeat(900)}the secret code` };
   const docs = transcriptDocuments([m, { ...messages[1]!, is_system: true }]);
   expect(docs).toHaveLength(2);
   expect(docs[1]!.evidence[0]!.excerpt).toEndWith('the secret code');
