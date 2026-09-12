@@ -1387,7 +1387,6 @@ export function useChat(options: UseChatOptions): UseChat {
         refuse('Wait for the current reply to finish.');
         return;
       }
-      dispatch(startAction);
 
       const maxTokens = preset.openai_max_tokens ?? 300;
       const built = buildRecapRequest({
@@ -1396,11 +1395,13 @@ export function useChat(options: UseChatOptions): UseChat {
         maxContext: preset.openai_max_context ?? 4095,
         maxTokens,
       });
-      handlers?.onMeta?.({ dropped: built.dropped, total: built.total });
 
       // Nothing visible to recap, or an instruction that cannot fit the declared context.
       // Both are settled with a reason rather than sent: a paid request whose only possible
-      // answer is "there is nothing here" is worse than saying so.
+      // answer is "there is nothing here" is worse than saying so. Decided before the
+      // `gen/started` dispatch — a refusal dispatches nothing, so it must not enter the
+      // connecting state first: nothing would settle it, and `abortRef` is armed only once
+      // the request is really sent, so Stop could not either.
       if (!built.total) {
         refuse('This chat has nothing to recap yet.');
         return;
@@ -1411,6 +1412,9 @@ export function useChat(options: UseChatOptions): UseChat {
         );
         return;
       }
+
+      dispatch(startAction);
+      handlers?.onMeta?.({ dropped: built.dropped, total: built.total });
 
       const controller = new AbortController();
       abortRef.current = controller;
