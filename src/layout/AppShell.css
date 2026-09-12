@@ -170,7 +170,7 @@
   padding: 0 var(--wc-space-4);
   border-bottom: 1px solid var(--wc-border);
   min-width: 0;
-  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
+  animation: wc-view-bar-enter var(--wc-duration-view) var(--wc-ease);
 }
 
 .shell__cluster {

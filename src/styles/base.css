@@ -237,13 +237,21 @@ select {
  */
 
 @keyframes wc-view-bar-enter {
-  from {
+  0% {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-100%);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   }
-  to {
+  25% {
+    opacity: 1;
+  }
+  85% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  100% {
     opacity: 1;
     transform: translateY(0);
+    box-shadow: none;
   }
 }
 

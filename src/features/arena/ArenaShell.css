@@ -56,7 +56,7 @@
   padding: 0 var(--wc-space-3);
   border-bottom: var(--wc-border-width) solid var(--wc-border);
   background: var(--wc-surface);
-  animation: wc-view-bar-enter var(--wc-duration) var(--wc-ease);
+  animation: wc-view-bar-enter var(--wc-duration-view) var(--wc-ease);
 }
 
 .arena-shell__navigation {
