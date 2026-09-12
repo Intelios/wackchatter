@@ -38,9 +38,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { ArenaShell } from './features/arena/ArenaShell.tsx';
 import { resolveBackgroundEffect } from './features/backgrounds/resolve.ts';
+import { CastNav, type CastTab } from './features/character/CastNav.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
-import { ChatContext } from './features/chat/ChatContext.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
@@ -117,6 +117,10 @@ export function App() {
   const [cocreatorSeedAvatar, setCocreatorSeedAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
+  const [characterPanelTab, setCharacterPanelTab] = useState<CastTab>('characters');
+  const [characterTabDirection, setCharacterTabDirection] = useState<'forward' | 'backward'>(
+    'forward',
+  );
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   /** Folder paths under data/characters, including empty ones. */
@@ -162,11 +166,30 @@ export function App() {
         ? lorePersistence.current
         : rightPanel === 'persona'
           ? personaPersistence.current
-          : rightPanel === 'groups'
+          : rightPanel === 'characters' && characterPanelTab === 'groups'
             ? groupPersistence.current
-            : null;
+            : rightPanel === 'groups'
+              ? groupPersistence.current
+              : null;
     await controls?.flush();
-  }, [editing, rightPanel]);
+  }, [characterPanelTab, editing, rightPanel]);
+
+  const handleCastTabChange = useCallback(
+    async (nextTab: CastTab) => {
+      if (nextTab === characterPanelTab) return;
+      if (characterPanelTab === 'groups') {
+        try {
+          await groupPersistence.current?.flush();
+        } catch (err) {
+          setError((err as Error).message);
+          return;
+        }
+      }
+      setCharacterTabDirection(nextTab === 'groups' ? 'forward' : 'backward');
+      setCharacterPanelTab(nextTab);
+    },
+    [characterPanelTab],
+  );
 
   /**
    * Reveal a right panel. Idempotent — never closes, so programmatic jumps (the chat
@@ -174,10 +197,24 @@ export function App() {
    * already looking at.
    */
   const showRightPanel = useCallback(
-    async (id: RightPanelId) => {
+    async (id: RightPanelId | 'groups', tab?: CastTab) => {
+      const targetPanel: RightPanelId = id === 'groups' ? 'characters' : id;
+      const targetTab = tab ?? (id === 'groups' ? 'groups' : undefined);
+      if (targetTab && targetTab !== characterPanelTab) {
+        if (characterPanelTab === 'groups') {
+          try {
+            await groupPersistence.current?.flush();
+          } catch (err) {
+            setError((err as Error).message);
+            return;
+          }
+        }
+        setCharacterTabDirection(targetTab === 'groups' ? 'forward' : 'backward');
+        setCharacterPanelTab(targetTab);
+      }
       // The character editor replaces the panel outright, so without the `editing` check
       // the panel would change behind a screen nobody can see.
-      if (id === rightPanel && !editing) return;
+      if (targetPanel === rightPanel && !editing) return;
       try {
         await flushRightPanel();
       } catch (err) {
@@ -185,9 +222,9 @@ export function App() {
         return;
       }
       setEditing(false);
-      setRightPanel(id);
+      setRightPanel(targetPanel);
     },
-    [editing, flushRightPanel, rightPanel],
+    [characterPanelTab, editing, flushRightPanel, rightPanel],
   );
 
   /**
@@ -1440,61 +1477,71 @@ export function App() {
               />
             </Panel>
           ) : (
-            <Panel title={RIGHT_PANELS.find((p) => p.id === rightPanel)?.label}>
-              {rightPanel === 'groups' ? (
-                <GroupsPanel
-                  chat={groupChat}
-                  onOpen={openGroup}
-                  characters={characters}
-                  connections={settings?.connections ?? []}
-                  presets={presets}
-                  books={books}
-                  initialGeneration={{
-                    connectionId: connection?.id ?? '',
-                    model: connection?.model ?? '',
-                    presetId: presetId ?? '',
-                  }}
-                  registerPersistence={(c) => {
-                    groupPersistence.current = c;
-                  }}
-                />
-              ) : null}
+            <Panel
+              title={
+                rightPanel === 'characters'
+                  ? characterPanelTab === 'characters'
+                    ? 'Characters'
+                    : 'Groups'
+                  : RIGHT_PANELS.find((p) => p.id === rightPanel)?.label
+              }
+            >
               {rightPanel === 'characters' ? (
                 <>
-                  <button
-                    type="button"
-                    className="wc-button"
-                    onClick={() => void showRightPanel('groups')}
-                  >
-                    Groups · shared scenes
-                  </button>
-                  {/* Scoped to the selected character, so it goes when nothing is open. */}
-                  {selected ? (
-                    <ChatContext
-                      metadata={chat.state.metadata}
-                      inheritedScenario={character?.scenario ?? ''}
-                      onMetadataChange={chat.updateMetadata}
-                    />
-                  ) : null}
-                  <CharacterList
-                    characters={characters}
-                    folders={folders}
-                    collapsedFolders={collapsedCharacterFolders}
-                    hiddenTags={hiddenTags}
-                    ratings={characterRatings}
-                    sort={characterListSort}
-                    onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
-                    selected={selected}
-                    scrollMemory={characterListScroll}
-                    loading={loading}
-                    error={error}
-                    onSelect={handleSelect}
-                    onRefresh={refresh}
-                    onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
-                    onCollapsedFoldersChange={(next) =>
-                      void patchSettings({ collapsedCharacterFolders: next })
-                    }
+                  <CastNav
+                    active={characterPanelTab}
+                    onChange={(tab) => void handleCastTabChange(tab)}
                   />
+                  <div className="cast-stage">
+                    {characterPanelTab === 'characters' ? (
+                      <div
+                        key="characters"
+                        className={`cast-view-pane cast-view-pane--${characterTabDirection}`}
+                      >
+                        <CharacterList
+                          characters={characters}
+                          folders={folders}
+                          collapsedFolders={collapsedCharacterFolders}
+                          hiddenTags={hiddenTags}
+                          ratings={characterRatings}
+                          sort={characterListSort}
+                          onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
+                          selected={selected}
+                          scrollMemory={characterListScroll}
+                          loading={loading}
+                          error={error}
+                          onSelect={handleSelect}
+                          onRefresh={refresh}
+                          onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
+                          onCollapsedFoldersChange={(next) =>
+                            void patchSettings({ collapsedCharacterFolders: next })
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        key="groups"
+                        className={`cast-view-pane cast-view-pane--${characterTabDirection} cast-view-pane--groups`}
+                      >
+                        <GroupsPanel
+                          chat={groupChat}
+                          onOpen={openGroup}
+                          characters={characters}
+                          connections={settings?.connections ?? []}
+                          presets={presets}
+                          books={books}
+                          initialGeneration={{
+                            connectionId: connection?.id ?? '',
+                            model: connection?.model ?? '',
+                            presetId: presetId ?? '',
+                          }}
+                          registerPersistence={(c) => {
+                            groupPersistence.current = c;
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </>
               ) : null}
 
