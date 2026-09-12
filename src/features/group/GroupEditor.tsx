@@ -13,6 +13,7 @@ import type { LorebookSummary } from '@shared/types/worldinfo.ts';
 import { useEffect, useRef, useState } from 'react';
 import { CheckField, NumberField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
+import { PlusIcon } from '../../layout/icons.tsx';
 import { characterApi, settingsApi, streamGenerate } from '../../lib/api.ts';
 import { encodingForModel, loadCounter } from '../../lib/tokenizer.ts';
 import { ModelCombobox } from '../connection/ModelCombobox.tsx';
@@ -223,85 +224,115 @@ export function GroupEditor({
         hint="Replaces individual card scenarios for this scene."
       />
       <Section title={`Cast · ${value.members.length}`} defaultOpen>
-        {value.members.map((member, index) => (
-          <details className="group-member" key={member.id}>
-            <summary>
-              {member.name}
-              {member.muted ? ' · muted' : ''}
-              {options.characters.some((c) => c.avatar === member.characterId)
-                ? ''
-                : ' · card unavailable'}
-            </summary>
-            <p className="group-note">{member.characterId}</p>
-            <TextField
-              label="Public profile"
-              value={member.publicProfile}
-              onChange={(publicProfile) => update(member.id, { publicProfile })}
-              multiline
-              rows={3}
-              hint="Shared with every character and the director. Leave private details out."
-            />
-            <CheckField
-              label="Muted"
-              checked={member.muted}
-              onChange={(muted) => update(member.id, { muted })}
-            />
-            <details>
-              <summary>Model and preset overrides</summary>
-              <GenerationFields
-                value={member.generation ?? {}}
-                connections={options.connections}
-                presets={options.presets}
-                models={memberModels(member)}
-                inherit
-                onChange={(generation) =>
-                  update(member.id, {
-                    generation: Object.fromEntries(
-                      Object.entries(generation).filter(([, v]) => v !== undefined),
-                    ),
-                  })
-                }
-              />
+        {value.members.map((member, index) => {
+          const char = options.characters.find((c) => c.avatar === member.characterId);
+          const avatarUrl = char ? characterApi.imageUrl(char.avatar, char.modified) : null;
+          return (
+            <details className="group-member" key={member.id}>
+              <summary className="group-member__summary">
+                <div className="group-member__identity">
+                  {avatarUrl ? (
+                    <img className="group-member__avatar" src={avatarUrl} alt="" />
+                  ) : (
+                    <span className="group-member__avatar group-member__avatar--fallback">
+                      {member.name.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="group-member__name">{member.name}</span>
+                  {member.muted ? <span className="group-member__badge">Muted</span> : null}
+                  {!char ? (
+                    <span className="group-member__badge group-member__badge--warning">
+                      Card unavailable
+                    </span>
+                  ) : null}
+                </div>
+              </summary>
+              <div className="group-member__body">
+                <TextField
+                  label="Public profile"
+                  value={member.publicProfile}
+                  onChange={(publicProfile) => update(member.id, { publicProfile })}
+                  multiline
+                  rows={3}
+                  hint="Shared with every character and the director. Leave private details out."
+                />
+                <CheckField
+                  label="Muted"
+                  checked={member.muted}
+                  onChange={(muted) => update(member.id, { muted })}
+                />
+                <details className="group-member__overrides">
+                  <summary>Model and preset overrides</summary>
+                  <GenerationFields
+                    value={member.generation ?? {}}
+                    connections={options.connections}
+                    presets={options.presets}
+                    models={memberModels(member)}
+                    inherit
+                    onChange={(generation) =>
+                      update(member.id, {
+                        generation: Object.fromEntries(
+                          Object.entries(generation).filter(([, v]) => v !== undefined),
+                        ),
+                      })
+                    }
+                  />
+                </details>
+                <div className="group-actions">
+                  <button
+                    type="button"
+                    className="wc-button"
+                    disabled={index === 0}
+                    onClick={() => move(index, -1)}
+                  >
+                    Move up
+                  </button>
+                  <button
+                    type="button"
+                    className="wc-button"
+                    disabled={index === value.members.length - 1}
+                    onClick={() => move(index, 1)}
+                  >
+                    Move down
+                  </button>
+                  <button
+                    type="button"
+                    className="wc-button"
+                    onClick={() =>
+                      patch({ members: value.members.filter((m) => m.id !== member.id) })
+                    }
+                  >
+                    Remove from cast
+                  </button>
+                </div>
+              </div>
             </details>
-            <div className="group-actions">
-              <button
-                type="button"
-                className="wc-button"
-                disabled={index === 0}
-                onClick={() => move(index, -1)}
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                className="wc-button"
-                disabled={index === value.members.length - 1}
-                onClick={() => move(index, 1)}
-              >
-                Move down
-              </button>
-              <button
-                type="button"
-                className="wc-button"
-                onClick={() => patch({ members: value.members.filter((m) => m.id !== member.id) })}
-              >
-                Remove from cast
-              </button>
-            </div>
-          </details>
-        ))}
-        <TextField label="Find characters to add" value={search} onChange={setSearch} />
+          );
+        })}
+        <TextField
+          label="Find characters to add"
+          value={search}
+          placeholder="Filter characters by name…"
+          onChange={setSearch}
+        />
         <div className="group-picker">
-          {options.characters
-            .filter(
+          {(() => {
+            const available = options.characters.filter(
               (c) =>
                 !value.members.some((m) => m.characterId === c.avatar) &&
                 c.name.toLowerCase().includes(search.toLowerCase()),
-            )
-            .map((c) => (
+            );
+            if (available.length === 0) {
+              return (
+                <div className="group-picker__empty">
+                  {search ? `No characters match “${search}”` : 'All characters added to cast'}
+                </div>
+              );
+            }
+            return available.map((c) => (
               <button
                 type="button"
-                className="wc-button"
+                className="group-picker__item"
                 key={c.avatar}
                 onClick={() =>
                   patch({
@@ -321,28 +352,43 @@ export function GroupEditor({
                   })
                 }
               >
-                + {c.name}
+                <img
+                  className="group-picker__avatar"
+                  src={characterApi.imageUrl(c.avatar, c.modified)}
+                  alt=""
+                  loading="lazy"
+                />
+                <div className="group-picker__text">
+                  <span className="group-picker__name">{c.name}</span>
+                  <span className="group-picker__meta">
+                    {c.creator ? `by ${c.creator}` : 'Unknown creator'}
+                  </span>
+                </div>
+                <PlusIcon className="group-picker__plus" />
               </button>
-            ))}
+            ));
+          })()}
         </div>
-        <button
-          type="button"
-          className="wc-button"
-          disabled={
-            drafting ||
-            !value.members.length ||
-            !value.director.connectionId ||
-            !value.director.model
-          }
-          onClick={() => void draftProfiles()}
-        >
-          {drafting ? 'Drafting profiles…' : 'Draft public profiles'}
-        </button>
-        {drafting ? (
-          <button type="button" className="wc-button" onClick={() => abort.current?.abort()}>
-            Cancel
+        <div className="group-actions">
+          <button
+            type="button"
+            className="wc-button"
+            disabled={
+              drafting ||
+              !value.members.length ||
+              !value.director.connectionId ||
+              !value.director.model
+            }
+            onClick={() => void draftProfiles()}
+          >
+            {drafting ? 'Drafting profiles…' : 'Draft public profiles'}
           </button>
-        ) : null}
+          {drafting ? (
+            <button type="button" className="wc-button" onClick={() => abort.current?.abort()}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
         {error ? <p role="alert">{error}</p> : null}
         {drafts ? (
           <section className="group-drafts">
