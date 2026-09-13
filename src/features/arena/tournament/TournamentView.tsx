@@ -34,6 +34,8 @@ interface TournamentViewProps {
   preferredSlots: ReadonlyMap<string, number>;
   displayFor: (characterId: string) => ArenaDisplay;
   blockedReason: string | null;
+  /** Why one playable slot cannot be fought. Null when the slot can be fought. */
+  entrantBlockedReason: (stage: number, matchIndex: number) => string | null;
   onBack: () => void;
   onPlay: (stage: number, matchIndex: number) => void;
   onVote: (verdict: Verdict) => void;
@@ -57,6 +59,7 @@ export function TournamentView({
   preferredSlots,
   displayFor,
   blockedReason,
+  entrantBlockedReason,
   onBack,
   onPlay,
   onVote,
@@ -158,6 +161,7 @@ export function TournamentView({
         nameFor={nameFor}
         active={null}
         disabledReason={frozen || view.complete ? 'This tournament is not running.' : blockedReason}
+        slotBlockedReason={entrantBlockedReason}
         onPlay={onPlay}
       />
 

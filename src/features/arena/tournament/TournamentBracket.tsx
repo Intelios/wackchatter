@@ -23,6 +23,11 @@ interface TournamentBracketProps {
   active: { stage: number; matchIndex: number } | null;
   /** Why a match cannot be started right now, if it cannot. */
   disabledReason: string | null;
+  /**
+   * Why one playable slot's own entrants cannot be sent to — a deleted connection, a
+   * pool row removed since the draw. Evaluated per slot, only when it is playable.
+   */
+  slotBlockedReason: (stage: number, matchIndex: number) => string | null;
   onPlay: (stage: number, matchIndex: number) => void;
 }
 
@@ -32,6 +37,7 @@ export function TournamentBracket({
   nameFor,
   active,
   disabledReason,
+  slotBlockedReason,
   onPlay,
 }: TournamentBracketProps) {
   return (
@@ -49,6 +55,13 @@ export function TournamentBracket({
               const playable = !decided && slot.leftId !== null && slot.rightId !== null;
               const playing =
                 active?.stage === slot.stage && active?.matchIndex === slot.matchIndex;
+              // The slot's own reason outranks the global one: "its connection has been
+              // deleted" names the real problem, where the global block would just repeat
+              // a state the whole bracket already knows. Evaluated only when playable —
+              // a decided or awaiting slot has no Fight button to explain.
+              const slotReason = playable
+                ? (slotBlockedReason(slot.stage, slot.matchIndex) ?? disabledReason)
+                : null;
 
               return (
                 <article
@@ -84,8 +97,8 @@ export function TournamentBracket({
                     <button
                       type="button"
                       className="wc-button wc-button--primary arena-tour__play"
-                      disabled={disabledReason !== null}
-                      title={disabledReason ?? 'Fight this match'}
+                      disabled={slotReason !== null}
+                      title={slotReason ?? 'Fight this match'}
                       onClick={() => onPlay(slot.stage, slot.matchIndex)}
                     >
                       Fight

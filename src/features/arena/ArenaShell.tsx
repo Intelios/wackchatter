@@ -44,7 +44,7 @@ import { ArenaBench } from './ArenaBench.tsx';
 import type { ArenaMode } from './ArenaTabs.tsx';
 import { ArenaTabs } from './ArenaTabs.tsx';
 import { BlindRound } from './BlindRound.tsx';
-import { eligibleContenders, resolveContenders } from './contenders.ts';
+import { blockedEntrantReason, eligibleContenders, resolveContenders } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
 import { createArenaDisplay, PASSTHROUGH_DISPLAY } from './display.ts';
 import type { VerdictPreview } from './elo.ts';
@@ -398,6 +398,9 @@ export function ArenaShell({
     return null;
   }, [connections.length, preset, resolved]);
 
+  /** Labels for the tournament views: live pool name first, then the recorded model. */
+  const nameFor = useMemo(() => tournamentNameFor(resolved, tournaments), [resolved, tournaments]);
+
   // --- starting a run -------------------------------------------------------
 
   /**
@@ -426,6 +429,18 @@ export function ArenaShell({
       setRecordError(null);
     }
     if (pendingRun.target === 'tournament') {
+      /*
+       * Open the room only when the match can actually run. A contender whose connection
+       * was deleted between the Fight click and this effect resolves to no column, and a
+       * run refused for having fewer than two would leave the room stranded on "Preparing
+       * the match…" — no run to vote on, no failure to read. The slot goes back to
+       * un-played, and the bracket's Fight button says why.
+       */
+      const entrantBlocked = blockedEntrantReason(pendingRun.contenderIds, resolved, nameFor);
+      if (entrantBlocked) {
+        setMatchError(entrantBlocked);
+        return;
+      }
       if (pendingRun.match) setMatchRun(pendingRun.match);
       setMatchRevealed(false);
       setMatchRecording(false);
@@ -446,7 +461,7 @@ export function ArenaShell({
       worldInfoSources: lore.sourcesForPersona(persona?.lorebookId ?? undefined),
       replace: pendingRun.replace,
     });
-  }, [cards, lore, pendingRun, persona, resolved]);
+  }, [cards, lore, nameFor, pendingRun, persona, resolved]);
 
   const requestRun = useCallback((request: Omit<PendingRun, 'runId'>) => {
     setStagedId(request.characterId);
@@ -615,9 +630,6 @@ export function ArenaShell({
 
   // --- tournaments ----------------------------------------------------------
 
-  /** Labels for the tournament views: live pool name first, then the recorded model. */
-  const nameFor = useMemo(() => tournamentNameFor(resolved, tournaments), [resolved, tournaments]);
-
   /**
    * Why a tournament cannot be created. Null when one can.
    *
@@ -647,6 +659,15 @@ export function ArenaShell({
       const slot = tournament ? bracketView(tournament).stages[stage]?.[matchIndex] : null;
       // Both sides known means both feeders are recorded, so this is a real comparison.
       if (!tournament || !plan || !slot || slot.match || !slot.leftId || !slot.rightId) return;
+      /*
+       * The slot's entrants are re-resolved here, not trusted from the bracket: a bracket
+       * holds ids for its whole life and the pool row — or its connection — can be deleted
+       * at any moment after the draw. The Fight button is disabled for the same reason, so
+       * this normally holds only a stale click, but "disabled beats refused" is a render
+       * promise, not a guarantee someone else's tab kept.
+       */
+      const entrantBlocked = blockedEntrantReason([slot.leftId, slot.rightId], resolved, nameFor);
+      if (entrantBlocked) return;
 
       /*
        * A coin flip decides which contender wears A.
@@ -669,7 +690,7 @@ export function ArenaShell({
         match: { tournamentId, stage, matchIndex, sides, deadHeat: false },
       });
     },
-    [pendingRun, requestRun, tournaments],
+    [nameFor, pendingRun, requestRun, resolved, tournaments],
   );
 
   const voteMatch = useCallback(
@@ -772,6 +793,25 @@ export function ArenaShell({
       return null;
     },
     [pendingRun, setupReason, tournamentRun.busy],
+  );
+
+  /**
+   * Why one playable slot cannot be fought right now: its entrants, re-resolved against
+   * the live pool. A bracket holds contender ids for its whole life, while the pool row
+   * — or the connection underneath it — can be deleted at any moment after the draw. A
+   * Fight button that offers a match those ids cannot staff opens a room with nothing to
+   * vote on, so the slot is disabled with the reason instead — "disabled beats refused".
+   * Null when the slot can be fought.
+   */
+  const entrantBlockedReason = useCallback(
+    (tournamentId: string, stage: number, matchIndex: number): string | null => {
+      const tournament = tournaments.find((entry) => entry.id === tournamentId);
+      if (!tournament) return null;
+      const slot = bracketView(tournament).stages[stage]?.[matchIndex];
+      if (!slot || slot.match || !slot.leftId || !slot.rightId) return null;
+      return blockedEntrantReason([slot.leftId, slot.rightId], resolved, nameFor);
+    },
+    [nameFor, resolved, tournaments],
   );
 
   const createTournament = useCallback(
@@ -985,6 +1025,7 @@ export function ArenaShell({
             preferredSlots={preferredSlots}
             displayFor={displayFor}
             startBlockedReason={startBlockedReason}
+            entrantBlockedReason={entrantBlockedReason}
             onStartMatch={startTournamentMatch}
             onVote={voteMatch}
             onExitMatch={exitMatch}

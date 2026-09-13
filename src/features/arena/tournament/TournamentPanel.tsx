@@ -47,6 +47,11 @@ interface TournamentPanelProps {
   preferredSlots: ReadonlyMap<string, number>;
   displayFor: (characterId: string) => ArenaDisplay;
   startBlockedReason: (tournament: TournamentWithMatches) => string | null;
+  /**
+   * Why one playable slot cannot be fought: its entrants, re-resolved against the live
+   * pool and connections. Null when the slot can be fought.
+   */
+  entrantBlockedReason: (tournamentId: string, stage: number, matchIndex: number) => string | null;
   onStartMatch: (tournamentId: string, stage: number, matchIndex: number) => void;
   onVote: (verdict: Verdict) => void;
   onExitMatch: () => void;
@@ -84,6 +89,7 @@ export function TournamentPanel({
   preferredSlots,
   displayFor,
   startBlockedReason,
+  entrantBlockedReason,
   onStartMatch,
   onVote,
   onExitMatch,
@@ -129,6 +135,9 @@ export function TournamentPanel({
         preferredSlots={preferredSlots}
         displayFor={displayFor}
         blockedReason={startBlockedReason(selected)}
+        entrantBlockedReason={(stage, matchIndex) =>
+          entrantBlockedReason(selected.id, stage, matchIndex)
+        }
         onBack={() => onSelectTournament(null)}
         onPlay={(stage, matchIndex) => onStartMatch(selected.id, stage, matchIndex)}
         onVote={onVote}
