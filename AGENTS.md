@@ -210,6 +210,12 @@ impersonation's reducer contract (no transcript message). Single-chat only.
   automatic selection (`shared/nexus/findings.ts`).
 - Legacy `shared/memory/` code remains for conversion and old hide provenance.
 - Classic summarising keeps estimate-then-verify `packClassicSummaryChunk`.
+- **The first 2.0 boot freezes each chat's mode through `migrateChatMeta`, never
+  `updateChatMeta`.** The latter stamps `modified` per chat, so migrating a library through
+  it dates every chat to the boot moment in loop order, scrambles the recents list and
+  degrades Stats' "last spoke". The pass also runs before `Bun.serve`, so each chat is its
+  own savepoint and a row that cannot migrate is reported and retried on the next start
+  rather than killing boot. The marker is only written when every chat succeeded.
 
 **Messages** (`shared/chat/message.ts`)
 - **`mes` is derived, never stored**: text from `swipes[swipe_id]`, metadata from
