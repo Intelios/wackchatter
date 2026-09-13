@@ -1,4 +1,5 @@
 import type { TokenCounter } from '../prompt/token-cache.ts';
+import { stripThinkBlocks } from '../providers/looseJson.ts';
 import { thinkingMaxTokens } from '../providers/thinking.ts';
 import type { ConnectionSettings } from '../providers/types.ts';
 import type { ApiMessage, ChatMessage } from '../types/chat.ts';
@@ -6,14 +7,6 @@ import { type GroupMember, type GroupScene, memberLabel } from '../types/group.t
 import type { ReasoningEffort } from '../types/preset.ts';
 
 const SELECTION_FAILED = 'Director returned an invalid speaker selection. Continue to try again.';
-
-/**
- * Reasoning leaked into the reply as a `<think>` block. Blocks are stripped before any
- * JSON is read: a thought that muses with example shapes would otherwise be spliced into
- * the span between the first `{` and the last `}`, and the whole reply would parse as
- * nothing.
- */
-const THINK_BLOCK = /<think(?:ing)?\s*>[\s\S]*?<\/think(?:ing)?>/gi;
 
 /**
  * Every balanced top-level `{…}` and `[…]` slice, in order. String-aware so a brace
@@ -215,7 +208,7 @@ export function parseDirector(
   // into the read. When the stripped reply has nothing — the model never got past its
   // thinking — the deliberation's own conclusion is the last structured resort, and the
   // words of the original reply are the last resort after that.
-  const cleaned = text.replace(THINK_BLOCK, ' ');
+  const cleaned = stripThinkBlocks(text);
   const entries = structuredEntries(cleaned) ?? structuredEntries(text);
   const selected = entries ? select(entries) : [];
   if (!selected.length) {
