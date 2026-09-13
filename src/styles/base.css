@@ -240,13 +240,13 @@ select {
   0% {
     opacity: 0;
     transform: translateY(-100%);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--wc-shadow);
   }
   25% {
     opacity: 1;
   }
   85% {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--wc-shadow-soft);
   }
   100% {
     opacity: 1;

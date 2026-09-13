@@ -14,15 +14,15 @@
   background: var(--wc-surface-raised);
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
-  padding: 3px;
-  gap: 2px;
+  padding: var(--wc-space-1);
+  gap: var(--wc-space-1);
   user-select: none;
 }
 
 /* The sliding indicator pill behind the active tab */
 .cast-nav__indicator {
   position: absolute;
-  inset-block: 3px;
+  inset-block: var(--wc-space-1);
   left: 0;
   border-radius: calc(var(--wc-radius) - 2px);
   background: var(--wc-accent-subtle);
@@ -57,7 +57,7 @@
   border-radius: calc(var(--wc-radius) - 2px);
   color: var(--wc-text-muted);
   font-family: var(--wc-font);
-  font-size: var(--wc-text-sm, 13px);
+  font-size: var(--wc-text-sm);
   font-weight: 500;
   cursor: pointer;
   text-decoration: none;
@@ -116,7 +116,7 @@
 @keyframes cast-pane-enter-forward {
   from {
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateX(var(--wc-slide-distance));
   }
   to {
     opacity: 1;
@@ -127,7 +127,7 @@
 @keyframes cast-pane-enter-backward {
   from {
     opacity: 0;
-    transform: translateX(-20px);
+    transform: translateX(calc(var(--wc-slide-distance) * -1));
   }
   to {
     opacity: 1;

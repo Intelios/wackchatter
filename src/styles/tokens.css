@@ -270,8 +270,12 @@
   --wc-duration-view: 380ms;
   /* How far an incoming swipe or re-roll travels before settling. */
   --wc-swipe-distance: 28px;
+  /* How far an incoming cast view (Characters ↔ Groups) slides across before settling. */
+  --wc-slide-distance: 20px;
 
   --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  /* Half elevation — where an entering view bar's shadow settles before it lifts. */
+  --wc-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 @media (prefers-reduced-motion: reduce) {
