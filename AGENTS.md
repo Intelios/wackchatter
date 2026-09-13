@@ -164,7 +164,8 @@ byte-identically. Each quirk has a named test.
 - Depth bounds are inclusive, 0 is newest, `null` unlimited. `is_system` messages hold no
   depth slot.
 - Regex runs **after** macro substitution; an empty replacement drops the message from
-  packing. All four `assemblePrompt` callers must pass the same regex list.
+  packing. Every `assemblePrompt` caller — including the summary packers — must pass the
+  same regex list.
 - Not wired: `SLASH_COMMAND` / `WORLD_INFO` placements, character-embedded `regex_scripts`,
   mid-stream application. Never enable `rehype-raw` in `Markdown.tsx`.
 

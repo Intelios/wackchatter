@@ -5,6 +5,7 @@ import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, StorySummary } from '@shared/types/chat.ts';
+import type { RegexScript } from '@shared/types/regex.ts';
 import type { SummarySettings } from '@shared/types/settings.ts';
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { streamGenerate } from '../../lib/api.ts';
@@ -23,6 +24,7 @@ export function useGroupSummary(
   dispatch: (a: GroupAction) => void,
   settings: SummarySettings,
   connection: Connection | null,
+  regexScripts: readonly RegexScript[],
   save: () => Promise<void>,
 ) {
   const abort = useRef<AbortController | null>(null);
@@ -104,6 +106,9 @@ export function useGroupSummary(
               requireChatHistory: true,
               memoryMode: 'off',
               reservedCompletionTokens: maxTokens,
+              // Same rule as every other caller: the summary must describe the transcript
+              // the member prompts actually showed, regex-elided turns included.
+              regexScripts,
               finalControls: [
                 {
                   identifier: 'summary',
@@ -168,7 +173,7 @@ export function useGroupSummary(
         setStatus((s) => ({ ...s, running: false }));
       }
     },
-    [connection, dispatch, save, settings, stateRef],
+    [connection, dispatch, regexScripts, save, settings, stateRef],
   );
   const editSummary = (text: string) => {
     const prior = stateRef.current.metadata.summary;

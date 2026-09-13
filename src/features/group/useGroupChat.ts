@@ -153,6 +153,7 @@ export function useGroupChat(options: GroupChatOptions) {
     dispatch,
     options.summarySettings,
     options.summaryConnection,
+    options.regexScripts,
     saveNow,
   );
   const summaryRef = useRef(summary);
