@@ -83,6 +83,30 @@
   min-width: 0;
 }
 
+.connection__header-row {
+  display: flex;
+  gap: var(--wc-space-2);
+  align-items: center;
+}
+
+.connection__header-row .wc-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Values tend to be longer than names (URLs, token schemes), so they get the room. */
+.connection__header-row .connection__header-value {
+  flex: 1.5;
+}
+
+.connection__header-row .wc-button {
+  flex-shrink: 0;
+}
+
+.connection__add-header {
+  align-self: flex-start;
+}
+
 .connection__actions {
   display: flex;
   align-items: center;

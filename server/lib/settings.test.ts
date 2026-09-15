@@ -1057,6 +1057,22 @@ describe('applyConnectionPatch', () => {
     applyConnectionPatch(original, 'a', { name: 'changed' });
     expect(original).toEqual(snapshot);
   });
+
+  test('custom headers replace the record wholesale and survive the patch', () => {
+    const next = applyConnectionPatch(list(), 'a', {
+      headers: { 'X-Goog-Api-Key': '{{key}}' },
+    });
+    expect(next?.[0]?.headers).toEqual({ 'X-Goog-Api-Key': '{{key}}' });
+    const cleared = applyConnectionPatch(next!, 'a', { headers: {} });
+    expect(cleared?.[0]?.headers).toEqual({});
+  });
+
+  test('non-string header values are dropped rather than forwarded to fetch', () => {
+    const next = applyConnectionPatch(list(), 'a', {
+      headers: { 'x-keep': '1', 'x-number': 5, 'x-object': { nested: true } },
+    });
+    expect(next?.[0]?.headers).toEqual({ 'x-keep': '1' });
+  });
 });
 
 describe('dropConnection', () => {

@@ -74,7 +74,10 @@ data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, sett
 keys in `data/secrets.json` keyed by connection id, never reaching the browser. The key
 belongs to the endpoint (provider + baseUrl): a PATCH changing either drops the key. A
 preset's own connection keys round-trip untouched but are never read. `showReasoning` /
-`reportUsage` are per-connection.
+`reportUsage` are per-connection. Custom headers merge last, names matched case-insensitively
+so a user header overrides ours instead of duplicating it; `{{key}}` in a value resolves
+server-side from the stored key (with no key stored the header is dropped — the literal token
+never leaves the machine), and an empty value removes a header, ours included.
 
 ## The data directory moves
 

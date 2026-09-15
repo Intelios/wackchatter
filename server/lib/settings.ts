@@ -101,7 +101,15 @@ function normalizeConnectionEntry(value: unknown): Connection | null {
   };
 
   if (isRecord(value.routing)) connection.routing = value.routing as ConnectionSettings['routing'];
-  if (isRecord(value.headers)) connection.headers = value.headers as Record<string, string>;
+  if (isRecord(value.headers)) {
+    // Non-string values are editor accidents, not headers; keep only what fetch will
+    // actually accept so one junk entry cannot sink the whole request.
+    const headers: Record<string, string> = {};
+    for (const [name, headerValue] of Object.entries(value.headers)) {
+      if (typeof headerValue === 'string') headers[name] = headerValue;
+    }
+    connection.headers = headers;
+  }
   if (value.reportUsage === true) connection.reportUsage = true;
 
   return connection;
