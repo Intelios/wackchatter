@@ -15,6 +15,11 @@
  * Opening always starts with a blank query and the full catalogue — the current selection is
  * highlighted in the list, not treated as a search term. Enter or an option click commits;
  * Tab and an outside click commit only after the user edited the query; Escape reverts.
+ *
+ * With no catalogue the input stays a plain text field: the popup never opens, so the field
+ * shows the query while focused (what typing edits) and the committed display when not.
+ * Without that, an empty catalogue would swallow every keystroke — there is no popup to
+ * switch the display over to the query.
  */
 
 import type { ProviderModel } from '@shared/providers/types.ts';
@@ -35,6 +40,8 @@ interface ModelComboboxProps {
   onCommit: (model: string) => void;
   disabled?: boolean;
   disabledReason?: string;
+  /** Replaces both built-in placeholders — e.g. "Use group default" on an override field. */
+  placeholder?: string;
 }
 
 type Intent = 'commit' | 'revert' | null;
@@ -72,8 +79,10 @@ export function ModelCombobox({
   onCommit,
   disabled,
   disabledReason,
+  placeholder,
 }: ModelComboboxProps) {
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState(displayText(value, models));
   // Local mirror of the committed id so the closed display updates immediately on commit,
   // before the parent's `value` prop catches up after the server round-trip.
@@ -88,10 +97,12 @@ export function ModelCombobox({
   const skipNextFocusRef = useRef(false);
 
   // Sync local state when the parent's value changes externally (e.g. a provider switch
-  // resets model to ''). A no-op render when the value already matches.
+  // resets model to ''). A no-op render when the value already matches. A query the user
+  // is mid-way through typing is left alone — a catalogue landing from a slow fetch, or a
+  // parent re-render, must not strand a half-typed id in the field.
   useEffect(() => {
     setCommitted(value);
-    if (!openRef.current) setQuery(displayText(value, models));
+    if (!openRef.current && !queryEditedRef.current) setQuery(displayText(value, models));
   }, [value, models]);
 
   const filtered = query.trim()
@@ -253,11 +264,12 @@ export function ModelCombobox({
   function onInputBlur() {
     if (models.length > 0) return;
     const cv = resolveQuery(query, models);
-    if (cv !== committed) {
-      setCommitted(cv);
-      setQuery(displayText(cv, models));
-      onCommit(cv);
-    }
+    // Re-arm the external sync above: the edit is over, so later value changes may
+    // repaint the field again.
+    queryEditedRef.current = false;
+    setCommitted(cv);
+    setQuery(displayText(cv, models));
+    if (cv !== committed) onCommit(cv);
   }
 
   const renderTrigger = (props: PopoverTriggerProps) => (
@@ -277,22 +289,33 @@ export function ModelCombobox({
         aria-haspopup="listbox"
         title={props.title}
         disabled={props.disabled}
-        value={open ? query : displayText(committed, models)}
-        placeholder={models.length > 0 ? 'Select a model…' : 'Model id'}
+        value={open || focused ? query : displayText(committed, models)}
+        placeholder={placeholder ?? (models.length > 0 ? 'Select a model…' : 'Model id')}
         onChange={(event) => {
           if (!openRef.current) openIfListed();
           queryEditedRef.current = true;
           setQuery(event.target.value);
         }}
         onFocus={() => {
+          setFocused(true);
           if (skipNextFocusRef.current) {
             skipNextFocusRef.current = false;
             return;
           }
           if (!openRef.current) openIfListed();
         }}
+        onClick={() => {
+          // Focus is the usual opener, but focus does not re-fire on a click into an
+          // already-focused field — Escape closes while keeping focus there, and a
+          // catalogue can land after focus (slow fetch). A click must always reveal
+          // the list.
+          if (!openRef.current) openIfListed();
+        }}
         onKeyDown={onInputKeyDown}
-        onBlur={onInputBlur}
+        onBlur={() => {
+          setFocused(false);
+          onInputBlur();
+        }}
       />
       {models.length > 0 ? <ChevronIcon className="model-combobox__chevron" /> : null}
     </div>

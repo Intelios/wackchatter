@@ -1,0 +1,893 @@
+.nexus {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font-family: var(--wc-font-sans);
+}
+
+/*
+ * Constellation-first chrome.
+ *
+ * The map is the screen; everything else floats above it as HUD pills and gets out of
+ * the way. There is no top bar, no toolbar and no docked sidebar: search sits top-left,
+ * the view/section cluster top-right, the command dock — with Exit — bottom-centre, and
+ * the activity whisper bottom-left. Selecting reveals connections; Edit opens a card anchored to the node.
+ */
+
+.nexus-stage {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.nexus-hud {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  box-shadow: var(--wc-shadow);
+}
+
+.nexus-hud--search {
+  top: var(--wc-space-4);
+  left: var(--wc-space-4);
+  /* Stops short of the view cluster, which wraps rather than widen past 45vw. */
+  max-width: calc(100% - 2 * var(--wc-space-4) - min(420px, 45vw));
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.nexus-hud--search:focus-within {
+  border-color: var(--wc-accent-border);
+}
+
+.nexus-hud--search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border-color: transparent;
+}
+
+.nexus-hud--search input[type="search"]:focus {
+  outline: none;
+  border-color: transparent;
+}
+
+.nexus-hud--search select {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.nexus-hud--views {
+  top: var(--wc-space-4);
+  right: var(--wc-space-4);
+  max-width: min(420px, 45vw);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nexus-hud button[aria-pressed="true"] {
+  color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+}
+
+.nexus-dock {
+  position: absolute;
+  bottom: var(--wc-space-4);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  box-shadow: var(--wc-shadow);
+}
+
+.nexus-dock__count {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  white-space: nowrap;
+}
+
+.nexus-dock__sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--wc-border);
+  margin-inline: var(--wc-space-1);
+}
+
+/* Exit is a navigation action, not a map control — the accent voices it. */
+.nexus-exit {
+  color: var(--wc-accent);
+}
+
+.nexus-exit:hover {
+  background: var(--wc-accent-subtle);
+}
+
+/* The activity whisper: a quiet status line that opens the collection popover. */
+.nexus-whisper-anchor {
+  position: absolute;
+  left: var(--wc-space-4);
+  bottom: var(--wc-space-4);
+  z-index: 3;
+  max-width: min(46vw, 560px);
+}
+
+.nexus-whisper {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  box-shadow: var(--wc-shadow);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  font-family: var(--wc-font);
+  cursor: pointer;
+}
+
+.nexus-whisper:hover {
+  border-color: var(--wc-border-strong);
+  color: var(--wc-text);
+}
+
+.nexus-whisper__star {
+  color: var(--wc-accent);
+  flex-shrink: 0;
+}
+
+.nexus-whisper__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A failed save or collection run must read as a problem, not as status quo. */
+.nexus-whisper[data-error] {
+  border-color: var(--wc-danger);
+  color: var(--wc-danger);
+}
+
+.nexus-pop {
+  width: 440px;
+  max-width: calc(100vw - 2 * var(--wc-space-4));
+}
+
+.nexus-pop__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+/* --- The node card --------------------------------------------------------- */
+
+.nexus-nodecard {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  box-shadow: var(--wc-shadow);
+}
+
+.nexus-nodecard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  flex-shrink: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+}
+
+/* Scoped under the head to out-rank `.wc-input`'s width: 100% — whichever stylesheet
+   loads last, the kind select stays content-sized and the name takes the rest. */
+.nexus-nodecard__head .nexus-nodecard__kind {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.nexus-nodecard__head .nexus-nodecard__name {
+  flex: 1 1 0%;
+  width: auto;
+  min-width: 0;
+  background: transparent;
+  border-color: transparent;
+  font-size: var(--wc-text-lg);
+  font-weight: 600;
+}
+
+.nexus-nodecard__name:hover {
+  border-color: var(--wc-border);
+}
+
+.nexus-nodecard__name:focus {
+  border-color: var(--wc-accent);
+  outline: none;
+}
+
+.nexus-nodecard__body {
+  overflow-y: auto;
+  padding: var(--wc-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nexus[data-motion="true"] .nexus-nodecard {
+    animation: nexus-card-in var(--wc-duration-fast) var(--wc-ease);
+  }
+}
+
+@keyframes nexus-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+/* --- Pages, activity, records ---------------------------------------------- */
+
+.nexus-page {
+  overflow: auto;
+  width: min(100%, var(--wc-nexus-page));
+  align-self: center;
+  /* The view cluster floats top-right; the heading starts below it. */
+  padding: calc(var(--wc-space-4) * 2 + var(--wc-control-lg)) var(--wc-space-5) var(--wc-space-5);
+}
+
+.nexus-settings {
+  display: grid;
+  gap: var(--wc-space-4);
+}
+
+.nexus-settings__reset {
+  justify-self: start;
+}
+
+.nexus-field-label {
+  display: block;
+  margin-bottom: var(--wc-space-2);
+}
+
+.nexus-activity {
+  margin-top: var(--wc-space-4);
+}
+
+/* Pausing is deliberate, but weeks later the panel must not read as working. */
+.nexus-activity[data-paused] .nexus-activity__state {
+  color: var(--wc-warning);
+}
+
+.nexus p {
+  line-height: 1.6;
+}
+
+.nexus h2 {
+  font-size: var(--wc-text-lg);
+}
+
+.nexus details > summary {
+  cursor: pointer;
+  padding-block: var(--wc-space-2);
+}
+
+.nexus input,
+.nexus textarea,
+.nexus select {
+  max-width: 100%;
+}
+
+.nexus textarea {
+  resize: vertical;
+}
+
+.nexus label {
+  font-size: var(--wc-text-sm);
+}
+
+.nexus-card {
+  border: 1px solid var(--wc-border);
+  background: var(--wc-surface-raised);
+  border-radius: var(--wc-radius-lg);
+  padding: var(--wc-space-3);
+  display: grid;
+  gap: var(--wc-space-3);
+  margin-block: var(--wc-space-3);
+}
+
+.nexus-card[data-disabled="true"] {
+  opacity: 0.65;
+}
+
+/* Dashed, the app's severed-thing convention (branch-timeline orphan stubs): a tombstone
+   must not read identically to a record that is merely switched off. */
+.nexus-card[data-deleted="true"] {
+  border-style: dashed;
+}
+
+/* Captioned selects: kind/state/attribution all read as bare words on a fresh card
+   ("fact" twice), so each select carries its own label above it. Scoped to the card so
+   the specificity clears `.nexus label`'s font-size. */
+.nexus-card .nexus-actions .nexus-select {
+  flex: 1;
+  min-width: 90px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.nexus-card .nexus-select__label {
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+.nexus-card textarea {
+  width: 100%;
+}
+
+/* --- Search highlight mirror ----------------------------------------------
+ *
+ * The CueField technique: a textarea cannot carry markup, so while a search query is
+ * live a marked copy of the text is painted underneath and the real control sits on top
+ * with transparent glyphs and a visible caret ([data-searching] below). The layers only
+ * stay aligned if they wrap identically, which is why every metric that affects wrapping
+ * lives on `.nexus-card__text` — shared by both layers — and never on one of them alone.
+ * See ArenaShell.css for the original.
+ */
+
+.nexus-card__field {
+  position: relative;
+  display: grid;
+}
+
+.nexus-card__text {
+  grid-area: 1 / 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font-family: var(--wc-font);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+/* Out of flow, unlike the arena's: a memory can be 2000 characters, and an in-flow
+   mirror would stretch the field to the whole text. The wrapper is sized by the textarea
+   alone; the mirror clips to that box and follows its scroll (onScroll in RecordEditor). */
+.nexus-card__mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+/* Colour and radius only — never a metric: padding or a different font on a mark would
+   make the mirror wrap differently from the textarea, and it fails silently. */
+.nexus-card__mirror mark {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  border-radius: var(--wc-radius-sm);
+}
+
+.nexus-card__input {
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  resize: vertical;
+  transition: border-color var(--wc-duration-fast) ease;
+}
+
+.nexus-card__input:hover {
+  border-color: var(--wc-border-strong);
+}
+
+.nexus-card__input:focus {
+  border-color: var(--wc-accent);
+  outline: none;
+}
+
+.nexus-card[data-searching] .nexus-card__input {
+  background: transparent;
+  /* Transparent glyphs over the mirror, but a caret and a selection you can still see. */
+  color: transparent;
+  caret-color: var(--wc-text);
+}
+
+.nexus-card[data-searching] .nexus-card__input::selection {
+  background: var(--wc-accent-selection);
+}
+
+/* Identity chips mark the same query the memory text does. */
+.nexus-actions mark {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+  border-radius: var(--wc-radius-sm);
+}
+
+.nexus-source {
+  padding: var(--wc-space-3);
+  border-left: 2px solid var(--wc-border);
+  margin-block: var(--wc-space-2);
+  overflow-wrap: anywhere;
+}
+
+.nexus-attachments {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-wrap: wrap;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.nexus-list {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  /* Content starts below the floating search pill. */
+  padding: calc(var(--wc-space-4) * 2 + var(--wc-control-lg)) var(--wc-space-5) var(--wc-space-5);
+}
+
+/* The full width is the point of List view, but an uncapped line length is not
+   readable: the page token caps and centres each row, as .nexus-page does elsewhere. */
+.nexus-list > * {
+  max-width: var(--wc-nexus-page);
+  margin-inline: auto;
+}
+
+/* --- The map --------------------------------------------------------------- */
+
+.nexus-map {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, var(--wc-accent-subtle), transparent 70%);
+}
+
+.nexus-cosmic-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nexus-map svg {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  position: relative;
+  z-index: 1;
+}
+
+.nexus-empty {
+  position: absolute;
+  top: 38%;
+  left: 25%;
+  right: 25%;
+  text-align: center;
+  pointer-events: none;
+}
+
+.nexus-empty .wc-button {
+  pointer-events: auto;
+}
+
+.nexus-edge line {
+  stroke: var(--wc-nexus-edge);
+  stroke-width: 1.5;
+}
+
+/* Dotted and thin: derived from shared mentions, not asserted by a relation.
+   Kept above the token's 3:1 floor — dimming would re-create the invisible edge. */
+.nexus-edge[data-implicit] line {
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+}
+
+.nexus-edge[data-lit="true"] line,
+.nexus-edge[data-recalled="true"] line {
+  stroke: var(--wc-accent);
+  stroke-dasharray: 5 8;
+}
+
+.nexus-edge text {
+  font-size: 11px;
+  text-anchor: middle;
+  fill: var(--wc-text-muted);
+  paint-order: stroke;
+  stroke: var(--wc-bg);
+  stroke-width: 2px;
+}
+
+.nexus-node {
+  cursor: pointer;
+  --nexus-color: var(--wc-series-1);
+  outline: none;
+}
+
+.nexus-node[data-kind="place"] {
+  --nexus-color: var(--wc-series-2);
+}
+
+.nexus-node[data-kind="object"] {
+  --nexus-color: var(--wc-series-3);
+}
+
+.nexus-node[data-kind="event"] {
+  --nexus-color: var(--wc-series-4);
+}
+
+.nexus-node[data-kind="group"] {
+  --nexus-color: var(--wc-series-5);
+}
+
+.nexus-node[data-kind="concept"] {
+  --nexus-color: var(--wc-series-6);
+}
+
+.nexus-core-light {
+  stop-color: color-mix(in srgb, var(--nexus-color) 24%, var(--wc-surface-raised));
+}
+
+.nexus-core-mid {
+  stop-color: color-mix(in srgb, var(--nexus-color) 7%, var(--wc-surface));
+}
+
+.nexus-core-dark {
+  stop-color: var(--wc-bg);
+}
+
+.nexus-node-core {
+  stroke: color-mix(in srgb, var(--nexus-color) 65%, var(--wc-surface-raised));
+  stroke-width: var(--wc-nexus-node-stroke);
+}
+
+.nexus-node-rim {
+  fill: none;
+  stroke: color-mix(in srgb, var(--nexus-color) 55%, var(--wc-text));
+  stroke-width: var(--wc-border-width);
+  stroke-linecap: round;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.nexus-node-rim--lower {
+  opacity: 0.2;
+}
+
+.nexus-node-orbit {
+  fill: none;
+  stroke: var(--nexus-color);
+  stroke-width: var(--wc-border-width);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nexus-node .nexus-halo {
+  stroke: none;
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.nexus-node text {
+  text-anchor: middle;
+  fill: var(--wc-text);
+  font-size: 13px;
+}
+
+.nexus-node .nexus-symbol {
+  fill: none;
+  stroke: color-mix(in srgb, var(--nexus-color) 75%, var(--wc-text));
+  stroke-width: var(--wc-nexus-node-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.nexus-node .nexus-node-label {
+  paint-order: stroke;
+  stroke: var(--wc-bg);
+  stroke-width: 3px;
+}
+
+.nexus-node:hover .nexus-halo,
+.nexus-node:focus .nexus-halo,
+.nexus-node[data-selected="true"] .nexus-halo {
+  opacity: 0.65;
+}
+
+.nexus-node:hover .nexus-node-core,
+.nexus-node:focus-visible .nexus-node-core,
+.nexus-node[data-selected="true"] .nexus-node-core {
+  stroke: var(--nexus-color);
+}
+
+.nexus-node:focus-visible .nexus-node-orbit,
+.nexus-node[data-selected="true"] .nexus-node-orbit {
+  opacity: 0.8;
+}
+
+.nexus-node:focus-visible .nexus-node-orbit {
+  stroke: var(--wc-text);
+  stroke-dasharray: 3 3;
+}
+
+.nexus-node[data-recalled="true"] .nexus-halo {
+  opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nexus[data-motion="true"]
+    .nexus-node:not(:hover):not(:focus):not([data-selected="true"]):not([data-recalled="true"])
+    .nexus-halo {
+    animation: nexus-breathe 7s ease-in-out infinite alternate;
+  }
+
+  .nexus[data-motion="true"] .nexus-edge[data-recalled="true"] line {
+    animation: nexus-pulse 4s linear infinite;
+  }
+}
+
+.nexus-muted,
+.nexus-kicker {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.nexus-actions {
+  display: flex;
+  gap: var(--wc-space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@keyframes nexus-breathe {
+  to {
+    opacity: 0.22;
+    r: 29;
+  }
+}
+
+@keyframes nexus-pulse {
+  to {
+    stroke-dashoffset: -52;
+  }
+}
+
+.nexus-card > .nexus-actions:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+}
+
+.nexus-card > .nexus-actions:first-child .nexus-kicker {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Grand Cosmic Entrance & Living Constellation ------------------------ */
+
+.nexus-beacon-pulse {
+  fill: var(--wc-accent);
+  opacity: 0.08;
+}
+
+.nexus-beacon-ring {
+  fill: none;
+  stroke: var(--wc-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 6;
+  opacity: 0.35;
+}
+
+.nexus-beacon-core {
+  fill: var(--wc-surface-raised);
+  stroke: var(--wc-accent);
+  stroke-width: 2.5;
+}
+
+.nexus-beacon-symbol {
+  fill: var(--wc-accent);
+  text-anchor: middle;
+  font-size: 16px;
+}
+
+.nexus-node-shock-ring {
+  fill: none;
+  stroke: var(--nexus-color);
+  stroke-width: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nexus[data-motion="true"] .nexus-beacon-pulse {
+    animation: nexus-breathe 4s ease-in-out infinite alternate;
+  }
+
+  .nexus[data-motion="true"] .nexus-beacon-ring {
+    animation: nexus-pulse 10s linear infinite;
+  }
+
+  /* Nodes stay settled when data-intro clears; a non-intro arrival animation
+     would restart their opacity after the cosmic entrance has already landed. */
+
+  /* Grand entrance: Staggered node outward blast & elastic lock */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-node-blossom {
+    transform-origin: 0 0;
+    animation: nexus-node-blossom 850ms cubic-bezier(0.18, 0.89, 0.32, 1.25) var(--intro-delay, 0ms)
+      both;
+  }
+
+  /* Secondary shockwave ring radiating from the node upon landing */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-node-shock-ring {
+    animation: nexus-node-shock-ring 850ms ease-out var(--intro-delay, 0ms) both;
+  }
+
+  /* Celestial symbol spin-in */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-symbol {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nexus-symbol-spin 850ms cubic-bezier(0.18, 0.89, 0.32, 1.2) var(--intro-delay, 0ms)
+      both;
+  }
+
+  /* Smooth label reveal on landing */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-node-label {
+    animation: nexus-label-reveal 850ms ease-out var(--intro-delay, 0ms) both;
+  }
+
+  /* Grand entrance: Constellation laser beam strike */
+  .nexus[data-motion="true"][data-intro="true"] .nexus-edge line {
+    stroke-dasharray: var(--edge-len, 1000);
+    stroke-dashoffset: var(--edge-len, 1000);
+    animation: nexus-beam-strike 650ms cubic-bezier(0.16, 1, 0.3, 1) var(--intro-delay, 0ms) both;
+  }
+}
+
+@keyframes nexus-node-blossom {
+  0% {
+    opacity: 0;
+    transform: translate(var(--blast-x, 0px), var(--blast-y, 0px)) scale(0.15);
+    filter: brightness(4) drop-shadow(0 0 22px var(--nexus-color));
+  }
+  20% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 1;
+    transform: translate(calc(var(--blast-x, 0px) * -0.09), calc(var(--blast-y, 0px) * -0.09))
+      scale(1.22);
+    filter: brightness(2.2) drop-shadow(0 0 14px var(--nexus-color));
+  }
+  85% {
+    transform: translate(calc(var(--blast-x, 0px) * 0.02), calc(var(--blast-y, 0px) * 0.02))
+      scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: brightness(1) drop-shadow(0 0 0 transparent);
+  }
+}
+
+@keyframes nexus-node-shock-ring {
+  0%,
+  55% {
+    r: 17;
+    opacity: 0;
+    stroke-width: 3px;
+  }
+  65% {
+    r: 22;
+    opacity: 0.9;
+    stroke-width: 2.5px;
+  }
+  100% {
+    r: 54;
+    opacity: 0;
+    stroke-width: 0.5px;
+  }
+}
+
+@keyframes nexus-symbol-spin {
+  0% {
+    opacity: 0;
+    transform: rotate(-20deg) scale(0.3);
+  }
+  40% {
+    opacity: 1;
+  }
+  70% {
+    transform: rotate(0deg) scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+@keyframes nexus-label-reveal {
+  0%,
+  55% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nexus-beam-strike {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: var(--edge-len, 1000);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Keep the selected identity discoverable without covering its connections. */
+.nexus-dock__name {
+  max-width: var(--wc-nexus-card);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Relationship captions occupy reserved space; stems retain the connection to their edge. */
+.nexus-edge-label path {
+  fill: none;
+  stroke: var(--wc-accent-border);
+  stroke-width: var(--wc-border-width);
+}
+
+.nexus-edge-label rect {
+  fill: var(--wc-bg);
+  stroke: var(--wc-border);
+  stroke-width: var(--wc-border-width);
+}
+
+.nexus-edge-label text {
+  fill: var(--wc-text);
+  font-size: var(--wc-nexus-edge-text);
+  text-anchor: middle;
+}

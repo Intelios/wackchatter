@@ -1,4 +1,6 @@
 import type { MemoryRecall } from '@shared/memory/source.ts';
+import { reportNexusAssembly } from '@shared/nexus/report.ts';
+import type { NexusRecall, NexusSettings } from '@shared/nexus/types.ts';
 import { type AssembleResult, assemblePrompt } from '@shared/prompt/assemble.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
@@ -15,6 +17,7 @@ import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useEffect, useState } from 'react';
 import { memoryRecallForChat, worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import type { NexusController } from '../nexus/useNexus.ts';
 
 const DEBOUNCE_MS = 200;
 
@@ -37,6 +40,9 @@ export interface PromptPreviewInput {
   summarySettings?: SummarySettings;
   memoryMode?: MemoryMode;
   memorySettings?: MemorySettings;
+  nexusSettings?: NexusSettings;
+  prepareNexus?: NexusController['preview'];
+  nexusVersion?: number;
   globalVariables?: MacroVariableMap;
   /**
    * User regex scripts. Required, not optional-in-spirit: the counts this hook produces
@@ -49,6 +55,7 @@ export interface PromptPreviewInput {
 export type PromptPreview = AssembleResult & {
   /** What World Info would do, for the Lore tab and the inspector. */
   worldInfo: ActivationResult | null;
+  nexusRecall?: NexusRecall;
   /** What memory recall would do. Kept alongside so the inspector is not blank before a send. */
   memoryRecall: MemoryRecall | null;
 };
@@ -84,14 +91,19 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const memorySettings = input?.memorySettings;
   const globalVariables = input?.globalVariables;
   const regexScripts = input?.regexScripts;
+  const nexusSettings = input?.nexusSettings;
+  const prepareNexus = input?.prepareNexus;
+  const nexusVersion = input?.nexusVersion;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nexusVersion invalidates cached vector availability
   useEffect(() => {
     if (!preset || !character || !messages || !countTokens) {
       setResult(null);
       return;
     }
 
-    const timer = setTimeout(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
       try {
         const lore =
           worldInfoSources && worldInfoSettings
@@ -120,6 +132,11 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
               })
             : null;
 
+        const nexusRecall =
+          memoryMode === 'nexus' && nexusSettings
+            ? await prepareNexus?.(messages, nexusSettings.budgetTokens, countTokens)
+            : undefined;
+        if (cancelled) return;
         const assembled = assemblePrompt({
           preset,
           character,
@@ -129,8 +146,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
           memoryMode,
-          memoryText: recall?.text,
-          memorySettings,
+          memoryText: nexusRecall?.text ?? recall?.text,
+          memorySettings: memoryMode === 'nexus' ? nexusSettings : memorySettings,
           scenarioOverride:
             typeof chatMetadata?.scenario === 'string' ? chatMetadata.scenario : undefined,
           authorNote: chatMetadata?.authorNote,
@@ -144,14 +161,22 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           regexScripts,
         });
 
-        setResult({ ...assembled, worldInfo: lore, memoryRecall: recall });
+        setResult({
+          ...assembled,
+          worldInfo: lore,
+          memoryRecall: recall,
+          nexusRecall: reportNexusAssembly(nexusRecall, assembled),
+        });
       } catch {
         // A preset mid-edit can be momentarily invalid; the counts simply stall.
-        setResult(null);
+        if (!cancelled) setResult(null);
       }
     }, DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [
     preset,
     character,
@@ -168,6 +193,9 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     memorySettings,
     globalVariables,
     regexScripts,
+    nexusSettings,
+    prepareNexus,
+    nexusVersion,
   ]);
 
   return result;

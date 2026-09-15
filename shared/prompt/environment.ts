@@ -32,10 +32,12 @@ export interface ChatMacroOptions {
 export function chatEnvironment(options: ChatMacroOptions): MacroEnvironment {
   const { character, preset, persona, messages, metadata = {} } = options;
   const effectiveScenario =
-    typeof metadata.scenario === 'string' ? metadata.scenario : character.scenario;
+    metadata.group?.scenario ??
+    (typeof metadata.scenario === 'string' ? metadata.scenario : character.scenario);
 
   return {
     char: character.name,
+    groupNames: metadata.group?.members.map((m) => m.name).join(', '),
     user: persona?.name ?? DEFAULT_USER_NAME,
     description: character.description,
     personality: character.personality,

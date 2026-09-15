@@ -3,7 +3,16 @@ import { PROVIDERS } from '@shared/providers/types.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
 import { activeConnection } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
+import {
+  addRow,
+  type HeaderRow,
+  headersToRows,
+  removeRow,
+  rowsToHeaders,
+  updateRow,
+} from './headers.ts';
 import { ModelCombobox } from './ModelCombobox.tsx';
 import './ConnectionPanel.css';
 
@@ -27,6 +36,7 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [status, setStatus] = useState('');
   const [keyDraft, setKeyDraft] = useState('');
+  const [headerRows, setHeaderRows] = useState<HeaderRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -44,6 +54,7 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: connection?.id is the trigger
   useEffect(() => {
     setKeyDraft('');
+    setHeaderRows(connection ? headersToRows(connection.headers) : []);
     setStatus('');
     setConfirmDelete(false);
   }, [connection?.id]);
@@ -65,6 +76,17 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
       if (!connection) return;
       const id = connection.id;
       void apply(() => settingsApi.patchConnection(id, updates));
+    },
+    [connection, apply],
+  );
+
+  // Header rows are the editor's own state; the commit sends the whole record because
+  // the patch replaces it — `{}` is what clears.
+  const commitHeaders = useCallback(
+    (rows: HeaderRow[]) => {
+      if (!connection) return;
+      const id = connection.id;
+      void apply(() => settingsApi.patchConnection(id, { headers: rowsToHeaders(rows) }));
     },
     [connection, apply],
   );
@@ -302,6 +324,61 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
               Refresh
             </button>
           </div>
+
+          <span className="wc-label">Custom headers</span>
+          {headerRows.map((row) => (
+            <div className="connection__header-row" key={row.id}>
+              <input
+                className="wc-input"
+                value={row.name}
+                placeholder="Header name"
+                aria-label="Header name"
+                onChange={(event) =>
+                  setHeaderRows((rows) => updateRow(rows, row.id, { name: event.target.value }))
+                }
+                onBlur={() => commitHeaders(headerRows)}
+              />
+              <input
+                className="wc-input connection__header-value"
+                value={row.value}
+                placeholder="Value"
+                aria-label="Header value"
+                onChange={(event) =>
+                  setHeaderRows((rows) => updateRow(rows, row.id, { value: event.target.value }))
+                }
+                onBlur={() => commitHeaders(headerRows)}
+              />
+              <button
+                type="button"
+                className="wc-button wc-button--ghost"
+                title="Remove header"
+                onClick={() => {
+                  const next = removeRow(headerRows, row.id);
+                  setHeaderRows(next);
+                  commitHeaders(next);
+                }}
+              >
+                <TrashIcon />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="wc-button connection__add-header"
+            onClick={() => {
+              const next = addRow(headerRows, crypto.randomUUID());
+              setHeaderRows(next);
+              commitHeaders(next);
+            }}
+          >
+            <PlusIcon />
+            Add header
+          </button>
+          <p className="wc-hint">
+            Sent with every request, after ours — yours win. <code>{'{{key}}'}</code> in a value
+            sends the stored API key, which stays on this machine; an empty value removes a header
+            (e.g. <code>authorization</code>).
+          </p>
 
           <div className="connection__actions">
             <button type="button" className="wc-button" onClick={() => void test()} disabled={busy}>

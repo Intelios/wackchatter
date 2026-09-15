@@ -15,11 +15,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-export type ArenaMode = 'bench' | 'blind' | 'board' | 'pool';
+export type ArenaMode = 'bench' | 'blind' | 'tournament' | 'board' | 'pool';
 
 const MODES: { id: ArenaMode; label: string }[] = [
   { id: 'bench', label: 'Arena' },
   { id: 'blind', label: 'Benchmark' },
+  { id: 'tournament', label: 'Tournament' },
   { id: 'board', label: 'Leaderboard' },
   { id: 'pool', label: 'Pool' },
 ];

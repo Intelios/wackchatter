@@ -32,7 +32,12 @@ export type SlashCommand =
    */
   | { type: 'persona'; query: string }
   /** The formula is already normalised and known to roll — see `parseDiceFormula`. */
-  | { type: 'roll'; formula: string };
+  | { type: 'roll'; formula: string }
+  /**
+   * Ask the model to write the user's next message. The text lands in the composer, not the
+   * transcript; `instruction` is optional steering and may be empty.
+   */
+  | { type: 'impersonate'; instruction: string };
 
 export type SlashParseResult = { ok: true; command: SlashCommand } | { ok: false; error: string };
 
@@ -88,6 +93,11 @@ export const SLASH_COMMANDS: readonly SlashCommandHelp[] = [
     name: 'roll',
     usage: '/roll 2d6+3, or /roll for 1d20',
     description: 'Roll dice into the chat, where the character can read the result.',
+  },
+  {
+    name: 'impersonate',
+    usage: '/impersonate or /impersonate <steering>',
+    description: 'Have the model write your next message, left in the composer to edit.',
   },
 ];
 
@@ -224,6 +234,15 @@ export function parseSlashCommand(input: string): SlashParseResult | null {
       }
       return { ok: true, command: { type: 'roll', formula: parsed.formula } };
     }
+    /*
+     * Optional argument, verbatim like `/persona`: the text is steering prose, not tokens —
+     * "in a hurry, short sentences" is one instruction. `/imp` is SillyTavern's alias; it is
+     * recognised here but deliberately absent from the help registry, so the autocomplete
+     * box advertises one spelling while both parse.
+     */
+    case 'impersonate':
+    case 'imp':
+      return { ok: true, command: { type: 'impersonate', instruction: arg } };
     default:
       return { ok: false, error: `Unknown command "/${firstWord}".` };
   }

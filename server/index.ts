@@ -10,6 +10,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { chatStore } from './lib/chats.ts';
 import { errorResponse, handle, notFound } from './lib/http.ts';
 import { initDataLocation } from './lib/location.ts';
 import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
@@ -23,12 +24,14 @@ import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
 import { handleCocreatorRoute } from './routes/cocreator.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
+import { handleGroupRoute } from './routes/groups.ts';
 import { handleLibraryRoute } from './routes/library.ts';
 import { handleLocationRoute } from './routes/location.ts';
 import { handleLorebookRoute } from './routes/lorebooks.ts';
 import { handlePersonaRoute } from './routes/personas.ts';
 import { handlePresetRoute } from './routes/presets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
+import { handleShutdownRoute } from './routes/shutdown.ts';
 import { handleStatsRoute } from './routes/stats.ts';
 import { handleUsageRoute } from './routes/usage.ts';
 import { handleVersionRoute } from './routes/version.ts';
@@ -61,6 +64,8 @@ function forbiddenOrigin(request: Request): boolean {
 const dataLocation = initDataLocation();
 ensureDataDirs();
 await ensureDefaultPreset();
+// Freeze legacy per-chat modes before the user can change the new app default.
+chatStore();
 // Says where the library is, for anything accounting for what it cost. Written whether or
 // not the usage log is on — see publishLibraryPointer.
 publishLibraryPointer();
@@ -79,8 +84,10 @@ const API_ROUTES: Record<string, RouteHandler> = {
   lorebooks: handleLorebookRoute,
   personas: handlePersonaRoute,
   chats: handleChatRoute,
+  groups: handleGroupRoute,
   generate: handleGenerateRoute,
   settings: handleSettingsRoute,
+  shutdown: handleShutdownRoute,
   stats: handleStatsRoute,
   usage: handleUsageRoute,
   version: handleVersionRoute,
@@ -101,11 +108,14 @@ async function serveApi(request: Request, url: URL): Promise<Response> {
    * /api/location hits this too — which makes the switch single-flight without a lock.
    *
    * Static assets are deliberately not gated: the browser has to be able to reload the app.
+   * Shutdown is deliberately not gated: killing a stuck server is exactly what you want.
    */
-  const restart = degradedReason();
-  if (restart) return errorResponse(restart, 503);
-  if (isSwitching() && !(group === 'location' && request.method === 'GET')) {
-    return errorResponse('Moving your data folder — try again in a moment.', 503);
+  if (group !== 'shutdown') {
+    const restart = degradedReason();
+    if (restart) return errorResponse(restart, 503);
+    if (isSwitching() && !(group === 'location' && request.method === 'GET')) {
+      return errorResponse('Moving your data folder — try again in a moment.', 503);
+    }
   }
 
   const route = API_ROUTES[group];

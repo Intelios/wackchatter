@@ -57,6 +57,8 @@ interface PopoverProps {
   icon: ReactNode;
   /** Rendered over the trigger's corner — an active count, say. */
   badge?: ReactNode;
+  /** Optional visible text beside the trigger icon. */
+  triggerText?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
@@ -88,6 +90,7 @@ export function Popover({
   label,
   icon,
   badge,
+  triggerText,
   open,
   onOpenChange,
   children,
@@ -103,6 +106,7 @@ export function Popover({
   renderTrigger,
 }: PopoverProps) {
   const [flipped, setFlipped] = useState(false);
+  const [alignFlipped, setAlignFlipped] = useState(false);
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   // `HTMLElement` rather than `HTMLButtonElement`: a custom trigger (via `renderTrigger`)
@@ -114,6 +118,7 @@ export function Popover({
 
   const [side, align] = placement.split('-') as ['top' | 'bottom', 'start' | 'end'];
   const effectiveSide = flipped ? (side === 'top' ? 'bottom' : 'top') : side;
+  const effectiveAlign = alignFlipped ? (align === 'start' ? 'end' : 'start') : align;
 
   /*
    * Flip when the preferred side has no room.
@@ -128,6 +133,7 @@ export function Popover({
   useLayoutEffect(() => {
     if (!open) {
       setFlipped(false);
+      setAlignFlipped(false);
       return;
     }
 
@@ -142,11 +148,15 @@ export function Popover({
     // top bar, and a popup taller than its clipping box is not scrolled, just cut off.
     let topBound = 0;
     let bottomBound = window.innerHeight;
+    let leftBound = 0;
+    let rightBound = window.innerWidth;
     for (let node = popup.parentElement; node; node = node.parentElement) {
       if (getComputedStyle(node).overflowY === 'visible') continue;
       const box = node.getBoundingClientRect();
       topBound = box.top;
       bottomBound = box.bottom;
+      leftBound = box.left;
+      rightBound = box.right;
       break;
     }
 
@@ -162,6 +172,14 @@ export function Popover({
         : roomBelow < needed && roomAbove > roomBelow;
     setFlipped(flip);
 
+    const roomFromStart = rightBound - rect.left;
+    const roomFromEnd = rect.right - leftBound;
+    setAlignFlipped(
+      align === 'start'
+        ? popup.offsetWidth > roomFromStart && roomFromEnd > roomFromStart
+        : popup.offsetWidth > roomFromEnd && roomFromStart > roomFromEnd,
+    );
+
     // Grow with the content, but never past the room on the side we open on — past that
     // the clipping ancestor cuts the popup off, so it scrolls instead. A stylesheet cap
     // (min(60vh, --wc-scroll-cap) by default) still governs where one is set; the menu
@@ -171,7 +189,7 @@ export function Popover({
     const cssCap = Number.parseFloat(getComputedStyle(popup).maxHeight);
     const limit = Number.isFinite(cssCap) ? Math.min(cssCap, room) : room;
     popup.style.maxHeight = `${Math.max(limit, 100)}px`;
-  }, [open, side, triggerRef, popupRef]);
+  }, [open, side, align, triggerRef, popupRef]);
 
   // Dismiss on a click anywhere outside. `pointerdown` rather than `click` so the popup is
   // gone before the click lands on whatever is underneath.
@@ -216,7 +234,7 @@ export function Popover({
     <div
       className={`popover${className ? ` ${className}` : ''}`}
       data-side={effectiveSide}
-      data-align={align}
+      data-align={effectiveAlign}
       ref={rootRef}
     >
       {renderTrigger ? (
@@ -245,6 +263,7 @@ export function Popover({
           onClick={() => onOpenChange(!open)}
         >
           {icon}
+          {triggerText ? <span>{triggerText}</span> : null}
           {badge}
         </button>
       )}

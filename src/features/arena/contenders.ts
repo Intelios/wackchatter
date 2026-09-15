@@ -73,3 +73,28 @@ export function eligibleContenders(resolved: readonly ResolvedContender[]): Cont
     .filter((entry) => entry.contender.enabled && entry.connection !== null)
     .map((entry) => entry.contender);
 }
+
+/**
+ * Why one of these entrants cannot be sent to right now, or null when all of them can.
+ *
+ * Tournaments need this at times a blind draw never hits: a bracket holds contender ids
+ * for its whole life, while the pool row — and the connection underneath it — can be
+ * deleted, repointed or emptied at any moment after the draw. The check reads the same
+ * resolution a run would use, so what the Fight button says and what the run does cannot
+ * disagree. The first unrunnable entrant reports; a match needs every side runnable, so
+ * which one is irrelevant.
+ */
+export function blockedEntrantReason(
+  contenderIds: readonly string[],
+  resolved: readonly ResolvedContender[],
+  nameOf: (contenderId: string) => string,
+): string | null {
+  for (const id of contenderIds) {
+    const entry = resolved.find((item) => item.contender.id === id);
+    if (!entry) return `${nameOf(id)} is no longer in the pool.`;
+    if (!entry.connection) {
+      return `${nameOf(id)} cannot fight — ${entry.unavailableReason}`;
+    }
+  }
+  return null;
+}

@@ -1,3 +1,5 @@
+import { type GroupMember, validateGroup } from '../../shared/types/group.ts';
+import { createGroupStore } from './groups.ts';
 /**
  * Chat storage.
  *
@@ -20,11 +22,14 @@ import type {
 } from '../../shared/types/chat.ts';
 import { writeChatBackup } from './backups.ts';
 import { getDb } from './db.ts';
+import { migrateNexusLibrary } from './nexus.ts';
 import { PATHS } from './paths.ts';
+import { getSettings } from './settings.ts';
 
 interface ChatRow {
   id: string;
-  character_id: string;
+  character_id: string | null;
+  kind: 'direct' | 'group';
   title: string;
   created: number;
   modified: number;
@@ -33,6 +38,8 @@ interface ChatRow {
 }
 
 interface MessageRow {
+  member_id: string | null;
+  character_id: string | null;
   id: string;
   position: number;
   name: string;
@@ -46,12 +53,25 @@ interface MessageRow {
   swipe_info: string;
 }
 
+/**
+ * A chat's metadata without its transcript, which is all a library-wide pass needs. The
+ * summary query is deliberately not reused here: it exists to render a recents list, and
+ * its per-chat preview subqueries would be paid for on every chat to deliver nothing.
+ */
+export interface ChatMeta {
+  id: string;
+  revision: number;
+  metadata: ChatMetadata;
+}
+
 export interface ChatStore {
   listChats(characterId?: string): ChatSummary[];
   listRecent(limit: number): ChatSummary[];
+  listChatMetas(): ChatMeta[];
   getChat(id: string): Chat | null;
   createChat(input: {
-    characterId: string;
+    characterId?: string | null;
+    kind?: 'direct' | 'group';
     title?: string;
     metadata?: ChatMetadata;
     messages?: ChatMessage[];
@@ -65,6 +85,20 @@ export interface ChatStore {
     id: string,
     updates: { revision: number; title?: string; metadata?: ChatMetadata },
   ): ChatSaveResult;
+  /**
+   * Migration door: replace a chat's metadata and bump its revision, without restamping
+   * `modified` and without reading the transcript. Returns null for an unknown chat.
+   *
+   * Deliberately not a general-purpose save. A library-wide repair is not the user
+   * touching every chat, so recency — and with it the recents list, the character picker
+   * and every "last spoke" figure — has to survive the pass untouched. The revision does
+   * move, so a client holding a pre-migration snapshot cannot write it back.
+   *
+   * Also deliberately unvalidated: a scene that stopped satisfying `validateGroup` after
+   * the fact must not be able to strand a library-wide migration, so the check stays where
+   * scenes are edited.
+   */
+  migrateChatMeta(id: string, metadata: ChatMetadata): ChatMeta | null;
   /**
    * Delete one chat. Backed up first, so a misclick on the trash is recoverable — and a
    * backup failure aborts the delete instead of destroying the transcript unrecorded.
@@ -107,6 +141,21 @@ function parseJson<T>(raw: string, fallback: T): T {
   }
 }
 
+/**
+ * Stored metadata, always a plain object.
+ *
+ * `parseJson` alone is not enough: a row holding the JSON literal `null` parses
+ * successfully, so the fallback never fires and callers get a `ChatMetadata` that is not
+ * one — every `metadata.<field>` read then throws. The repair belongs here rather than at
+ * each call site, because a caller cannot defend against a type that lies.
+ */
+function parseMetadata(raw: string): ChatMetadata {
+  const parsed = parseJson<unknown>(raw, null);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as ChatMetadata)
+    : {};
+}
+
 function rowToMessage(row: MessageRow): ChatMessage {
   // A row already holds exactly MessageState's fields, so it is normalised directly
   // rather than being squeezed through ChatMessage — there is no `mes` to invent, and
@@ -114,6 +163,8 @@ function rowToMessage(row: MessageRow): ChatMessage {
   return toChatMessage(
     normalizeState({
       id: row.id,
+      memberId: row.member_id ?? undefined,
+      characterId: row.character_id ?? undefined,
       name: row.name,
       is_user: row.is_user === 1,
       is_system: row.is_system === 1,
@@ -134,14 +185,24 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
   const statements = {
     insertChat: database.query(
-      `INSERT INTO chats (id, character_id, title, created, modified, revision, metadata)
-       VALUES ($id, $characterId, $title, $created, $modified, $revision, $metadata)`,
+      `INSERT INTO chats (id, character_id, kind, title, created, modified, revision, metadata)
+       VALUES ($id, $characterId, $kind, $title, $created, $modified, $revision, $metadata)`,
     ),
     selectChat: database.query<ChatRow, [string]>('SELECT * FROM chats WHERE id = ?'),
+    // Metadata and revision only. A library-wide pass must not pay for transcripts it will
+    // not read, and must not be slowed by the newest chat being the largest.
+    selectChatMetas: database.query<{ id: string; revision: number; metadata: string }, []>(
+      'SELECT id, revision, metadata FROM chats',
+    ),
     replaceChat: database.query(
       `UPDATE chats
          SET title = $title, metadata = $metadata, modified = $modified, revision = $revision
        WHERE id = $id`,
+    ),
+    // Note the absent $modified: this is the migration door, and leaving recency alone is
+    // the entire point of it. See migrateChatMeta.
+    migrateChatMeta: database.query(
+      `UPDATE chats SET metadata = $metadata, revision = $revision WHERE id = $id`,
     ),
     deleteChat: database.query('DELETE FROM chats WHERE id = ?'),
     reassignCharacter: database.query(
@@ -161,25 +222,29 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     deleteMessages: database.query('DELETE FROM messages WHERE chat_id = ?'),
     insertMessage: database.query(
       `INSERT INTO messages
-         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, swipe_id, swipes, swipe_info)
-       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $swipeId, $swipes, $swipeInfo)`,
+         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, member_id, character_id, swipe_id, swipes, swipe_info)
+       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $memberId, $speakerCharacterId, $swipeId, $swipes, $swipeInfo)`,
     ),
   };
 
   // The current swipe's text as the preview, taken live rather than denormalised into a
   // column that could disagree with the message it summarises. `branchedFrom` arrives as
-  // JSON text (json_extract of an object), parsed on the way out below.
+  // JSON text (json_extract of an object), parsed on the way out below; `groupMembers` is
+  // the group cast array, projected down to its character filenames there.
   const summarySelect = `
-    SELECT c.id, c.character_id AS characterId, c.title, c.created, c.modified,
+    SELECT c.id, c.kind, c.character_id AS characterId, c.title, c.created, c.modified,
       (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id) AS messageCount,
       (SELECT substr(json_extract(m.swipes, '$[' || m.swipe_id || ']'), 1, 200)
          FROM messages m WHERE m.chat_id = c.id
         ORDER BY m.position DESC LIMIT 1) AS lastMessage,
-      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom
+      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom,
+      json_extract(c.metadata, '$.group.members') AS groupMembers
     FROM chats c`;
 
-  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom'> {
+  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom' | 'groupMembers'> {
     branchedFrom: string | null;
+    /** The group cast as JSON text, or NULL for a direct chat. */
+    groupMembers: string | null;
   }
 
   function rowToSummary(row: SummaryRow): ChatSummary {
@@ -187,11 +252,22 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       row.branchedFrom === null
         ? undefined
         : parseJson<BranchOrigin | null>(row.branchedFrom, null);
+    /*
+     * The cast's filenames only, in cast order. The rows on the other side of this call
+     * carry public profiles and per-member overrides; none of that is a summary's business,
+     * and shipping it would bloat every recents fetch with prose nobody reads there.
+     */
+    const cast =
+      row.groupMembers === null ? null : parseJson<GroupMember[] | null>(row.groupMembers, null);
+    const groupMembers = cast
+      ?.map((member) => member?.characterId)
+      .filter((id): id is string => typeof id === 'string');
     // A malformed blob is not a summary-killer; the chat lists without its provenance.
     return {
       ...row,
       lastMessage: row.lastMessage ?? '',
       branchedFrom: origin ?? undefined,
+      groupMembers: groupMembers?.length ? groupMembers : undefined,
     };
   }
 
@@ -214,6 +290,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
         $id: state.id,
         $position: position,
         $name: state.name,
+        $memberId: state.memberId ?? null,
+        $speakerCharacterId: state.characterId ?? null,
         $isUser: state.is_user ? 1 : 0,
         $isSystem: state.is_system ? 1 : 0,
         $hiddenBy: state.hiddenBy ?? null,
@@ -234,11 +312,12 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     return {
       id: row.id,
       characterId: row.character_id,
+      kind: row.kind,
       title: row.title,
       created: row.created,
       modified: row.modified,
       revision: row.revision,
-      metadata: parseJson<ChatMetadata>(row.metadata, {}),
+      metadata: parseMetadata(row.metadata),
       messages: statements.selectMessages.all(id).map(rowToMessage),
     };
   }
@@ -247,6 +326,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     statements.insertChat.run({
       $id: row.id,
       $characterId: row.character_id,
+      $kind: row.kind,
       $title: row.title,
       $created: row.created,
       $modified: row.modified,
@@ -274,6 +354,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
       const title = input.title?.trim() || existing.title;
       const metadata = input.metadata ?? existing.metadata;
+      if (existing.kind === 'group' && !validateGroup(metadata.group, 0))
+        throw new Error('Invalid group scene.');
       const messages = normalizeMessages(input.messages);
 
       if (input.revision < existing.revision) {
@@ -319,6 +401,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
       const title = input.title?.trim() || existing.title;
       const metadata = input.metadata ?? existing.metadata;
+      if (existing.kind === 'group' && !validateGroup(metadata.group, 0))
+        throw new Error('Invalid group scene.');
       if (input.revision < existing.revision) {
         return {
           kind: 'stale',
@@ -359,16 +443,27 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       return listRecent.all(limit).map(rowToSummary);
     },
 
+    listChatMetas(): ChatMeta[] {
+      return statements.selectChatMetas.all().map((row) => ({
+        id: row.id,
+        revision: row.revision,
+        metadata: parseMetadata(row.metadata),
+      }));
+    },
+
     getChat: readChat,
 
     createChat(input): Chat {
+      if (input.kind === 'group' ? !validateGroup(input.metadata?.group, 0) : !input.characterId)
+        throw new Error('Invalid chat identity or group configuration.');
       const now = Date.now();
       const id = crypto.randomUUID();
 
       insertWithMessages(
         {
           id,
-          character_id: input.characterId,
+          character_id: input.kind === 'group' ? null : (input.characterId ?? null),
+          kind: input.kind ?? 'direct',
           title: input.title?.trim() || 'New chat',
           created: now,
           modified: now,
@@ -387,6 +482,21 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
     updateChatMeta(id, updates): ChatSaveResult {
       return saveMeta(id, updates);
+    },
+
+    migrateChatMeta(id, metadata): ChatMeta | null {
+      const existing = statements.selectChat.get(id);
+      if (!existing) return null;
+      const revision = existing.revision + 1;
+      statements.migrateChatMeta.run({
+        $id: id,
+        $metadata: JSON.stringify(metadata),
+        // Bumped so a stale client snapshot cannot overwrite migrated metadata, but a
+        // revision is not recency: the timestamp column is what orders the library, and
+        // this leaves it exactly as the user left it.
+        $revision: revision,
+      });
+      return { id, revision, metadata };
     },
 
     deleteChat(id): boolean {
@@ -425,6 +535,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
         {
           id: branchId,
           character_id: source.characterId,
+          kind: source.kind ?? 'direct',
           title: title?.trim() || `${source.title} (branch)`,
           created: now,
           modified: now,
@@ -445,10 +556,41 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
     reassignCharacter(oldCharacterId, newCharacterId): number {
       if (oldCharacterId === newCharacterId) return 0;
-      return statements.reassignCharacter.run({
-        $old: oldCharacterId,
-        $new: newCharacterId,
-      }).changes;
+      return database.transaction(() => {
+        const changed = statements.reassignCharacter.run({
+          $old: oldCharacterId,
+          $new: newCharacterId,
+        }).changes;
+        database
+          .query('UPDATE messages SET character_id = ? WHERE character_id = ?')
+          .run(newCharacterId, oldCharacterId);
+        const rename = <T extends { members: { characterId: string }[] }>(g: T): T => ({
+          ...g,
+          members: g.members.map((m) =>
+            m.characterId === oldCharacterId ? { ...m, characterId: newCharacterId } : m,
+          ),
+        });
+        for (const row of database
+          .query<ChatRow, []>("SELECT * FROM chats WHERE kind = 'group'")
+          .all()) {
+          const metadata = parseMetadata(row.metadata);
+          if (metadata.group?.members.some((m) => m.characterId === oldCharacterId)) {
+            metadata.group = rename(metadata.group);
+            database
+              .query('UPDATE chats SET metadata = ? WHERE id = ?')
+              .run(JSON.stringify(metadata), row.id);
+          }
+        }
+        const groups = createGroupStore(database);
+        for (const g of groups.list())
+          if (g.members.some((m) => m.characterId === oldCharacterId)) {
+            const { id, revision, created, modified, ...config } = rename(g);
+            database
+              .query('UPDATE groups SET config = ? WHERE id = ?')
+              .run(JSON.stringify(config), id);
+          }
+        return changed;
+      })();
     },
 
     deleteChatsForCharacter(characterId): number {
@@ -474,7 +616,11 @@ let store: ChatStore | null = null;
 
 /** The application chat store. Tests build their own against an in-memory database. */
 export function chatStore(): ChatStore {
-  store ??= createChatStore(getDb());
+  if (!store) {
+    const next = createChatStore(getDb());
+    migrateNexusLibrary(getDb(), next, getSettings().memoryMode);
+    store = next;
+  }
   return store;
 }
 

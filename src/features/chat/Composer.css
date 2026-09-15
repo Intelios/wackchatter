@@ -38,10 +38,355 @@
  * to the field, which is what it is.
  */
 .composer__tray {
+  max-height: min(34vh, 280px);
+  overflow-y: auto;
+}
+
+/*
+ * Popovers are absolutely positioned from their controls. Let an open one escape the
+ * tray's own scrollport; the chat column remains the outer clipping boundary and Popover
+ * measures against it. Without this, the popup exists and receives keyboard focus but is
+ * painted entirely outside the tray — a pointer click lands on the transcript underneath.
+ */
+.composer__tray:has(.popover__popup) {
+  overflow: visible;
+}
+
+.composer__layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+}
+
+.composer__layout-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.composer__layout-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
+.composer__layout-group[data-area="centre"] {
+  margin-inline: auto;
+  justify-content: center;
+}
+.composer__layout-group[data-area="right"] {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.composer__layout-control {
+  display: contents;
+}
+.composer__layout-button {
+  max-width: 190px;
+}
+.composer__layout-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The customiser — a Touch Bar.
+ *
+ * The tray itself is the canvas: the real controls stay where they will live and visibly
+ * move as they are dragged, so the arrangement is never described by a diagram. The palette
+ * above is where everything unplaced waits, and it doubles as the removal target — dragging
+ * a control up and off the tray is the gesture this surface is modelled on.
+ *
+ * The tray's own scroll cap is lifted while the editor is open, and its clipping turned
+ * off: a dragged control has to be able to travel up over the palette without being cut
+ * off at the tray's edge. The palette scrolls internally instead.
+ */
+.composer__tray:has(.composer-editor) {
+  max-height: none;
+  overflow: visible;
+}
+
+.composer-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-popup);
+  box-shadow: var(--wc-shadow);
+}
+.composer-editor__head {
   display: flex;
   align-items: center;
   gap: var(--wc-space-2);
+}
+.composer-editor__head strong {
+  flex-shrink: 0;
+}
+.composer-editor__hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.composer-editor__status {
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The palette: unplaced controls, and the drop target that removes a placed one. */
+.composer-editor__palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: 1px dashed var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease;
+}
+.composer-editor__palette[data-over] {
+  border-color: var(--wc-danger);
+  background: var(--wc-danger-subtle);
+}
+.composer-editor__palette-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.composer-editor__palette-hint {
+  color: var(--wc-text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.composer-editor__search {
+  position: relative;
+  display: flex;
+}
+.composer-editor__search svg {
+  position: absolute;
+  left: var(--wc-space-2);
+  top: 50%;
+  width: var(--wc-icon-sm);
+  transform: translateY(-50%);
+  color: var(--wc-text-faint);
+  pointer-events: none;
+}
+.composer-editor__search .wc-input {
+  width: 100%;
+  padding-left: calc(var(--wc-space-3) + var(--wc-icon-sm));
+}
+.composer-editor__palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: var(--wc-space-2);
+  max-height: min(24vh, 190px);
+  overflow-y: auto;
+  padding: var(--wc-space-1);
+}
+.composer-editor__palette-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  padding: var(--wc-space-2) var(--wc-space-1);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text);
+  touch-action: none;
+}
+.composer-editor__palette-item:hover {
+  border-color: var(--wc-border-strong);
+  background: var(--wc-surface-hover);
+}
+/* The invisible activator over the preview — see the note on SortableChip. */
+.composer-editor__palette-hit,
+.composer-editor__chip-hit {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: none;
+  border-radius: inherit;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+.composer-editor__palette-hit:active,
+.composer-editor__chip-hit:active {
+  cursor: grabbing;
+}
+.composer-editor__palette-hit:focus-visible,
+.composer-editor__chip-hit:focus-visible {
+  outline: 2px solid var(--wc-accent);
+  outline-offset: 2px;
+}
+.composer-editor__palette-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--wc-control);
+  max-width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.composer-editor__palette-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-xs);
+  text-align: center;
+}
+.composer-editor__palette-empty {
+  grid-column: 1 / -1;
+}
+
+/*
+ * The canvas mirrors the real tray's alignment (left, auto-margined centre, right) so a
+ * control sits where it will sit in the composer. Empty areas keep a slot-sized stub of
+ * outline rather than collapsing, which is what makes them a drop target at all.
+ */
+.composer-editor__canvas {
+  display: flex;
+  flex-direction: column;
+}
+.composer-editor__row {
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+.composer-editor__area {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: calc(var(--wc-control) + var(--wc-space-2));
+  min-height: calc(var(--wc-control) + var(--wc-space-2));
+  padding: var(--wc-space-1);
+  border: 1px dashed var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease;
+}
+.composer-editor__area[data-area="centre"] {
+  margin-inline: auto;
+  justify-content: center;
+}
+.composer-editor__area[data-area="right"] {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.composer-editor__area[data-over] {
+  border-color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+}
+.composer-editor__chip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  padding: var(--wc-space-1);
+  border: 1px solid transparent;
+  border-radius: var(--wc-radius-sm);
+  touch-action: none;
+  transition:
+    border-color var(--wc-duration-fast) ease,
+    background var(--wc-duration-fast) ease,
+    box-shadow var(--wc-duration-fast) ease;
+}
+.composer-editor__chip:hover {
+  border-color: var(--wc-border);
+  background: var(--wc-surface);
+}
+.composer-editor__chip[data-selected] {
+  border-color: var(--wc-accent);
+  box-shadow: 0 0 0 1px var(--wc-accent-glow);
+}
+.composer-editor__chip-face {
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.composer-editor__divider {
+  height: 6px;
+  margin-block: var(--wc-space-1);
+  border-radius: 3px;
+  background: var(--wc-border);
+  opacity: 0.4;
+  transition:
+    background var(--wc-duration-fast) ease,
+    opacity var(--wc-duration-fast) ease,
+    box-shadow var(--wc-duration-fast) ease;
+}
+.composer-editor__divider[data-over] {
+  background: var(--wc-accent);
+  opacity: 1;
+  box-shadow: 0 0 8px var(--wc-accent-glow);
+}
+
+.composer-editor__selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-height: var(--wc-control);
+}
+.composer-editor__selection label {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+.composer-editor__selection select {
+  min-height: var(--wc-control);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface-raised);
+  color: var(--wc-text);
+}
+.composer-editor__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+.composer-editor__footer-spacer {
+  flex: 1;
+}
+.composer-editor__notice {
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+@media (max-width: 700px) {
+  .composer-editor__palette-grid {
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  }
+  .composer-editor__hint {
+    display: none;
+  }
 }
 
 /* Splits "who you are" from "what you can open" — the tray's left half holds both. */

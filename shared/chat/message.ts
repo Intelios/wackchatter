@@ -20,6 +20,8 @@ import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage, MessageExtra, SwipeInfo } from '../types/chat.ts';
 
 export interface MessageState {
+  memberId?: string;
+  characterId?: string;
   id: string;
   name: string;
   is_user: boolean;
@@ -90,6 +92,8 @@ export function toChatMessage(message: MessageState): ChatMessage {
     swipe_info: message.swipe_info.map((entry) => ({ ...entry })),
   };
 
+  if (message.memberId !== undefined) result.memberId = message.memberId;
+  if (message.characterId !== undefined) result.characterId = message.characterId;
   if (message.hiddenBy !== undefined) result.hiddenBy = message.hiddenBy;
 
   // Null is a real value — "sent with no persona" — so the key cannot be dropped by a
@@ -105,6 +109,8 @@ export function toChatMessage(message: MessageState): ChatMessage {
 
 /** The loose, possibly-inconsistent form of a MessageState — a DB row or foreign JSON. */
 export interface LooseMessageState {
+  memberId?: unknown;
+  characterId?: unknown;
   id: string;
   name: string;
   is_user?: unknown;
@@ -169,6 +175,8 @@ export function normalizeState(input: LooseMessageState): MessageState {
   if (typeof input.persona_id === 'string') state.persona_id = input.persona_id || null;
   else if (input.persona_id === null) state.persona_id = null;
 
+  if (typeof input.memberId === 'string') state.memberId = input.memberId;
+  if (typeof input.characterId === 'string') state.characterId = input.characterId;
   return state;
 }
 

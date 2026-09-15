@@ -35,6 +35,7 @@ import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import { contenderLabel } from './contenders.ts';
 import { buildScene, sceneSeedId } from './scene.ts';
 import { type ArenaState, arenaReducer, initialArenaState, isBusy } from './state/arenaReducer.ts';
+import { createControllerRegistry } from './state/controllerRegistry.ts';
 
 /** The reply budget when the chosen preset does not name one. */
 const DEFAULT_MAX_TOKENS = 400;
@@ -94,8 +95,10 @@ export interface UseArenaRun {
   start: (request: StartRunRequest) => Promise<void>;
   /** Re-roll one column against the run's cached prompt. */
   rerollColumn: (runId: string, contenderId: string) => Promise<void>;
+  /** Stop the reply, without touching anyone's ownership. */
   abort: () => void;
   removeRun: (runId: string) => void;
+  /** Empty the log. Anything still generating is stopped first — it has no log to settle into. */
   clear: () => void;
 }
 
@@ -118,15 +121,17 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
   stateRef.current = state;
 
   /**
-   * Live requests. A controller stays a member until its own `finally` removes it.
+   * Live requests. A controller stays a member until its own `finally` removes it — or
+   * until `clear()` retires the whole log at once, which is the one mass ending.
    *
    * Membership is half the ownership token; `disposed` is the other half. Note what Stop
    * must NOT do: revoke ownership. An aborted request has to survive long enough to
    * dispatch `entry/aborted` — revoking first means the catch block returns early, the
    * column sits at `streaming` forever, and the whole Arena is wedged behind a run that
-   * can never settle. Ownership is ended by the hook going away, not by stopping a reply.
+   * can never settle. Ownership is ended by the hook going away or the log being
+   * cleared, not by stopping a reply.
    */
-  const controllers = useRef(new Set<AbortController>());
+  const controllers = useRef(createControllerRegistry());
 
   /** The hook has unmounted. Every late callback is inert from here on. */
   const disposed = useRef(false);
@@ -143,8 +148,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
   );
 
   const abort = useCallback(() => {
-    // Copied first: aborting synchronously reaches the `finally` that mutates the set.
-    for (const controller of [...controllers.current]) controller.abort();
+    controllers.current.abortAll();
   }, []);
 
   /*
@@ -160,8 +164,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
     disposed.current = false;
     return () => {
       disposed.current = true;
-      for (const controller of [...controllers.current]) controller.abort();
-      controllers.current.clear();
+      controllers.current.revokeAll();
     };
   }, []);
 
@@ -271,8 +274,16 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
               },
         );
       } finally {
-        endStream();
-        controllers.current.delete(controller);
+        /*
+         * An unowned request writes nothing on the way out either — not even the stream
+         * store's final flush. The stores are shared by column index, and by the time
+         * ownership is gone the log may already have been cleared and a later run begun;
+         * `end()` here would stamp that run's store with a dead request's timing. The
+         * abandoned store is left as it last was: nothing renders from it, and the next
+         * `begin()` overwrites it whole.
+         */
+        if (owns()) endStream();
+        controllers.current.remove(controller);
       }
     },
     [countTokens, streaming, streams],
@@ -413,6 +424,17 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
   }, []);
 
   const clear = useCallback(() => {
+    /*
+     * Stop anything still generating and end its ownership before the log goes. Clearing
+     * alone leaves the run's controllers live with their ownership intact, and the stream
+     * stores are shared by column index: the abandoned columns would keep writing into
+     * whatever run takes the log next — the room sees two generations interleave in one
+     * pane, and the dead run bills the provider the whole time. Revoking (not merely
+     * aborting) is safe here because nothing in the log survives the clear: there is no
+     * column left to settle, so every late callback — dispatch, stream store publish, the
+     * catch's `entry/aborted` — is inert by design.
+     */
+    controllers.current.revokeAll();
     contexts.current.clear();
     dispatch({ type: 'log/cleared' });
   }, []);

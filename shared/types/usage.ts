@@ -13,15 +13,31 @@
  */
 
 /** Which part of the app made the request. */
-export type UsageFeature = 'chat' | 'summary' | 'memory' | 'cocreator' | 'arena' | 'persona';
+export type UsageFeature =
+  | 'groupDirector'
+  | 'groupProfiles'
+  | 'chat'
+  | 'summary'
+  | 'memory'
+  | 'cocreator'
+  | 'arena'
+  | 'persona'
+  /** A message written as the user for the composer. Billed like any other generation. */
+  | 'impersonate'
+  /** A "Previously on…" recap. Read in an overlay; produces no swipe. */
+  | 'recap';
 
 export const USAGE_FEATURES: readonly UsageFeature[] = [
+  'groupDirector',
+  'groupProfiles',
   'chat',
   'summary',
   'memory',
   'cocreator',
   'arena',
   'persona',
+  'impersonate',
+  'recap',
 ];
 
 export function isUsageFeature(value: unknown): value is UsageFeature {
