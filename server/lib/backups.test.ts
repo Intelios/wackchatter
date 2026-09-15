@@ -234,7 +234,7 @@ describe('restoreChatBackup', () => {
     expect(restored!.revision).toBe(0);
     expect(restored!.title).toBe(doomed.title);
     expect(restored!.characterId).toBe(doomed.characterId);
-    expect(restored!.metadata).toEqual(doomed.metadata);
+    expect(restored!.metadata).toEqual({ ...doomed.metadata, memoryMode: 'classic' });
     expect(restored!.messages.map((m) => m.mes)).toEqual(doomed.messages.map((m) => m.mes));
     // The bin is empty again: a second restore is impossible rather than a duplicate.
     expect(fileNames().length).toBe(0);

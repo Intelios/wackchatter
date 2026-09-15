@@ -46,6 +46,7 @@ interface PersonaChipProps {
   onSelect: (id: string | null) => void;
   /** Opens the persona panel, for everything this popover deliberately does not do. */
   onManage: () => void;
+  compact?: boolean;
 }
 
 export function PersonaChip({
@@ -55,6 +56,7 @@ export function PersonaChip({
   avatarVersions,
   onSelect,
   onManage,
+  compact,
 }: PersonaChipProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -217,7 +219,9 @@ export function PersonaChip({
           onClick={() => setOpen(!open)}
         >
           <PersonaFace persona={active} url={activeUrl} />
-          <span className="persona-chip__name">{active ? active.name : 'No persona'}</span>
+          <span className="persona-chip__name" hidden={compact}>
+            {active ? active.name : 'No persona'}
+          </span>
           {/* The chip answers "who am I right now" — with variants in play, that includes
               which flavour, or three rows all say "John Doe". */}
           {active?.variantLabel ? (

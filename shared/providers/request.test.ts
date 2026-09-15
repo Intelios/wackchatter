@@ -398,6 +398,45 @@ describe('headers', () => {
     expect(headers.authorization).toBe('Custom abc');
     expect(headers['x-extra']).toBe('1');
   });
+
+  test('{{key}} resolves to the stored key, whole value or embedded', () => {
+    const headers = buildHeaders(
+      connection({ headers: { 'x-goog-api-key': '{{key}}', authorization: 'Token {{key}} ok' } }),
+      'sk-test',
+      'http://localhost:5173',
+    );
+    expect(headers['x-goog-api-key']).toBe('sk-test');
+    expect(headers.authorization).toBe('Token sk-test ok');
+  });
+
+  test('a {{key}} header with no stored key is dropped — the literal token must not travel', () => {
+    const headers = buildHeaders(
+      connection({ headers: { 'x-goog-api-key': '{{key}}' } }),
+      null,
+      'http://localhost:5173',
+    );
+    expect(Object.hasOwn(headers, 'x-goog-api-key')).toBe(false);
+  });
+
+  test('an empty value removes the header, even one of ours', () => {
+    const headers = buildHeaders(
+      connection({ headers: { authorization: '', 'x-drop-me': '' } }),
+      'sk-test',
+      'http://localhost:5173',
+    );
+    expect(Object.hasOwn(headers, 'authorization')).toBe(false);
+    expect(Object.hasOwn(headers, 'x-drop-me')).toBe(false);
+  });
+
+  test('user names match ours case-insensitively, so an override cannot duplicate a header', () => {
+    const headers = buildHeaders(
+      connection({ headers: { Authorization: 'Custom abc' } }),
+      'sk-test',
+      'http://localhost:5173',
+    );
+    expect(headers.Authorization).toBe('Custom abc');
+    expect(Object.hasOwn(headers, 'authorization')).toBe(false);
+  });
 });
 
 describe('urls', () => {

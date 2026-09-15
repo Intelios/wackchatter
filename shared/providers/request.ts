@@ -46,6 +46,14 @@ export function modelsUrl(connection: ConnectionSettings): string {
  *
  * A null key produces NO Authorization header at all. Sending `Bearer null` makes
  * llama.cpp and KoboldCpp reject a request they would otherwise have served.
+ *
+ * User headers are resolved after ours, with two rules:
+ *  - `{{key}}` in a value becomes the stored API key (every occurrence). With no key
+ *    stored, a referencing header is dropped — the literal token must never reach a
+ *    provider. That is what lets a header carry a secret (Google's `X-Goog-Api-Key`)
+ *    while settings.json, and therefore the browser, only ever sees `{{key}}`.
+ *  - An empty value removes the header, even one we would otherwise send — that is how
+ *    a gateway that rejects our Bearer header gets it suppressed.
  */
 export function buildHeaders(
   connection: ConnectionSettings,
@@ -64,8 +72,29 @@ export function buildHeaders(
     headers['X-Title'] = 'WackChatter';
   }
 
-  // User-supplied headers win, so a proxy needing its own auth scheme can override.
-  return { ...headers, ...connection.headers };
+  const resolved: Record<string, string> = { ...headers };
+  for (const [name, raw] of Object.entries(connection.headers ?? {})) {
+    const value = raw.includes('{{key}}')
+      ? apiKey
+        ? // A function replacement: a key containing `$` must not read as a pattern.
+          raw.replace(/\{\{key\}\}/g, () => apiKey)
+        : ''
+      : raw;
+    dropHeader(resolved, name);
+    if (value !== '') resolved[name] = value;
+  }
+  return resolved;
+}
+
+/**
+ * Header names are case-insensitive on the wire, so a user's `Authorization` must
+ * replace our `authorization` rather than sit beside it as a duplicate.
+ */
+function dropHeader(headers: Record<string, string>, name: string): void {
+  const lower = name.toLowerCase();
+  for (const existing of Object.keys(headers)) {
+    if (existing.toLowerCase() === lower) delete headers[existing];
+  }
 }
 
 /** `min`/`max` are UI conveniences; the wire only knows low/medium/high. */

@@ -1,4 +1,10 @@
 import { greetingTexts } from '@shared/chat/message.ts';
+import {
+  type ComposerLayout,
+  DEFAULT_GROUP_COMPOSER_LAYOUT,
+  DEFAULT_SINGLE_COMPOSER_LAYOUT,
+} from '@shared/composer/layout.ts';
+import { DEFAULT_NEXUS } from '@shared/nexus/types.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
 import type { ArenaSettings } from '@shared/types/arena.ts';
@@ -32,16 +38,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { ArenaShell } from './features/arena/ArenaShell.tsx';
 import { resolveBackgroundEffect } from './features/backgrounds/resolve.ts';
+import { CastNav, type CastTab } from './features/character/CastNav.tsx';
 import { CharacterEditor } from './features/character/CharacterEditor.tsx';
 import { CharacterList } from './features/character/CharacterList.tsx';
-import { ChatContext } from './features/chat/ChatContext.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
 import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
+import { GroupChatView } from './features/group/GroupChatView.tsx';
+import { GroupInspectPanel } from './features/group/GroupInspectPanel.tsx';
+import { GroupsPanel } from './features/group/GroupsPanel.tsx';
+import { useGroupChat } from './features/group/useGroupChat.ts';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
+import { NexusExplorer } from './features/nexus/NexusExplorer.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { recentPersonaId, withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
@@ -70,6 +81,34 @@ import {
 import type { PersistenceControls } from './lib/autosave.ts';
 import { useTokenizer } from './lib/useTokenizer.ts';
 
+/**
+ * The settings write for a persona pick, shared by the one-on-one chat and a group scene.
+ *
+ * Both doors have to move the same two things — the app-wide persona, and the recents that
+ * order the composer's switcher and the panel's roster — or a pick made in a group would
+ * leave the next one-on-one chat on the old persona. `withRecentPersona` returns the same
+ * reference when nothing would move, so re-picking the persona you are already using
+ * writes no settings at all.
+ *
+ * Recents are recorded at group grain — a variant's use bumps its base, because the Recent
+ * section lists people and the base row is where its flavours are reached from. Switching
+ * flavours of the same person then moves nothing, correctly.
+ */
+function personaPickSettings(
+  personas: readonly Persona[],
+  recentIds: readonly string[],
+  id: string | null,
+) {
+  const recent = withRecentPersona(
+    recentIds,
+    id ? recentPersonaId(personas, id) : null,
+    MAX_RECENT_PERSONAS,
+  );
+  return recent === recentIds
+    ? { personaId: id }
+    : { personaId: id, recentPersonaIds: [...recent] };
+}
+
 export function App() {
   const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
@@ -78,10 +117,16 @@ export function App() {
   const [cocreatorSeedAvatar, setCocreatorSeedAvatar] = useState<string | null>(null);
   const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
+  const [characterPanelTab, setCharacterPanelTab] = useState<CastTab>('characters');
+  const [characterTabDirection, setCharacterTabDirection] = useState<'forward' | 'backward'>(
+    'forward',
+  );
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   /** Folder paths under data/characters, including empty ones. */
   const [folders, setFolders] = useState<string[]>([]);
+  const [groupChatId, setGroupChatId] = useState<string | null>(null);
+  const groupPersistence = useRef<PersistenceControls | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CharacterDetail | null>(null);
   const [editing, setEditing] = useState(false);
@@ -121,9 +166,30 @@ export function App() {
         ? lorePersistence.current
         : rightPanel === 'persona'
           ? personaPersistence.current
-          : null;
+          : rightPanel === 'characters' && characterPanelTab === 'groups'
+            ? groupPersistence.current
+            : rightPanel === 'groups'
+              ? groupPersistence.current
+              : null;
     await controls?.flush();
-  }, [editing, rightPanel]);
+  }, [characterPanelTab, editing, rightPanel]);
+
+  const handleCastTabChange = useCallback(
+    async (nextTab: CastTab) => {
+      if (nextTab === characterPanelTab) return;
+      if (characterPanelTab === 'groups') {
+        try {
+          await groupPersistence.current?.flush();
+        } catch (err) {
+          setError((err as Error).message);
+          return;
+        }
+      }
+      setCharacterTabDirection(nextTab === 'groups' ? 'forward' : 'backward');
+      setCharacterPanelTab(nextTab);
+    },
+    [characterPanelTab],
+  );
 
   /**
    * Reveal a right panel. Idempotent — never closes, so programmatic jumps (the chat
@@ -131,10 +197,24 @@ export function App() {
    * already looking at.
    */
   const showRightPanel = useCallback(
-    async (id: RightPanelId) => {
+    async (id: RightPanelId | 'groups', tab?: CastTab) => {
+      const targetPanel: RightPanelId = id === 'groups' ? 'characters' : id;
+      const targetTab = tab ?? (id === 'groups' ? 'groups' : undefined);
+      if (targetTab && targetTab !== characterPanelTab) {
+        if (characterPanelTab === 'groups') {
+          try {
+            await groupPersistence.current?.flush();
+          } catch (err) {
+            setError((err as Error).message);
+            return;
+          }
+        }
+        setCharacterTabDirection(targetTab === 'groups' ? 'forward' : 'backward');
+        setCharacterPanelTab(targetTab);
+      }
       // The character editor replaces the panel outright, so without the `editing` check
       // the panel would change behind a screen nobody can see.
-      if (id === rightPanel && !editing) return;
+      if (targetPanel === rightPanel && !editing) return;
       try {
         await flushRightPanel();
       } catch (err) {
@@ -142,9 +222,9 @@ export function App() {
         return;
       }
       setEditing(false);
-      setRightPanel(id);
+      setRightPanel(targetPanel);
     },
-    [editing, flushRightPanel, rightPanel],
+    [characterPanelTab, editing, flushRightPanel, rightPanel],
   );
 
   /**
@@ -317,6 +397,13 @@ export function App() {
     settings?.tokenizerEncoding,
   );
 
+  const nexusSettings = settings?.nexus ?? DEFAULT_NEXUS;
+  const nexusBase = settings?.connections.find((c) => c.id === nexusSettings.connectionId);
+  const nexusConnection =
+    nexusBase && nexusSettings.model
+      ? { ...nexusBase, model: nexusSettings.model, showReasoning: false }
+      : null;
+  const nexusCountTokens = useTokenizer(nexusSettings.model, settings?.tokenizerEncoding);
   const memoryMode: MemoryMode = settings?.memoryMode ?? 'classic';
   const memorySettings: MemorySettings = settings?.memory ?? DEFAULT_MEMORY;
   const memoryConnection = memorySettings.connectionId
@@ -410,6 +497,16 @@ export function App() {
         ? (settings.collapsedCharacterFolders as string[])
         : [],
     [settings?.collapsedCharacterFolders],
+  );
+
+  // Which chat-menu families are shut. The same collapsed-set shape and the same round-trip
+  // as the folders above: a family added by a later build must not arrive already hidden.
+  const collapsedChatMenuGroups = useMemo(
+    () =>
+      Array.isArray(settings?.collapsedChatMenuGroups)
+        ? (settings.collapsedChatMenuGroups as string[])
+        : [],
+    [settings?.collapsedChatMenuGroups],
   );
 
   // Global books are opt-in per book; nothing is global until the user says so. Stored in
@@ -616,10 +713,53 @@ export function App() {
     memoryConnection,
     memoryPreset,
     memoryCountTokens,
+    nexusSettings,
+    nexusConnection,
+    nexusCountTokens,
     globalVariables: settings?.variables ?? {},
     regexScripts,
     onGlobalVariablesChange: commitGlobalVariables,
   });
+
+  const groupChat = useGroupChat({
+    chatId: groupChatId,
+    connections: settings?.connections ?? [],
+    characterIds: characters.map((c) => c.avatar),
+    personas,
+    personaId: settings?.personaId ?? null,
+    // A pick in a group scene writes the same two settings a one-on-one pick does, through
+    // the same helper — `groupChat.setPersona` is the door, this is the effect.
+    onPersonaSwitch: (id) =>
+      void patchSettings(personaPickSettings(personas, settings?.recentPersonaIds ?? [], id)),
+    globalVariables: settings?.variables ?? {},
+    commitGlobalVariables,
+    globalBookIds,
+    worldInfoSettings,
+    regexScripts,
+    summarySettings,
+    summaryConnection,
+    nexusSettings,
+    nexusConnection,
+    streamingFps: settings?.streamingFps ?? 30,
+    tokenizerEncoding: settings?.tokenizerEncoding,
+    onOpenChat: setGroupChatId,
+  });
+  const activeMemoryChat = groupChatId ? groupChat : chat;
+  const openGroup = useCallback(
+    async (id: string) => {
+      chat.abort();
+      chat.cancelSummary();
+      chat.cancelMemoryRun();
+      await chat.flushSaves();
+      await groupChat.flushSaves();
+      await flushRightPanel();
+      setSelected(null);
+      setDetail(null);
+      setEditing(false);
+      setGroupChatId(id);
+    },
+    [chat, groupChat, flushRightPanel],
+  );
 
   const activeLoreSources = useMemo(
     () => lore.sourcesForPersona(chat.persona?.lorebookId ?? undefined),
@@ -642,8 +782,11 @@ export function App() {
           chatMetadata: chat.state.metadata,
           guidanceSettings,
           summarySettings,
-          memoryMode,
+          memoryMode: chat.memoryMode,
           memorySettings,
+          nexusSettings,
+          prepareNexus: chat.nexus.preview,
+          nexusVersion: chat.nexus.indexVersion,
           globalVariables: settings?.variables ?? {},
           regexScripts,
         }
@@ -662,10 +805,12 @@ export function App() {
         chat.cancelMemoryRun();
         try {
           await chat.flushSaves();
+          await groupChat.flushSaves();
         } catch {
           return;
         }
       }
+      setGroupChatId(null);
       if (options?.chatId) chat.pendingChatRef.current = options.chatId;
       if (avatar !== selected) {
         setDetail(null);
@@ -674,7 +819,7 @@ export function App() {
       setEditing(editing);
       setRightPanel(options?.panel === undefined ? 'characters' : options.panel);
     },
-    [chat, selected],
+    [chat, groupChat.flushSaves, selected],
   );
 
   const handleSelect = useCallback(
@@ -685,10 +830,14 @@ export function App() {
   );
 
   const handleOpenRecentChat = useCallback(
-    (avatar: string, chatId: string) => {
+    (avatar: string | null, chatId: string) => {
+      if (!avatar) {
+        void openGroup(chatId).catch((e) => setError(e.message));
+        return;
+      }
       void transitionToCharacter(avatar, { chatId, panel: null });
     },
-    [transitionToCharacter],
+    [openGroup, transitionToCharacter],
   );
 
   /**
@@ -709,14 +858,16 @@ export function App() {
       chat.cancelSummary();
       chat.cancelMemoryRun();
       await chat.flushSaves();
+      await groupChat.flushSaves();
       await flushRightPanel();
     } catch {
       return;
     }
+    setGroupChatId(null);
     setSelected(null);
     setDetail(null);
     setEditing(false);
-  }, [chat, flushRightPanel]);
+  }, [chat, groupChat, flushRightPanel]);
 
   /**
    * The trash bin, across every character — it is shown in User Settings, which is not a
@@ -760,11 +911,13 @@ export function App() {
     async (backupId: string) => {
       try {
         const restored = await backupApi.restore(backupId);
-        if (selected === restored.characterId) {
+        if (restored.kind === 'group') {
+          await openGroup(restored.id);
+        } else if (selected === restored.characterId) {
           await chat.refreshChats();
           void chat.openChat(restored.id);
         } else {
-          void transitionToCharacter(restored.characterId, {
+          void transitionToCharacter(restored.characterId!, {
             chatId: restored.id,
             panel: null,
           });
@@ -775,7 +928,7 @@ export function App() {
         void refreshBackups();
       }
     },
-    [chat, selected, transitionToCharacter, refreshBackups],
+    [chat, openGroup, refreshBackups, selected, transitionToCharacter],
   );
 
   /** Empty one slot of the bin for good. */
@@ -836,6 +989,7 @@ export function App() {
         chat.cancelSummary();
         chat.cancelMemoryRun();
         await chat.flushSaves();
+        await groupChat.flushSaves();
       } catch {
         // The rename already landed; a failed chat flush is surfaced by the app shell and
         // should not stop the re-select.
@@ -872,7 +1026,7 @@ export function App() {
       }
       void refresh();
     },
-    [chat, refresh, selected],
+    [chat, groupChat.flushSaves, refresh, selected],
   );
 
   const handleDeleted = useCallback(() => {
@@ -913,6 +1067,7 @@ export function App() {
       chat.cancelSummary();
       chat.cancelMemoryRun();
       await chat.flushSaves();
+      await groupChat.flushSaves();
       await flushRightPanel();
     } catch (err) {
       setError((err as Error).message);
@@ -922,7 +1077,7 @@ export function App() {
     // handoff the user has already left must not be re-opened by a later, unrelated entry.
     setStudioInitialAvatar(null);
     setView('studio');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   const exitStudio = useCallback(async () => {
     try {
@@ -944,6 +1099,7 @@ export function App() {
       chat.cancelSummary();
       chat.cancelMemoryRun();
       await chat.flushSaves();
+      await groupChat.flushSaves();
       await flushRightPanel();
     } catch (err) {
       setError((err as Error).message);
@@ -953,7 +1109,7 @@ export function App() {
     // one the user has already left behind must not seed a later, unrelated entry.
     setCocreatorSeedAvatar(null);
     setView('cocreator');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /**
    * The Studio's half of the handoff: leave for the Co-Creator, seeded on the open card.
@@ -1013,13 +1169,14 @@ export function App() {
       chat.cancelSummary();
       chat.cancelMemoryRun();
       await chat.flushSaves();
+      await groupChat.flushSaves();
       await flushRightPanel();
     } catch (err) {
       setError((err as Error).message);
       return;
     }
     setView('stats');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /** Read-only throughout, so there is nothing of its own to flush on the way out. */
   const exitStats = useCallback(() => {
@@ -1033,13 +1190,14 @@ export function App() {
       chat.cancelSummary();
       chat.cancelMemoryRun();
       await chat.flushSaves();
+      await groupChat.flushSaves();
       await flushRightPanel();
     } catch (err) {
       setError((err as Error).message);
       return;
     }
     setView('arena');
-  }, [chat, flushRightPanel]);
+  }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /*
    * Nothing of its own to flush either. The run log is session work, and a blind verdict is
@@ -1085,19 +1243,7 @@ export function App() {
   // writes no settings at all.
   const handleSelectPersona = useCallback(
     (id: string | null) => {
-      // Recents are recorded at group grain — a variant's use bumps its base, because the
-      // Recent section lists people and the base row is where its flavours are reached
-      // from. Switching flavours of the same person then moves nothing, correctly.
-      const recent = withRecentPersona(
-        settings?.recentPersonaIds ?? [],
-        id ? recentPersonaId(personas, id) : null,
-        MAX_RECENT_PERSONAS,
-      );
-      void patchSettings(
-        recent === (settings?.recentPersonaIds ?? [])
-          ? { personaId: id }
-          : { personaId: id, recentPersonaIds: [...recent] },
-      );
+      void patchSettings(personaPickSettings(personas, settings?.recentPersonaIds ?? [], id));
       if (chat.state.chatId) chat.setPersona(id);
     },
     [chat, patchSettings, personas, settings?.recentPersonaIds],
@@ -1129,9 +1275,13 @@ export function App() {
     if (view === 'cocreator') return 'Character Co-Creator';
     if (view === 'stats') return 'Stats';
     if (view === 'arena') return 'Model Arena';
+    // A scene has no character to name it, and its own header is gone — the tab is the one
+    // place left that says which scene is open, so it says it the way a one-on-one chat
+    // does: "who, then which conversation".
+    if (groupChatId) return groupChat.state.title ? `Group — ${groupChat.state.title}` : 'Group';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
-  }, [view, active, chat.state.title]);
+  }, [view, groupChatId, groupChat.state.title, active, chat.state.title]);
 
   useEffect(() => {
     document.title = documentTitle;
@@ -1269,28 +1419,36 @@ export function App() {
        */
       left={
         <ErrorBoundary where="the left panel" resetKeys={[leftPanel]}>
-          <LeftPanel
-            active={leftPanel}
-            settings={settings}
-            onSettingsChange={setSettings}
-            presets={presets}
-            presetId={presetId}
-            preset={preset}
-            onSelectPreset={selectPreset}
-            draft={presetDraft}
-            tokenCounts={preview?.tokenCounts}
-            macroWarnings={preview?.macroWarnings}
-            extraSamplersSent={
-              connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
-            }
-            connection={connection}
-            onConnectionPatch={patchActiveConnection}
-            // The last generation's result when there is one, else the live preview — so the
-            // report answers "why didn't it fire?" before you send, too.
-            worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
-            memoryRecall={chat.memoryRecall ?? preview?.memoryRecall ?? null}
-            inspection={chat.inspection}
-          />
+          {groupChatId && leftPanel === 'inspect' ? (
+            <Panel title="Group inspection">
+              <GroupInspectPanel chat={groupChat} />
+            </Panel>
+          ) : (
+            <LeftPanel
+              active={leftPanel}
+              settings={settings}
+              onSettingsChange={setSettings}
+              presets={presets}
+              presetId={presetId}
+              preset={preset}
+              onSelectPreset={selectPreset}
+              draft={presetDraft}
+              tokenCounts={preview?.tokenCounts}
+              macroWarnings={preview?.macroWarnings}
+              extraSamplersSent={
+                connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
+              }
+              connection={connection}
+              onConnectionPatch={patchActiveConnection}
+              // The last generation's result when there is one, else the live preview — so the
+              // report answers "why didn't it fire?" before you send, too.
+              worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
+              memoryRecall={chat.memoryRecall ?? preview?.memoryRecall ?? null}
+              inspection={chat.inspection}
+              nexusRecall={chat.inspection?.nexusRecall ?? chat.nexus.recall}
+              nexusPreview={preview?.nexusRecall}
+            />
+          )}
         </ErrorBoundary>
       }
       right={
@@ -1319,36 +1477,71 @@ export function App() {
               />
             </Panel>
           ) : (
-            <Panel title={RIGHT_PANELS.find((p) => p.id === rightPanel)?.label}>
+            <Panel
+              title={
+                rightPanel === 'characters'
+                  ? characterPanelTab === 'characters'
+                    ? 'Characters'
+                    : 'Groups'
+                  : RIGHT_PANELS.find((p) => p.id === rightPanel)?.label
+              }
+            >
               {rightPanel === 'characters' ? (
                 <>
-                  {/* Scoped to the selected character, so it goes when nothing is open. */}
-                  {selected ? (
-                    <ChatContext
-                      metadata={chat.state.metadata}
-                      inheritedScenario={character?.scenario ?? ''}
-                      onMetadataChange={chat.updateMetadata}
-                    />
-                  ) : null}
-                  <CharacterList
-                    characters={characters}
-                    folders={folders}
-                    collapsedFolders={collapsedCharacterFolders}
-                    hiddenTags={hiddenTags}
-                    ratings={characterRatings}
-                    sort={characterListSort}
-                    onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
-                    selected={selected}
-                    scrollMemory={characterListScroll}
-                    loading={loading}
-                    error={error}
-                    onSelect={handleSelect}
-                    onRefresh={refresh}
-                    onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
-                    onCollapsedFoldersChange={(next) =>
-                      void patchSettings({ collapsedCharacterFolders: next })
-                    }
+                  <CastNav
+                    active={characterPanelTab}
+                    onChange={(tab) => void handleCastTabChange(tab)}
                   />
+                  <div className="cast-stage">
+                    {characterPanelTab === 'characters' ? (
+                      <div
+                        key="characters"
+                        className={`cast-view-pane cast-view-pane--${characterTabDirection}`}
+                      >
+                        <CharacterList
+                          characters={characters}
+                          folders={folders}
+                          collapsedFolders={collapsedCharacterFolders}
+                          hiddenTags={hiddenTags}
+                          ratings={characterRatings}
+                          sort={characterListSort}
+                          onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
+                          selected={selected}
+                          scrollMemory={characterListScroll}
+                          loading={loading}
+                          error={error}
+                          onSelect={handleSelect}
+                          onRefresh={refresh}
+                          onEdit={(avatar) => void transitionToCharacter(avatar, { editing: true })}
+                          onCollapsedFoldersChange={(next) =>
+                            void patchSettings({ collapsedCharacterFolders: next })
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        key="groups"
+                        className={`cast-view-pane cast-view-pane--${characterTabDirection} cast-view-pane--groups`}
+                      >
+                        <GroupsPanel
+                          chat={groupChat}
+                          onOpen={openGroup}
+                          characters={characters}
+                          connections={settings?.connections ?? []}
+                          presets={presets}
+                          books={books}
+                          initialGeneration={{
+                            connectionId: connection?.id ?? '',
+                            model: connection?.model ?? '',
+                            presetId: presetId ?? '',
+                          }}
+                          registerPersistence={(c) => {
+                            groupPersistence.current = c;
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </>
               ) : null}
 
@@ -1371,12 +1564,14 @@ export function App() {
 
               {rightPanel === 'summary' ? (
                 <MemoryPanel
-                  chat={chat}
-                  mode={memoryMode}
-                  onModeChange={(nextMode) => void patchSettings({ memoryMode: nextMode })}
-                  settings={memorySettings}
+                  chat={activeMemoryChat}
+                  mode={activeMemoryChat.memoryMode}
+                  onModeChange={activeMemoryChat.nexus.setMode}
+                  defaultMode={memoryMode}
+                  onDefaultChange={(memoryMode) => void patchSettings({ memoryMode })}
+                  settings={nexusSettings}
                   onSettingsChange={(patch) =>
-                    void patchSettings({ memory: { ...memorySettings, ...patch } })
+                    void patchSettings({ nexus: { ...nexusSettings, ...patch } })
                   }
                   summarySettings={summarySettings}
                   onSummarySettingsChange={(patch) =>
@@ -1385,9 +1580,6 @@ export function App() {
                   connections={settings?.connections ?? []}
                   activeConnection={connection}
                   summaryConnection={summaryConnection}
-                  memoryConnection={memoryConnection}
-                  presets={presets}
-                  activePresetId={presetId}
                 />
               ) : null}
 
@@ -1438,7 +1630,35 @@ export function App() {
       }
     >
       <ErrorBoundary where="the chat" resetKeys={[selected, chat.state.chatId]}>
-        {active && character ? (
+        {groupChatId ? (
+          <GroupChatView
+            chat={groupChat}
+            personas={personas}
+            recentPersonaIds={settings?.recentPersonaIds ?? []}
+            personaAvatarVersions={personaAvatarVersions}
+            dialogueColors={dialogueColorSettings}
+            quickCommands={quickCommands}
+            onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            composerLayout={settings?.composerLayouts.group ?? DEFAULT_GROUP_COMPOSER_LAYOUT}
+            onComposerLayoutSave={async (layout: ComposerLayout) => {
+              await saveSettingsStrict({
+                composerLayouts: { group: layout },
+              });
+            }}
+            // Through the controller, so the scene records the switch; the controller's
+            // `onPersonaSwitch` is what moves the app-wide persona and its recents.
+            onSelectPersona={(id) => groupChat.setPersona(id)}
+            onOpenPanel={(id) => void showRightPanel(id)}
+            onInspect={() => setLeftPanel('inspect')}
+            onClose={() => void handleCloseChat()}
+            directorConfigured={Boolean(
+              groupChat.state.metadata.group?.director.model &&
+                settings?.connections.some(
+                  (c) => c.id === groupChat.state.metadata.group?.director.connectionId,
+                ),
+            )}
+          />
+        ) : active && character ? (
           <ChatView
             chat={chat}
             characterName={character.name || active.name}
@@ -1467,8 +1687,18 @@ export function App() {
             dialogueColors={dialogueColorSettings}
             quickCommands={quickCommands}
             onQuickCommandsChange={(next) => void patchSettings({ quickCommands: next })}
+            composerLayout={settings?.composerLayouts.single ?? DEFAULT_SINGLE_COMPOSER_LAYOUT}
+            onComposerLayoutSave={async (layout: ComposerLayout) => {
+              await saveSettingsStrict({
+                composerLayouts: { single: layout },
+              });
+            }}
             onImportChat={(file) => void handleImportChat(file)}
             regexScripts={regexScripts}
+            collapsedMenuGroups={collapsedChatMenuGroups}
+            onCollapsedMenuGroupsChange={(next) =>
+              void patchSettings({ collapsedChatMenuGroups: next })
+            }
           />
         ) : (
           <StartScreen
@@ -1481,6 +1711,16 @@ export function App() {
             onOpenArena={() => void enterArena()}
           />
         )}
+      </ErrorBoundary>
+      <ErrorBoundary where="Memory Nexus" resetKeys={[chat.state.chatId, chat.nexus.open]}>
+        <NexusExplorer
+          chat={activeMemoryChat}
+          settings={nexusSettings}
+          connections={settings?.connections ?? []}
+          onSettingsChange={(patch) =>
+            void patchSettings({ nexus: { ...nexusSettings, ...patch } })
+          }
+        />
       </ErrorBoundary>
     </AppShell>
   );

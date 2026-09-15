@@ -15,6 +15,7 @@
  * *parent* chat and always will.
  */
 
+import { branchNexus } from '../nexus/state.ts';
 import type { ChatMetadata, Memory } from '../types/chat.ts';
 
 export function remapBranchMetadata(
@@ -27,6 +28,7 @@ export function remapBranchMetadata(
    */
   idMap: Map<string, string>,
 ): ChatMetadata {
+  if (metadata.nexus) metadata = { ...metadata, nexus: branchNexus(metadata.nexus, idMap) };
   if (
     !metadata.memories?.length &&
     !metadata.memoryWatermark &&

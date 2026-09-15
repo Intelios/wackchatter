@@ -20,7 +20,7 @@ cd "$(dirname "$0")"
 
 # Declared floor, not an exhaustively tested one — it matches the `engines` field in
 # package.json. Raising it strands anyone who hasn't upgraded, so treat it as a promise.
-MIN_BUN=1.2.0
+MIN_BUN=1.4.0
 
 if [ -t 1 ]; then
   bold=$'\033[1m' dim=$'\033[2m' red=$'\033[31m' reset=$'\033[0m'

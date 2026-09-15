@@ -46,12 +46,14 @@ export interface QuickCommandsProps {
   /** Places a command's text in the composer, ready to send. */
   onInsertCommand: (text: string) => void;
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  showLabel?: boolean;
 }
 
 export function QuickCommands({
   quickCommands,
   onInsertCommand,
   onQuickCommandsChange,
+  showLabel,
 }: QuickCommandsProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -69,6 +71,7 @@ export function QuickCommands({
         entries={entries}
         triggerRef={triggerRef}
         placement="top-start"
+        showLabel={showLabel}
       />
       <QuickCommandsPopover
         commands={quickCommands}

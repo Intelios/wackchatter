@@ -147,6 +147,15 @@
 }
 
 /*
+ * Rows inside a base's expansion: indented a step, and variants carry the label chip that
+ * answers "which John Doe is this?" without opening anything. The chip, not a name suffix
+ * — the persona's name stays clean everywhere the model can read it.
+ */
+.persona-row--nested .persona-row__pick {
+  padding-left: calc(var(--wc-space-2) + var(--wc-space-5));
+}
+
+/*
  * The active row, said three ways: an accent rail, a tinted ground and a "You" chip.
  *
  * The old grid marked it with a 1px border and a 1px shadow on a portrait, which is easy to
@@ -212,15 +221,6 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/*
- * Rows inside a base's expansion: indented a step, and variants carry the label chip that
- * answers "which John Doe is this?" without opening anything. The chip, not a name suffix
- * — the persona's name stays clean everywhere the model can read it.
- */
-.persona-row--nested .persona-row__pick {
-  padding-left: calc(var(--wc-space-2) + var(--wc-space-5));
 }
 
 /* The group row's disclosure affordance: right when closed, folding down when open. */

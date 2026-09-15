@@ -1,19 +1,25 @@
 import type { Connection } from '@shared/providers/types.ts';
-import {
-  DEFAULT_SUMMARY_PROMPT,
-  type SummaryPosition,
-  type SummarySettings,
-} from '@shared/types/settings.ts';
+import { DEFAULT_SUMMARY_PROMPT, type SummarySettings } from '@shared/types/settings.ts';
 import { useEffect, useState } from 'react';
-import { NumberField, SelectField, TextField } from '../../components/Field.tsx';
+import { SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
+import { StoryMemoryPlacementFields } from '../../components/StoryMemoryPlacementFields.tsx';
 import { RefreshIcon, StopIcon } from '../../layout/icons.tsx';
 import type { UseChat } from '../chat/useChat.ts';
 import './SummaryPanel.css';
 
 interface SummaryPanelProps {
-  chat: UseChat;
+  chat: Pick<
+    UseChat,
+    | 'state'
+    | 'busy'
+    | 'summaryStatus'
+    | 'summaryPending'
+    | 'summarize'
+    | 'cancelSummary'
+    | 'editSummary'
+  >;
   settings: SummarySettings;
   connections: Connection[];
   activeConnection: Connection | null;
@@ -168,49 +174,13 @@ export function SummaryPanel({
       </Section>
 
       <Section title="Injection" defaultOpen>
-        <TextField
-          label="Injection template"
-          value={templateDraft}
-          onChange={setTemplateDraft}
-          onCommit={() => onSettingsChange({ template: templateDraft })}
-          multiline
-          expandable
-          rows={3}
-          hint="{{summary}} resolves to the current summary without re-running macros inside it."
-          disabled={summaryStatus.running}
-        />
-        <SelectField<SummaryPosition>
-          label="Position"
-          value={settings.position}
-          options={[
-            { label: 'None (not injected)', value: 'none' },
-            { label: 'Before main prompt', value: 'beforeMain' },
-            { label: 'After main prompt', value: 'afterMain' },
-            { label: 'In chat at depth', value: 'atDepth' },
-          ]}
-          onChange={(position) => onSettingsChange({ position })}
-          disabled={summaryStatus.running}
-        />
-        {settings.position === 'atDepth' ? (
-          <NumberField
-            label="Depth"
-            value={settings.depth}
-            min={0}
-            step={1}
-            onChange={(depth) => onSettingsChange({ depth: Math.max(0, Math.floor(depth)) })}
-            hint="Messages back from the end; 0 places it after the latest message."
-            disabled={summaryStatus.running}
-          />
-        ) : null}
-        <SelectField<'system' | 'user' | 'assistant'>
-          label="Role"
-          value={settings.role}
-          options={[
-            { label: 'System', value: 'system' },
-            { label: 'User', value: 'user' },
-            { label: 'Assistant', value: 'assistant' },
-          ]}
-          onChange={(role) => onSettingsChange({ role })}
+        <StoryMemoryPlacementFields
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          templateDraft={templateDraft}
+          onTemplateDraftChange={setTemplateDraft}
+          onTemplateCommit={() => onSettingsChange({ template: templateDraft })}
+          macro="summary"
           disabled={summaryStatus.running}
         />
       </Section>

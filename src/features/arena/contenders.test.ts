@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Connection } from '@shared/providers/types.ts';
 import type { Contender } from '@shared/types/arena.ts';
 import {
+  blockedEntrantReason,
   contenderLabel,
   eligibleContenders,
   resolveContender,
@@ -81,6 +82,46 @@ describe('eligibleContenders', () => {
 
     const eligible = eligibleContenders(resolveContenders(pool, [connection()]));
     expect(eligible.map((entry) => entry.id)).toEqual(['ok']);
+  });
+});
+
+describe('blockedEntrantReason', () => {
+  const nameFor = (id: string) => `label:${id}`;
+
+  test('runnable entrants are not blocked', () => {
+    const pool = [contender({ id: 'a' }), contender({ id: 'b' })];
+    const resolved = resolveContenders(pool, [connection()]);
+
+    expect(blockedEntrantReason(['a', 'b'], resolved, nameFor)).toBeNull();
+  });
+
+  test('an entrant whose connection was deleted names it and the entrant', () => {
+    const pool = [contender({ id: 'a' }), contender({ id: 'b', connectionId: 'gone' })];
+    const resolved = resolveContenders(pool, [connection()]);
+
+    const reason = blockedEntrantReason(['a', 'b'], resolved, nameFor);
+    // The label, not the id: a tournament entrant is often a bare id the user never sees.
+    expect(reason).toContain('label:b');
+    expect(reason).toContain('Its connection has been deleted.');
+  });
+
+  test('an entrant removed from the pool since the draw is blocked', () => {
+    const resolved = resolveContenders([contender({ id: 'a' })], [connection()]);
+
+    expect(blockedEntrantReason(['a', 'evicted'], resolved, nameFor)).toBe(
+      'label:evicted is no longer in the pool.',
+    );
+  });
+
+  test('a disabled-but-runnable entrant is not blocked — the bench can still pick it', () => {
+    const pool = [contender({ id: 'a' }), contender({ id: 'b', enabled: false })];
+    const resolved = resolveContenders(pool, [connection()]);
+
+    expect(blockedEntrantReason(['a', 'b'], resolved, nameFor)).toBeNull();
+  });
+
+  test('empty sides are never blocked', () => {
+    expect(blockedEntrantReason([], resolveContenders([], []), nameFor)).toBeNull();
   });
 });
 

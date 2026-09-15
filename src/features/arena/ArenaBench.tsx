@@ -60,6 +60,15 @@ interface ArenaBenchProps {
   blockedReason: string | null;
   /** Records for the masthead, replayed from the recorded rounds by the shell. */
   rows: readonly LeaderboardRow[];
+  /**
+   * Contender id → the id its rounds count under, from the shell's merged view.
+   *
+   * The masthead shows the record the app already knew for an entrant, and a folded
+   * contender has no row of its own — resolving through this is what stops the corner from
+   * reporting "no blind rounds yet" for a model whose rounds are on the board under the
+   * identity that absorbed it.
+   */
+  canonical: ReadonlyMap<string, string>;
   /** Preferred corner colours, by pool order. Resolved per view — see series.ts. */
   preferredSlots: ReadonlyMap<string, number>;
   /** Whether the canvas is currently widened, and how to change it. */
@@ -81,6 +90,7 @@ export function ArenaBench({
   onRun,
   blockedReason,
   rows,
+  canonical,
   preferredSlots,
   wide,
   onWideChange,
@@ -145,8 +155,10 @@ export function ArenaBench({
   const applyProbe = useCallback((entry: ArenaProbe) => setProbe(entry.text), []);
 
   const rowFor = useCallback(
-    (contenderId: string) => rows.find((entry) => entry.contenderId === contenderId) ?? null,
-    [rows],
+    (contenderId: string) =>
+      rows.find((entry) => entry.contenderId === (canonical.get(contenderId) ?? contenderId)) ??
+      null,
+    [canonical, rows],
   );
 
   /** Corner colours for the masthead, resolved against the entrants actually in it. */

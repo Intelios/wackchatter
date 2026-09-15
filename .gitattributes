@@ -7,6 +7,7 @@
 # unreviewable change is the last thing anyone wants.
 *.ts text diff
 *.tsx text diff
+*.onnx binary
 
 # Launchers must be checked out with the line endings their interpreter expects, whatever
 # the platform or the user's core.autocrlf. A shell script that arrives with CRLF fails on

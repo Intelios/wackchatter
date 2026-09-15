@@ -24,7 +24,13 @@ import {
 } from './icons.tsx';
 
 export type LeftPanelId = 'connection' | 'prompts' | 'generation' | 'inspect';
-export type RightPanelId = 'characters' | 'lorebooks' | 'summary' | 'persona' | 'settings';
+export type RightPanelId =
+  | 'characters'
+  | 'groups'
+  | 'lorebooks'
+  | 'summary'
+  | 'persona'
+  | 'settings';
 
 export interface PanelSpec<T extends string> {
   id: T;

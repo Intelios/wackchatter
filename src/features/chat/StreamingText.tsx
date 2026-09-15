@@ -17,7 +17,18 @@ import type { StreamStore } from './state/streamStore.ts';
  * script that strips a `<think>` block would show the raw block for the whole stream and
  * then snap — flicker that reads as a bug. Scripts ride the swap to markdown instead.
  */
-export function StreamingText({ store }: { store: StreamStore }) {
+export function StreamingText({
+  store,
+  hideReasoning,
+}: {
+  store: StreamStore;
+  /**
+   * Suppress the thinking block. The recap overlay sets this: it renders a settled recap
+   * through Markdown, which never shows reasoning, so a box that appears mid-stream and
+   * vanishes at the swap reads as a flicker rather than as information.
+   */
+  hideReasoning?: boolean;
+}) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const segments = streamSegments(snapshot.text);
   let offset = 0;
@@ -29,7 +40,9 @@ export function StreamingText({ store }: { store: StreamStore }) {
        * does, so a collapsed box during that window would leave the bubble looking frozen
        * with nothing to watch.
        */}
-      {snapshot.reasoning ? <Reasoning text={snapshot.reasoning} defaultOpen /> : null}
+      {snapshot.reasoning && !hideReasoning ? (
+        <Reasoning text={snapshot.reasoning} defaultOpen />
+      ) : null}
       <div className="message__text message__text--streaming">
         {segments.map((segment) => {
           // The source offset stays stable as a stream grows, unlike an array index when

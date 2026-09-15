@@ -1,0 +1,441 @@
+{
+  "note": "Frozen synthetic English fixture. Full shared retrieval pipeline, same 1200-token ceiling; native CPU timings are not browser timings. Held-out queries were fixed before tuning.",
+  "coldMs": 165,
+  "rssMB": 386,
+  "metrics": {
+    "development": {
+      "keyword": {
+        "correct": 6,
+        "total": 6,
+        "meanIrrelevant": 10,
+        "meanTokens": 142
+      },
+      "textGraph": {
+        "correct": 5,
+        "total": 6,
+        "meanIrrelevant": 0.6666666666666666,
+        "meanTokens": 16.833333333333332
+      },
+      "hybrid": {
+        "correct": 6,
+        "total": 6,
+        "meanIrrelevant": 2.3333333333333335,
+        "meanTokens": 35.333333333333336
+      }
+    },
+    "held-out": {
+      "keyword": {
+        "correct": 8,
+        "total": 8,
+        "meanIrrelevant": 8.75,
+        "meanTokens": 126
+      },
+      "textGraph": {
+        "correct": 5,
+        "total": 8,
+        "meanIrrelevant": 0.375,
+        "meanTokens": 11
+      },
+      "hybrid": {
+        "correct": 8,
+        "total": 8,
+        "meanIrrelevant": 2.125,
+        "meanTokens": 32.75
+      }
+    }
+  },
+  "results": [
+    {
+      "query": "Which city is Joe originally from?",
+      "expected": "origin",
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": [],
+      "hybrid": ["origin", "residence", "allergy"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 0,
+        "hybrid": 28
+      },
+      "milliseconds": 13
+    },
+    {
+      "query": "What is Joe allergic to?",
+      "expected": "allergy",
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["allergy"],
+      "hybrid": ["allergy", "origin", "residence"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 7,
+        "hybrid": 28
+      },
+      "milliseconds": 4
+    },
+    {
+      "query": "Where did Anna hide the brass key?",
+      "expected": "key",
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["key"],
+      "hybrid": ["key", "secret", "gift", "injury", "mary-origin"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 15,
+        "hybrid": 58
+      },
+      "milliseconds": 4
+    },
+    {
+      "query": "Where does Mary come from?",
+      "expected": "mary-origin",
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["injury", "mary-origin", "secret"],
+      "hybrid": ["mary-origin", "secret", "origin", "injury"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 32,
+        "hybrid": 40
+      },
+      "milliseconds": 3
+    },
+    {
+      "query": "What time is our appointment at the observatory?",
+      "expected": "meeting",
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["meeting"],
+      "hybrid": ["meeting"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 15,
+        "hybrid": 15
+      },
+      "milliseconds": 8
+    },
+    {
+      "query": "Joe asks Anna not to betray his confidence by telling Mary why he went away.",
+      "expected": "secret",
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["injury", "mary-origin", "secret"],
+      "hybrid": ["secret", "mary-origin", "gift", "injury"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 32,
+        "hybrid": 43
+      },
+      "milliseconds": 4
+    },
+    {
+      "query": "What colour is Joe’s spaceship?",
+      "expected": null,
+      "split": "development",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": [],
+      "hybrid": ["origin", "residence"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 0,
+        "hybrid": 21
+      },
+      "milliseconds": 4
+    },
+    {
+      "query": "I am making dinner for Joe. Are there ingredients that could make him ill?",
+      "expected": "allergy",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": [],
+      "hybrid": ["allergy", "origin", "residence"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 0,
+        "hybrid": 28
+      },
+      "milliseconds": 6
+    },
+    {
+      "query": "Anna wants to unlock the back entrance. Where should she look?",
+      "expected": "key",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["key"],
+      "hybrid": ["key", "secret", "dog", "injury", "mary-origin"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 15,
+        "hybrid": 56
+      },
+      "milliseconds": 4
+    },
+    {
+      "query": "What does Joe do to earn money?",
+      "expected": "job",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": [],
+      "hybrid": ["job", "origin", "allergy", "residence"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 0,
+        "hybrid": 37
+      },
+      "milliseconds": 5
+    },
+    {
+      "query": "Joe and Anna are discussing her birthday. What present did he give her?",
+      "expected": "gift",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["gift"],
+      "hybrid": ["gift", "secret", "meeting", "injury", "mary-origin"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 11,
+        "hybrid": 58
+      },
+      "milliseconds": 6
+    },
+    {
+      "query": "Why is Mary limping?",
+      "expected": "injury",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["injury", "mary-origin", "secret"],
+      "hybrid": ["injury", "mary-origin", "secret"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 32,
+        "hybrid": 32
+      },
+      "milliseconds": 3
+    },
+    {
+      "query": "When can we catch a boat to the island?",
+      "expected": "boat",
+      "split": "held-out",
+      "keyword": ["boat"],
+      "textGraph": ["boat"],
+      "hybrid": ["boat"],
+      "tokens": {
+        "keyword": 14,
+        "textGraph": 12,
+        "hybrid": 12
+      },
+      "milliseconds": 3
+    },
+    {
+      "query": "Does Anna have a pet?",
+      "expected": "dog",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["dog"],
+      "hybrid": ["dog"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 9,
+        "hybrid": 9
+      },
+      "milliseconds": 3
+    },
+    {
+      "query": "Where is Joe living these days?",
+      "expected": "residence",
+      "split": "held-out",
+      "keyword": [
+        "origin",
+        "secret",
+        "allergy",
+        "key",
+        "meeting",
+        "mary-origin",
+        "residence",
+        "dog",
+        "injury",
+        "gift",
+        "job"
+      ],
+      "textGraph": ["job"],
+      "hybrid": ["job", "residence", "origin"],
+      "tokens": {
+        "keyword": 142,
+        "textGraph": 9,
+        "hybrid": 30
+      },
+      "milliseconds": 3
+    },
+    {
+      "query": "What is the password to the lunar bunker?",
+      "expected": null,
+      "split": "held-out",
+      "keyword": [],
+      "textGraph": [],
+      "hybrid": [],
+      "tokens": {
+        "keyword": 0,
+        "textGraph": 0,
+        "hybrid": 0
+      },
+      "milliseconds": 7
+    }
+  ]
+}
