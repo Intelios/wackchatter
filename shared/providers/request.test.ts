@@ -56,6 +56,14 @@ describe('the base body', () => {
     expect(body.presence_penalty).toBe(-0.25);
   });
 
+  test('a penalty at its neutral value is left off the wire entirely', () => {
+    // Strict OpenAI-compatible endpoints 400 on any key they do not implement, and 0 is
+    // the provider-side default — sending it can only lose. hasOwn, not toEqual.
+    const body = build();
+    expect(Object.hasOwn(body, 'frequency_penalty')).toBe(false);
+    expect(Object.hasOwn(body, 'presence_penalty')).toBe(false);
+  });
+
   test('max_tokens comes from the preset, and the request overrides it', () => {
     expect(build({ openai_max_tokens: 512 }).max_tokens).toBe(512);
     expect(build({ openai_max_tokens: 512 }, connection(), { maxTokens: 32 }).max_tokens).toBe(32);
@@ -139,6 +147,18 @@ describe('provider-specific samplers', () => {
     expect(body.min_p).toBe(0.05);
     expect(body.top_a).toBe(0.1);
     expect(body.repetition_penalty).toBe(1.1);
+  });
+
+  test('an extra sampler at its neutral value is omitted even on OpenRouter', () => {
+    // OpenRouter forwards samplers to the upstream provider, and some upstreams reject a
+    // field they do not implement even at its default — so 0/0/0/1 means "send nothing".
+    const body = build(
+      { top_k: 0, min_p: 0, top_a: 0, repetition_penalty: 1 },
+      connection({ provider: 'openrouter' }),
+    );
+    for (const key of ['top_k', 'min_p', 'top_a', 'repetition_penalty']) {
+      expect(Object.hasOwn(body, key)).toBe(false);
+    }
   });
 });
 
@@ -255,12 +275,12 @@ describe('Claude thinking on OpenRouter', () => {
     connection({ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5', ...overrides });
 
   test('auto leaves thinking off and the request otherwise untouched', () => {
-    const body = build({ reasoning_effort: 'auto' }, claude());
+    const body = build({ reasoning_effort: 'auto', top_k: 40 }, claude());
     expect(body.reasoning).toEqual({ exclude: false });
     expect(body.max_tokens).toBe(300);
     // No budget means no reason to strip the samplers.
     expect(body.temperature).toBe(1);
-    expect(Object.hasOwn(body, 'top_k')).toBe(true);
+    expect(body.top_k).toBe(40);
   });
 
   test('an effort buys a budget and raises max_tokens on top of the reply', () => {
@@ -295,12 +315,16 @@ describe('Claude thinking on OpenRouter', () => {
   });
 
   test('samplers Anthropic rejects under thinking are dropped, not zeroed', () => {
-    const body = build({ reasoning_effort: 'high' }, claude());
+    const body = build(
+      { reasoning_effort: 'high', top_k: 40, frequency_penalty: 0.5, presence_penalty: -0.25 },
+      claude(),
+    );
     for (const key of ['temperature', 'top_p', 'top_k', 'min_p', 'top_a', 'repetition_penalty']) {
       expect(Object.hasOwn(body, key)).toBe(false);
     }
     // Penalties are fine — Anthropic never saw them, and OpenRouter drops what it cannot use.
-    expect(body.frequency_penalty).toBe(0);
+    expect(body.frequency_penalty).toBe(0.5);
+    expect(body.presence_penalty).toBe(-0.25);
   });
 
   test('excluded reasoning still buys the budget, it just is not returned', () => {

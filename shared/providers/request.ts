@@ -12,6 +12,11 @@
  *    servers 400 on an empty array.
  *  - `seed` is only sent when >= 0. Zero is a legitimate seed, so the guard cannot be
  *    a truthiness check.
+ *
+ * The same logic governs every sampler: it ships only when it is off its neutral value
+ * (penalties and top_k/min_p/top_a at 0, repetition_penalty at 1). The neutral value is
+ * the provider-side default, so omitting it changes nothing on a tolerant endpoint — and
+ * strict endpoints reject the whole request over keys they do not implement.
  */
 
 import type { Preset } from '../types/preset.ts';
@@ -151,10 +156,13 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     stream,
     temperature: preset.temperature ?? 1,
     top_p: preset.top_p ?? 1,
-    frequency_penalty: preset.frequency_penalty ?? 0,
-    presence_penalty: preset.presence_penalty ?? 0,
     max_tokens: responseTokens,
   };
+
+  // Off the neutral 0 or absent: both mean the key does not travel. Negative penalties are
+  // real settings and still go out.
+  if (preset.frequency_penalty) body.frequency_penalty = preset.frequency_penalty;
+  if (preset.presence_penalty) body.presence_penalty = preset.presence_penalty;
 
   // Absent, not empty. An empty array is a validation error on several backends.
   if (request.stop?.length) body.stop = request.stop;
@@ -175,12 +183,15 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
   }
 
   if (descriptor.supportsExtraSamplers) {
-    // These four are OpenRouter-only among OpenAI-compatible sources. A plain endpoint
-    // that receives them may reject the whole request.
-    body.top_k = preset.top_k ?? 0;
-    body.min_p = preset.min_p ?? 0;
-    body.top_a = preset.top_a ?? 0;
-    body.repetition_penalty = preset.repetition_penalty ?? 1;
+    // These four are OpenRouter-only among OpenAI-compatible sources, and each ships only
+    // when it is off its neutral value: OpenRouter forwards samplers to the upstream
+    // provider, and some upstreams reject a field they do not implement even at its default.
+    if (preset.top_k) body.top_k = preset.top_k;
+    if (preset.min_p) body.min_p = preset.min_p;
+    if (preset.top_a) body.top_a = preset.top_a;
+    if (preset.repetition_penalty && preset.repetition_penalty !== 1) {
+      body.repetition_penalty = preset.repetition_penalty;
+    }
   }
 
   if (descriptor.supportsRouting) {

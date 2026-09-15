@@ -121,12 +121,13 @@ export function GenerationPanel({
           step={0.01}
           onChange={(v) => setField('repetition_penalty', v)}
         />
-        {!extraSamplersSent ? (
-          <p className="wc-hint">
-            Top K, Top A, Min P and repetition penalty are preserved but not sent by the active
-            provider.
-          </p>
-        ) : null}
+        <p className="wc-hint">
+          At its neutral value (0, or 1 for repetition penalty) a sampler is left out of the request
+          entirely.{' '}
+          {!extraSamplersSent
+            ? 'Top K, Top A, Min P and repetition penalty are preserved but never sent by the active provider.'
+            : null}
+        </p>
         <div className="field-row">
           <NumberField
             label="Seed"
