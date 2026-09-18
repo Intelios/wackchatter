@@ -231,6 +231,36 @@ describe('reasoning and usage', () => {
   });
 });
 
+describe('Google AI Studio OpenAI compatibility', () => {
+  const google = (overrides: Partial<ConnectionSettings> = {}) =>
+    connection({
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      model: 'gemini-3.8-flash',
+      showReasoning: true,
+      ...overrides,
+    });
+
+  test('uses the existing show-reasoning setting to request thought summaries', () => {
+    const body = build({}, google());
+    expect(body.extra_body).toEqual({
+      google: { thinking_config: { include_thoughts: true } },
+    });
+  });
+
+  test('hides summaries without turning Gemini thinking off', () => {
+    const body = build({ reasoning_effort: 'high' }, google({ showReasoning: false }));
+    expect(body.reasoning_effort).toBe('high');
+    expect(body.extra_body).toEqual({
+      google: { thinking_config: { include_thoughts: false } },
+    });
+  });
+
+  test('does not send Google-specific fields to another custom endpoint', () => {
+    const body = build({}, connection({ showReasoning: true }));
+    expect(Object.hasOwn(body, 'extra_body')).toBe(false);
+  });
+});
+
 describe('reasoning effort', () => {
   test('auto sends nothing, so unsupported models see an unchanged request', () => {
     const custom = build({ reasoning_effort: 'auto' });

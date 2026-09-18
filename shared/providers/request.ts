@@ -33,6 +33,27 @@ export function normalizeBase(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 
+/**
+ * Google's OpenAI-compatible endpoint keeps Gemini-specific request options under
+ * `extra_body.google`. Keep this narrow: arbitrary custom endpoints must not receive an
+ * unknown field just because their connection has the shared reasoning toggle.
+ */
+export function isGoogleAiStudioEndpoint(baseUrl: string): boolean {
+  try {
+    const url = new URL(normalizeBase(baseUrl));
+    return (
+      url.hostname.toLowerCase() === 'generativelanguage.googleapis.com' &&
+      /(?:^|\/)openai$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isGeminiModel(model: string): boolean {
+  return /(?:^|\/)gemini(?:[-/]|$)/i.test(model.trim());
+}
+
 export function completionsUrl(connection: ConnectionSettings): string {
   return `${normalizeBase(connection.baseUrl)}/chat/completions`;
 }
@@ -269,6 +290,23 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     if (connection.reportUsage) body.usage = { include: true };
   } else {
     if (reasoningEffort) body.reasoning_effort = reasoningEffort;
+
+    // Google separates thinking depth (`reasoning_effort`, which its compatibility layer
+    // maps) from whether the thought summary is returned. Reuse the one global toggle, but
+    // only add Google's field for an actual Gemini model on Google's own endpoint. Do not
+    // send `thinking_level` here: Google rejects combining it with `reasoning_effort`.
+    if (
+      connection.provider === 'custom' &&
+      isGoogleAiStudioEndpoint(connection.baseUrl) &&
+      isGeminiModel(connection.model)
+    ) {
+      body.extra_body = {
+        google: {
+          thinking_config: { include_thoughts: connection.showReasoning !== false },
+        },
+      };
+    }
+
     if (connection.reportUsage && stream) body.stream_options = { include_usage: true };
   }
 

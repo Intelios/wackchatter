@@ -205,8 +205,78 @@ function readUsage(value: unknown): StreamUsage | undefined {
  */
 const MAX_CHOICES = 64;
 
-function blankChoice(content = ''): StreamChoice {
-  return { content, reasoning: '', finishReason: null };
+interface AccumulatedChoice extends StreamChoice {
+  /** The provider's raw content, before Google inline thought tags are separated. */
+  rawContent: string;
+  /** Reasoning delivered in a dedicated OpenAI-compatible field. */
+  explicitReasoning: string;
+}
+
+/** Google has historically represented thought summaries as inline XML in this endpoint. */
+const INLINE_THOUGHT_TAG = /<\/?(?:thought|thinking|think)\s*>/gi;
+
+function splitInlineThoughts(value: string): { content: string; reasoning: string } {
+  let content = '';
+  let reasoning = '';
+  let inThought = false;
+  let cursor = 0;
+
+  for (const match of value.matchAll(INLINE_THOUGHT_TAG)) {
+    const index = match.index ?? cursor;
+    const piece = value.slice(cursor, index);
+    if (inThought) reasoning += piece;
+    else content += piece;
+
+    const tag = match[0];
+    const closing = tag.startsWith('</');
+    if (closing !== inThought) {
+      // An unexpected close/open tag is ordinary model text. This avoids swallowing a
+      // literal tag in a normal answer while still handling Google's paired form.
+      if (inThought) reasoning += tag;
+      else content += tag;
+    } else {
+      inThought = !closing;
+    }
+    cursor = index + tag.length;
+  }
+
+  const tail = value.slice(cursor);
+  if (inThought) reasoning += tail;
+  else content += tail;
+  return { content, reasoning };
+}
+
+function blankChoice(rawContent = ''): AccumulatedChoice {
+  const split = splitInlineThoughts(rawContent);
+  return {
+    content: split.content,
+    reasoning: split.reasoning,
+    finishReason: null,
+    rawContent,
+    explicitReasoning: '',
+  };
+}
+
+function publicChoice(choice: AccumulatedChoice): StreamChoice {
+  return {
+    content: choice.content,
+    reasoning: choice.reasoning,
+    finishReason: choice.finishReason,
+  };
+}
+
+function appendContent(choice: AccumulatedChoice, text: string): void {
+  choice.rawContent += text;
+  const split = splitInlineThoughts(choice.rawContent);
+  choice.content = split.content;
+  choice.reasoning = choice.explicitReasoning + split.reasoning;
+}
+
+function appendReasoning(choice: AccumulatedChoice, text: string): void {
+  choice.explicitReasoning += text;
+  const split = splitInlineThoughts(choice.rawContent);
+  choice.content = split.content;
+  choice.reasoning = choice.explicitReasoning + split.reasoning;
 }
 
 /**
@@ -234,7 +304,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
    * so taking `choices[0]` of each chunk — as this did while `n` was pinned to 1 — would
    * splice several replies into one.
    */
-  const choices: StreamChoice[] = [blankChoice(seed)];
+  const choices: AccumulatedChoice[] = [blankChoice(seed)];
   const state = {
     model: undefined as string | undefined,
     id: undefined as string | undefined,
@@ -243,7 +313,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
     error: undefined as string | undefined,
   };
 
-  function choiceAt(index: number): StreamChoice {
+  function choiceAt(index: number): AccumulatedChoice {
     while (choices.length <= index) choices.push(blankChoice());
     return choices[index]!;
   }
@@ -261,7 +331,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
     if (state.model !== undefined) result.model = state.model;
     if (state.id !== undefined) result.id = state.id;
     if (state.error !== undefined) result.error = state.error;
-    if (choices.length > 1) result.alternates = choices.slice(1).map((choice) => ({ ...choice }));
+    if (choices.length > 1) result.alternates = choices.slice(1).map(publicChoice);
     return result;
   }
 
@@ -340,7 +410,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
             : null;
 
         if (text) {
-          target.content += text;
+          appendContent(target, text);
           changed = true;
         }
 
@@ -354,7 +424,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
               : null;
 
         if (thought) {
-          target.reasoning += thought;
+          appendReasoning(target, thought);
           changed = true;
         }
 
@@ -409,18 +479,21 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
 
   // Array order, unlike the streaming path: a complete body arrives in one piece and is
   // already in index order, so there is nothing to interleave and no gap to fill.
-  const parsed = entries.map((entry): StreamChoice => {
+  const parsed = entries.map((entry): AccumulatedChoice => {
     const choice = asRecord(entry);
     const result = blankChoice();
     if (!choice) return result;
 
     const message = asRecord(choice.message);
     if (message) {
-      if (typeof message.content === 'string') result.content = message.content;
-      if (typeof message.reasoning === 'string') result.reasoning = message.reasoning;
-      else if (typeof message.reasoning_content === 'string') {
-        result.reasoning = message.reasoning_content;
-      }
+      if (typeof message.content === 'string') appendContent(result, message.content);
+      const thought =
+        typeof message.reasoning === 'string'
+          ? message.reasoning
+          : typeof message.reasoning_content === 'string'
+            ? message.reasoning_content
+            : null;
+      if (thought) appendReasoning(result, thought);
     }
     if (typeof choice.finish_reason === 'string') result.finishReason = choice.finish_reason;
     return result;
@@ -431,7 +504,7 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   state.content += primary.content;
   state.reasoning = primary.reasoning;
   state.finishReason = primary.finishReason;
-  if (parsed.length > 1) state.alternates = parsed.slice(1);
+  if (parsed.length > 1) state.alternates = parsed.slice(1).map(publicChoice);
 
   return state;
 }

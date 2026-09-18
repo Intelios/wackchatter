@@ -157,6 +157,33 @@ describe('accumulation', () => {
     expect(state.content).toBe('X');
   });
 
+  test('Google thought tags are split from streamed content', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: '<thought>plan' } }] })));
+    accumulator.push(
+      frame(JSON.stringify({ choices: [{ delta: { content: ' first</thought>' } }] })),
+    );
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: 'answer' } }] })));
+
+    expect(accumulator.snapshot()).toMatchObject({
+      reasoning: 'plan first',
+      content: 'answer',
+    });
+  });
+
+  test('Google thought tags may be split across streaming deltas', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: '<thou' } }] })));
+    accumulator.push(
+      frame(JSON.stringify({ choices: [{ delta: { content: 'ght>plan</thought>answer' } }] })),
+    );
+
+    expect(accumulator.snapshot()).toMatchObject({
+      reasoning: 'plan',
+      content: 'answer',
+    });
+  });
+
   test('finish_reason and model are captured', () => {
     const accumulator = createStreamAccumulator();
     const state = accumulator.push(
@@ -344,6 +371,15 @@ describe('non-streamed completions', () => {
       parseCompletion({ choices: [{ message: { content: 'a', reasoning_content: 'how' } }] })
         .reasoning,
     ).toBe('how');
+  });
+
+  test('Google thought tags are split from a non-streamed content body', () => {
+    const state = parseCompletion({
+      choices: [{ message: { content: '<thought>why</thought>answer' } }],
+    });
+
+    expect(state.reasoning).toBe('why');
+    expect(state.content).toBe('answer');
   });
 
   test('a seed prefixes it, for a non-streamed continue', () => {
