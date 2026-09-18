@@ -249,9 +249,17 @@ describe('Google AI Studio OpenAI compatibility', () => {
 
   test('hides summaries without turning Gemini thinking off', () => {
     const body = build({ reasoning_effort: 'high' }, google({ showReasoning: false }));
-    expect(body.reasoning_effort).toBe('high');
+    expect(Object.hasOwn(body, 'reasoning_effort')).toBe(false);
     expect(body.extra_body).toEqual({
-      google: { thinking_config: { include_thoughts: false } },
+      google: { thinking_config: { thinking_level: 'high', include_thoughts: false } },
+    });
+  });
+
+  test('uses a token budget for Gemini 2.5 instead of a thinking level', () => {
+    const body = build({ reasoning_effort: 'medium' }, google({ model: 'gemini-2.5-flash' }));
+    expect(Object.hasOwn(body, 'reasoning_effort')).toBe(false);
+    expect(body.extra_body).toEqual({
+      google: { thinking_config: { thinking_budget: 8192, include_thoughts: true } },
     });
   });
 

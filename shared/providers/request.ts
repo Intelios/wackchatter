@@ -54,6 +54,33 @@ function isGeminiModel(model: string): boolean {
   return /(?:^|\/)gemini(?:[-/]|$)/i.test(model.trim());
 }
 
+function isGemini25Model(model: string): boolean {
+  return /(?:^|\/)gemini-2\.5(?:[-/]|$)/i.test(model.trim());
+}
+
+const GOOGLE_GEMINI_25_BUDGETS: Record<string, number> = {
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+};
+
+function googleThinkingConfig(
+  model: string,
+  reasoningEffort: string | undefined,
+  includeThoughts: boolean,
+): Record<string, unknown> {
+  const config: Record<string, unknown> = { include_thoughts: includeThoughts };
+  if (reasoningEffort) {
+    if (isGemini25Model(model)) {
+      const budget = GOOGLE_GEMINI_25_BUDGETS[reasoningEffort];
+      if (budget !== undefined) config.thinking_budget = budget;
+    } else {
+      config.thinking_level = reasoningEffort;
+    }
+  }
+  return config;
+}
+
 export function completionsUrl(connection: ConnectionSettings): string {
   return `${normalizeBase(connection.baseUrl)}/chat/completions`;
 }
@@ -261,6 +288,10 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
   }
 
   const reasoningEffort = resolveReasoningEffort(preset);
+  const googleGemini =
+    connection.provider === 'custom' &&
+    isGoogleAiStudioEndpoint(connection.baseUrl) &&
+    isGeminiModel(connection.model);
 
   if (connection.provider === 'openrouter') {
     const reasoning: Record<string, unknown> = { exclude: connection.showReasoning === false };
@@ -289,22 +320,21 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     // OpenRouter's own usage flag. It does not accept OpenAI's stream_options.
     if (connection.reportUsage) body.usage = { include: true };
   } else {
-    if (reasoningEffort) body.reasoning_effort = reasoningEffort;
-
-    // Google separates thinking depth (`reasoning_effort`, which its compatibility layer
-    // maps) from whether the thought summary is returned. Reuse the one global toggle, but
-    // only add Google's field for an actual Gemini model on Google's own endpoint. Do not
-    // send `thinking_level` here: Google rejects combining it with `reasoning_effort`.
-    if (
-      connection.provider === 'custom' &&
-      isGoogleAiStudioEndpoint(connection.baseUrl) &&
-      isGeminiModel(connection.model)
-    ) {
+    if (googleGemini) {
+      // Google accepts either its custom thinking_config or the compatibility layer's
+      // reasoning_effort, never both. Use the native shape here so the same toggle controls
+      // thought summaries and the effort selector still controls thinking depth.
       body.extra_body = {
         google: {
-          thinking_config: { include_thoughts: connection.showReasoning !== false },
+          thinking_config: googleThinkingConfig(
+            connection.model,
+            reasoningEffort,
+            connection.showReasoning !== false,
+          ),
         },
       };
+    } else if (reasoningEffort) {
+      body.reasoning_effort = reasoningEffort;
     }
 
     if (connection.reportUsage && stream) body.stream_options = { include_usage: true };
