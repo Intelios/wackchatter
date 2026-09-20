@@ -438,9 +438,14 @@
   gap: var(--wc-space-2);
 }
 
+.preset-cc-tool svg {
+  width: var(--wc-icon);
+  height: var(--wc-icon);
+  flex-shrink: 0;
+}
+
 .preset-cc-tool header svg {
   color: var(--wc-text-faint);
-  flex-shrink: 0;
 }
 
 .preset-cc-tool__badge {
