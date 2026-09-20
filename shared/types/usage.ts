@@ -20,6 +20,8 @@ export type UsageFeature =
   | 'summary'
   | 'memory'
   | 'cocreator'
+  | 'presetCocreator'
+  | 'presetTest'
   | 'arena'
   | 'persona'
   /** A message written as the user for the composer. Billed like any other generation. */
@@ -34,6 +36,8 @@ export const USAGE_FEATURES: readonly UsageFeature[] = [
   'summary',
   'memory',
   'cocreator',
+  'presetCocreator',
+  'presetTest',
   'arena',
   'persona',
   'impersonate',

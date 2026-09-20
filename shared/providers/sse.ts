@@ -11,6 +11,8 @@
  *    consumer assigns instead of appending, so dropping frames can never lose content.
  */
 
+import type { ProviderToolCall } from './types.ts';
+
 export interface SseFrame {
   event?: string;
   data: string;
@@ -111,6 +113,8 @@ export interface StreamChoice {
   content: string;
   reasoning: string;
   finishReason: string | null;
+  toolCalls?: ProviderToolCall[];
+  reasoningDetails?: unknown[];
 }
 
 export interface StreamState {
@@ -135,6 +139,10 @@ export interface StreamState {
   done: boolean;
   /** Set when the provider reported an error inside an otherwise-200 stream. */
   error?: string;
+  /** Complete OpenAI-compatible calls requested by the first completion. */
+  toolCalls?: ProviderToolCall[];
+  /** Opaque provider reasoning blocks echoed unchanged into a following tool request. */
+  reasoningDetails?: unknown[];
   /**
    * Completions AFTER the first, in provider index order. Absent unless `n > 1` was both
    * asked for and honoured, so every existing consumer sees exactly what it saw before.
@@ -210,6 +218,8 @@ interface AccumulatedChoice extends StreamChoice {
   rawContent: string;
   /** Reasoning delivered in a dedicated OpenAI-compatible field. */
   explicitReasoning: string;
+  toolCallsMutable: ProviderToolCall[];
+  reasoningDetailsMutable: unknown[];
 }
 
 /** Google has historically represented thought summaries as inline XML in this endpoint. */
@@ -254,15 +264,93 @@ function blankChoice(rawContent = ''): AccumulatedChoice {
     finishReason: null,
     rawContent,
     explicitReasoning: '',
+    toolCallsMutable: [],
+    reasoningDetailsMutable: [],
   };
 }
 
 function publicChoice(choice: AccumulatedChoice): StreamChoice {
-  return {
+  const result: StreamChoice = {
     content: choice.content,
     reasoning: choice.reasoning,
     finishReason: choice.finishReason,
   };
+  if (choice.toolCallsMutable.length) result.toolCalls = structuredClone(choice.toolCallsMutable);
+  if (choice.reasoningDetailsMutable.length) {
+    result.reasoningDetails = structuredClone(choice.reasoningDetailsMutable);
+  }
+  return result;
+}
+
+function appendToolCalls(choice: AccumulatedChoice, value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  let changed = false;
+  for (const raw of value) {
+    const call = asRecord(raw);
+    if (!call) continue;
+    const index =
+      typeof call.index === 'number' &&
+      Number.isInteger(call.index) &&
+      call.index >= 0 &&
+      call.index < 64
+        ? call.index
+        : choice.toolCallsMutable.length;
+    while (choice.toolCallsMutable.length <= index) {
+      choice.toolCallsMutable.push({
+        id: '',
+        type: 'function',
+        function: { name: '', arguments: '' },
+      });
+    }
+    const target = choice.toolCallsMutable[index]!;
+    if (typeof call.id === 'string' && call.id) {
+      target.id = target.id || call.id;
+      changed = true;
+    }
+    const fn = asRecord(call.function);
+    if (fn) {
+      if (typeof fn.name === 'string' && fn.name) {
+        target.function.name += fn.name;
+        changed = true;
+      }
+      if (typeof fn.arguments === 'string') {
+        target.function.arguments += fn.arguments;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+function appendReasoningDetails(choice: AccumulatedChoice, value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  let changed = false;
+  for (const raw of value) {
+    if (!isRecordValue(raw)) continue;
+    const index =
+      typeof raw.index === 'number' && Number.isInteger(raw.index) && raw.index >= 0
+        ? raw.index
+        : choice.reasoningDetailsMutable.length;
+    const existing = choice.reasoningDetailsMutable[index];
+    if (!isRecordValue(existing)) {
+      choice.reasoningDetailsMutable[index] = structuredClone(raw);
+      changed = true;
+      continue;
+    }
+    for (const [key, incoming] of Object.entries(raw)) {
+      if (['text', 'summary', 'data'].includes(key) && typeof incoming === 'string') {
+        existing[key] = `${typeof existing[key] === 'string' ? existing[key] : ''}${incoming}`;
+      } else if (incoming !== undefined && incoming !== null) {
+        existing[key] = structuredClone(incoming);
+      }
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function appendContent(choice: AccumulatedChoice, text: string): void {
@@ -331,6 +419,12 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
     if (state.model !== undefined) result.model = state.model;
     if (state.id !== undefined) result.id = state.id;
     if (state.error !== undefined) result.error = state.error;
+    if (primary.toolCallsMutable.length) {
+      result.toolCalls = structuredClone(primary.toolCallsMutable);
+    }
+    if (primary.reasoningDetailsMutable.length) {
+      result.reasoningDetails = structuredClone(primary.reasoningDetailsMutable);
+    }
     if (choices.length > 1) result.alternates = choices.slice(1).map(publicChoice);
     return result;
   }
@@ -428,6 +522,9 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
           changed = true;
         }
 
+        if (source && appendToolCalls(target, source.tool_calls)) changed = true;
+        if (source && appendReasoningDetails(target, source.reasoning_details)) changed = true;
+
         if (typeof choice.finish_reason === 'string') {
           target.finishReason = choice.finish_reason;
           changed = true;
@@ -494,6 +591,8 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
             ? message.reasoning_content
             : null;
       if (thought) appendReasoning(result, thought);
+      appendToolCalls(result, message.tool_calls);
+      appendReasoningDetails(result, message.reasoning_details);
     }
     if (typeof choice.finish_reason === 'string') result.finishReason = choice.finish_reason;
     return result;
@@ -504,6 +603,10 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   state.content += primary.content;
   state.reasoning = primary.reasoning;
   state.finishReason = primary.finishReason;
+  if (primary.toolCallsMutable.length) state.toolCalls = structuredClone(primary.toolCallsMutable);
+  if (primary.reasoningDetailsMutable.length) {
+    state.reasoningDetails = structuredClone(primary.reasoningDetailsMutable);
+  }
   if (parsed.length > 1) state.alternates = parsed.slice(1).map(publicChoice);
 
   return state;

@@ -29,6 +29,7 @@ import { handleLibraryRoute } from './routes/library.ts';
 import { handleLocationRoute } from './routes/location.ts';
 import { handleLorebookRoute } from './routes/lorebooks.ts';
 import { handlePersonaRoute } from './routes/personas.ts';
+import { handlePresetCocreatorRoute } from './routes/preset-cocreator.ts';
 import { handlePresetRoute } from './routes/presets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
 import { handleShutdownRoute } from './routes/shutdown.ts';
@@ -78,6 +79,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   backups: handleBackupRoute,
   characters: handleCharacterRoute,
   cocreator: handleCocreatorRoute,
+  'preset-cocreator': handlePresetCocreatorRoute,
   presets: handlePresetRoute,
   library: handleLibraryRoute,
   location: handleLocationRoute,

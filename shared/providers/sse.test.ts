@@ -432,6 +432,160 @@ describe('non-streamed completions', () => {
   });
 });
 
+describe('tool calls and reasoning continuity', () => {
+  test('fragmented streamed tool arguments are accumulated into one complete call', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call-1',
+                    type: 'function',
+                    function: { name: 'patch_preset', arguments: '{"expected' },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: { tool_calls: [{ index: 0, function: { arguments: 'Revision":0}' } }] },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(accumulator.snapshot().toolCalls).toEqual([
+      {
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'patch_preset', arguments: '{"expectedRevision":0}' },
+      },
+    ]);
+    expect(accumulator.snapshot().finishReason).toBe('tool_calls');
+  });
+
+  test('interleaved tool calls remain separated by their provider index', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'a',
+                    type: 'function',
+                    function: { name: 'read_preset', arguments: '{' },
+                  },
+                  {
+                    index: 1,
+                    id: 'b',
+                    type: 'function',
+                    function: { name: 'propose_test', arguments: '{"message":"Hi' },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 1, function: { arguments: '"}' } },
+                  { index: 0, function: { arguments: '}' } },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(accumulator.snapshot().toolCalls?.map((call) => call.function.arguments)).toEqual([
+      '{}',
+      '{"message":"Hi"}',
+    ]);
+  });
+
+  test('reasoning_details fragments are preserved for a following tool request', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                reasoning_details: [
+                  { index: 0, type: 'reasoning.text', text: 'First ', signature: 'sig' },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            { delta: { reasoning_details: [{ index: 0, type: 'reasoning.text', text: 'step' }] } },
+          ],
+        }),
+      ),
+    );
+
+    expect(accumulator.snapshot().reasoningDetails).toEqual([
+      expect.objectContaining({ type: 'reasoning.text', text: 'First step', signature: 'sig' }),
+    ]);
+  });
+
+  test('non-streamed tool calls and reasoning details use the same state shape', () => {
+    const state = parseCompletion({
+      choices: [
+        {
+          finish_reason: 'tool_calls',
+          message: {
+            content: null,
+            reasoning_details: [{ type: 'reasoning.summary', summary: 'Plan' }],
+            tool_calls: [
+              {
+                id: 'call-1',
+                type: 'function',
+                function: { name: 'read_preset', arguments: '{}' },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(state.toolCalls?.[0]?.function.name).toBe('read_preset');
+    expect(state.reasoningDetails).toEqual([{ type: 'reasoning.summary', summary: 'Plan' }]);
+  });
+});
+
 describe('usage detail and generation identity', () => {
   test('nested cached and reasoning counts are read off a usage-only final chunk', () => {
     const accumulator = createStreamAccumulator();

@@ -17,7 +17,9 @@ import { presetApi } from '../../lib/api.ts';
 interface UsePresetDraftOptions {
   presetId: string | null;
   preset: Preset | null;
+  presetVersion: string | null;
   onPresetChange: (preset: Preset) => void;
+  onPresetVersionChange: (version: string) => void;
   onSelectPreset: (id: string) => void;
   onPresetsChanged: () => void;
   /** Re-read the preset from disk, discarding the working copy. */
@@ -52,7 +54,9 @@ export interface PresetDraft {
 export function usePresetDraft({
   presetId,
   preset,
+  presetVersion,
   onPresetChange,
+  onPresetVersionChange,
   onSelectPreset,
   onPresetsChanged,
   onRevertPreset,
@@ -98,13 +102,14 @@ export function usePresetDraft({
   const save = useCallback(async () => {
     if (!preset || !presetId) return;
     try {
-      await presetApi.save(presetId, preset);
+      const saved = await presetApi.save(presetId, preset, presetVersion ?? undefined);
+      onPresetVersionChange(saved.version);
       setDirty(false);
       setStatus('Saved');
     } catch (err) {
       setStatus((err as Error).message);
     }
-  }, [preset, presetId]);
+  }, [onPresetVersionChange, preset, presetId, presetVersion]);
 
   const rename = useCallback(
     async (next: string) => {

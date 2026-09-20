@@ -247,7 +247,7 @@ export function StartScreen({
               onClick={onOpenCoCreator}
             >
               <CoCreatorIcon />
-              Character Co-Creator
+              Co-Creator
             </button>
           </div>
           <div className="start-screen__tool-pair">

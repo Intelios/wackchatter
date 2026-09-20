@@ -44,6 +44,7 @@ import { CharacterList } from './features/character/CharacterList.tsx';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
+import { CoCreatorLanding } from './features/cocreator/CoCreatorLanding.tsx';
 import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
 import { GroupChatView } from './features/group/GroupChatView.tsx';
 import { GroupInspectPanel } from './features/group/GroupInspectPanel.tsx';
@@ -56,6 +57,7 @@ import { NexusExplorer } from './features/nexus/NexusExplorer.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { recentPersonaId, withRecentPersona } from './features/persona/personaRoster.ts';
 import { usePresetDraft } from './features/preset/usePresetDraft.ts';
+import { PresetCocreatorShell } from './features/preset-cocreator/PresetCocreatorShell.tsx';
 import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
 import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
@@ -111,6 +113,7 @@ function personaPickSettings(
 
 export function App() {
   const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
+  const [coCreatorMode, setCoCreatorMode] = useState<'landing' | 'character' | 'preset'>('landing');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
   /** The card the Studio just handed off, seeded into a new session on arrival in the Co-Creator. */
@@ -136,6 +139,7 @@ export function App() {
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [presetId, setPresetId] = useState<string | null>(null);
   const [preset, setPreset] = useState<Preset | null>(null);
+  const [presetVersion, setPresetVersion] = useState<string | null>(null);
   const [presetReload, setPresetReload] = useState(0);
 
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
@@ -319,14 +323,18 @@ export function App() {
   useEffect(() => {
     if (!presetId) {
       setPreset(null);
+      setPresetVersion(null);
       return;
     }
 
     let cancelled = false;
     presetApi
-      .get(presetId)
+      .getVersioned(presetId)
       .then((loaded) => {
-        if (!cancelled) setPreset(loaded);
+        if (!cancelled) {
+          setPreset(loaded.preset);
+          setPresetVersion(loaded.version);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError((err as Error).message);
@@ -666,7 +674,9 @@ export function App() {
   const presetDraft = usePresetDraft({
     presetId,
     preset,
+    presetVersion,
     onPresetChange: setPreset,
+    onPresetVersionChange: setPresetVersion,
     onSelectPreset: selectPreset,
     onPresetsChanged: refreshPresets,
     onRevertPreset: () => setPresetReload((n) => n + 1),
@@ -1108,6 +1118,7 @@ export function App() {
     // Entering by hand opens the sessions list. Only the Studio's handoff names a card, and
     // one the user has already left behind must not seed a later, unrelated entry.
     setCocreatorSeedAvatar(null);
+    setCoCreatorMode('landing');
     setView('cocreator');
   }, [chat, flushRightPanel, groupChat.flushSaves]);
 
@@ -1126,6 +1137,7 @@ export function App() {
       return;
     }
     setCocreatorSeedAvatar(avatar);
+    setCoCreatorMode('character');
     setView('cocreator');
   }, []);
 
@@ -1154,6 +1166,7 @@ export function App() {
     }
     // Cleared, or entering the Co-Creator again later would seed from the handed-off card.
     setCocreatorSeedAvatar(null);
+    setCoCreatorMode('landing');
     setView('app');
     void refresh();
   }, [refresh]);
@@ -1272,7 +1285,11 @@ export function App() {
    */
   const documentTitle = useMemo(() => {
     if (view === 'studio') return 'Character Creator Studio';
-    if (view === 'cocreator') return 'Character Co-Creator';
+    if (view === 'cocreator') {
+      if (coCreatorMode === 'character') return 'Character Co-Creator';
+      if (coCreatorMode === 'preset') return 'Preset Co-Creator';
+      return 'Co-Creator';
+    }
     if (view === 'stats') return 'Stats';
     if (view === 'arena') return 'Model Arena';
     // A scene has no character to name it, and its own header is gone — the tab is the one
@@ -1281,7 +1298,7 @@ export function App() {
     if (groupChatId) return groupChat.state.title ? `Group — ${groupChat.state.title}` : 'Group';
     if (!active) return 'WackChatter';
     return chat.state.title ? `${active.name} — ${chat.state.title}` : active.name;
-  }, [view, groupChatId, groupChat.state.title, active, chat.state.title]);
+  }, [view, coCreatorMode, groupChatId, groupChat.state.title, active, chat.state.title]);
 
   useEffect(() => {
     document.title = documentTitle;
@@ -1336,6 +1353,66 @@ export function App() {
   }
 
   if (view === 'cocreator') {
+    if (coCreatorMode === 'landing') {
+      return (
+        <CoCreatorLanding
+          backgroundUrl={resolveBackgroundUrl(settings?.background)}
+          backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+          backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+          glass={settings?.glass !== false}
+          effect={backgroundEffect}
+          effectLayer={backgroundEffectLayer}
+          onCharacter={() => setCoCreatorMode('character')}
+          onPreset={() => setCoCreatorMode('preset')}
+          onExit={exitCoCreator}
+        />
+      );
+    }
+    if (coCreatorMode === 'preset') {
+      return (
+        <PresetCocreatorShell
+          connections={settings?.connections ?? []}
+          activeConnectionId={connection?.id ?? null}
+          presets={presets}
+          activePresetId={presetId}
+          characters={characters}
+          activeCharacterId={selected}
+          personas={personas}
+          activePersonaId={settings?.personaId ?? null}
+          books={books}
+          globalLorebookIds={globalBookIds}
+          worldInfoSettings={worldInfoSettings}
+          globalVariables={settings?.variables ?? {}}
+          regexScripts={regexScripts}
+          tokenizerEncoding={settings?.tokenizerEncoding}
+          streamingFps={Number(settings?.streamingFps ?? 30)}
+          backgroundUrl={resolveBackgroundUrl(settings?.background)}
+          backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
+          backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
+          glass={settings?.glass !== false}
+          effect={backgroundEffect}
+          effectLayer={backgroundEffectLayer}
+          onExit={async () => {
+            try {
+              await cocreatorPersistence.current?.flush();
+              setCoCreatorMode('landing');
+            } catch (failure) {
+              setError((failure as Error).message);
+            }
+          }}
+          onPublished={(publishedId, version) => {
+            void refreshPresets();
+            if (publishedId === presetId && !presetDraft.dirty) {
+              setPresetVersion(version);
+              setPresetReload((value) => value + 1);
+            }
+          }}
+          registerPersistence={(controls) => {
+            cocreatorPersistence.current = controls;
+          }}
+        />
+      );
+    }
     return (
       <CocreatorShell
         defaults={coCreatorSettings}
@@ -1354,7 +1431,16 @@ export function App() {
         glass={settings?.glass !== false}
         effect={backgroundEffect}
         effectLayer={backgroundEffectLayer}
-        onExit={exitCoCreator}
+        onExit={async () => {
+          try {
+            await cocreatorPersistence.current?.flush();
+            setCocreatorSeedAvatar(null);
+            setCoCreatorMode('landing');
+          } catch (failure) {
+            setError((failure as Error).message);
+          }
+        }}
+        exitLabel="Back to Co-Creator"
         onFinished={finishCoCreator}
         seedAvatar={cocreatorSeedAvatar}
         registerPersistence={(controls) => {

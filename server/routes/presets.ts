@@ -7,10 +7,12 @@ import {
   deletePreset,
   duplicatePreset,
   getPreset,
+  getPresetRecord,
   importPreset,
   listPresets,
+  PresetConflictError,
   renamePreset,
-  savePreset,
+  savePresetConditional,
 } from '../lib/presets.ts';
 import { cascadePresetDelete, cascadePresetRename } from '../lib/references.ts';
 
@@ -72,7 +74,7 @@ export async function handlePresetRoute(
     if (!body?.name) return errorResponse('A new name is required.');
 
     try {
-      const summary = renamePreset(id, body.name);
+      const summary = await renamePreset(id, body.name);
       if (summary) cascadePresetRename(id, summary.id);
       return summary ? json(summary) : notFound('Preset not found.');
     } catch (error) {
@@ -83,21 +85,49 @@ export async function handlePresetRoute(
   // /api/presets/:id
   if (segments.length === 1) {
     if (method === 'GET') {
-      const preset = getPreset(id);
-      return preset ? json(preset) : notFound('Preset not found.');
+      const record = getPresetRecord(id);
+      return record
+        ? json(record.preset, {
+            headers: {
+              etag: `"${record.version}"`,
+              'x-preset-version': record.version,
+            },
+          })
+        : notFound('Preset not found.');
     }
 
     if (method === 'PUT') {
       const preset = await readJson<Preset>(request);
       if (!preset) return errorResponse('Request body is not valid JSON.');
 
-      await savePreset(id, preset);
-      return json({ ok: true });
+      const match = request.headers.get('if-match');
+      const expectedVersion = match ? match.replace(/^"|"$/g, '') : undefined;
+      try {
+        const saved = await savePresetConditional(id, preset, expectedVersion);
+        return json(
+          { ok: true, version: saved.version },
+          {
+            headers: { etag: `"${saved.version}"`, 'x-preset-version': saved.version },
+          },
+        );
+      } catch (error) {
+        if (error instanceof PresetConflictError) {
+          return json(
+            {
+              error: error.message,
+              code: error.code,
+              currentVersion: error.currentVersion,
+            },
+            { status: 409 },
+          );
+        }
+        throw error;
+      }
     }
 
     if (method === 'DELETE') {
       try {
-        const deleted = deletePreset(id);
+        const deleted = await deletePreset(id);
         if (deleted) cascadePresetDelete(id);
         return deleted ? json({ ok: true }) : notFound('Preset not found.');
       } catch (error) {

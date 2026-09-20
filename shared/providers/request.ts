@@ -363,6 +363,11 @@ export function parseModelList(payload: unknown): ProviderModel[] {
       };
 
       if (typeof model.context_length === 'number') result.contextLength = model.context_length;
+      if (Array.isArray(model.supported_parameters)) {
+        result.supportedParameters = model.supported_parameters.filter(
+          (entry): entry is string => typeof entry === 'string',
+        );
+      }
       const prompt = Number(pricing.prompt);
       const completion = Number(pricing.completion);
       if (Number.isFinite(prompt)) result.promptPrice = prompt;
