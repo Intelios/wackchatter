@@ -1,6 +1,6 @@
 import type { Connection } from '@shared/providers/types.ts';
 import { useState } from 'react';
-import { PlugIcon, WandIcon } from '../../layout/icons.tsx';
+import { EditIcon, PlugIcon, WandIcon } from '../../layout/icons.tsx';
 import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
 import { Reasoning } from '../chat/Reasoning.tsx';
@@ -19,6 +19,8 @@ interface PresetAssistantPanelProps {
 export function PresetAssistantPanel({ controller, connections }: PresetAssistantPanelProps) {
   const [draft, setDraft] = useState('');
   const [toolCapability, setToolCapability] = useState<boolean | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
   const settings = controller.session.document.settings;
   const messages = controller.session.document.messages;
 
@@ -155,9 +157,55 @@ export function PresetAssistantPanel({ controller, connections }: PresetAssistan
                       </span>
                     ) : null}
                   </div>
+                  {!controller.busy ? (
+                    <div className="message__tools">
+                      <button
+                        type="button"
+                        className="wc-button wc-button--ghost message__action"
+                        onClick={() => {
+                          setEditingId(message.id);
+                          setEditingText(message.content);
+                        }}
+                        title="Edit"
+                        aria-label="Edit"
+                      >
+                        <EditIcon />
+                      </button>
+                    </div>
+                  ) : null}
                 </header>
                 {message.reasoning ? <Reasoning text={message.reasoning} /> : null}
-                <Markdown text={message.content} className="message__text" />
+                {editingId === message.id ? (
+                  <div className="message__editor">
+                    <textarea
+                      className="wc-textarea"
+                      rows={Math.min(20, Math.max(3, editingText.split('\n').length + 1))}
+                      value={editingText}
+                      onChange={(event) => setEditingText(event.target.value)}
+                    />
+                    <div className="message__editor-actions">
+                      <button
+                        type="button"
+                        className="wc-button wc-button--primary"
+                        onClick={() => {
+                          controller.editMessage(message.id, editingText);
+                          setEditingId(null);
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="wc-button wc-button--ghost"
+                        onClick={() => setEditingId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <Markdown text={message.content} className="message__text" />
+                )}
               </div>
             </article>
           );

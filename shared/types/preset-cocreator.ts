@@ -208,3 +208,23 @@ export interface PublishPresetDraftResult {
   revision: number;
   created: boolean;
 }
+
+/**
+ * A read-only example preset from `data/reference-presets` — SillyTavern-format JSONs kept
+ * out of the live preset list so the Co-Creator assistant can study them without cluttering
+ * the user's own presets. The filename is the identity, same as a library preset.
+ */
+export interface ReferencePresetSummary {
+  id: string;
+  name: string;
+  modified: number;
+}
+
+export interface ReferencePresetRecord extends ReferencePresetSummary {
+  /** sha256 of the raw file — the read-side analogue of a preset's content version. */
+  version: string;
+  /** The file normalised for the app/assistant. */
+  preset: Preset;
+  /** The file exactly as stored — reference files are kept verbatim. */
+  raw: string;
+}

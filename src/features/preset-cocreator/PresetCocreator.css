@@ -132,6 +132,76 @@
   white-space: nowrap;
 }
 
+.preset-cc-references {
+  display: flex;
+  flex: 1;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-self: start;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-5);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-lg);
+  background: var(--wc-surface);
+}
+
+.preset-cc-references__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+}
+
+.preset-cc-references__head h2 {
+  margin: 0;
+}
+
+.preset-cc-reference-row {
+  display: flex;
+  flex-direction: column;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+}
+
+.preset-cc-reference-row__line {
+  display: flex;
+  gap: var(--wc-space-2);
+  align-items: stretch;
+}
+
+.preset-cc-reference-row__open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  padding: var(--wc-space-3);
+  color: var(--wc-text);
+  text-align: left;
+}
+
+.preset-cc-reference-row__open span {
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-cc-reference-row__raw {
+  max-height: 320px;
+  margin: 0 var(--wc-space-3) var(--wc-space-3);
+  padding: var(--wc-space-3);
+  overflow: auto;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  font-size: var(--wc-text-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .preset-cc-workspace {
   display: grid;
   /* The two middle rows are the conditional Save-as / publish-error banners. Sections are

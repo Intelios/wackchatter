@@ -7,9 +7,12 @@ import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
   correlateToolMessages,
+  editAssistantConversationMessage,
   executePresetToolCall,
   parsePresetToolCall,
   presetReference,
+  referencePresetView,
+  renderAssistantSystem,
   toolCallArguments,
   toolFailureResult,
 } from './assistant.ts';
@@ -23,7 +26,7 @@ function call(name: string, args: unknown): ProviderToolCall {
 }
 
 describe('Preset Co-Creator assistant boundary', () => {
-  test('only the three preset-scoped tools parse', () => {
+  test('only the preset-scoped tools parse', () => {
     expect(parsePresetToolCall(call('read_preset', {}))).toEqual({ name: 'read_preset' });
     expect(
       parsePresetToolCall(
@@ -35,9 +38,25 @@ describe('Preset Co-Creator assistant boundary', () => {
       restart: true,
       rationale: 'Check voice',
     });
+    expect(parsePresetToolCall(call('read_reference_preset', { name: 'Good One' }))).toEqual({
+      name: 'read_reference_preset',
+      presetName: 'Good One',
+    });
     expect(() => parsePresetToolCall(call('write_file', { path: '/tmp/a' }))).toThrow(
       'Unknown tool',
     );
+  });
+
+  test('read_reference_preset takes only a non-empty name', () => {
+    expect(() => parsePresetToolCall(call('read_reference_preset', {}))).toThrow(
+      'needs a preset name',
+    );
+    expect(() => parsePresetToolCall(call('read_reference_preset', { name: '  ' }))).toThrow(
+      'needs a preset name',
+    );
+    expect(() =>
+      parsePresetToolCall(call('read_reference_preset', { name: 'Fine', path: '/etc/passwd' })),
+    ).toThrow('unexpected argument');
   });
 
   test('session ids, filenames, and extra authority are rejected', () => {
@@ -157,6 +176,10 @@ describe('Preset Co-Creator assistant boundary', () => {
         return { revision: 3, diff: [{ path: '/temperature', kind: 'replace' as const }] };
       },
       proposeTest: (proposal: unknown) => proposals.push(proposal),
+      readReference: async (name: string) => {
+        if (name === 'Missing') throw new Error('Reference preset "Missing" not found.');
+        return referencePresetView(name, 'abc123', createDefaultPreset());
+      },
     };
 
     const read = await executePresetToolCall(call('read_preset', {}), 'turn-1', deps);
@@ -198,6 +221,69 @@ describe('Preset Co-Creator assistant boundary', () => {
     ).rejects.toThrow();
     // Only the successful call was dispatched — the rejected one applied nothing.
     expect(patches).toHaveLength(1);
+  });
+
+  test('read_reference_preset resolves through the dep, and a miss rejects for the caller', async () => {
+    const deps = {
+      currentRevision: () => ({ revision: 0, preset: createDefaultPreset() }),
+      patchDraft: async () => ({ revision: 1, diff: [] }),
+      proposeTest: () => {},
+      readReference: async (name: string) => {
+        if (name === 'Missing') throw new Error('Reference preset "Missing" not found.');
+        return referencePresetView(name, 'abc123', createDefaultPreset());
+      },
+    };
+
+    const found = (await executePresetToolCall(
+      call('read_reference_preset', { name: 'Good One' }),
+      'turn-1',
+      deps,
+    )) as { name: string; version: string; order: unknown[] };
+    expect(found.name).toBe('Good One');
+    expect(found.version).toBe('abc123');
+    // The view carries the same ordered-block overview the draft reference does.
+    expect(found.order[0]).toMatchObject({ identifier: 'main', enabled: true });
+    expect(found).not.toHaveProperty('revision');
+
+    await expect(
+      executePresetToolCall(call('read_reference_preset', { name: 'Missing' }), 'turn-1', deps),
+    ).rejects.toThrow('not found');
+  });
+
+  test('the system prompt lists reference names only when there are any', () => {
+    const revision = { revision: 0, preset: createDefaultPreset() };
+    const without = renderAssistantSystem(revision, '', []);
+    expect(without).not.toContain('Reference presets available');
+
+    const withTwo = renderAssistantSystem(revision, '', ['Good One', 'Another']);
+    expect(withTwo).toContain('Reference presets available through read_reference_preset');
+    expect(withTwo).toContain('- Good One');
+    expect(withTwo).toContain('- Another');
+  });
+
+  test('editing replaces only the targeted text', () => {
+    const toolCall = call('read_preset', {});
+    const messages: PresetCocreatorMessage[] = [
+      { id: 'u', role: 'user', content: 'Improve it', created: 1 },
+      {
+        id: 'a',
+        role: 'assistant',
+        content: 'Sure',
+        created: 2,
+        reasoning: 'A plan',
+        toolCalls: [toolCall],
+      },
+    ];
+
+    const edited = editAssistantConversationMessage(messages, 'a', 'Better answer');
+    expect(edited[1]).toMatchObject({ content: 'Better answer' });
+    // Tool calls and reasoning stay attached — the next request's wire form stays valid.
+    expect(edited[1]?.toolCalls).toEqual([toolCall]);
+    expect(edited[1]?.reasoning).toBe('A plan');
+    expect(edited[0]).toEqual(messages[0]);
+
+    expect(editAssistantConversationMessage(messages, 'missing', 'x')[1]?.content).toBe('Sure');
+    expect(editAssistantConversationMessage(messages, 'a', 'Sure')[1]?.content).toBe('Sure');
   });
 
   test('assistant turns have a hard provider-request limit', () => {

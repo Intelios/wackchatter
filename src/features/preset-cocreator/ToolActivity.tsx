@@ -53,6 +53,19 @@ export function ToolActivityCard({ exchange }: { exchange: ToolExchange }) {
     );
   }
 
+  if (exchange.name === 'read_reference_preset') {
+    const presetName = typeof args.name === 'string' ? args.name : null;
+    return (
+      <div className="preset-cc-tool preset-cc-tool--quiet" key={exchange.id}>
+        <EyeIcon />
+        <span>
+          Read reference preset{presetName ? ` "${presetName}"` : ''}
+          {failed && typeof result.error === 'string' ? ` — ${result.error}` : ''}
+        </span>
+      </div>
+    );
+  }
+
   if (exchange.name === 'propose_test' && ok) {
     const message = typeof args.message === 'string' ? args.message : '';
     const rationale = typeof args.rationale === 'string' ? args.rationale : '';

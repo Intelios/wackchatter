@@ -6,6 +6,7 @@ import type {
   PresetCocreatorModelSettings,
   PresetCocreatorSession,
   PresetCocreatorSessionSummary,
+  ReferencePresetSummary,
 } from '@shared/types/preset-cocreator.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -13,11 +14,12 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
 import { ChevronLeftIcon } from '../../layout/icons.tsx';
-import { presetCocreatorApi } from '../../lib/api.ts';
+import { presetCocreatorApi, referencePresetApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import type { EffectId } from '../backgrounds/effects.ts';
 import { ParticleLayer } from '../backgrounds/ParticleLayer.tsx';
 import { PresetCocreatorWorkspace } from './PresetCocreatorWorkspace.tsx';
+import { PresetReferencePanel } from './PresetReferencePanel.tsx';
 import './PresetCocreator.css';
 
 interface PresetCocreatorShellProps {
@@ -59,6 +61,7 @@ function modelDefaults(connection: Connection | null): PresetCocreatorModelSetti
 
 export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
   const [sessions, setSessions] = useState<PresetCocreatorSessionSummary[]>([]);
+  const [references, setReferences] = useState<ReferencePresetSummary[]>([]);
   const [session, setSession] = useState<PresetCocreatorSession | null>(null);
   const [sourcePresetId, setSourcePresetId] = useState(props.activePresetId ?? '');
   const [title, setTitle] = useState('');
@@ -72,7 +75,12 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
     null;
 
   const refresh = useCallback(async () => {
-    setSessions(await presetCocreatorApi.list());
+    const [sessionList, referenceList] = await Promise.all([
+      presetCocreatorApi.list(),
+      referencePresetApi.list(),
+    ]);
+    setSessions(sessionList);
+    setReferences(referenceList);
   }, []);
 
   useEffect(() => {
@@ -273,6 +281,7 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
                 <div className="wc-empty">No preset design sessions yet.</div>
               )}
             </section>
+            <PresetReferencePanel references={references} onChanged={refresh} onError={setError} />
           </div>
         )}
       </main>

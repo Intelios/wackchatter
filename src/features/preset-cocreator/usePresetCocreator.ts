@@ -10,14 +10,16 @@ import type {
   ReplacePresetDraftRequest,
 } from '@shared/types/preset-cocreator.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { presetCocreatorApi, streamGenerate } from '../../lib/api.ts';
+import { presetCocreatorApi, referencePresetApi, streamGenerate } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
+  editAssistantConversationMessage,
   executePresetToolCall,
   PRESET_ASSISTANT_TOOLS,
+  referencePresetView,
   renderAssistantSystem,
   toolFailureResult,
 } from './assistant.ts';
@@ -206,6 +208,15 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
       setError(null);
       const turnId = crypto.randomUUID();
       let messages = [...startingMessages];
+      // The folder can change between turns, so the catalogue is refreshed per turn and
+      // the names ride the system prompt — the model reads the full file only on demand.
+      let referenceNames: string[] = [];
+      try {
+        referenceNames = (await referencePresetApi.list()).map((entry) => entry.name);
+      } catch {
+        // A missing or unreadable folder must not fail the turn — the tool still answers
+        // real read attempts with their own errors.
+      }
 
       try {
         for (let requestIndex = 0; requestIndex < ASSISTANT_REQUEST_LIMIT; requestIndex += 1) {
@@ -231,6 +242,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
               content: renderAssistantSystem(
                 current.current,
                 current.document.settings.assistantInstructions,
+                referenceNames,
               ),
             },
             ...assistantWireMessages(messages),
@@ -300,6 +312,10 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
                     ...document,
                     proposedTests: [...document.proposedTests, proposal],
                   })),
+                readReference: async (name) => {
+                  const record = await referencePresetApi.get(name);
+                  return referencePresetView(record.name, record.version, record.preset);
+                },
               });
             } catch (failure) {
               // A rejected tool call is data for the model, not the end of the turn: it
@@ -360,6 +376,17 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     [busy, commitMessages, executeAssistantTurn, flush],
   );
 
+  const editMessage = useCallback(
+    (id: string, text: string) => {
+      if (busy) return;
+      updateDocument((document) => ({
+        ...document,
+        messages: editAssistantConversationMessage(document.messages, id, text),
+      }));
+    },
+    [busy, updateDocument],
+  );
+
   const publish = useCallback(
     async (input: Omit<PublishPresetDraftRequest, 'operationId' | 'revision'>) => {
       await flush();
@@ -409,6 +436,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     restoreDraft,
     undoTurn,
     send,
+    editMessage,
     stop: () => abortRef.current?.abort(),
     publish,
     rename,

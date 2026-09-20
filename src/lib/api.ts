@@ -60,6 +60,8 @@ import type {
   PresetCocreatorSessionSummary,
   PublishPresetDraftRequest,
   PublishPresetDraftResult,
+  ReferencePresetRecord,
+  ReferencePresetSummary,
   RenamePresetCocreatorSessionRequest,
   ReplacePresetDraftRequest,
   RestorePresetDraftRequest,
@@ -614,6 +616,28 @@ export const presetCocreatorApi = {
 
   remove: (id: string) =>
     request<{ ok: true }>(`/preset-cocreator/sessions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+};
+
+/** Read-only example presets for the Co-Creator assistant — never the live preset list. */
+export const referencePresetApi = {
+  list: () => request<ReferencePresetSummary[]>('/reference-presets'),
+
+  get: (id: string) =>
+    request<ReferencePresetRecord>(`/reference-presets/${encodeURIComponent(id)}`),
+
+  import: (file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return request<ReferencePresetSummary>('/reference-presets/import', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/reference-presets/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
 };
