@@ -315,3 +315,61 @@ export function toolFailureResult(error: unknown): Record<string, unknown> {
   }
   return result;
 }
+
+export interface ToolExchange {
+  /** The tool-result message's id — the stable key for the row. */
+  id: string;
+  created: number;
+  /** The matched call, with its raw arguments — null when history lost it. */
+  call: ProviderToolCall | null;
+  name: string;
+  /** Parsed result JSON when it parses, else the raw string. */
+  result: unknown;
+}
+
+/**
+ * Pair every tool-result message with the call that produced it, by walking the
+ * conversation in order and remembering each assistant message's calls by id. A tool
+ * message whose call is missing (hand-edited history, an import) still renders — with a
+ * null call — because the result alone is worth showing.
+ */
+export function correlateToolMessages(messages: readonly PresetCocreatorMessage[]): ToolExchange[] {
+  const calls = new Map<string, ProviderToolCall>();
+  const exchanges: ToolExchange[] = [];
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      for (const call of message.toolCalls ?? []) {
+        if (call.id) calls.set(call.id, call);
+      }
+    }
+    if (message.role === 'tool') {
+      const call = message.toolCallId ? (calls.get(message.toolCallId) ?? null) : null;
+      exchanges.push({
+        id: message.id,
+        created: message.created,
+        call,
+        name: message.toolName ?? call?.function.name ?? 'tool',
+        result: parseJsonLoose(message.content),
+      });
+    }
+  }
+  return exchanges;
+}
+
+/** Parse tool-result JSON for display; anything unparseable stays a string. */
+function parseJsonLoose(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
+}
+
+/** The arguments of a call, parsed the same loose way — display only, never authority. */
+export function toolCallArguments(call: ProviderToolCall | null): Record<string, unknown> {
+  if (!call) return {};
+  const parsed = parseJsonLoose(call.function.arguments);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
+}

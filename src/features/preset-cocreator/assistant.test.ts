@@ -6,9 +6,11 @@ import { ApiError } from '../../lib/api.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
+  correlateToolMessages,
   executePresetToolCall,
   parsePresetToolCall,
   presetReference,
+  toolCallArguments,
   toolFailureResult,
 } from './assistant.ts';
 
@@ -200,5 +202,52 @@ describe('Preset Co-Creator assistant boundary', () => {
 
   test('assistant turns have a hard provider-request limit', () => {
     expect(ASSISTANT_REQUEST_LIMIT).toBe(6);
+  });
+});
+
+describe('tool activity correlation', () => {
+  test('pairs each tool result with its call and parses the result', () => {
+    const messages: PresetCocreatorMessage[] = [
+      { id: 'u', role: 'user', content: 'improve it', created: 1 },
+      {
+        id: 'a',
+        role: 'assistant',
+        content: '',
+        created: 2,
+        toolCalls: [
+          call('patch_preset', {
+            expectedRevision: 0,
+            operations: [{ op: 'replace', path: '/temperature', value: 0.6 }],
+            summary: 'Cooler sampling',
+          }),
+        ],
+      },
+      {
+        id: 't',
+        role: 'tool',
+        content: '{"ok":true,"revision":1}',
+        created: 3,
+        toolCallId: 'call-1',
+        toolName: 'patch_preset',
+      },
+      {
+        id: 't2',
+        role: 'tool',
+        content: 'not json',
+        created: 4,
+        toolCallId: 'missing-call',
+        toolName: 'read_preset',
+      },
+    ];
+
+    const exchanges = correlateToolMessages(messages);
+    expect(exchanges).toHaveLength(2);
+    expect(exchanges[0]).toMatchObject({
+      name: 'patch_preset',
+      result: { ok: true, revision: 1 },
+    });
+    expect(toolCallArguments(exchanges[0]!.call)).toMatchObject({ summary: 'Cooler sampling' });
+    // A result whose call is gone still renders — with a null call, not a hole.
+    expect(exchanges[1]).toMatchObject({ call: null, result: 'not json' });
   });
 });
