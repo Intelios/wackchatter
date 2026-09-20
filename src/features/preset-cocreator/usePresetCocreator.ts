@@ -6,7 +6,6 @@ import type {
   PresetCocreatorDocument,
   PresetCocreatorMessage,
   PresetCocreatorSession,
-  ProposedPresetTest,
   PublishPresetDraftRequest,
   ReplacePresetDraftRequest,
 } from '@shared/types/preset-cocreator.ts';
@@ -17,10 +16,10 @@ import { useTokenizer } from '../../lib/useTokenizer.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
+  executePresetToolCall,
   PRESET_ASSISTANT_TOOLS,
-  parsePresetToolCall,
-  presetReference,
   renderAssistantSystem,
+  toolFailureResult,
 } from './assistant.ts';
 
 interface DocumentSnapshot {
@@ -283,43 +282,29 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
           }
 
           for (const call of final.toolCalls) {
-            if (!call.id || !call.function.name)
-              throw new Error('The model returned an incomplete tool call.');
-            const parsed = parsePresetToolCall(call);
+            // Without an id no tool message can answer this call, and most providers reject
+            // a follow-up request whose tool_calls were left unanswered — turn-fatal.
+            if (!call.id) throw new Error('The model returned a tool call without an id.');
             let result: unknown;
-            if (parsed.name === 'read_preset') {
-              const latest = sessionRef.current.current;
-              result = presetReference(latest.preset, latest.revision);
-            } else if (parsed.name === 'patch_preset') {
-              await flush();
-              const saved = await presetCocreatorApi.patchDraft(sessionRef.current.id, {
-                expectedRevision: parsed.expectedRevision,
-                operationId: `tool:${turnId}:${call.id}`,
-                source: 'assistant',
-                summary: parsed.summary,
-                turnId,
-                operations: parsed.operations,
+            try {
+              result = await executePresetToolCall(call, turnId, {
+                currentRevision: () => sessionRef.current.current,
+                patchDraft: async (input) => {
+                  await flush();
+                  const saved = await presetCocreatorApi.patchDraft(sessionRef.current.id, input);
+                  adoptDraftResponse(saved);
+                  return saved.current;
+                },
+                proposeTest: (proposal) =>
+                  updateDocument((document) => ({
+                    ...document,
+                    proposedTests: [...document.proposedTests, proposal],
+                  })),
               });
-              adoptDraftResponse(saved);
-              result = {
-                ok: true,
-                revision: saved.draftRevision,
-                diff: saved.current.diff,
-              };
-            } else {
-              const proposal: ProposedPresetTest = {
-                id: crypto.randomUUID(),
-                message: parsed.message,
-                restart: parsed.restart,
-                rationale: parsed.rationale,
-                created: Date.now(),
-                status: 'pending',
-              };
-              updateDocument((document) => ({
-                ...document,
-                proposedTests: [...document.proposedTests, proposal],
-              }));
-              result = { ok: true, proposalId: proposal.id, awaitingUserRun: true };
+            } catch (failure) {
+              // A rejected tool call is data for the model, not the end of the turn: it
+              // reads the error and sends a corrected call within the same request budget.
+              result = toolFailureResult(failure);
             }
             const toolMessage: PresetCocreatorMessage = {
               id: crypto.randomUUID(),

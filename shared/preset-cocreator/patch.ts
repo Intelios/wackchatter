@@ -86,6 +86,17 @@ function pointerSegments(path: string): string[] {
     });
 }
 
+/**
+ * The reference the assistant reads nests the preset under a `preset` key, so models
+ * naturally write `/preset/temperature` when they mean `/temperature`. Accept that root —
+ * but only when the document has no *real* top-level `preset` key to address.
+ */
+function normalizeRoot(path: string, base: Preset): string {
+  if (path !== '/preset' && !path.startsWith('/preset/')) return path;
+  if (isRecord(base) && Object.hasOwn(base, 'preset')) return path;
+  return path === '/preset' ? '' : path.slice('/preset'.length);
+}
+
 function arrayIndex(segment: string, length: number, allowEnd: boolean): number {
   if (allowEnd && segment === '-') return length;
   if (!/^(0|[1-9]\d*)$/.test(segment)) throw new Error(`"${segment}" is not an array index.`);
@@ -377,7 +388,7 @@ export function applyPresetPatch(
         `JSON patch operation ${index + 1} contains unexpected field "${unexpected}".`,
       );
     }
-    const segments = pointerSegments(operation.path);
+    const segments = pointerSegments(normalizeRoot(operation.path, base));
     if (operation.op === 'test') {
       if (!deepEqual(readAt(next, segments), operation.value)) {
         throw new Error(`JSON patch test failed at ${operation.path || '/'}; the draft changed.`);

@@ -2,11 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { ProviderToolCall } from '@shared/providers/types.ts';
 import type { PresetCocreatorMessage } from '@shared/types/preset-cocreator.ts';
+import { ApiError } from '../../lib/api.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
+  executePresetToolCall,
   parsePresetToolCall,
   presetReference,
+  toolFailureResult,
 } from './assistant.ts';
 
 function call(name: string, args: unknown): ProviderToolCall {
@@ -96,6 +99,103 @@ describe('Preset Co-Creator assistant boundary', () => {
     expect(reference.revision).toBe(3);
     expect(reference.order[0]).toMatchObject({ identifier: 'main', enabled: true });
     expect(JSON.stringify(reference)).not.toContain('filename');
+  });
+
+  test('every order entry carries the exact pointers for editing or toggling it', () => {
+    const reference = presetReference(createDefaultPreset(), 0);
+    const main = reference.order.find((entry) => entry.identifier === 'main')!;
+    const promptsIndex = createDefaultPreset().prompts!.findIndex(
+      (prompt) => prompt.identifier === 'main',
+    );
+    const liveSlot = createDefaultPreset().prompt_order!.findIndex(
+      (list) => Number(list.character_id) === 100001,
+    );
+    const orderIndex = reference.order.findIndex((entry) => entry.identifier === 'main');
+
+    expect(main.promptPath).toBe(`/prompts/${promptsIndex}`);
+    expect(main.enabledPath).toBe(`/prompt_order/${liveSlot}/order/${orderIndex}/enabled`);
+    // The pointers are real: applying them through the patch engine works untouched.
+  });
+
+  test('a tool failure becomes result data, and a stale conflict names the live revision', () => {
+    expect(toolFailureResult(new Error('JSON patch path "/nope" does not exist.'))).toEqual({
+      ok: false,
+      error: 'JSON patch path "/nope" does not exist.',
+    });
+
+    const stale = new ApiError('The session changed elsewhere.', 409, {
+      error: 'stale',
+      currentRevision: 4,
+    });
+    expect(toolFailureResult(stale)).toEqual({
+      ok: false,
+      error: 'The session changed elsewhere.',
+      currentRevision: 4,
+    });
+
+    const conflictWithoutRevision = new ApiError('Preset conflict', 409, { other: true });
+    expect(toolFailureResult(conflictWithoutRevision)).not.toHaveProperty('currentRevision');
+  });
+
+  test('executing a call rejects rather than half-applying, so the caller can feed it back', async () => {
+    const patches: unknown[] = [];
+    const proposals: unknown[] = [];
+    const deps = {
+      currentRevision: () => ({
+        revision: 2,
+        preset: createDefaultPreset(),
+      }),
+      // Faithful to the real dep: the server rejects an invalid patch, the executor passes
+      // that rejection through, and nothing half-applies.
+      patchDraft: async (input: { operations: Array<{ path: string }> }) => {
+        if (input.operations.some((operation) => operation.path === '/nope')) {
+          throw new Error('JSON patch path "/nope" does not exist.');
+        }
+        patches.push(input);
+        return { revision: 3, diff: [{ path: '/temperature', kind: 'replace' as const }] };
+      },
+      proposeTest: (proposal: unknown) => proposals.push(proposal),
+    };
+
+    const read = await executePresetToolCall(call('read_preset', {}), 'turn-1', deps);
+    expect(read).toMatchObject({ revision: 2 });
+
+    const patched = await executePresetToolCall(
+      call('patch_preset', {
+        expectedRevision: 2,
+        operations: [{ op: 'replace', path: '/temperature', value: 0.8 }],
+        summary: 'Cool it down',
+      }),
+      'turn-1',
+      deps,
+    );
+    expect(patched).toEqual({
+      ok: true,
+      revision: 3,
+      diff: [{ path: '/temperature', kind: 'replace' }],
+    });
+    expect(patches[0]).toMatchObject({ operationId: 'tool:turn-1:call-1', turnId: 'turn-1' });
+
+    await executePresetToolCall(
+      call('propose_test', { message: 'Hi', restart: false, rationale: 'Voice check' }),
+      'turn-1',
+      deps,
+    );
+    expect(proposals[0]).toMatchObject({ message: 'Hi', status: 'pending' });
+
+    await expect(
+      executePresetToolCall(
+        call('patch_preset', {
+          expectedRevision: 2,
+          operations: [{ op: 'replace', path: '/nope', value: 1 }],
+          summary: 'Bad path',
+        }),
+        'turn-1',
+        deps,
+      ),
+    ).rejects.toThrow();
+    // Only the successful call was dispatched — the rejected one applied nothing.
+    expect(patches).toHaveLength(1);
   });
 
   test('assistant turns have a hard provider-request limit', () => {

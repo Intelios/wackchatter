@@ -17,6 +17,31 @@ describe('Preset Co-Creator patch boundary', () => {
     expect(result.diff.map((entry) => entry.path)).toContain('/prompts/0/content');
   });
 
+  test('a leading /preset/ root — the shape read_preset hands the model — is accepted', () => {
+    const base = createDefaultPreset();
+    const result = applyPresetPatch(base, [
+      { op: 'replace', path: '/preset/temperature', value: 0.6 },
+      { op: 'test', path: '/preset/openai_max_tokens', value: base.openai_max_tokens },
+    ]);
+
+    expect(result.preset.temperature).toBe(0.6);
+    // The reported diff stays canonical, rooted at the document like every other diff.
+    expect(result.diff).toEqual([{ path: '/temperature', kind: 'replace', before: 1, after: 0.6 }]);
+  });
+
+  test('a real top-level preset key is addressed, not stripped', () => {
+    const base = { ...createDefaultPreset(), preset: { nested: 'real data' } } as ReturnType<
+      typeof createDefaultPreset
+    >;
+    const result = applyPresetPatch(base, [
+      { op: 'replace', path: '/preset/nested', value: 'edited' },
+    ]);
+
+    expect((result.preset as unknown as { preset: { nested: string } }).preset.nested).toBe(
+      'edited',
+    );
+  });
+
   test('rejects unsafe property traversal atomically', () => {
     const base = createDefaultPreset();
     expect(() =>
