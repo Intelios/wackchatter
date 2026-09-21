@@ -14,6 +14,13 @@
 import type { ApiMessage } from '../types/chat.ts';
 import type { Preset } from '../types/preset.ts';
 
+/** OpenAI-compatible client tool call, accumulated before local execution. */
+export interface ProviderToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
 export type ProviderId = 'custom' | 'openrouter';
 
 /** OpenRouter's provider-routing preferences. */
@@ -129,6 +136,8 @@ export interface ProviderModel {
   /** USD per token, as OpenRouter reports it. */
   promptPrice?: number;
   completionPrice?: number;
+  /** OpenRouter capability catalogue. Absent on generic OpenAI-compatible endpoints. */
+  supportedParameters?: string[];
 }
 
 export const DEFAULT_CONNECTION: ConnectionSettings = {

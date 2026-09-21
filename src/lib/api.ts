@@ -53,6 +53,20 @@ import type {
   SwitchResult,
 } from '@shared/types/location.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
+import type {
+  CreatePresetCocreatorSession,
+  PatchPresetDraftRequest,
+  PresetCocreatorSession,
+  PresetCocreatorSessionSummary,
+  PublishPresetDraftRequest,
+  PublishPresetDraftResult,
+  ReferencePresetRecord,
+  ReferencePresetSummary,
+  RenamePresetCocreatorSessionRequest,
+  ReplacePresetDraftRequest,
+  RestorePresetDraftRequest,
+  SavePresetCocreatorDocument,
+} from '@shared/types/preset-cocreator.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
 import type { CharacterStats, StatsOverview } from '@shared/types/stats.ts';
 import type { UsageFeature, UsageReport } from '@shared/types/usage.ts';
@@ -85,7 +99,10 @@ export function staleRevisionFrom(error: unknown): StaleChatRevision | null {
     : null;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestResult<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ data: T; response: Response }> {
   const response = await fetch(`/api${path}`, init);
 
   if (!response.ok) {
@@ -103,7 +120,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(message, response.status, body);
   }
 
-  return response.json() as Promise<T>;
+  return { data: (await response.json()) as T, response };
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await requestResult<T>(path, init)).data;
 }
 
 export const characterApi = {
@@ -208,10 +229,21 @@ export const presetApi = {
 
   get: (id: string) => request<Preset>(`/presets/${encodeURIComponent(id)}`),
 
-  save: (id: string, preset: Preset) =>
-    request<{ ok: true }>(`/presets/${encodeURIComponent(id)}`, {
+  getVersioned: async (id: string) => {
+    const result = await requestResult<Preset>(`/presets/${encodeURIComponent(id)}`);
+    return {
+      preset: result.data,
+      version: result.response.headers.get('x-preset-version') ?? '',
+    };
+  },
+
+  save: (id: string, preset: Preset, expectedVersion?: string) =>
+    request<{ ok: true; version: string }>(`/presets/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(expectedVersion ? { 'if-match': `"${expectedVersion}"` } : {}),
+      },
       body: JSON.stringify(preset),
     }),
 
@@ -510,6 +542,104 @@ export const cocreatorApi = {
   /** `cacheKey` is the session's `modified`, since the filename is stable per session. */
   avatarUrl: (id: string, cacheKey?: number) =>
     `/api/cocreator/${encodeURIComponent(id)}/avatar${cacheKey ? `?v=${cacheKey}` : ''}`,
+};
+
+export const presetCocreatorApi = {
+  list: () => request<PresetCocreatorSessionSummary[]>('/preset-cocreator/sessions'),
+
+  get: (id: string) =>
+    request<PresetCocreatorSession>(`/preset-cocreator/sessions/${encodeURIComponent(id)}`),
+
+  create: (input: CreatePresetCocreatorSession) =>
+    request<PresetCocreatorSession>('/preset-cocreator/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+
+  rename: (id: string, input: RenamePresetCocreatorSessionRequest) =>
+    request<PresetCocreatorSession>(`/preset-cocreator/sessions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+
+  saveDocument: (id: string, input: SavePresetCocreatorDocument) =>
+    request<PresetCocreatorSession>(
+      `/preset-cocreator/sessions/${encodeURIComponent(id)}/document`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    ),
+
+  patchDraft: (id: string, input: PatchPresetDraftRequest) =>
+    request<PresetCocreatorSession>(
+      `/preset-cocreator/sessions/${encodeURIComponent(id)}/draft/patch`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    ),
+
+  replaceDraft: (id: string, input: ReplacePresetDraftRequest) =>
+    request<PresetCocreatorSession>(
+      `/preset-cocreator/sessions/${encodeURIComponent(id)}/draft/replace`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    ),
+
+  restoreDraft: (id: string, input: RestorePresetDraftRequest) =>
+    request<PresetCocreatorSession>(
+      `/preset-cocreator/sessions/${encodeURIComponent(id)}/draft/restore`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    ),
+
+  publish: (id: string, input: PublishPresetDraftRequest) =>
+    request<PublishPresetDraftResult>(
+      `/preset-cocreator/sessions/${encodeURIComponent(id)}/publish`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    ),
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/preset-cocreator/sessions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+};
+
+/** Read-only example presets for the Co-Creator assistant — never the live preset list. */
+export const referencePresetApi = {
+  list: () => request<ReferencePresetSummary[]>('/reference-presets'),
+
+  get: (id: string) =>
+    request<ReferencePresetRecord>(`/reference-presets/${encodeURIComponent(id)}`),
+
+  import: (file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return request<ReferencePresetSummary>('/reference-presets/import', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  remove: (id: string) =>
+    request<{ ok: true }>(`/reference-presets/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 };
 
 export const backupApi = {

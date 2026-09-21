@@ -26,6 +26,7 @@ import { activeGenerations } from './generate.ts';
 import { activeBackups } from './library.ts';
 import { inspectLocation, resolveDataDir, writePointer } from './location.ts';
 import { ensureDataDirs, PATHS, setDataDir } from './paths.ts';
+import { resetPresetCocreatorStore } from './preset-cocreator.ts';
 import { ensureDefaultPreset } from './presets.ts';
 import { resetSettingsCache } from './settings.ts';
 import { resetTournamentStore } from './tournaments.ts';
@@ -73,6 +74,7 @@ export function quiesce(): void {
   resetTournamentStore();
   resetChatStore();
   resetCocreatorStore();
+  resetPresetCocreatorStore();
   closeDatabase();
   resetSettingsCache();
 }

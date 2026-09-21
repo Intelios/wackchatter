@@ -16,6 +16,7 @@ import { updateWorldLinksRecoverable } from './characters.ts';
 import { chatStore } from './chats.ts';
 import { cocreatorStore } from './cocreator.ts';
 import { updatePersonaLorebookReferences } from './personas.ts';
+import { presetCocreatorStore } from './preset-cocreator.ts';
 import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
@@ -211,22 +212,28 @@ export async function cascadeLorebookDelete(id: string): Promise<Rollback> {
 export function cascadePresetRename(oldId: string, newId: string): Rollback {
   const current = getSettings();
   const updated = reassignPreset(current, oldId, newId);
-  if (!updated) return () => {};
+  const movedSessions = presetCocreatorStore().reassignPreset(oldId, newId);
+  if (!updated && !movedSessions) return () => {};
 
-  saveSettings({
-    presetId: updated.presetId,
-    memory: updated.memory,
-    coCreator: updated.coCreator,
-    arena: updated.arena,
-  });
+  if (updated) {
+    saveSettings({
+      presetId: updated.presetId,
+      memory: updated.memory,
+      coCreator: updated.coCreator,
+      arena: updated.arena,
+    });
+  }
 
   return () => {
-    saveSettings({
-      presetId: current.presetId,
-      memory: current.memory,
-      coCreator: current.coCreator,
-      arena: current.arena,
-    });
+    if (updated) {
+      saveSettings({
+        presetId: current.presetId,
+        memory: current.memory,
+        coCreator: current.coCreator,
+        arena: current.arena,
+      });
+    }
+    if (movedSessions) presetCocreatorStore().reassignPreset(newId, oldId);
   };
 }
 
@@ -234,21 +241,29 @@ export function cascadePresetRename(oldId: string, newId: string): Rollback {
 export function cascadePresetDelete(id: string): Rollback {
   const current = getSettings();
   const updated = reassignPreset(current, id, null);
-  if (!updated) return () => {};
+  const detachedSessions = presetCocreatorStore().reassignPreset(id, null);
+  if (!updated && !detachedSessions) return () => {};
 
-  saveSettings({
-    presetId: updated.presetId,
-    memory: updated.memory,
-    coCreator: updated.coCreator,
-    arena: updated.arena,
-  });
+  if (updated) {
+    saveSettings({
+      presetId: updated.presetId,
+      memory: updated.memory,
+      coCreator: updated.coCreator,
+      arena: updated.arena,
+    });
+  }
 
   return () => {
-    saveSettings({
-      presetId: current.presetId,
-      memory: current.memory,
-      coCreator: current.coCreator,
-      arena: current.arena,
-    });
+    if (updated) {
+      saveSettings({
+        presetId: current.presetId,
+        memory: current.memory,
+        coCreator: current.coCreator,
+        arena: current.arena,
+      });
+    }
+    // A deleted file cannot be restored by this rollback alone. Reattaching would create a
+    // dangling target, so sessions deliberately stay detached if the file operation failed
+    // after deletion.
   };
 }

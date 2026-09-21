@@ -26,6 +26,8 @@ export interface DataPaths {
   root: string;
   characters: string;
   presets: string;
+  /** Read-only example presets for the Preset Co-Creator — never the live preset list. */
+  referencePresets: string;
   lorebooks: string;
   personas: string;
   personaAvatars: string;
@@ -45,6 +47,7 @@ function buildPaths(dataDir: string): DataPaths {
     root: dataDir,
     characters: join(dataDir, 'characters'),
     presets: join(dataDir, 'presets'),
+    referencePresets: join(dataDir, 'reference-presets'),
     lorebooks: join(dataDir, 'lorebooks'),
     personas: join(dataDir, 'personas'),
     personaAvatars: join(dataDir, 'personas', 'avatars'),
@@ -107,6 +110,7 @@ export function ensureDataDirs(): void {
     PATHS.root,
     PATHS.characters,
     PATHS.presets,
+    PATHS.referencePresets,
     PATHS.lorebooks,
     PATHS.personas,
     PATHS.personaAvatars,

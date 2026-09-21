@@ -501,6 +501,7 @@ describe('parsing a model list', () => {
           id: 'anthropic/claude-opus-4',
           name: 'Claude Opus 4',
           context_length: 200000,
+          supported_parameters: ['tools', 'reasoning'],
           pricing: { prompt: '0.000015', completion: '0.000075' },
         },
       ],
@@ -513,6 +514,7 @@ describe('parsing a model list', () => {
         contextLength: 200000,
         promptPrice: 0.000015,
         completionPrice: 0.000075,
+        supportedParameters: ['tools', 'reasoning'],
       },
     ]);
   });

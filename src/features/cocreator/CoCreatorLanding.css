@@ -1,0 +1,104 @@
+.cocreator-landing {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--wc-topbar-height) 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+.cocreator-landing > .shell__backdrop,
+.cocreator-landing > .shell__scrim,
+.cocreator-landing > .particle-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.cocreator-landing__bar,
+.cocreator-landing__choices {
+  position: relative;
+  z-index: 1;
+}
+
+.cocreator-landing__bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.cocreator-landing__bar > :last-child {
+  justify-self: end;
+}
+
+.cocreator-landing__choices {
+  display: grid;
+  grid-template-columns: 1fr var(--wc-border-width) 1fr;
+  min-height: 0;
+  padding: var(--wc-space-6);
+}
+
+.cocreator-landing__divider {
+  align-self: stretch;
+  background: var(--wc-border-strong);
+}
+
+.cocreator-landing__choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wc-space-5);
+  margin: var(--wc-space-6);
+  padding: var(--wc-space-6);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius-lg);
+  color: var(--wc-text);
+  text-align: left;
+  transition:
+    background var(--wc-duration-fast) ease,
+    border-color var(--wc-duration-fast) ease,
+    transform var(--wc-duration-fast) ease;
+}
+
+.cocreator-landing__choice:hover,
+.cocreator-landing__choice:focus-visible {
+  border-color: var(--wc-accent-border);
+  outline: none;
+  background: var(--wc-accent-subtle);
+  transform: translateY(calc(-1 * var(--wc-border-width)));
+}
+
+.cocreator-landing__choice > svg {
+  width: var(--wc-control-lg);
+  height: var(--wc-control-lg);
+  color: var(--wc-accent);
+}
+
+.cocreator-landing__choice span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  max-width: var(--wc-card-sheet-width);
+}
+
+.cocreator-landing__choice strong {
+  font-size: var(--wc-text-xl);
+}
+
+.cocreator-landing__choice small {
+  color: var(--wc-text-on-image-muted);
+  font-size: var(--wc-text-base);
+  line-height: 1.6;
+}
+
+@media (max-width: 800px) {
+  .cocreator-landing__choices {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr var(--wc-border-width) 1fr;
+  }
+
+  .cocreator-landing__choice {
+    margin: var(--wc-space-3);
+  }
+}

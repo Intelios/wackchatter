@@ -15,7 +15,7 @@ import { PATHS } from './paths.ts';
  * an upgraded database is stamped with the CURRENT version — a literal in each test would
  * only pin that someone remembered to edit three files.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 12;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -120,6 +120,73 @@ CREATE TABLE IF NOT EXISTS cocreator_messages (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cocreator_messages_order
   ON cocreator_messages(session_id, position);
+
+-- Preset Co-Creator. Its mutable workspace document is deliberately separate from the
+-- immutable preset revisions: autosaving a transcript or test must never rewrite history.
+CREATE TABLE IF NOT EXISTS preset_cocreator_sessions (
+  id                    TEXT    PRIMARY KEY,
+  title                 TEXT    NOT NULL,
+  created               INTEGER NOT NULL,
+  modified              INTEGER NOT NULL,
+  document_revision     INTEGER NOT NULL DEFAULT 0,
+  document              TEXT    NOT NULL,
+  source_preset_id      TEXT,
+  target_preset_id      TEXT,
+  target_preset_version TEXT,
+  draft_revision        INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_preset_cocreator_sessions_modified
+  ON preset_cocreator_sessions(modified DESC);
+
+CREATE TABLE IF NOT EXISTS preset_cocreator_revisions (
+  session_id    TEXT    NOT NULL REFERENCES preset_cocreator_sessions(id) ON DELETE CASCADE,
+  revision      INTEGER NOT NULL,
+  created       INTEGER NOT NULL,
+  source        TEXT    NOT NULL,
+  summary       TEXT    NOT NULL,
+  turn_id       TEXT,
+  operation_id  TEXT    NOT NULL,
+  preset        TEXT    NOT NULL,
+  diff          TEXT    NOT NULL,
+  restored_from INTEGER,
+  PRIMARY KEY (session_id, revision),
+  UNIQUE (session_id, operation_id)
+) WITHOUT ROWID;
+
+-- Document writes also carry operation ids. Keeping them separately makes retrying an
+-- earlier network response idempotent even after later autosaves have landed.
+CREATE TABLE IF NOT EXISTS preset_cocreator_document_operations (
+  session_id   TEXT    NOT NULL REFERENCES preset_cocreator_sessions(id) ON DELETE CASCADE,
+  operation_id TEXT    NOT NULL,
+  revision     INTEGER NOT NULL,
+  PRIMARY KEY (session_id, operation_id)
+) WITHOUT ROWID;
+
+-- A publication bridges SQLite and one portable JSON file. The operation id plus recorded
+-- content version lets an interrupted request prove that its file write already landed.
+CREATE TABLE IF NOT EXISTS preset_cocreator_publications (
+  session_id    TEXT    NOT NULL REFERENCES preset_cocreator_sessions(id) ON DELETE CASCADE,
+  operation_id  TEXT    NOT NULL,
+  created       INTEGER NOT NULL,
+  revision      INTEGER NOT NULL,
+  preset_id     TEXT    NOT NULL,
+  preset_version TEXT   NOT NULL,
+  created_file  INTEGER NOT NULL,
+  PRIMARY KEY (session_id, operation_id)
+) WITHOUT ROWID;
+
+-- Written before crossing the SQLite/file boundary. If the process stops after replacing
+-- a preset but before recording the publication, the same operation id can prove that a
+-- matching file is this operation's interrupted result rather than a pre-existing name.
+CREATE TABLE IF NOT EXISTS preset_cocreator_publication_attempts (
+  session_id   TEXT    NOT NULL REFERENCES preset_cocreator_sessions(id) ON DELETE CASCADE,
+  operation_id TEXT    NOT NULL,
+  created      INTEGER NOT NULL,
+  revision     INTEGER NOT NULL,
+  preset_id    TEXT    NOT NULL,
+  PRIMARY KEY (session_id, operation_id)
+) WITHOUT ROWID;
 
 -- Model Arena: one row per completed blind round.
 --

@@ -63,8 +63,9 @@ src/             React app.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
                  cocreator/, stats/, arena/, memory/, regex/, settings/, start/, summary/.
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
-data/            Gitignored. characters/**/*.png, presets/*.json, chats.db, settings.json,
-                secrets.json, lorebooks/, personas/, backups/, .wackchatter.
+data/            Gitignored. characters/**/*.png, presets/*.json, reference-presets/*.json,
+                chats.db, settings.json, secrets.json, lorebooks/, personas/, backups/,
+                .wackchatter.
                 The default location, not a fixed one — see "The data directory moves".
 ```
 

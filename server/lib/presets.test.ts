@@ -9,10 +9,12 @@ import {
   deletePreset,
   duplicatePreset,
   getPreset,
+  getPresetRecord,
   importPreset,
   listPresets,
   renamePreset,
   savePreset,
+  savePresetConditional,
 } from './presets.ts';
 
 let dir: string;
@@ -48,7 +50,7 @@ describe('presets', () => {
 
   test('rename preset', async () => {
     await savePreset('OldName', createDefaultPreset());
-    const renamed = renamePreset('OldName', 'NewName');
+    const renamed = await renamePreset('OldName', 'NewName');
 
     expect(renamed).toEqual(expect.objectContaining({ id: 'NewName', name: 'NewName' }));
     expect(getPreset('OldName')).toBeNull();
@@ -113,14 +115,14 @@ describe('presets', () => {
   test('delete preset removes file', async () => {
     await savePreset('Keeper', createDefaultPreset());
     await savePreset('ToDelete', createDefaultPreset());
-    expect(deletePreset('ToDelete')).toBe(true);
+    expect(await deletePreset('ToDelete')).toBe(true);
     expect(getPreset('ToDelete')).toBeNull();
-    expect(deletePreset('ToDelete')).toBe(false);
+    expect(await deletePreset('ToDelete')).toBe(false);
   });
 
   test('the last preset cannot be deleted', async () => {
     await savePreset('OnlyOne', createDefaultPreset());
-    expect(() => deletePreset('OnlyOne')).toThrow(/last preset/i);
+    await expect(deletePreset('OnlyOne')).rejects.toThrow(/last preset/i);
     expect(getPreset('OnlyOne')).not.toBeNull();
   });
 
@@ -139,5 +141,31 @@ describe('presets', () => {
     expect(res?.headers.get('content-disposition')).toBe(
       'attachment; filename="Caf Preset.json"; filename*=UTF-8\'\'Caf%C3%A9%20Preset.json',
     );
+  });
+
+  test('conditional saves reject an externally changed preset', async () => {
+    await savePreset('Guarded', createDefaultPreset());
+    const first = getPresetRecord('Guarded');
+    expect(first).not.toBeNull();
+
+    const external = createDefaultPreset();
+    external.temperature = 0.4;
+    await savePreset('Guarded', external);
+
+    const stale = createDefaultPreset();
+    stale.temperature = 1.7;
+    await expect(savePresetConditional('Guarded', stale, first!.version)).rejects.toMatchObject({
+      name: 'PresetConflictError',
+    });
+    expect(getPreset('Guarded')?.temperature).toBe(0.4);
+  });
+
+  test('conditional save returns a stable content version', async () => {
+    const preset = createDefaultPreset();
+    const saved = await savePresetConditional('Versioned', preset, null);
+    expect(getPresetRecord('Versioned')?.version).toBe(saved.version);
+    await expect(savePresetConditional('Versioned', preset, null)).rejects.toMatchObject({
+      name: 'PresetConflictError',
+    });
   });
 });

@@ -8,6 +8,7 @@ import { resetChatStore } from './chats.ts';
 import { cocreatorStore, resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { DEFAULT_DATA_DIR, ensureDataDirs, setDataDir } from './paths.ts';
+import { resetPresetCocreatorStore } from './preset-cocreator.ts';
 import {
   cascadeCharacterDelete,
   cascadeCharacterRename,
@@ -231,11 +232,17 @@ describe('preset cascades', () => {
     setDataDir(dir);
     ensureDataDirs();
     resetSettingsCache();
+    // The preset cascades reach the Preset Co-Creator rows, so its store needs the same
+    // reset hygiene as the character cascades: a memoised instance from an earlier file
+    // holds statements bound to a connection this one has already closed.
+    resetPresetCocreatorStore();
   });
 
   afterEach(() => {
+    closeDatabase();
     setDataDir(DEFAULT_DATA_DIR);
     resetSettingsCache();
+    resetPresetCocreatorStore();
     rmSync(dir, { recursive: true, force: true });
   });
 

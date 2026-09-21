@@ -34,6 +34,7 @@ interface CocreatorShellProps {
   effect: EffectId | null;
   effectLayer: 'behind' | 'front';
   onExit: () => Promise<void>;
+  exitLabel?: string;
   /** Leave for the Studio, opened on the card this session produced. */
   onFinished: (avatar: string) => void;
   /**
@@ -67,6 +68,7 @@ export function CocreatorShell({
   effect,
   effectLayer,
   onExit,
+  exitLabel = 'Exit Co-Creator',
   onFinished,
   seedAvatar,
   registerPersistence,
@@ -241,7 +243,7 @@ export function CocreatorShell({
             onClick={() => void onExit()}
           >
             <ChevronLeftIcon />
-            Exit Co-Creator
+            {exitLabel}
           </button>
         </div>
         <div className="cocreator-shell__title">
