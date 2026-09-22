@@ -6,6 +6,7 @@ import type {
   PresetCocreatorDocument,
   PresetCocreatorMessage,
   PresetCocreatorSession,
+  PresetTestReport,
   PublishPresetDraftRequest,
   ReplacePresetDraftRequest,
 } from '@shared/types/preset-cocreator.ts';
@@ -23,6 +24,7 @@ import {
   renderAssistantSystem,
   toolFailureResult,
 } from './assistant.ts';
+import { reportConversationMessage } from './testing.ts';
 
 interface DocumentSnapshot {
   document: PresetCocreatorDocument;
@@ -358,22 +360,42 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     ],
   );
 
-  const send = useCallback(
-    async (content: string) => {
-      const text = content.trim();
-      if (!text || busy) return;
-      const message: PresetCocreatorMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: text,
-        created: Date.now(),
-      };
+  /** Post the user's side of a turn, then let the Co-Creator answer it. */
+  const startTurnWith = useCallback(
+    async (message: PresetCocreatorMessage) => {
       const messages = [...sessionRef.current.document.messages, message];
       commitMessages(messages);
       await flush();
       await executeAssistantTurn(messages);
     },
-    [busy, commitMessages, executeAssistantTurn, flush],
+    [commitMessages, executeAssistantTurn, flush],
+  );
+
+  const send = useCallback(
+    async (content: string) => {
+      const text = content.trim();
+      if (!text || busy) return;
+      await startTurnWith({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: text,
+        created: Date.now(),
+      });
+    },
+    [busy, startTurnWith],
+  );
+
+  /**
+   * A shared test report is a whole user turn, not an attachment waiting for one: it posts
+   * and the Co-Creator answers it straight away. Posting it silently left the user typing
+   * "here" just to start the reply.
+   */
+  const sendReport = useCallback(
+    async (report: PresetTestReport) => {
+      if (busy) return;
+      await startTurnWith(reportConversationMessage(report));
+    },
+    [busy, startTurnWith],
   );
 
   const editMessage = useCallback(
@@ -436,6 +458,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     restoreDraft,
     undoTurn,
     send,
+    sendReport,
     editMessage,
     stop: () => abortRef.current?.abort(),
     publish,

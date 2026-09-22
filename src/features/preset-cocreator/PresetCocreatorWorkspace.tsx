@@ -60,6 +60,9 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
   const [newName, setNewName] = useState('');
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // Reported by the model picker in the Conversation tab, but the testing panel needs it
+  // too: a report starts a Co-Creator turn, so it is blocked by whatever blocks sending.
+  const [toolCapability, setToolCapability] = useState<boolean | null>(null);
   const splitRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,6 +72,13 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
   useEffect(() => setTitle(controller.session.title), [controller.session.title]);
 
   const assistantConnection = controller.assistantConnection;
+  const coCreatorBlockedReason = controller.busy
+    ? 'The Co-Creator is still replying.'
+    : !assistantConnection
+      ? 'Choose a Co-Creator model first, under "Assistant model and instructions".'
+      : toolCapability === false
+        ? 'The Co-Creator model does not support tools.'
+        : null;
 
   const publish = async (
     mode: 'update' | 'new' | 'overwrite',
@@ -265,7 +275,12 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
               data-active={tab === 'conversation' || undefined}
               inert={tab !== 'conversation'}
             >
-              <PresetAssistantPanel controller={controller} connections={props.connections} />
+              <PresetAssistantPanel
+                controller={controller}
+                connections={props.connections}
+                toolCapability={toolCapability}
+                onToolCapabilityChange={setToolCapability}
+              />
             </div>
             <div
               className="preset-cc-left__panel"
@@ -323,6 +338,8 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
             worldInfoSettings={props.worldInfoSettings}
             globalVariables={props.globalVariables}
             regexScripts={props.regexScripts}
+            coCreatorBlockedReason={coCreatorBlockedReason}
+            onReportSent={() => setTab('conversation')}
           />
         </section>
       </div>

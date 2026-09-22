@@ -44,6 +44,10 @@ interface PresetTestingPanelProps {
   worldInfoSettings: WorldInfoSettings;
   globalVariables: MacroVariableMap;
   regexScripts: readonly RegexScript[];
+  /** Why the Co-Creator cannot take a turn right now — a report starts one. */
+  coCreatorBlockedReason: string | null;
+  /** A report went out and the Co-Creator is answering it on the left. */
+  onReportSent: () => void;
 }
 
 export function PresetTestingPanel({
@@ -59,6 +63,8 @@ export function PresetTestingPanel({
   worldInfoSettings,
   globalVariables,
   regexScripts,
+  coCreatorBlockedReason,
+  onReportSent,
 }: PresetTestingPanelProps) {
   const [characterId, setCharacterId] = useState(initialCharacterId ?? characters[0]?.avatar ?? '');
   const [character, setCharacter] = useState<CharacterDetail | null>(null);
@@ -78,6 +84,9 @@ export function PresetTestingPanel({
   const [shareDiagnostics, setShareDiagnostics] = useState(true);
   const [proposalText, setProposalText] = useState<Record<string, string>>({});
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [lastShared, setLastShared] = useState<{ messageId: string; at: number } | null>(null);
+  const shareRef = useRef<HTMLElement>(null);
+  const shareNoteRef = useRef<HTMLTextAreaElement>(null);
   const [inspectRequest, setInspectRequest] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -259,18 +268,46 @@ export function PresetTestingPanel({
     void testing.send(text);
   };
 
+  const shareBlockedReason =
+    coCreatorBlockedReason ?? (testing.busy ? 'Wait for the test reply to finish.' : null);
+
   const share = () => {
-    if (!latestAssistant) return;
-    testing.share({
+    if (!latestAssistant || shareBlockedReason) return;
+    const report = testing.share({
       throughMessageId: latestAssistant.id,
       note: shareNote,
       includeTranscript: shareTranscript,
       includePrompt: sharePrompt,
       includeDiagnostics: shareDiagnostics,
     });
+    if (!report) return;
     setShareOpen(false);
     setShareNote('');
+    setLastShared({ messageId: latestAssistant.id, at: report.created });
+    onReportSent();
   };
+
+  /*
+   * The form opens below the transcript, under the sticky composer's edge — it used to
+   * appear out of sight. Scroll just far enough to show all of it above the composer, in
+   * the panel's own scroller, and put the caret in the note.
+   */
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const section = shareRef.current;
+    if (!shareOpen || !scroller || !section) return;
+    const composer = scroller.querySelector('.preset-cc-composer');
+    const visibleBottom =
+      scroller.getBoundingClientRect().bottom - (composer?.getBoundingClientRect().height ?? 0);
+    const overflow = section.getBoundingClientRect().bottom - visibleBottom;
+    if (overflow > 0) scroller.scrollTop += overflow;
+    shareNoteRef.current?.focus({ preventScroll: true });
+  }, [shareOpen]);
+
+  const sharedTime =
+    lastShared && lastShared.messageId === latestAssistant?.id
+      ? formatTimestamp(new Date(lastShared.at).toISOString())
+      : null;
 
   const proposalCard = (proposal: ProposedPresetTest) => {
     const value = proposalText[proposal.id] ?? proposal.message;
@@ -672,7 +709,16 @@ export function PresetTestingPanel({
       {test ? (
         <>
           <div className="preset-cc-test-controls">
-            <span className="wc-hint">Swipes, regenerate and retry live on the latest reply.</span>
+            {sharedTime ? (
+              <span className="preset-cc-shared-status" role="status">
+                Sent to Co-Creator · {sharedTime.short}
+                {controller.busy ? ' · replying on the left' : ''}
+              </span>
+            ) : (
+              <span className="wc-hint">
+                Swipes, regenerate and retry live on the latest reply.
+              </span>
+            )}
             <button
               type="button"
               className="wc-button wc-button--ghost"
@@ -684,7 +730,7 @@ export function PresetTestingPanel({
           </div>
 
           {shareOpen ? (
-            <section className="preset-cc-share">
+            <section className="preset-cc-share" ref={shareRef}>
               <h3>Share immutable test report</h3>
               <label className="preset-cc-check">
                 <input
@@ -711,14 +757,27 @@ export function PresetTestingPanel({
                 Diagnostics and token accounting
               </label>
               <textarea
+                ref={shareNoteRef}
                 className="wc-textarea"
                 rows={3}
                 value={shareNote}
-                placeholder="Optional feedback note…"
+                placeholder="What should the Co-Creator look at? Optional…"
                 onChange={(event) => setShareNote(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    share();
+                  }
+                }}
               />
               <div className="preset-cc-share__actions">
-                <button type="button" className="wc-button wc-button--primary" onClick={share}>
+                <button
+                  type="button"
+                  className="wc-button wc-button--primary"
+                  disabled={Boolean(shareBlockedReason)}
+                  title={shareBlockedReason ?? undefined}
+                  onClick={share}
+                >
                   Send report
                 </button>
                 <button
@@ -728,6 +787,9 @@ export function PresetTestingPanel({
                 >
                   Cancel
                 </button>
+                <span className="wc-hint">
+                  {shareBlockedReason ?? 'The Co-Creator replies as soon as it is sent.'}
+                </span>
               </div>
             </section>
           ) : null}

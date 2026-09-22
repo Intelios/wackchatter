@@ -596,12 +596,37 @@
 
 /* --- Shared test reports --------------------------------------------------- */
 
+/* A report is the user's turn, so it takes a user bubble's shade, marked by the accent. */
 .message[data-role="report"] .message__bubble {
   border-color: var(--wc-accent-border);
+  background: var(--wc-surface-raised);
+}
+
+.preset-cc-report__source {
+  margin: 0 0 var(--wc-space-2);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.preset-cc-report__source strong {
+  color: var(--wc-text);
+  font-weight: 600;
 }
 
 .preset-cc-report__note {
-  margin: 0 0 var(--wc-space-2);
+  margin: var(--wc-space-2) 0 0;
+  padding-left: var(--wc-space-3);
+  border-left: 2px solid var(--wc-accent-border);
+  white-space: pre-wrap;
+}
+
+.preset-cc-shared-status {
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-share__actions .wc-hint {
+  margin: 0 0 0 auto;
 }
 
 .preset-cc-report__chips {

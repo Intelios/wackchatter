@@ -18,7 +18,6 @@ import {
   evidenceForSelectedResponse,
   type PresetTestGenerationKind,
   preparePresetTestRequest,
-  reportConversationMessage,
   restartPresetTest,
   selectPresetTestSwipe,
   settlePresetTestGeneration,
@@ -379,12 +378,10 @@ export function usePresetTesting({
       includePrompt: boolean;
       includeDiagnostics: boolean;
     }): PresetTestReport | null => {
-      if (!activeTest) return null;
+      if (!activeTest || controller.busy) return null;
       const report = buildPresetTestReport({ test: activeTest, ...options });
-      controller.updateDocument((document) => ({
-        ...document,
-        messages: [...document.messages, reportConversationMessage(report)],
-      }));
+      // Sending is the turn: the Co-Creator starts answering on the left immediately.
+      void controller.sendReport(report);
       return report;
     },
     [activeTest, controller],
