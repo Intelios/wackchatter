@@ -53,7 +53,8 @@ import {
   removeComposerItem,
   setComposerItemDisplay,
 } from '@shared/composer/layout.ts';
-import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import { GridIcon, PlusIcon, SearchIcon, TrashIcon } from '../../layout/icons.tsx';
 
 export interface ComposerControlSpec {
@@ -278,6 +279,7 @@ export function ComposerCustomizer({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overPalette, setOverPalette] = useState(false);
   const [notice, setNotice] = useState('');
+  const selectionId = useId();
   const paletteRef = useRef<HTMLDivElement>(null);
   /**
    * The palette hit is also kept in a ref: the last pointermove and the drop can land in
@@ -585,19 +587,21 @@ export function ComposerCustomizer({
         {selection && selected ? (
           <>
             <strong>{byId.get(selected)?.label ?? selected}</strong>
-            <label>
-              Row{' '}
-              <select
+            <div className="composer-editor__select">
+              <label className="composer-editor__select-label" htmlFor={`${selectionId}-row`}>
+                Row
+              </label>
+              <Select
+                id={`${selectionId}-row`}
+                label="Row"
                 value={selection.rowId}
-                onChange={(event) => updateSelected({ rowId: event.target.value })}
-              >
-                {layout.rows.map((row, index) => (
-                  <option value={row.id} key={row.id}>
-                    {index + 1}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={layout.rows.map((row, index) => ({
+                  value: row.id,
+                  label: String(index + 1),
+                }))}
+                onChange={(rowId) => updateSelected({ rowId })}
+              />
+            </div>
             <button
               type="button"
               className="wc-button wc-button--ghost"
@@ -608,31 +612,33 @@ export function ComposerCustomizer({
               <PlusIcon />
               New row
             </button>
-            <label>
-              Align{' '}
-              <select
+            <div className="composer-editor__select">
+              <label className="composer-editor__select-label" htmlFor={`${selectionId}-align`}>
+                Align
+              </label>
+              <Select
+                id={`${selectionId}-align`}
+                label="Align"
                 value={selection.area}
-                onChange={(event) => updateSelected({ area: event.target.value as ComposerArea })}
-              >
-                {COMPOSER_AREAS.map((area) => (
-                  <option value={area} key={area}>
-                    {area}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Style{' '}
-              <select
+                options={COMPOSER_AREAS.map((area) => ({ value: area, label: area }))}
+                onChange={(area) => updateSelected({ area })}
+              />
+            </div>
+            <div className="composer-editor__select">
+              <label className="composer-editor__select-label" htmlFor={`${selectionId}-style`}>
+                Style
+              </label>
+              <Select
+                id={`${selectionId}-style`}
+                label="Style"
                 value={selection.item.display}
-                onChange={(event) =>
-                  updateSelected({ display: event.target.value as ComposerLabelMode })
-                }
-              >
-                <option value="icon">Icon only</option>
-                <option value="label">Icon and label</option>
-              </select>
-            </label>
+                options={[
+                  { value: 'icon' as const, label: 'Icon only' },
+                  { value: 'label' as const, label: 'Icon and label' },
+                ]}
+                onChange={(display) => updateSelected({ display })}
+              />
+            </div>
             <button
               type="button"
               className="wc-button wc-button--ghost"

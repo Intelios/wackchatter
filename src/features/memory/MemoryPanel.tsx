@@ -1,5 +1,6 @@
 import type { Connection } from '@shared/providers/types.ts';
 import type { MemoryMode, SummarySettings } from '@shared/types/settings.ts';
+import { SelectField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import type { UseChat } from '../chat/useChat.ts';
 import { NexusActivity } from '../nexus/NexusActivity.tsx';
@@ -102,18 +103,16 @@ export function MemoryPanel(props: Props) {
         />
       </Section>
       <Section title="New chats">
-        <label>
-          Default story memory{' '}
-          <select
-            className="wc-input"
-            value={props.defaultMode === 'memories' ? 'nexus' : props.defaultMode}
-            onChange={(e) => props.onDefaultChange(e.target.value as MemoryMode)}
-          >
-            <option value="classic">Summary</option>
-            <option value="nexus">Nexus</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
+        <SelectField
+          label="Default story memory"
+          value={props.defaultMode === 'memories' ? 'nexus' : props.defaultMode}
+          options={[
+            { value: 'classic' as const, label: 'Summary' },
+            { value: 'nexus' as const, label: 'Nexus' },
+            { value: 'off' as const, label: 'Off' },
+          ]}
+          onChange={props.onDefaultChange}
+        />
         <p>Applies when a chat is created. Existing chats keep their own mode.</p>
       </Section>
     </div>

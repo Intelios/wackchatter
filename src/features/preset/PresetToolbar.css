@@ -10,7 +10,7 @@
   padding: var(--wc-space-3);
 }
 
-.preset-toolbar__row .wc-select,
+.preset-toolbar__row .wc-select-root,
 .preset-toolbar__row .wc-input {
   flex: 1;
   min-width: 0;

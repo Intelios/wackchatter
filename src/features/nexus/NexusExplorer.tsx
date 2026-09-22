@@ -17,9 +17,10 @@ import type {
   NexusRecord,
   NexusRevision,
 } from '@shared/nexus/types.ts';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from '../../components/Popover.tsx';
+import { Select } from '../../components/Select.tsx';
 import { type HighlightPart, highlightParts } from '../chat/cardSearch.ts';
 import type { UseChat } from '../chat/useChat.ts';
 import { type Camera, fitCamera, screenPoint, VIEW_H, VIEW_W, Z_MAX, Z_MIN } from './camera.ts';
@@ -451,17 +452,14 @@ export function NexusExplorer({ chat, ...config }: Props) {
             disabled={!nexusMode}
             onChange={(e) => setNewName(e.target.value)}
           />
-          <select
-            className="wc-input"
-            aria-label="New node category"
+          <Select
+            label="New node category"
             value={newKind}
+            options={KINDS.map((k) => ({ value: k, label: k }))}
             disabled={!nexusMode}
-            onChange={(e) => setNewKind(e.target.value as NexusNodeKind)}
-          >
-            {KINDS.map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
+            disabledReason="Switch this chat to Nexus memory first."
+            onChange={setNewKind}
+          />
           <button
             type="submit"
             className="wc-button"
@@ -901,16 +899,13 @@ export function NexusExplorer({ chat, ...config }: Props) {
               aria-label={`${node.name} details`}
             >
               <header className="nexus-nodecard__head">
-                <select
-                  className="wc-input nexus-nodecard__kind"
-                  aria-label="Node category"
+                <Select
+                  className="nexus-nodecard__kind"
+                  label="Node category"
                   value={node.kind}
-                  onChange={(e) => changeNode({ kind: e.target.value as NexusNodeKind })}
-                >
-                  {KINDS.map((k) => (
-                    <option key={k}>{k}</option>
-                  ))}
-                </select>
+                  options={KINDS.map((k) => ({ value: k, label: k }))}
+                  onChange={(kind) => changeNode({ kind })}
+                />
                 <input
                   key={`${selected}:${node.name}`}
                   className="wc-input nexus-nodecard__name"
@@ -996,24 +991,18 @@ export function NexusExplorer({ chat, ...config }: Props) {
                     Only merge identities you know are the same. Their facts and revision history
                     are retained.
                   </p>
-                  <select
-                    className="wc-input"
-                    aria-label="Merge into"
+                  <Select
+                    label="Merge into"
+                    placeholder="Choose identity"
                     value={mergeTarget}
-                    onChange={(e) => {
-                      setMergeTarget(e.target.value);
+                    options={graph.nodes
+                      .filter((v) => v.id !== selected)
+                      .map((v) => ({ value: v.id, label: nodeVersion(v).name }))}
+                    onChange={(target) => {
+                      setMergeTarget(target);
                       setConfirm('');
                     }}
-                  >
-                    <option value="">Choose identity</option>
-                    {graph.nodes
-                      .filter((v) => v.id !== selected)
-                      .map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {nodeVersion(v).name}
-                        </option>
-                      ))}
-                  </select>
+                  />
                   <button
                     type="button"
                     className="wc-button"
@@ -1074,19 +1063,15 @@ export function NexusExplorer({ chat, ...config }: Props) {
               setLimit(80);
             }}
           />
-          <select
-            className="wc-input"
-            aria-label="Category"
+          <Select
+            label="Category"
             value={kind}
-            onChange={(e) => setKind(e.target.value as typeof kind)}
-          >
-            <option value="all">All categories</option>
-            {KINDS.map((v) => (
-              <option key={v} value={v}>
-                {TITLE[v]}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: 'all', label: 'All categories' },
+              ...KINDS.map((v) => ({ value: v, label: TITLE[v] })),
+            ]}
+            onChange={setKind}
+          />
         </div>
       ) : null}
       {/* biome-ignore lint/a11y/useSemanticElements: a floating HUD cluster, not a form grouping */}
@@ -1290,6 +1275,7 @@ function RecordEditor({
   // Restore is the one way back in. A merely disabled record stays fully editable — it
   // is live data, switched off.
   const locked = r.deleted;
+  const editorId = useId();
   const [text, setText] = useState(r.text);
   const [confirm, setConfirm] = useState<'delete' | 'reassert' | null>(null);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
@@ -1383,48 +1369,54 @@ function RecordEditor({
         />
       </div>
       <div className="nexus-actions">
-        <label className="nexus-select">
-          <span className="nexus-select__label">Kind</span>
-          <select
-            className="wc-input"
-            aria-label="Memory kind"
+        <div className="nexus-select">
+          <label className="nexus-select__label" htmlFor={`${editorId}-kind`}>
+            Kind
+          </label>
+          <Select
+            id={`${editorId}-kind`}
+            label="Memory kind"
             value={r.kind}
+            options={RECORD_KINDS.map((k) => ({ value: k, label: k }))}
             disabled={locked}
-            onChange={(e) => patch({ kind: e.target.value as NexusKind })}
-          >
-            {RECORD_KINDS.map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
-        </label>
-        <label className="nexus-select">
-          <span className="nexus-select__label">State</span>
-          <select
-            className="wc-input"
-            aria-label="Memory state"
+            disabledReason="Restore the memory to edit it."
+            onChange={(kind) => patch({ kind })}
+          />
+        </div>
+        <div className="nexus-select">
+          <label className="nexus-select__label" htmlFor={`${editorId}-state`}>
+            State
+          </label>
+          <Select
+            id={`${editorId}-state`}
+            label="Memory state"
             value={r.status}
+            options={['active', 'resolved', 'historical', 'conflict'].map((k) => ({
+              value: k as NexusRevision['status'],
+              label: k,
+            }))}
             disabled={locked}
-            onChange={(e) => patch({ status: e.target.value as NexusRevision['status'] })}
-          >
-            {['active', 'resolved', 'historical', 'conflict'].map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
-        </label>
-        <label className="nexus-select">
-          <span className="nexus-select__label">Attribution</span>
-          <select
-            className="wc-input"
-            aria-label="Evidence attribution"
+            disabledReason="Restore the memory to edit it."
+            onChange={(status) => patch({ status })}
+          />
+        </div>
+        <div className="nexus-select">
+          <label className="nexus-select__label" htmlFor={`${editorId}-assertion`}>
+            Attribution
+          </label>
+          <Select
+            id={`${editorId}-assertion`}
+            label="Evidence attribution"
             value={r.assertion}
+            options={['fact', 'claim', 'intention', 'event'].map((k) => ({
+              value: k as NexusRevision['assertion'],
+              label: k,
+            }))}
             disabled={locked}
-            onChange={(e) => patch({ assertion: e.target.value as NexusRevision['assertion'] })}
-          >
-            {['fact', 'claim', 'intention', 'event'].map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
-        </label>
+            disabledReason="Restore the memory to edit it."
+            onChange={(assertion) => patch({ assertion })}
+          />
+        </div>
       </div>
       <details onToggle={(e) => setConnectionsOpen(e.currentTarget.open)}>
         <summary>Identities and connections</summary>
@@ -1478,21 +1470,16 @@ function RecordEditor({
               }}
             >
               {(['from', 'to'] as const).map((k) => (
-                <select
+                <Select
                   key={k}
-                  className="wc-input"
-                  aria-label={`Connection ${k}`}
+                  label={`Connection ${k}`}
+                  placeholder={k}
                   value={relation[k]}
                   disabled={locked}
-                  onChange={(e) => setRelation((v) => ({ ...v, [k]: e.target.value }))}
-                >
-                  <option value="">{k}</option>
-                  {nodes.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {nodeVersion(n).name}
-                    </option>
-                  ))}
-                </select>
+                  disabledReason="Restore the memory to edit it."
+                  options={nodes.map((n) => ({ value: n.id, label: nodeVersion(n).name }))}
+                  onChange={(id) => setRelation((v) => ({ ...v, [k]: id }))}
+                />
               ))}
               <input
                 className="wc-input"

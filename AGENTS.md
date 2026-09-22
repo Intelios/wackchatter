@@ -18,7 +18,9 @@ only; we reimplement, we do not copy).
 - `bun test` — all tests. `npx tsc --noEmit` for types. `bun run lint` for Biome.
 
 `WC_PORT` overrides the API port, `WC_DATA_DIR` the data directory, `WC_NO_OPEN=1` stops
-the browser launching. `WC_DATA_DIR` beats the pointer file and locks the setting in the UI.
+the browser launching. `WC_DATA_DIR` beats the pointer file and locks the setting in the UI,
+and is never published as the library location: boot skips `publishLibraryPointer()`, so
+`~/.wackchatter/library.json` keeps pointing at the real library.
 
 **After editing server SQL, restart `dev:server`.** Bun's `--hot` re-runs module code but a
 long-running server keeps serving the memoised chat store's *old* prepared statements — a

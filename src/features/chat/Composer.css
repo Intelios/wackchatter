@@ -353,19 +353,21 @@
   gap: var(--wc-space-2);
   min-height: var(--wc-control);
 }
-.composer-editor__selection label {
+/* A label beside its dropdown, not wrapping it — the trigger carries the matching id. */
+.composer-editor__select {
   display: flex;
   align-items: center;
   gap: var(--wc-space-1);
   color: var(--wc-text-muted);
   font-size: var(--wc-text-sm);
 }
-.composer-editor__selection select {
+/* Content-sized, as the native select was: the toolbar hugs each choice. */
+.composer-editor__select .wc-select-root {
+  width: auto;
+}
+.composer-editor__select .wc-select-trigger {
   min-height: var(--wc-control);
-  border: 1px solid var(--wc-border);
-  border-radius: var(--wc-radius-sm);
   background: var(--wc-surface-raised);
-  color: var(--wc-text);
 }
 .composer-editor__footer {
   display: flex;

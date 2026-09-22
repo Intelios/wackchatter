@@ -1,18 +1,32 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { USAGE_LOG_MAX_BYTES, type UsageRecord } from '../../shared/types/usage.ts';
+import { USAGE_DIR_NAME, USAGE_LOG_MAX_BYTES, type UsageRecord } from '../../shared/types/usage.ts';
 import { appendUsage, libraryPointerPath, publishLibraryPointer, usageLogPath } from './usage.ts';
 
 let home: string;
+// bun test runs the whole suite in one process, so a test that sets WC_DATA_DIR has to put
+// it back — the same reason location.test.ts captures it at module load.
+const originalDataDir = process.env.WC_DATA_DIR;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'wc-usage-'));
+  delete process.env.WC_DATA_DIR;
 });
 
 afterEach(() => {
   rmSync(home, { recursive: true, force: true });
+  if (originalDataDir === undefined) delete process.env.WC_DATA_DIR;
+  else process.env.WC_DATA_DIR = originalDataDir;
 });
 
 function record(overrides: Partial<UsageRecord> = {}): UsageRecord {
@@ -107,5 +121,39 @@ describe('publishLibraryPointer', () => {
     publishLibraryPointer(home);
     publishLibraryPointer(home);
     expect(JSON.parse(readFileSync(libraryPointerPath(home), 'utf8')).version).toBe(1);
+  });
+
+  test('a WC_DATA_DIR boot leaves an existing pointer untouched', () => {
+    // Written by hand, naming the real library: the assertion must not depend on where
+    // PATHS happens to point, and the file stands in for the user's published pointer.
+    mkdirSync(join(home, USAGE_DIR_NAME));
+    const path = libraryPointerPath(home);
+    const contents =
+      '{"version":1,"dataDir":"/the/real/library","updated":"2026-09-22T00:00:00.000Z"}\n';
+    writeFileSync(path, contents);
+
+    process.env.WC_DATA_DIR = join(home, 'scratch');
+    publishLibraryPointer(home);
+
+    expect(readFileSync(path, 'utf8')).toBe(contents);
+  });
+
+  test('a WC_DATA_DIR boot does not create a pointer either', () => {
+    // The override is not the library's published location, and the boot has nothing to
+    // say about where that is — silence, not a pointer at the scratch copy.
+    process.env.WC_DATA_DIR = join(home, 'scratch');
+    publishLibraryPointer(home);
+    expect(existsSync(libraryPointerPath(home))).toBe(false);
+  });
+
+  test('the next ordinary boot publishes again', () => {
+    const path = libraryPointerPath(home);
+    process.env.WC_DATA_DIR = join(home, 'scratch');
+    publishLibraryPointer(home);
+    expect(existsSync(path)).toBe(false);
+
+    delete process.env.WC_DATA_DIR;
+    publishLibraryPointer(home);
+    expect(JSON.parse(readFileSync(path, 'utf8')).version).toBe(1);
   });
 });

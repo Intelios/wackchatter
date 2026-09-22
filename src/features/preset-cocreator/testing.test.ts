@@ -16,13 +16,16 @@ import {
   appendPresetTestUserMessage,
   buildPresetTestReport,
   createPresetTest,
+  dismissPendingProposals,
   editPresetTestMessage,
   type PreparedPresetTestRequest,
   preparePresetTestRequest,
+  REPORT_DEFAULT_REQUEST,
   reportConversationMessage,
   restartPresetTest,
   selectPresetTestSwipe,
   settlePresetTestGeneration,
+  summarizeReport,
   updateProposedTest,
 } from './testing.ts';
 
@@ -564,6 +567,105 @@ describe('shared reports', () => {
     expect(report.transcript!.some((message) => message.mes === 'later turn')).toBe(false);
   });
 
+  test('the report is the user turn: the note leads, the data follows', () => {
+    const { settled } = sharedTest();
+    const report = buildPresetTestReport({
+      test: settled,
+      throughMessageId: settled.messages.at(-1)!.id,
+      note: '  She still knows my name too early  ',
+      includeTranscript: true,
+      includePrompt: false,
+      includeDiagnostics: false,
+    });
+
+    const message = reportConversationMessage(report);
+    expect(message.content.startsWith('She still knows my name too early\n\n')).toBe(true);
+    const data = message.content.slice(message.content.indexOf('{'));
+    expect(JSON.parse(data)).toEqual(JSON.parse(JSON.stringify(report)));
+  });
+
+  test('a report sent without a note still asks for a review', () => {
+    const { settled } = sharedTest();
+    const report = buildPresetTestReport({
+      test: settled,
+      throughMessageId: settled.messages.at(-1)!.id,
+      note: '   ',
+      includeTranscript: false,
+      includePrompt: false,
+      includeDiagnostics: false,
+    });
+
+    expect(reportConversationMessage(report).content.startsWith(REPORT_DEFAULT_REQUEST)).toBe(true);
+  });
+
+  test('summarizeReport names the test, the reply and the revision it was shared through', () => {
+    const { settled } = sharedTest();
+    const report = buildPresetTestReport({
+      test: settled,
+      throughMessageId: settled.messages.at(-1)!.id,
+      note: '',
+      includeTranscript: true,
+      includePrompt: false,
+      includeDiagnostics: true,
+    });
+
+    expect(summarizeReport(report, [settled])).toEqual({
+      testTitle: settled.title,
+      // The greeting is not a generated reply, so the first answer is reply 1.
+      replyNumber: 1,
+      revision: 4,
+      sections: ['conversation', 'diagnostics'],
+    });
+  });
+
+  test('summarizeReport reads what was shared, not what the test became', () => {
+    const { settled } = sharedTest();
+    const replyId = settled.messages.at(-1)!.id;
+    const report = buildPresetTestReport({
+      test: settled,
+      throughMessageId: replyId,
+      note: '',
+      includeTranscript: true,
+      includePrompt: false,
+      includeDiagnostics: false,
+    });
+    // The test is deleted afterwards: the transcript the report carries still answers.
+    const summary = summarizeReport(report, []);
+    expect(summary.testTitle).toBeNull();
+    expect(summary.replyNumber).toBe(1);
+    expect(summary.revision).toBe(4);
+  });
+
+  test('summarizeReport falls back to the evidence revision and admits what it cannot know', () => {
+    const { settled } = sharedTest();
+    const report = buildPresetTestReport({
+      test: settled,
+      throughMessageId: settled.messages.at(-1)!.id,
+      note: '',
+      includeTranscript: false,
+      includePrompt: false,
+      includeDiagnostics: true,
+    });
+    // No transcript and no live test: the reply is unknown, the evidence still dates it.
+    const summary = summarizeReport(report, []);
+    expect(summary.replyNumber).toBeNull();
+    expect(summary.revision).toBe(4);
+  });
+
+  test('a report through the greeting is reply 0', () => {
+    const test = createPresetTest(scenario());
+    const report = buildPresetTestReport({
+      test,
+      throughMessageId: test.messages[0]!.id,
+      note: '',
+      includeTranscript: true,
+      includePrompt: false,
+      includeDiagnostics: false,
+    });
+    expect(summarizeReport(report, [test]).replyNumber).toBe(0);
+    expect(summarizeReport(report, [test]).revision).toBeNull();
+  });
+
   test('a message that is not in the test cannot anchor a report', () => {
     const { settled } = sharedTest();
     expect(() =>
@@ -603,5 +705,15 @@ describe('proposed tests', () => {
     const updated = updateProposedTest(proposals, 'a', 'run');
     expect(updated[0]!.status).toBe('run');
     expect(updated[1]!.status).toBe('pending');
+  });
+
+  test('dismissing the tray settles only what was still waiting', () => {
+    const base = { message: 'm', restart: false, rationale: '', created: 1 };
+    const cleared = dismissPendingProposals([
+      { ...base, id: 'a', status: 'pending' },
+      { ...base, id: 'b', status: 'run' },
+      { ...base, id: 'c', status: 'pending' },
+    ]);
+    expect(cleared.map((proposal) => proposal.status)).toEqual(['dismissed', 'run', 'dismissed']);
   });
 });

@@ -41,6 +41,7 @@ import {
   TriCheckField,
 } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
+import { Select } from '../../components/Select.tsx';
 import { TrashIcon } from '../../layout/icons.tsx';
 import './LorebookEditor.css';
 
@@ -456,18 +457,13 @@ export function LorebookEditor({
       {bookFields}
 
       <div className="lore-editor__toolbar">
-        <select
-          className="wc-select lore-editor__sort"
+        <Select
+          className="lore-editor__sort"
+          label="Sort entries"
           value={sort}
-          onChange={(event) => setSort(event.target.value as SortMode)}
-          aria-label="Sort entries"
-        >
-          {SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          options={SORT_OPTIONS}
+          onChange={setSort}
+        />
         <button type="button" className="wc-button" onClick={onAddEntry} disabled={busy}>
           Add entry
         </button>

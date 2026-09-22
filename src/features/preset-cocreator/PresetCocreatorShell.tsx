@@ -11,8 +11,9 @@ import type {
 import type { RegexScript } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Backdrop } from '../../components/Backdrop.tsx';
+import { Select } from '../../components/Select.tsx';
 import { ChevronLeftIcon } from '../../layout/icons.tsx';
 import { presetCocreatorApi, referencePresetApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
@@ -69,6 +70,7 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const persistenceRef = useRef<PersistenceControls | null>(null);
+  const startingPresetId = useId();
   const activeConnection =
     props.connections.find((connection) => connection.id === props.activeConnectionId) ??
     props.connections[0] ??
@@ -219,21 +221,21 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
             <section className="preset-cc-sessions__create">
               <p className="preset-cc-eyebrow">New design session</p>
               <h1>Edit, test, and publish a preset</h1>
-              <label className="field">
-                <span className="wc-label">Starting preset</span>
-                <select
-                  className="wc-select"
+              <div className="field">
+                <label className="wc-label" htmlFor={startingPresetId}>
+                  Starting preset
+                </label>
+                <Select
+                  id={startingPresetId}
+                  label="Starting preset"
                   value={sourcePresetId}
-                  onChange={(event) => setSourcePresetId(event.target.value)}
-                >
-                  <option value="">WackChatter default preset</option>
-                  {props.presets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setSourcePresetId}
+                  options={[
+                    { value: '', label: 'WackChatter default preset' },
+                    ...props.presets.map((preset) => ({ value: preset.id, label: preset.name })),
+                  ]}
+                />
+              </div>
               <label className="field">
                 <span className="wc-label">Session name</span>
                 <input

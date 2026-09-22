@@ -805,7 +805,8 @@
   font-size: var(--wc-text-xs);
 }
 
-.arena-cue__columns .wc-select {
+/* The root wears the width; the trigger inside fills it. */
+.arena-cue__columns .wc-select-root {
   width: calc(var(--wc-control) * 2);
 }
 
@@ -2779,10 +2780,15 @@
   display: grid;
   gap: var(--wc-space-2);
   padding: var(--wc-space-3) var(--wc-space-3) var(--wc-space-3) var(--wc-space-4);
-  overflow: hidden;
   border: var(--wc-border-width) solid var(--wc-border);
   border-radius: var(--wc-radius);
   background: var(--wc-surface-raised);
+}
+
+/* An entrant with an open popup climbs over sibling cards so its dropdown is never clipped
+   or painted under later cards in the roster grid. */
+.arena-entrant:has([aria-expanded="true"]) {
+  z-index: 2;
 }
 
 /* The colour it wears everywhere else, worn here too — this is where it is chosen. */
@@ -2794,6 +2800,8 @@
   left: 0;
   width: 3px;
   background: var(--wc-corner, var(--wc-border-strong));
+  border-top-left-radius: var(--wc-radius);
+  border-bottom-left-radius: var(--wc-radius);
 }
 
 .arena-entrant[data-unavailable="true"] {
@@ -2801,7 +2809,7 @@
 }
 
 .arena-entrant[data-dragging="true"] {
-  z-index: 1;
+  z-index: 3;
   border-color: var(--wc-accent-border);
   box-shadow: var(--wc-shadow);
   opacity: 0.9;

@@ -37,6 +37,7 @@ import type { Persona } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import { GripIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
 import { ModelCombobox } from '../connection/ModelCombobox.tsx';
@@ -170,23 +171,19 @@ function Entrant({
       </div>
 
       <div className="arena-entrant__where">
-        <select
-          className="wc-select"
+        <Select
+          label="Connection"
           value={contender.connectionId}
-          aria-label="Connection"
-          onChange={(event) =>
+          options={[
+            { value: '', label: 'Choose a connection…' },
+            ...connections.map((entry) => ({ value: entry.id, label: entry.name })),
+          ]}
+          onChange={(connectionId) =>
             // The model belongs to the endpoint it was chosen against, so moving the
             // contender drops it rather than pointing a stale id at a new server.
-            onPatch({ connectionId: event.target.value, model: '' })
+            onPatch({ connectionId, model: '' })
           }
-        >
-          <option value="">Choose a connection…</option>
-          {connections.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
+        />
 
         <ModelCombobox
           models={models}
@@ -808,45 +805,45 @@ export function PoolPanel({
           <label className="wc-label" htmlFor="arena-preset">
             Preset
           </label>
-          <select
+          <Select
             id="arena-preset"
-            className="wc-select"
+            label="Preset"
             value={settings.presetId ?? ''}
-            onChange={(event) => onSettingsChange({ presetId: event.target.value || null })}
-          >
-            <option value="">
-              Active preset
-              {activePresetId
-                ? ` (${presets.find((entry) => entry.id === activePresetId)?.name ?? activePresetId})`
-                : ''}
-            </option>
-            {presets.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              {
+                value: '',
+                label: `Active preset${
+                  activePresetId
+                    ? ` (${presets.find((entry) => entry.id === activePresetId)?.name ?? activePresetId})`
+                    : ''
+                }`,
+              },
+              ...presets.map((entry) => ({ value: entry.id, label: entry.name })),
+            ]}
+            onChange={(presetId) => onSettingsChange({ presetId: presetId || null })}
+          />
         </div>
 
         <div className="arena-pool__row">
           <label className="wc-label" htmlFor="arena-persona">
             Persona
           </label>
-          <select
+          <Select
             id="arena-persona"
-            className="wc-select"
+            label="Persona"
             value={settings.personaId ?? ''}
-            onChange={(event) => onSettingsChange({ personaId: event.target.value || null })}
-          >
-            <option value="">No persona</option>
-            {personas.map((persona) => (
-              <option key={persona.id} value={persona.id}>
-                {/* The label in brackets — a <select> cannot show a chip, and two options
-                    both reading "John Doe" would be a menu that cannot be ordered from. */}
-                {personaDisplayName(persona)}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: 'No persona' },
+              ...personas.map((persona) => ({
+                value: persona.id,
+                label: personaDisplayName(persona),
+                // The variant rides in the label, not a description: the closed trigger
+                // shows only the label, and two personas sharing a name must stay
+                // tellable apart even before the list is opened.
+              })),
+            ]}
+            onChange={(personaId) => onSettingsChange({ personaId: personaId || null })}
+          />
         </div>
         <p className="wc-hint">
           Pinned here rather than following the app&rsquo;s current persona: a benchmark whose

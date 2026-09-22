@@ -61,7 +61,8 @@
   border-color: transparent;
 }
 
-.nexus-hud--search select {
+/* The category filter hugs its own choice, not the full HUD width. */
+.nexus-hud--search .wc-select-root {
   width: auto;
   flex-shrink: 0;
 }
@@ -199,8 +200,8 @@
   background: var(--wc-surface-raised);
 }
 
-/* Scoped under the head to out-rank `.wc-input`'s width: 100% — whichever stylesheet
-   loads last, the kind select stays content-sized and the name takes the rest. */
+/* Scoped under the head to out-rank `.wc-select-root`'s width: 100% — whichever
+   stylesheet loads last, the kind select stays content-sized and the name takes the rest. */
 .nexus-nodecard__head .nexus-nodecard__kind {
   width: auto;
   flex: 0 0 auto;

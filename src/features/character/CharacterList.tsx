@@ -23,6 +23,7 @@ import {
   useState,
 } from 'react';
 import { Menu, type MenuEntry } from '../../components/Menu.tsx';
+import { Select } from '../../components/Select.tsx';
 import {
   ChevronIcon,
   EditIcon,
@@ -232,16 +233,16 @@ export function CharacterList({
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search characters"
         />
-        <select
-          className="wc-select character-list__sort"
+        <Select
+          className="character-list__sort"
+          label="Sort characters"
           value={sort}
-          onChange={(e) => onSortChange(e.target.value as 'name' | 'rating')}
-          aria-label="Sort characters"
-          title="Sort characters"
-        >
-          <option value="name">Name</option>
-          <option value="rating">Rating</option>
-        </select>
+          options={[
+            { value: 'name' as const, label: 'Name' },
+            { value: 'rating' as const, label: 'Rating' },
+          ]}
+          onChange={onSortChange}
+        />
       </div>
 
       {message ? <div className="character-list__error">{message}</div> : null}

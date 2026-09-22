@@ -1,5 +1,6 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import { useMemo, useRef, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import {
   CoCreatorIcon,
   DownloadIcon,
@@ -170,18 +171,15 @@ export function StudioLibrary({
           placeholder="Search — name, creator, or #tag"
           aria-label="Search cards"
         />
-        <select
-          className="wc-select"
+        <Select
+          label="Folder"
           value={folder}
-          onChange={(event) => setFolder(event.target.value)}
-        >
-          <option value="">All folders</option>
-          {folderOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: '', label: 'All folders' },
+            ...folderOptions.map((option) => ({ value: option, label: option })),
+          ]}
+          onChange={setFolder}
+        />
       </div>
 
       {error ? <p className="studio-library__error">{error}</p> : null}

@@ -35,8 +35,9 @@
 }
 
 .model-combobox__popup {
+  width: max-content;
   min-width: 100%;
-  max-width: 480px;
+  max-width: min(480px, calc(100vw - var(--wc-space-6)));
 }
 
 .model-combobox__list {

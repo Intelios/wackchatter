@@ -60,6 +60,9 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
   const [newName, setNewName] = useState('');
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // Reported by the model picker in the Conversation tab, but the testing panel needs it
+  // too: a report starts a Co-Creator turn, so it is blocked by whatever blocks sending.
+  const [toolCapability, setToolCapability] = useState<boolean | null>(null);
   const splitRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,6 +72,19 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
   useEffect(() => setTitle(controller.session.title), [controller.session.title]);
 
   const assistantConnection = controller.assistantConnection;
+  const coCreatorBlockedReason = controller.busy
+    ? 'The Co-Creator is still replying.'
+    : !assistantConnection
+      ? 'Choose a Co-Creator model first, under "Assistant model and instructions".'
+      : toolCapability === false
+        ? 'The Co-Creator model does not support tools.'
+        : null;
+  // One rule for both places a proposal can run from: the tray and the Co-Creator's card.
+  const proposalBlockedReason = !testing.activeTest
+    ? 'Start a test scenario first.'
+    : testing.busy
+      ? 'Wait for the test reply to finish.'
+      : null;
 
   const publish = async (
     mode: 'update' | 'new' | 'overwrite',
@@ -254,14 +270,54 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
               </button>
             ))}
           </nav>
+          {/* All three stay mounted and share one grid cell; the inactive two are hidden,
+              not unmounted. Unmounting threw away everything a panel held locally — the
+              composer draft, a half-written message edit, unapplied preset edits, the
+              scroll position — every time a tab was clicked. `visibility` rather than
+              `display: none`, because a display-none scroller forgets where it was. */}
           <div className="preset-cc-left__content">
-            {tab === 'conversation' ? (
-              <PresetAssistantPanel controller={controller} connections={props.connections} />
-            ) : tab === 'preset' ? (
-              <PresetDraftEditor controller={controller} connection={assistantConnection} />
-            ) : (
-              <PresetHistoryPanel controller={controller} />
-            )}
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'conversation' || undefined}
+              inert={tab !== 'conversation'}
+            >
+              <PresetAssistantPanel
+                controller={controller}
+                connections={props.connections}
+                toolCapability={toolCapability}
+                onToolCapabilityChange={setToolCapability}
+                proposalActions={{
+                  blockedReason: proposalBlockedReason,
+                  onRun: (proposal) => void testing.runProposal(proposal, proposal.message),
+                  onDismiss: testing.dismissProposal,
+                }}
+              />
+            </div>
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'preset' || undefined}
+              inert={tab !== 'preset'}
+            >
+              <PresetDraftEditor
+                current={controller.session.current}
+                busy={controller.busy}
+                connection={assistantConnection}
+                replaceDraft={controller.replaceDraft}
+              />
+            </div>
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'history' || undefined}
+              inert={tab !== 'history'}
+            >
+              <PresetHistoryPanel
+                history={controller.session.history}
+                draftRevision={controller.session.draftRevision}
+                busy={controller.busy}
+                onRestore={controller.restoreDraft}
+                onUndoTurn={controller.undoTurn}
+              />
+            </div>
           </div>
         </section>
         {/* A real <hr> rather than a div: it is the separator role, and biome is right that
@@ -293,6 +349,9 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
             worldInfoSettings={props.worldInfoSettings}
             globalVariables={props.globalVariables}
             regexScripts={props.regexScripts}
+            coCreatorBlockedReason={coCreatorBlockedReason}
+            onReportSent={() => setTab('conversation')}
+            proposalBlockedReason={proposalBlockedReason}
           />
         </section>
       </div>

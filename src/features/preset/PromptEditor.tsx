@@ -10,6 +10,7 @@ import {
 } from '@shared/types/preset.ts';
 import { useState } from 'react';
 import { TextField } from '../../components/Field.tsx';
+import { Select } from '../../components/Select.tsx';
 import './PromptEditor.css';
 
 interface PromptEditorProps {
@@ -77,40 +78,29 @@ export function PromptEditor({
             <label className="wc-label" htmlFor={`${identifier}-role`}>
               Role
             </label>
-            <select
+            <Select
               id={`${identifier}-role`}
-              className="wc-select"
+              label="Role"
               value={prompt.role ?? 'system'}
-              onChange={(e) => set('role', e.target.value)}
-            >
-              {ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
+              options={ROLES.map((role) => ({ value: role, label: role }))}
+              onChange={(role) => set('role', role)}
+            />
           </div>
 
           <div className="field">
             <label className="wc-label" htmlFor={`${identifier}-position`}>
               Position
             </label>
-            <select
+            <Select
               id={`${identifier}-position`}
-              className="wc-select"
-              value={isAbsolute ? 'absolute' : 'relative'}
-              onChange={(e) =>
-                set(
-                  'injection_position',
-                  e.target.value === 'absolute'
-                    ? INJECTION_POSITION.ABSOLUTE
-                    : INJECTION_POSITION.RELATIVE,
-                )
-              }
-            >
-              <option value="relative">In order</option>
-              <option value="absolute">In chat @ depth</option>
-            </select>
+              label="Position"
+              value={isAbsolute ? INJECTION_POSITION.ABSOLUTE : INJECTION_POSITION.RELATIVE}
+              options={[
+                { value: INJECTION_POSITION.RELATIVE, label: 'In order' },
+                { value: INJECTION_POSITION.ABSOLUTE, label: 'In chat @ depth' },
+              ]}
+              onChange={(position) => set('injection_position', position)}
+            />
           </div>
         </div>
 

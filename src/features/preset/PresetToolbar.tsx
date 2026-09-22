@@ -1,5 +1,6 @@
 import type { PresetSummary } from '@shared/types/preset.ts';
 import { useRef, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import { CopyIcon, DownloadIcon, EditIcon, TrashIcon, UploadIcon } from '../../layout/icons.tsx';
 import { presetApi } from '../../lib/api.ts';
 import type { PresetDraft } from './usePresetDraft.ts';
@@ -55,22 +56,17 @@ export function PresetToolbar({ presets, presetId, onSelectPreset, draft }: Pres
             }}
           />
         ) : (
-          <select
-            className="wc-select"
+          <Select
+            label="Active preset"
             value={presetId ?? ''}
+            options={presets.map((p) => ({ value: p.id, label: p.name }))}
             // Switching would replace the working copy, so unsaved edits have to be
             // resolved first. Disabled rather than prompting: no modals, and the
             // Save/Revert bar directly below says exactly what to do about it.
             disabled={draft.dirty}
-            onChange={(e) => onSelectPreset(e.target.value)}
-            aria-label="Active preset"
-          >
-            {presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            disabledReason="Save or revert unsaved edits before switching presets."
+            onChange={onSelectPreset}
+          />
         )}
 
         <button

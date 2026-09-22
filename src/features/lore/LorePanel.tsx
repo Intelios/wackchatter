@@ -18,6 +18,7 @@ import { bookEntries, nextUid, removeEntry } from '@shared/worldinfo/convert.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NumberField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
+import { Select } from '../../components/Select.tsx';
 import { lorebookApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { LorebookEditor } from './LorebookEditor.tsx';
@@ -277,19 +278,17 @@ export function LorePanel({
 
       <div className="lore-panel__books">
         <div className="lore-panel__toolbar">
-          <select
-            className="wc-select"
+          <Select
+            label="Lorebook"
+            placeholder="Select a lorebook…"
             value={selected ?? ''}
-            onChange={(event) => void selectBook(event.target.value || null)}
-            aria-label="Lorebook"
-          >
-            <option value="">Select a lorebook…</option>
-            {books.map((summary) => (
-              <option key={summary.id} value={summary.id}>
-                {summary.name} ({summary.entryCount})
-              </option>
-            ))}
-          </select>
+            options={books.map((summary) => ({
+              value: summary.id,
+              label: summary.name,
+              description: `${summary.entryCount} ${summary.entryCount === 1 ? 'entry' : 'entries'}`,
+            }))}
+            onChange={(id) => void selectBook(id || null)}
+          />
         </div>
 
         <div className="lore-panel__actions">

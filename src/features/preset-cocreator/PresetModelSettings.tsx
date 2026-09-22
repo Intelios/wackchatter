@@ -1,7 +1,8 @@
 import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import type { PresetCocreatorModelSettings } from '@shared/types/preset-cocreator.ts';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { NumberField, SelectField } from '../../components/Field.tsx';
+import { Select } from '../../components/Select.tsx';
 import { settingsApi } from '../../lib/api.ts';
 import { ModelCombobox } from '../connection/ModelCombobox.tsx';
 
@@ -24,6 +25,7 @@ export function PresetModelSettings({
 }: PresetModelSettingsProps) {
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [modelError, setModelError] = useState('');
+  const connectionFieldId = useId();
   const selected = connections.find((connection) => connection.id === value.connectionId) ?? null;
 
   useEffect(() => {
@@ -61,28 +63,31 @@ export function PresetModelSettings({
   return (
     <div className="preset-cc-model">
       <h3>{label}</h3>
-      <label className="field">
-        <span className="wc-label">Connection</span>
-        <select
-          className="wc-select"
+      <div className="field">
+        <label className="wc-label" htmlFor={connectionFieldId}>
+          Connection
+        </label>
+        <Select
+          id={connectionFieldId}
+          label={`${label} connection`}
           value={value.connectionId ?? ''}
-          onChange={(event) => {
-            const connection = connections.find((entry) => entry.id === event.target.value);
+          placeholder="Choose a connection"
+          options={connections.map((connection) => ({
+            value: connection.id,
+            label: connection.name,
+            // Two connections to one provider differ by model; the name alone may not say.
+            description: connection.model || undefined,
+          }))}
+          onChange={(id) => {
+            const connection = connections.find((entry) => entry.id === id);
             onChange({
               ...value,
               connectionId: connection?.id ?? null,
               model: connection?.model ?? '',
             });
           }}
-        >
-          <option value="">Choose a connection</option>
-          {connections.map((connection) => (
-            <option key={connection.id} value={connection.id}>
-              {connection.name}
-            </option>
-          ))}
-        </select>
-      </label>
+        />
+      </div>
       <div className="field">
         <span className="wc-label">Model</span>
         <ModelCombobox
