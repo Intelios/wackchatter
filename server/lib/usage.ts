@@ -102,8 +102,17 @@ export interface LibraryPointer {
  * Rewritten on every boot and after a relocation, and unconditionally — this file says
  * where the data is, not whether logging is on. Turning the log off should stop new
  * records, not strand a reader that already has years of history to account for.
+ *
+ * One exception: a WC_DATA_DIR boot says nothing. The env var is an override for this
+ * process — a test, or an agent working against a scratch copy of the library — not the
+ * user's chosen home for it, so publishing PATHS.root here would repoint readers at a
+ * throwaway copy (observed: a scratch boot replaced the real library path in this file).
+ * Leave it alone; the next ordinary boot republishes and heals it.
  */
 export function publishLibraryPointer(home?: string): void {
+  // Same test resolveDataDir uses to classify a boot as source 'env'. An empty or blank
+  // value counts as unset there, so it must here too.
+  if (process.env.WC_DATA_DIR?.trim()) return;
   try {
     const dir = usageDir(home);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
