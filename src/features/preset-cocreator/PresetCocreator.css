@@ -551,51 +551,6 @@
   font-style: italic;
 }
 
-.preset-cc-tool__diff {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wc-space-1);
-  margin: var(--wc-space-2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.preset-cc-tool__diff-row {
-  display: grid;
-  grid-template-columns: minmax(90px, auto) 1fr;
-  gap: var(--wc-space-1) var(--wc-space-2);
-  align-items: baseline;
-  font-size: var(--wc-text-xs);
-}
-
-.preset-cc-tool__diff-row code {
-  font-family: var(--wc-font-mono);
-  color: var(--wc-text-muted);
-  overflow-wrap: anywhere;
-}
-
-.preset-cc-tool__diff-row del,
-.preset-cc-tool__diff-row ins {
-  grid-column: 2;
-  font-family: var(--wc-font-mono);
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-
-.preset-cc-tool__diff-row del {
-  color: var(--wc-danger);
-}
-
-.preset-cc-tool__diff-row ins {
-  color: var(--wc-success);
-}
-
-.preset-cc-tool__diff-more {
-  grid-column: 1 / -1;
-  color: var(--wc-text-faint);
-  font-size: var(--wc-text-xs);
-}
-
 .preset-cc-tool__raw summary,
 .preset-cc-report__raw summary {
   margin-top: var(--wc-space-2);
@@ -1037,37 +992,193 @@
   font-size: var(--wc-text-xs);
 }
 
-.preset-cc-history__diff {
+/* --- Preset changes (History and the edit cards) ------------------------------ */
+
+.preset-cc-history__changes > summary {
+  margin-top: var(--wc-space-1);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  cursor: pointer;
+}
+
+.preset-cc-changes {
   display: flex;
   flex-direction: column;
-  gap: var(--wc-space-2);
-  padding-left: var(--wc-space-5);
+  gap: var(--wc-space-3);
+  margin: var(--wc-space-2) 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.preset-cc-history__diff li {
-  display: grid;
-  grid-template-columns: minmax(100px, auto) auto 1fr;
-  gap: var(--wc-space-2);
-  align-items: start;
+.preset-cc-change {
+  min-width: 0;
 }
 
-.preset-cc-history__diff del,
-.preset-cc-history__diff ins {
-  grid-column: 3;
-  max-height: var(--wc-scroll-cap);
-  overflow: auto;
-  font-family: var(--wc-font-mono);
-  font-size: var(--wc-text-xs);
+.preset-cc-change__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--wc-space-1) var(--wc-space-2);
+  margin-bottom: var(--wc-space-1);
+}
+
+.preset-cc-change__label {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.preset-cc-change__meta {
+  margin-left: auto;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+}
+
+.preset-cc-change__meta ins,
+.preset-cc-change__meta del {
+  margin-right: var(--wc-space-1);
+  background: none;
   text-decoration: none;
 }
 
-.preset-cc-history__diff del {
+.preset-cc-change__meta ins {
+  color: var(--wc-success);
+}
+
+.preset-cc-change__meta del {
   color: var(--wc-danger);
 }
 
-.preset-cc-history__diff ins {
-  color: var(--wc-success);
+.preset-cc-change__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--wc-space-1);
+  margin-left: auto;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.preset-cc-change__value del {
+  text-decoration: line-through;
+}
+
+.preset-cc-change__value ins {
+  color: var(--wc-text);
+  text-decoration: none;
+}
+
+.preset-cc-change__lines {
+  margin: 0;
+  padding-left: var(--wc-space-5);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.preset-cc-change__content > summary {
+  margin-bottom: var(--wc-space-1);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  cursor: pointer;
+}
+
+/*
+ * The diff itself. Prose, so the app's own face rather than monospace, with the line
+ * breaks kept: prompt blocks are paragraphs and numbered lists, not code.
+ */
+.preset-cc-diff {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.preset-cc-diff del,
+.preset-cc-diff ins {
+  padding: 0 1px;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.preset-cc-diff del {
+  background: var(--wc-danger-subtle);
+  color: var(--wc-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--wc-danger);
+}
+
+.preset-cc-diff ins {
+  background: var(--wc-success-subtle);
+  color: var(--wc-text);
+  text-decoration: none;
+}
+
+.preset-cc-diff .preset-cc-diff__space {
+  color: var(--wc-text-faint);
+  text-decoration: none;
+}
+
+.preset-cc-diff__fold {
+  margin: 0 2px;
+  padding: 0 var(--wc-space-2);
+  border: 1px dashed var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text-faint);
+  font: inherit;
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.preset-cc-diff__fold:hover {
+  border-color: var(--wc-accent-border);
+  color: var(--wc-text);
+}
+
+/* A rewrite reads as two whole passages, stacked: the panel is too narrow for columns. */
+.preset-cc-diff--rewritten {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  white-space: normal;
+}
+
+.preset-cc-diff__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preset-cc-diff--rewritten del,
+.preset-cc-diff--rewritten ins,
+.preset-cc-change__content .preset-cc-diff {
+  max-height: var(--wc-scroll-cap);
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.preset-cc-diff__side {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-changes__more {
+  margin-top: var(--wc-space-2);
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-tool__changes {
+  margin-top: var(--wc-space-2);
 }
 
 .preset-cc-history__actions,

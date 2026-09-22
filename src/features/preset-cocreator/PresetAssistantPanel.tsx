@@ -1,5 +1,5 @@
 import type { Connection } from '@shared/providers/types.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EditIcon, PlugIcon, WandIcon } from '../../layout/icons.tsx';
 import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
@@ -9,7 +9,7 @@ import '../chat/MessageBubble.css';
 import { correlateToolMessages } from './assistant.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
-import { type ProposalControls, ToolActivityCard } from './ToolActivity.tsx';
+import { type ProposalControls, type RevisionPresets, ToolActivityCard } from './ToolActivity.tsx';
 import { summarizeReport } from './testing.ts';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 
@@ -40,6 +40,15 @@ export function PresetAssistantPanel({
     ...proposalActions,
     proposals: controller.session.document.proposedTests,
   };
+  // Edit cards diff the revision they made against the one before it, as History does.
+  const history = controller.session.history;
+  const revisionPresets = useMemo<RevisionPresets>(() => {
+    const byRevision = new Map(history.map((entry) => [entry.revision, entry.preset]));
+    return (revision) => {
+      const after = byRevision.get(revision);
+      return after ? { before: byRevision.get(revision - 1) ?? null, after } : null;
+    };
+  }, [history]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom } = useStickToBottom(scrollRef, conversationRef);
@@ -117,6 +126,7 @@ export function PresetAssistantPanel({
               <ToolActivityCard
                 exchange={exchange}
                 proposalControls={proposalControls}
+                revisionPresets={revisionPresets}
                 key={message.id}
               />
             ) : null;

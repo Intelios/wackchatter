@@ -1,7 +1,11 @@
 import type { PresetDiffEntry } from '@shared/preset-cocreator/patch.ts';
+import type { Preset } from '@shared/types/preset.ts';
 import type { ProposedPresetTest } from '@shared/types/preset-cocreator.ts';
+import { useMemo } from 'react';
 import { EyeIcon, NotesIcon, WandIcon } from '../../layout/icons.tsx';
 import { type ToolExchange, toolCallArguments } from './assistant.ts';
+import { PresetChangeList } from './PresetChanges.tsx';
+import { describeDiffEntries, describePresetChanges } from './presetChanges.ts';
 
 /**
  * One assistant tool exchange, drawn as a first-class card in the conversation rather
@@ -10,24 +14,39 @@ import { type ToolExchange, toolCallArguments } from './assistant.ts';
  * the raw exchange still one click away for debugging.
  */
 
-function compact(value: unknown): string {
-  const text = JSON.stringify(value);
-  if (typeof text !== 'string') return String(value);
-  return text.length > 120 ? `${text.slice(0, 117)}…` : text;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function DiffRow({ entry }: { entry: PresetDiffEntry }) {
+/** The presets either side of a revision, when the session history still holds them. */
+export type RevisionPresets = (revision: number) => { before: Preset | null; after: Preset } | null;
+
+/**
+ * An edit's changes, read like History reads them. A component of its own so the memo
+ * hook sits outside the card's early returns; keyed on the exchange and the two presets,
+ * never on the result's diff, which is re-parsed from the tool message on every render.
+ */
+function PatchChanges({
+  exchangeId,
+  diff,
+  presets,
+}: {
+  exchangeId: string;
+  diff: PresetDiffEntry[];
+  presets: ReturnType<RevisionPresets>;
+}) {
+  const before = presets?.before ?? null;
+  const after = presets?.after;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the exchange id stands in for its diff
+  const changes = useMemo(
+    () =>
+      before && after ? describePresetChanges(before, after) : describeDiffEntries(diff, after),
+    [exchangeId, before, after],
+  );
   return (
-    <li className="preset-cc-tool__diff-row">
-      <code>{entry.path || '/'}</code>
-      {entry.before !== undefined ? <del>{compact(entry.before)}</del> : null}
-      {entry.after !== undefined ? <ins>{compact(entry.after)}</ins> : null}
-      {entry.before === undefined && entry.after === undefined ? <span>removed</span> : null}
-    </li>
+    <div className="preset-cc-tool__changes">
+      <PresetChangeList changes={changes} limit={2} />
+    </div>
   );
 }
 
@@ -53,9 +72,11 @@ const PROPOSAL_STATUS: Record<ProposedPresetTest['status'], string> = {
 export function ToolActivityCard({
   exchange,
   proposalControls,
+  revisionPresets,
 }: {
   exchange: ToolExchange;
   proposalControls?: ProposalControls;
+  revisionPresets?: RevisionPresets;
 }) {
   const args = toolCallArguments(exchange.call);
   const result = isRecord(exchange.result) ? exchange.result : {};
@@ -170,16 +191,12 @@ export function ToolActivityCard({
             The draft is now at revision {currentRevision} — the next attempt should use it.
           </p>
         ) : null}
-        {diff?.length ? (
-          <ul className="preset-cc-tool__diff">
-            {diff.slice(0, 8).map((entry, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: immutable diff snapshot, one path can change twice
-              <DiffRow entry={entry} key={`${entry.path}:${index}`} />
-            ))}
-            {diff.length > 8 ? (
-              <li className="preset-cc-tool__diff-more">+{diff.length - 8} more</li>
-            ) : null}
-          </ul>
+        {diff?.length && !failed ? (
+          <PatchChanges
+            exchangeId={exchange.id}
+            diff={diff}
+            presets={revision !== null ? (revisionPresets?.(revision) ?? null) : null}
+          />
         ) : null}
         <details className="preset-cc-tool__raw">
           <summary>Raw exchange</summary>
