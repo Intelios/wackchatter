@@ -69,7 +69,8 @@ await ensureDefaultPreset();
 // Freeze legacy per-chat modes before the user can change the new app default.
 chatStore();
 // Says where the library is, for anything accounting for what it cost. Written whether or
-// not the usage log is on — see publishLibraryPointer.
+// not the usage log is on — but never under WC_DATA_DIR, which is an override for this
+// process, not the library's published location — see publishLibraryPointer.
 publishLibraryPointer();
 
 type RouteHandler = (request: Request, segments: string[]) => Promise<Response | null>;

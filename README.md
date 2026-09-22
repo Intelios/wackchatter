@@ -88,7 +88,7 @@ There's no restore button because there's nothing for it to do. The unzipped fol
 | Variable | What it does |
 |---|---|
 | `WC_PORT` | Override the port (default 8787) |
-| `WC_DATA_DIR` | Pin the data folder and lock the in-app setting |
+| `WC_DATA_DIR` | Pin the data folder and lock the in-app setting; the published library pointer is left alone |
 | `WC_NO_OPEN=1` | Don't open the browser on launch |
 
 ---
