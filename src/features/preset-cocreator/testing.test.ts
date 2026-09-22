@@ -16,6 +16,7 @@ import {
   appendPresetTestUserMessage,
   buildPresetTestReport,
   createPresetTest,
+  dismissPendingProposals,
   editPresetTestMessage,
   type PreparedPresetTestRequest,
   preparePresetTestRequest,
@@ -704,5 +705,15 @@ describe('proposed tests', () => {
     const updated = updateProposedTest(proposals, 'a', 'run');
     expect(updated[0]!.status).toBe('run');
     expect(updated[1]!.status).toBe('pending');
+  });
+
+  test('dismissing the tray settles only what was still waiting', () => {
+    const base = { message: 'm', restart: false, rationale: '', created: 1 };
+    const cleared = dismissPendingProposals([
+      { ...base, id: 'a', status: 'pending' },
+      { ...base, id: 'b', status: 'run' },
+      { ...base, id: 'c', status: 'pending' },
+    ]);
+    expect(cleared.map((proposal) => proposal.status)).toEqual(['dismissed', 'run', 'dismissed']);
   });
 });

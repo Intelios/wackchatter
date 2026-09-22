@@ -9,7 +9,7 @@ import '../chat/MessageBubble.css';
 import { correlateToolMessages } from './assistant.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
-import { ToolActivityCard } from './ToolActivity.tsx';
+import { type ProposalControls, ToolActivityCard } from './ToolActivity.tsx';
 import { summarizeReport } from './testing.ts';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 
@@ -19,6 +19,8 @@ interface PresetAssistantPanelProps {
   /** Owned by the workspace, which also blocks shared reports on it. */
   toolCapability: boolean | null;
   onToolCapabilityChange: (supported: boolean | null) => void;
+  /** Run and dismiss for the proposal cards; the proposals themselves live in the document. */
+  proposalActions: Omit<ProposalControls, 'proposals'>;
 }
 
 export function PresetAssistantPanel({
@@ -26,6 +28,7 @@ export function PresetAssistantPanel({
   connections,
   toolCapability,
   onToolCapabilityChange,
+  proposalActions,
 }: PresetAssistantPanelProps) {
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,6 +36,10 @@ export function PresetAssistantPanel({
   const settings = controller.session.document.settings;
   const messages = controller.session.document.messages;
   const tests = controller.session.document.tests;
+  const proposalControls: ProposalControls = {
+    ...proposalActions,
+    proposals: controller.session.document.proposedTests,
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom } = useStickToBottom(scrollRef, conversationRef);
@@ -106,7 +113,13 @@ export function PresetAssistantPanel({
         {messages.map((message) => {
           if (message.role === 'tool') {
             const exchange = toolCards.get(message.id);
-            return exchange ? <ToolActivityCard exchange={exchange} key={message.id} /> : null;
+            return exchange ? (
+              <ToolActivityCard
+                exchange={exchange}
+                proposalControls={proposalControls}
+                key={message.id}
+              />
+            ) : null;
           }
           if (message.role === 'report') {
             // The report is the user's turn, so it reads as one: who sent it, which test

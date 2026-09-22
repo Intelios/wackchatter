@@ -14,6 +14,7 @@ import {
   appendPresetTestUserMessage,
   buildPresetTestReport,
   createPresetTest,
+  dismissPendingProposals,
   editPresetTestMessage,
   evidenceForSelectedResponse,
   type PresetTestGenerationKind,
@@ -344,6 +345,15 @@ export function usePresetTesting({
     [controller],
   );
 
+  const dismissAllProposals = useCallback(
+    () =>
+      controller.updateDocument((document) => ({
+        ...document,
+        proposedTests: dismissPendingProposals(document.proposedTests),
+      })),
+    [controller],
+  );
+
   const runProposal = useCallback(
     async (proposal: ProposedPresetTest, editedMessage: string) => {
       if (!activeTest || busy) {
@@ -418,6 +428,7 @@ export function usePresetTesting({
     editMessage,
     stop: () => abortRef.current?.abort(),
     dismissProposal,
+    dismissAllProposals,
     runProposal,
     share,
   };

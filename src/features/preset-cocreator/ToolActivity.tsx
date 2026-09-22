@@ -1,4 +1,5 @@
 import type { PresetDiffEntry } from '@shared/preset-cocreator/patch.ts';
+import type { ProposedPresetTest } from '@shared/types/preset-cocreator.ts';
 import { EyeIcon, NotesIcon, WandIcon } from '../../layout/icons.tsx';
 import { type ToolExchange, toolCallArguments } from './assistant.ts';
 
@@ -30,7 +31,32 @@ function DiffRow({ entry }: { entry: PresetDiffEntry }) {
   );
 }
 
-export function ToolActivityCard({ exchange }: { exchange: ToolExchange }) {
+/**
+ * What a proposal card needs to act on the proposal it made. The card is where the model
+ * explained *why* it wants the test, so it is the natural place to run it from — the tray
+ * beside the testing composer holds the same proposals.
+ */
+export interface ProposalControls {
+  proposals: readonly ProposedPresetTest[];
+  /** Why a proposal cannot run right now; null when it can. */
+  blockedReason: string | null;
+  onRun: (proposal: ProposedPresetTest) => void;
+  onDismiss: (id: string) => void;
+}
+
+const PROPOSAL_STATUS: Record<ProposedPresetTest['status'], string> = {
+  pending: 'waits for you',
+  run: 'ran in test',
+  dismissed: 'dismissed',
+};
+
+export function ToolActivityCard({
+  exchange,
+  proposalControls,
+}: {
+  exchange: ToolExchange;
+  proposalControls?: ProposalControls;
+}) {
   const args = toolCallArguments(exchange.call);
   const result = isRecord(exchange.result) ? exchange.result : {};
   const ok = result.ok === true;
@@ -69,16 +95,53 @@ export function ToolActivityCard({ exchange }: { exchange: ToolExchange }) {
   if (exchange.name === 'propose_test' && ok) {
     const message = typeof args.message === 'string' ? args.message : '';
     const rationale = typeof args.rationale === 'string' ? args.rationale : '';
+    const proposalId = typeof result.proposalId === 'string' ? result.proposalId : null;
+    const proposal = proposalId
+      ? (proposalControls?.proposals.find((entry) => entry.id === proposalId) ?? null)
+      : null;
+    const blocked = proposalControls?.blockedReason ?? null;
     return (
-      <div className="preset-cc-tool preset-cc-tool--proposal" key={exchange.id}>
+      <div
+        className="preset-cc-tool preset-cc-tool--proposal"
+        data-status={proposal?.status}
+        key={exchange.id}
+      >
         <header>
           <NotesIcon />
           <strong>Proposed a test</strong>
-          <span className="preset-cc-tool__badge">waits for you</span>
+          {args.restart === true ? <span className="message__badge">fresh</span> : null}
+          {proposal ? (
+            <span className="preset-cc-tool__badge">{PROPOSAL_STATUS[proposal.status]}</span>
+          ) : null}
         </header>
         {rationale ? <p className="preset-cc-tool__summary">{rationale}</p> : null}
         {message ? <blockquote className="preset-cc-tool__quote">{message}</blockquote> : null}
-        <p className="wc-hint">Run it from the testing panel — it never generates by itself.</p>
+        {proposal?.status === 'pending' && proposalControls ? (
+          <div className="preset-cc-tool__actions">
+            <button
+              type="button"
+              className="wc-button wc-button--primary"
+              disabled={Boolean(blocked)}
+              title={
+                blocked ??
+                (proposal.restart
+                  ? 'Run it in a fresh conversation with the current draft.'
+                  : 'Run it in the active conversation with the current draft.')
+              }
+              onClick={() => proposalControls.onRun(proposal)}
+            >
+              Run in test
+            </button>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={() => proposalControls.onDismiss(proposal.id)}
+            >
+              Dismiss
+            </button>
+            {blocked ? <span className="wc-hint">{blocked}</span> : null}
+          </div>
+        ) : null}
       </div>
     );
   }

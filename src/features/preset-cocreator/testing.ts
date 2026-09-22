@@ -401,3 +401,10 @@ export function updateProposedTest(
 ): ProposedPresetTest[] {
   return proposals.map((proposal) => (proposal.id === id ? { ...proposal, status } : proposal));
 }
+
+/** Clears the tray: every still-waiting proposal is dismissed, settled ones keep their state. */
+export function dismissPendingProposals(proposals: ProposedPresetTest[]): ProposedPresetTest[] {
+  return proposals.map((proposal) =>
+    proposal.status === 'pending' ? { ...proposal, status: 'dismissed' } : proposal,
+  );
+}

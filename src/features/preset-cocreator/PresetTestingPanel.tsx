@@ -15,6 +15,7 @@ import {
   ChevronLeftIcon,
   EditIcon,
   MessagesIcon,
+  NotesIcon,
   PlugIcon,
   RefreshIcon,
   SearchIcon,
@@ -27,6 +28,7 @@ import { useStickToBottom } from '../chat/useStickToBottom.ts';
 import '../chat/MessageBubble.css';
 import { composeLorebookSources } from '../lore/useLorebooks.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
+import { ProposalTray } from './ProposalTray.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 import type { PresetTestingController } from './usePresetTesting.ts';
@@ -48,6 +50,8 @@ interface PresetTestingPanelProps {
   coCreatorBlockedReason: string | null;
   /** A report went out and the Co-Creator is answering it on the left. */
   onReportSent: () => void;
+  /** Why a proposed test cannot run right now; shared with the Co-Creator's cards. */
+  proposalBlockedReason: string | null;
 }
 
 export function PresetTestingPanel({
@@ -65,6 +69,7 @@ export function PresetTestingPanel({
   regexScripts,
   coCreatorBlockedReason,
   onReportSent,
+  proposalBlockedReason,
 }: PresetTestingPanelProps) {
   const [characterId, setCharacterId] = useState(initialCharacterId ?? characters[0]?.avatar ?? '');
   const [character, setCharacter] = useState<CharacterDetail | null>(null);
@@ -82,7 +87,11 @@ export function PresetTestingPanel({
   const [shareTranscript, setShareTranscript] = useState(true);
   const [sharePrompt, setSharePrompt] = useState(true);
   const [shareDiagnostics, setShareDiagnostics] = useState(true);
-  const [proposalText, setProposalText] = useState<Record<string, string>>({});
+  // The proposal whose text was loaded into the message box: sending then runs it.
+  const [composerProposalId, setComposerProposalId] = useState<string | null>(null);
+  // State, not a ref, so the resize observer below re-attaches when the dock first mounts.
+  const [dock, setDock] = useState<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [lastShared, setLastShared] = useState<{ messageId: string; at: number } | null>(null);
   const shareRef = useRef<HTMLElement>(null);
@@ -91,7 +100,7 @@ export function PresetTestingPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inspectorRef = useRef<HTMLDetailsElement>(null);
-  const { scrollToBottom } = useStickToBottom(scrollRef, bodyRef);
+  const { scrollToBottom, isFollowing } = useStickToBottom(scrollRef, bodyRef);
 
   useEffect(() => {
     if (!characterId) {
@@ -260,11 +269,66 @@ export function PresetTestingPanel({
       inspector.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
   }, [inspectRequest]);
 
+  // A turn can start from the tray or from the Co-Creator's card on the left, not only
+  // from this composer — whoever sent it, the reader should see it land.
+  const lastTestMessage = test?.messages.at(-1);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the newest message id is the trigger
+  useEffect(() => {
+    if (lastTestMessage?.is_user) scrollToBottom();
+  }, [lastTestMessage?.id]);
+
+  /*
+   * The dock is sticky over the transcript, so when it grows — a proposal arriving, an
+   * error line — it covers the end of the conversation. The stick-to-bottom hook only
+   * watches the transcript itself, so the dock's own growth re-pins here.
+   */
+  useEffect(() => {
+    if (!dock) return;
+    let lastHeight = dock.offsetHeight;
+    const observer = new ResizeObserver(() => {
+      const height = dock.offsetHeight;
+      if (height === lastHeight) return;
+      lastHeight = height;
+      if (isFollowing.current) scrollToBottom();
+    });
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, [dock, isFollowing, scrollToBottom]);
+
+  const composerProposal =
+    pendingProposals.find((proposal) => proposal.id === composerProposalId) ?? null;
+  // Loading a proposal replaces the message box, so it must never overwrite words of yours.
+  const draftIsPristine =
+    !draft.trim() || (composerProposal !== null && draft === composerProposal.message);
+  const editBlockedReason = !test
+    ? 'Start a test scenario first.'
+    : !draftIsPristine
+      ? 'The message box has a draft — send or clear it first.'
+      : null;
+
+  const editProposal = (proposal: ProposedPresetTest) => {
+    if (editBlockedReason) return;
+    setDraft(proposal.message);
+    setComposerProposalId(proposal.id);
+    composerRef.current?.focus({ preventScroll: true });
+  };
+
+  const runProposal = (proposal: ProposedPresetTest, text = proposal.message) => {
+    if (proposalBlockedReason) return;
+    scrollToBottom();
+    void testing.runProposal(proposal, text);
+  };
+
   const send = () => {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
     scrollToBottom();
+    if (composerProposal) {
+      setComposerProposalId(null);
+      void testing.runProposal(composerProposal, text);
+      return;
+    }
     void testing.send(text);
   };
 
@@ -296,60 +360,17 @@ export function PresetTestingPanel({
     const scroller = scrollRef.current;
     const section = shareRef.current;
     if (!shareOpen || !scroller || !section) return;
-    const composer = scroller.querySelector('.preset-cc-composer');
     const visibleBottom =
-      scroller.getBoundingClientRect().bottom - (composer?.getBoundingClientRect().height ?? 0);
+      scroller.getBoundingClientRect().bottom - (dock?.getBoundingClientRect().height ?? 0);
     const overflow = section.getBoundingClientRect().bottom - visibleBottom;
     if (overflow > 0) scroller.scrollTop += overflow;
     shareNoteRef.current?.focus({ preventScroll: true });
-  }, [shareOpen]);
+  }, [shareOpen, dock]);
 
   const sharedTime =
     lastShared && lastShared.messageId === latestAssistant?.id
       ? formatTimestamp(new Date(lastShared.at).toISOString())
       : null;
-
-  const proposalCard = (proposal: ProposedPresetTest) => {
-    const value = proposalText[proposal.id] ?? proposal.message;
-    return (
-      <article className="preset-cc-proposal" key={proposal.id}>
-        <strong>Assistant-proposed test</strong>
-        {proposal.rationale ? <p>{proposal.rationale}</p> : null}
-        <textarea
-          className="wc-textarea"
-          rows={2}
-          value={value}
-          onChange={(event) =>
-            setProposalText((current) => ({ ...current, [proposal.id]: event.target.value }))
-          }
-        />
-        <p className="wc-hint">
-          Run uses current draft revision {controller.session.draftRevision}
-          {proposal.restart ? ' in a fresh conversation.' : ' in the active conversation.'}
-        </p>
-        <div className="preset-cc-proposal__actions">
-          <button
-            type="button"
-            className="wc-button wc-button--primary"
-            disabled={!test || testing.busy || !value.trim()}
-            onClick={() => {
-              scrollToBottom();
-              void testing.runProposal(proposal, value);
-            }}
-          >
-            Run
-          </button>
-          <button
-            type="button"
-            className="wc-button wc-button--ghost"
-            onClick={() => testing.dismissProposal(proposal.id)}
-          >
-            Dismiss
-          </button>
-        </div>
-      </article>
-    );
-  };
 
   return (
     <div className="preset-cc-testing" ref={scrollRef}>
@@ -499,10 +520,6 @@ export function PresetTestingPanel({
             Restart
           </button>
         </div>
-      ) : null}
-
-      {pendingProposals.length ? (
-        <div className="preset-cc-proposals">{pendingProposals.map(proposalCard)}</div>
       ) : null}
 
       {/* Only the transcript region is watched for growth. The composer and the controls
@@ -846,42 +863,86 @@ export function PresetTestingPanel({
               </details>
             </details>
           ) : null}
-
-          <div className="preset-cc-composer" data-busy={testing.busy || undefined}>
-            <div className="preset-cc-composer__field">
-              <textarea
-                className="wc-textarea"
-                rows={3}
-                value={draft}
-                disabled={testing.busy}
-                placeholder={`Message ${test.scenario.character.name}…`}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    send();
-                  }
-                }}
-              />
-            </div>
-            {testing.busy ? (
-              <button type="button" className="wc-button wc-button--danger" onClick={testing.stop}>
-                Stop
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="wc-button wc-button--primary"
-                disabled={!draft.trim()}
-                onClick={send}
-              >
-                Send
-              </button>
-            )}
-          </div>
         </>
       ) : null}
-      {testing.error ? <p className="preset-cc-inline-error">{testing.error}</p> : null}
+
+      {/* One sticky dock for everything you act on next: the proposals, any error, and the
+          composer. The error used to render below the composer's sticky edge, out of view. */}
+      <div className="preset-cc-dock" ref={setDock}>
+        <ProposalTray
+          proposals={pendingProposals}
+          editingId={composerProposal?.id ?? null}
+          blockedReason={proposalBlockedReason}
+          editBlockedReason={editBlockedReason}
+          onRun={(proposal) => runProposal(proposal)}
+          onEdit={editProposal}
+          onDismiss={testing.dismissProposal}
+          onDismissAll={testing.dismissAllProposals}
+        />
+        {testing.error ? <p className="preset-cc-inline-error">{testing.error}</p> : null}
+        {test ? (
+          <>
+            {composerProposal ? (
+              <div className="preset-cc-dock__attached">
+                <NotesIcon className="preset-cc-icon-sm" />
+                <span>
+                  Sending runs the proposed test
+                  {composerProposal.restart ? ' in a fresh conversation' : ''}.
+                </span>
+                <button
+                  type="button"
+                  className="wc-button wc-button--ghost"
+                  title="Keep the text, but send it as an ordinary message"
+                  onClick={() => setComposerProposalId(null)}
+                >
+                  Detach
+                </button>
+              </div>
+            ) : null}
+            <div className="preset-cc-composer" data-busy={testing.busy || undefined}>
+              <div className="preset-cc-composer__field">
+                <textarea
+                  ref={composerRef}
+                  className="wc-textarea"
+                  rows={3}
+                  value={draft}
+                  disabled={testing.busy}
+                  placeholder={`Message ${test.scenario.character.name}…`}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    // Emptying the box lets go of the proposal it was holding.
+                    if (!event.target.value.trim()) setComposerProposalId(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      send();
+                    }
+                  }}
+                />
+              </div>
+              {testing.busy ? (
+                <button
+                  type="button"
+                  className="wc-button wc-button--danger"
+                  onClick={testing.stop}
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="wc-button wc-button--primary"
+                  disabled={!draft.trim()}
+                  onClick={send}
+                >
+                  {composerProposal ? 'Run' : 'Send'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

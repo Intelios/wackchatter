@@ -79,6 +79,12 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
       : toolCapability === false
         ? 'The Co-Creator model does not support tools.'
         : null;
+  // One rule for both places a proposal can run from: the tray and the Co-Creator's card.
+  const proposalBlockedReason = !testing.activeTest
+    ? 'Start a test scenario first.'
+    : testing.busy
+      ? 'Wait for the test reply to finish.'
+      : null;
 
   const publish = async (
     mode: 'update' | 'new' | 'overwrite',
@@ -280,6 +286,11 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
                 connections={props.connections}
                 toolCapability={toolCapability}
                 onToolCapabilityChange={setToolCapability}
+                proposalActions={{
+                  blockedReason: proposalBlockedReason,
+                  onRun: (proposal) => void testing.runProposal(proposal, proposal.message),
+                  onDismiss: testing.dismissProposal,
+                }}
               />
             </div>
             <div
@@ -340,6 +351,7 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
             regexScripts={props.regexScripts}
             coCreatorBlockedReason={coCreatorBlockedReason}
             onReportSent={() => setTab('conversation')}
+            proposalBlockedReason={proposalBlockedReason}
           />
         </section>
       </div>

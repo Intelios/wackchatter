@@ -437,7 +437,6 @@
  * chat. Only what the main chat does not have lives here.
  */
 
-.preset-cc-proposal,
 .preset-cc-share,
 .preset-cc-history__entry,
 .preset-cc-inspector {
@@ -511,6 +510,25 @@
 
 .preset-cc-tool--proposal {
   border-left: 3px solid var(--wc-accent);
+}
+
+/* Once run or dismissed the card is history: it keeps its words, drops the accent. */
+.preset-cc-tool--proposal:is([data-status="run"], [data-status="dismissed"]) {
+  border-left-color: var(--wc-border-strong);
+}
+
+.preset-cc-tool--proposal:is([data-status="run"], [data-status="dismissed"])
+  .preset-cc-tool__badge {
+  border-color: var(--wc-border);
+  background: transparent;
+  color: var(--wc-text-muted);
+}
+
+.preset-cc-tool__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin-top: var(--wc-space-2);
 }
 
 .preset-cc-tool__summary {
@@ -697,18 +715,186 @@
 }
 
 /*
+ * The testing panel's dock: proposals, errors and the composer ride one sticky edge, so
+ * whatever you act on next is in reach however far the transcript is scrolled.
+ */
+.preset-cc-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  border-top: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface-raised);
+}
+
+.preset-cc-dock:empty {
+  display: none;
+}
+
+.preset-cc-dock .preset-cc-composer {
+  position: static;
+  border-top: 0;
+  background: transparent;
+}
+
+.preset-cc-dock > .preset-cc-inline-error {
+  margin: var(--wc-space-2) var(--wc-space-3) 0;
+}
+
+.preset-cc-dock__attached {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3) 0;
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-dock__attached .wc-button {
+  margin-left: auto;
+}
+
+/* A class rather than an `svg` selector: the tool cards already size every svg inside them. */
+.preset-cc-icon-sm {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  flex-shrink: 0;
+}
+
+/*
  * Unlike the main chat's, these composers float over the conversation scrolling beneath
  * them, and a glass surface is only 80% opaque — the text behind showed through. The same
  * blur the shell's glass panels use, and dropped under the same accessibility queries.
  */
-.preset-cc-shell[data-glass="true"] .preset-cc-composer {
+.preset-cc-shell[data-glass="true"] .preset-cc-composer,
+.preset-cc-shell[data-glass="true"] .preset-cc-dock {
   backdrop-filter: blur(20px) saturate(140%);
 }
 
+/* Inside the dock the dock itself is the blurred surface; a second blur would stack. */
+.preset-cc-shell[data-glass="true"] .preset-cc-dock .preset-cc-composer {
+  backdrop-filter: none;
+}
+
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .preset-cc-shell[data-glass="true"] .preset-cc-composer {
+  .preset-cc-shell[data-glass="true"] .preset-cc-composer,
+  .preset-cc-shell[data-glass="true"] .preset-cc-dock {
     backdrop-filter: none;
   }
+}
+
+/* --- Proposal tray ---------------------------------------------------------- */
+
+.preset-cc-tray {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.preset-cc-tray__head {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+.preset-cc-tray__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wc-text-muted);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preset-cc-tray__toggle:hover {
+  color: var(--wc-text);
+}
+
+.preset-cc-tray__chevron {
+  display: inline-flex;
+  transform: rotate(90deg);
+  transition: transform var(--wc-duration-fast) ease;
+}
+
+.preset-cc-tray__chevron[data-collapsed] {
+  transform: rotate(-90deg);
+}
+
+.preset-cc-tray__clear {
+  margin-left: auto;
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-tray__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  /* A long session can leave several waiting; the composer must stay on screen. */
+  max-height: 13rem;
+  margin: var(--wc-space-2) 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.preset-cc-tray__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2);
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-left: 3px solid var(--wc-accent);
+  border-radius: var(--wc-radius);
+  background: var(--wc-bubble);
+}
+
+.preset-cc-tray__row[data-editing] {
+  border-left-style: dashed;
+  opacity: 0.75;
+}
+
+.preset-cc-tray__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.preset-cc-tray__rationale {
+  overflow: hidden;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-cc-tray__message {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--wc-text-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.preset-cc-tray__message .message__badge {
+  margin-right: var(--wc-space-1);
+}
+
+.preset-cc-tray__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+}
+
+.preset-cc-tray__state {
+  color: var(--wc-accent);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
 }
 
 .preset-cc-composer__field {
@@ -885,7 +1071,6 @@
 }
 
 .preset-cc-history__actions,
-.preset-cc-proposal__actions,
 .preset-cc-test-controls,
 .preset-cc-share__actions {
   display: flex;
@@ -905,18 +1090,6 @@
 
 .preset-cc-test-history .wc-label {
   margin: 0;
-}
-
-.preset-cc-proposals {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wc-space-2);
-  padding: var(--wc-space-3);
-  border-bottom: var(--wc-border-width) solid var(--wc-border);
-}
-
-.preset-cc-proposal p {
-  margin: var(--wc-space-2) 0;
 }
 
 .preset-cc-check {
