@@ -10,9 +10,10 @@ import {
 } from '@shared/types/group.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import type { LorebookSummary } from '@shared/types/worldinfo.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CheckField, NumberField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
+import { Select } from '../../components/Select.tsx';
 import { PlusIcon } from '../../layout/icons.tsx';
 import { characterApi, settingsApi, streamGenerate } from '../../lib/api.ts';
 import { encodingForModel, loadCounter } from '../../lib/tokenizer.ts';
@@ -46,26 +47,29 @@ export function GenerationFields({
   models: ProviderModel[];
   inherit?: boolean;
 }) {
+  const fieldsId = useId();
   return (
     <div className="group-fields">
-      <label>
-        Connection
-        <select
-          className="wc-input"
+      <div className="field">
+        <label className="wc-label" htmlFor={`${fieldsId}-connection`}>
+          Connection
+        </label>
+        <Select
+          id={`${fieldsId}-connection`}
+          label="Connection"
           value={value.connectionId ?? ''}
-          onChange={(e) => onChange({ ...value, connectionId: e.target.value || undefined })}
-        >
-          <option value="">{inherit ? 'Use group default' : 'Choose connection'}</option>
-          {value.connectionId && !connections.some((c) => c.id === value.connectionId) ? (
-            <option value={value.connectionId}>Unavailable connection</option>
-          ) : null}
-          {connections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          options={[
+            { value: '', label: inherit ? 'Use group default' : 'Choose connection' },
+            ...(value.connectionId && !connections.some((c) => c.id === value.connectionId)
+              ? [{ value: value.connectionId, label: 'Unavailable connection' }]
+              : []),
+            ...connections.map((c) => ({ value: c.id, label: c.name })),
+          ]}
+          onChange={(connectionId) =>
+            onChange({ ...value, connectionId: connectionId || undefined })
+          }
+        />
+      </div>
       <div className="field">
         <span className="wc-label">Model</span>
         <ModelCombobox
@@ -75,24 +79,24 @@ export function GenerationFields({
           onCommit={(model) => onChange({ ...value, model: model || undefined })}
         />
       </div>
-      <label>
-        Preset
-        <select
-          className="wc-input"
+      <div className="field">
+        <label className="wc-label" htmlFor={`${fieldsId}-preset`}>
+          Preset
+        </label>
+        <Select
+          id={`${fieldsId}-preset`}
+          label="Preset"
           value={value.presetId ?? ''}
-          onChange={(e) => onChange({ ...value, presetId: e.target.value || undefined })}
-        >
-          <option value="">{inherit ? 'Use group default' : 'Choose preset'}</option>
-          {value.presetId && !presets.some((p) => p.id === value.presetId) ? (
-            <option value={value.presetId}>Unavailable preset</option>
-          ) : null}
-          {presets.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          options={[
+            { value: '', label: inherit ? 'Use group default' : 'Choose preset' },
+            ...(value.presetId && !presets.some((p) => p.id === value.presetId)
+              ? [{ value: value.presetId, label: 'Unavailable preset' }]
+              : []),
+            ...presets.map((p) => ({ value: p.id, label: p.name })),
+          ]}
+          onChange={(presetId) => onChange({ ...value, presetId: presetId || undefined })}
+        />
+      </div>
     </div>
   );
 }
@@ -444,23 +448,21 @@ export function GroupEditor({
         />
       </Section>
       <Section title="Conversation director" defaultOpen>
-        <label>
-          Connection
-          <select
-            className="wc-input"
+        <div className="field">
+          <label className="wc-label" htmlFor="group-director-connection">
+            Connection
+          </label>
+          <Select
+            id="group-director-connection"
+            label="Connection"
             value={value.director.connectionId}
-            onChange={(e) =>
-              patch({ director: { ...value.director, connectionId: e.target.value } })
-            }
-          >
-            <option value="">Choose connection</option>
-            {options.connections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={[
+              { value: '', label: 'Choose connection' },
+              ...options.connections.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+            onChange={(connectionId) => patch({ director: { ...value.director, connectionId } })}
+          />
+        </div>
         <div className="field">
           <span className="wc-label">Director model</span>
           <ModelCombobox

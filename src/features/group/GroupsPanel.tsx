@@ -7,6 +7,7 @@ import {
 } from '@shared/types/group.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu, type MenuEntry } from '../../components/Menu.tsx';
+import { Select } from '../../components/Select.tsx';
 import { StackedAvatars } from '../../components/StackedAvatars.tsx';
 import {
   ChevronLeftIcon,
@@ -225,17 +226,17 @@ export function GroupsPanel({
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search groups and scenes"
         />
-        <select
-          className="wc-select groups-panel__sort"
+        <Select
+          className="groups-panel__sort"
+          label="Sort groups and scenes"
           value={sort}
-          onChange={(e) => setSort(e.target.value as GroupSortOption)}
-          aria-label="Sort groups and scenes"
-          title="Sort groups and scenes"
-        >
-          <option value="recent">Recent</option>
-          <option value="name">Name</option>
-          <option value="members">Cast size</option>
-        </select>
+          options={[
+            { value: 'recent' as const, label: 'Recent' },
+            { value: 'name' as const, label: 'Name' },
+            { value: 'members' as const, label: 'Cast size' },
+          ]}
+          onChange={setSort}
+        />
       </div>
 
       {error ? <div className="character-list__error">{error}</div> : null}

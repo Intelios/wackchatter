@@ -21,6 +21,7 @@ import { ARENA_MAX_COLUMNS, ARENA_MIN_COLUMNS } from '@shared/types/arena.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import {
   CloseIcon,
   ExpandIcon,
@@ -273,21 +274,16 @@ export function ArenaBench({
           ) : null}
 
           <div className="arena-cue__settings">
-            <label className="arena-cue__columns">
-              Columns
-              <select
-                className="wc-select"
+            <div className="arena-cue__columns">
+              <label htmlFor="arena-bench-columns">Columns</label>
+              <Select
+                id="arena-bench-columns"
+                label="Columns"
                 value={columns}
-                aria-label="How many contenders to compare at once"
-                onChange={(event) => onSettingsChange({ columns: Number(event.target.value) })}
-              >
-                {[2, 3, 4].map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={[2, 3, 4].map((count) => ({ value: count, label: String(count) }))}
+                onChange={(next) => onSettingsChange({ columns: next })}
+              />
+            </div>
             {/*
              * Four columns on a 1240px canvas is about 38 characters a line, which is a
              * ticker tape whatever the type size. Saying so is more honest than quietly

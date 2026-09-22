@@ -805,7 +805,8 @@
   font-size: var(--wc-text-xs);
 }
 
-.arena-cue__columns .wc-select {
+/* The root wears the width; the trigger inside fills it. */
+.arena-cue__columns .wc-select-root {
   width: calc(var(--wc-control) * 2);
 }
 

@@ -20,6 +20,7 @@ import type {
 import { TOURNAMENT_SIZES, tournamentStages } from '@shared/types/arena.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import { useRef, useState } from 'react';
+import { Select } from '../../../components/Select.tsx';
 import { seedEntrants, stageName } from './bracket.ts';
 import { SavedCuePicker } from './SavedCuePicker.tsx';
 
@@ -218,21 +219,24 @@ export function TournamentWizard({
             <div className="arena-tour__plan" key={index}>
               <h4>{stageNameOf(index)}</h4>
 
-              <label className="wc-label">
-                Card
-                <select
-                  className="wc-select"
+              <div className="field">
+                <label className="wc-label" htmlFor={`arena-tour-card-${index}`}>
+                  Card
+                </label>
+                <Select
+                  id={`arena-tour-card-${index}`}
+                  label={`Card for ${stageNameOf(index)}`}
                   value={plan.characterId}
-                  onChange={(event) => setPlan(index, { characterId: event.target.value })}
-                >
-                  {characters.length === 0 ? <option value="">No cards</option> : null}
-                  {characters.map((character) => (
-                    <option key={character.avatar} value={character.avatar}>
-                      {character.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={[
+                    ...(characters.length === 0 ? [{ value: '', label: 'No cards' }] : []),
+                    ...characters.map((character) => ({
+                      value: character.avatar,
+                      label: character.name,
+                    })),
+                  ]}
+                  onChange={(characterId) => setPlan(index, { characterId })}
+                />
+              </div>
 
               <div className="arena-tour__cuetop">
                 <span className="wc-label">Cue</span>

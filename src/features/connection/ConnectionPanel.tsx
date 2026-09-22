@@ -3,6 +3,7 @@ import { PROVIDERS } from '@shared/providers/types.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
 import { activeConnection } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
 import {
@@ -239,24 +240,22 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
           <label className="wc-label" htmlFor="wc-provider">
             Provider
           </label>
-          <select
+          <Select
             id="wc-provider"
-            className="wc-select"
+            label="Provider"
             value={connection.provider}
-            onChange={(event) => {
-              const next = event.target.value as ProviderId;
+            options={Object.values(PROVIDERS).map((descriptor) => ({
+              value: descriptor.id,
+              label: descriptor.label,
+              description: descriptor.defaultBaseUrl,
+            }))}
+            onChange={(next) => {
               // Switching provider also moves the endpoint to that provider's default,
               // since a base URL is meaningless across providers. The server drops the
               // stored key: it belongs to the old endpoint.
               void patch({ provider: next, baseUrl: PROVIDERS[next].defaultBaseUrl, model: '' });
             }}
-          >
-            {Object.values(PROVIDERS).map((descriptor) => (
-              <option key={descriptor.id} value={descriptor.id}>
-                {descriptor.label}
-              </option>
-            ))}
-          </select>
+          />
 
           <label className="wc-label" htmlFor="wc-base-url">
             Endpoint

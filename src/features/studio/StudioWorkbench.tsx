@@ -10,6 +10,7 @@ import {
   TagField,
   TextField,
 } from '../../components/Field.tsx';
+import { Select } from '../../components/Select.tsx';
 import { ChevronLeftIcon, DownloadIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
@@ -269,19 +270,16 @@ export function StudioWorkbench({
                 <label className="wc-label" htmlFor="studio-folder">
                   Folder
                 </label>
-                <select
+                <Select
                   id="studio-folder"
-                  className="wc-select"
+                  label="Folder"
                   value={draft.folder}
-                  onChange={(event) => void draft.moveToFolder(event.target.value)}
-                >
-                  <option value="">Top level</option>
-                  {allFolders.map((folder) => (
-                    <option key={folder} value={folder}>
-                      {folder}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: 'Top level' },
+                    ...allFolders.map((folder) => ({ value: folder, label: folder })),
+                  ]}
+                  onChange={(folder) => void draft.moveToFolder(folder)}
+                />
                 <p className="wc-hint">Moves the file without changing its identity or chats.</p>
               </div>
             </div>
