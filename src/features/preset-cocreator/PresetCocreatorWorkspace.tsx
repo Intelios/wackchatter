@@ -254,14 +254,44 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
               </button>
             ))}
           </nav>
+          {/* All three stay mounted and share one grid cell; the inactive two are hidden,
+              not unmounted. Unmounting threw away everything a panel held locally — the
+              composer draft, a half-written message edit, unapplied preset edits, the
+              scroll position — every time a tab was clicked. `visibility` rather than
+              `display: none`, because a display-none scroller forgets where it was. */}
           <div className="preset-cc-left__content">
-            {tab === 'conversation' ? (
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'conversation' || undefined}
+              inert={tab !== 'conversation'}
+            >
               <PresetAssistantPanel controller={controller} connections={props.connections} />
-            ) : tab === 'preset' ? (
-              <PresetDraftEditor controller={controller} connection={assistantConnection} />
-            ) : (
-              <PresetHistoryPanel controller={controller} />
-            )}
+            </div>
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'preset' || undefined}
+              inert={tab !== 'preset'}
+            >
+              <PresetDraftEditor
+                current={controller.session.current}
+                busy={controller.busy}
+                connection={assistantConnection}
+                replaceDraft={controller.replaceDraft}
+              />
+            </div>
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'history' || undefined}
+              inert={tab !== 'history'}
+            >
+              <PresetHistoryPanel
+                history={controller.session.history}
+                draftRevision={controller.session.draftRevision}
+                busy={controller.busy}
+                onRestore={controller.restoreDraft}
+                onUndoTurn={controller.undoTurn}
+              />
+            </div>
           </div>
         </section>
         {/* A real <hr> rather than a div: it is the separator role, and biome is right that

@@ -1,10 +1,30 @@
-import type { PresetCocreatorController } from './usePresetCocreator.ts';
+import type { PresetDraftRevision } from '@shared/types/preset-cocreator.ts';
+import { memo } from 'react';
 
-export function PresetHistoryPanel({ controller }: { controller: PresetCocreatorController }) {
+interface PresetHistoryPanelProps {
+  history: readonly PresetDraftRevision[];
+  draftRevision: number;
+  busy: boolean;
+  onRestore: (revision: number) => Promise<void>;
+  onUndoTurn: (turnId: string) => Promise<void>;
+}
+
+/**
+ * Memoised on narrow props rather than handed the whole controller: the panel stays
+ * mounted behind the other tabs, and the workspace re-renders on every streamed token.
+ * None of these props move while a reply streams, so a hidden History costs nothing.
+ */
+export const PresetHistoryPanel = memo(function PresetHistoryPanel({
+  history,
+  draftRevision,
+  busy,
+  onRestore,
+  onUndoTurn,
+}: PresetHistoryPanelProps) {
   const seenTurns = new Set<string>();
   return (
     <div className="preset-cc-history">
-      {[...controller.session.history].reverse().map((revision) => {
+      {[...history].reverse().map((revision) => {
         const canUndoTurn = Boolean(revision.turnId && !seenTurns.has(revision.turnId));
         if (revision.turnId) seenTurns.add(revision.turnId);
         return (
@@ -48,13 +68,9 @@ export function PresetHistoryPanel({ controller }: { controller: PresetCocreator
               <button
                 type="button"
                 className="wc-button wc-button--ghost"
-                disabled={controller.busy || revision.revision === controller.session.draftRevision}
-                title={
-                  controller.busy
-                    ? 'Restoration is locked while the assistant is running.'
-                    : undefined
-                }
-                onClick={() => void controller.restoreDraft(revision.revision)}
+                disabled={busy || revision.revision === draftRevision}
+                title={busy ? 'Restoration is locked while the assistant is running.' : undefined}
+                onClick={() => void onRestore(revision.revision)}
               >
                 Restore this revision
               </button>
@@ -62,8 +78,8 @@ export function PresetHistoryPanel({ controller }: { controller: PresetCocreator
                 <button
                   type="button"
                   className="wc-button wc-button--ghost"
-                  disabled={controller.busy}
-                  onClick={() => void controller.undoTurn(revision.turnId!)}
+                  disabled={busy}
+                  onClick={() => void onUndoTurn(revision.turnId!)}
                 >
                   Undo this assistant turn
                 </button>
@@ -74,4 +90,4 @@ export function PresetHistoryPanel({ controller }: { controller: PresetCocreator
       })}
     </div>
   );
-}
+});

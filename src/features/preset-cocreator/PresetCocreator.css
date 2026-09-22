@@ -297,12 +297,31 @@
 
 .preset-cc-left {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
-.preset-cc-left__content,
+/*
+ * The three left panels share one grid cell and stay mounted; only the active one is
+ * visible. Each panel scrolls itself, so each keeps its own place — see the workspace.
+ */
+.preset-cc-left__content {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.preset-cc-left__panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.preset-cc-left__panel:not([data-active]) {
+  visibility: hidden;
+}
+
 .preset-cc-right {
-  overflow: auto;
+  overflow: hidden;
 }
 
 .preset-cc-resizer {
@@ -335,7 +354,15 @@
 .preset-cc-testing {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* These columns now scroll themselves at a fixed height, so their rows must not squash. */
+.preset-cc-assistant > *,
+.preset-cc-testing > *,
+.preset-cc-history > * {
+  flex-shrink: 0;
 }
 
 .preset-cc-setup {
@@ -392,9 +419,13 @@
 }
 
 .preset-cc-assistant__conversation,
+.preset-cc-test-body {
+  flex: 1 0 auto;
+}
+
+.preset-cc-assistant__conversation,
 .preset-cc-transcript {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: var(--wc-space-3);
   padding: var(--wc-space-4);
@@ -640,6 +671,21 @@
   background: var(--wc-surface-raised);
 }
 
+/*
+ * Unlike the main chat's, these composers float over the conversation scrolling beneath
+ * them, and a glass surface is only 80% opaque — the text behind showed through. The same
+ * blur the shell's glass panels use, and dropped under the same accessibility queries.
+ */
+.preset-cc-shell[data-glass="true"] .preset-cc-composer {
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .preset-cc-shell[data-glass="true"] .preset-cc-composer {
+    backdrop-filter: none;
+  }
+}
+
 .preset-cc-composer__field {
   position: relative;
   display: flex;
@@ -679,11 +725,31 @@
   }
 }
 
+/*
+ * A column, not a fixed-row grid: the problem and error lines come and go, and a grid
+ * that counted on them pushed the editor body into an `auto` row whenever they were
+ * absent — the JSON box shrank to its minimum and the visual columns stopped scrolling.
+ */
 .preset-cc-editor {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.preset-cc-editor > .preset-cc-inline-error,
+.preset-cc-editor__problem {
+  margin: var(--wc-space-2);
+}
+
+.preset-cc-editor__problem {
+  padding: var(--wc-space-1) var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-danger-subtle);
+  color: var(--wc-danger);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  overflow-wrap: anywhere;
 }
 
 .preset-cc-editor__toolbar {
@@ -698,8 +764,12 @@
   margin-left: auto;
 }
 
+.preset-cc-editor__state[data-state="invalid"] {
+  color: var(--wc-danger);
+}
+
 .preset-cc-editor__json {
-  height: 100%;
+  flex: 1;
   min-height: 0;
   resize: none;
   border: 0;
@@ -709,8 +779,10 @@
 }
 
 .preset-cc-editor__visual {
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  grid-template-rows: minmax(0, 1fr);
   min-inline-size: 0;
   min-height: 0;
   margin: 0;
@@ -733,7 +805,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--wc-space-3);
+  height: 100%;
   padding: var(--wc-space-3);
+  overflow-y: auto;
 }
 
 .preset-cc-history__entry header,
@@ -886,6 +960,10 @@
   .preset-cc-setup__body,
   .preset-cc-editor__visual {
     grid-template-columns: 1fr;
+  }
+
+  .preset-cc-editor__visual {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .preset-cc-editor__generation {

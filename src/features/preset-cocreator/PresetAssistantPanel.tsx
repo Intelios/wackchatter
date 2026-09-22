@@ -1,9 +1,10 @@
 import type { Connection } from '@shared/providers/types.ts';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { EditIcon, PlugIcon, WandIcon } from '../../layout/icons.tsx';
 import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
 import { Reasoning } from '../chat/Reasoning.tsx';
+import { useStickToBottom } from '../chat/useStickToBottom.ts';
 import '../chat/MessageBubble.css';
 import { correlateToolMessages } from './assistant.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
@@ -23,6 +24,9 @@ export function PresetAssistantPanel({ controller, connections }: PresetAssistan
   const [editingText, setEditingText] = useState('');
   const settings = controller.session.document.settings;
   const messages = controller.session.document.messages;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const { scrollToBottom } = useStickToBottom(scrollRef, conversationRef);
 
   const patchSettings = (patch: Partial<typeof settings>) =>
     controller.updateDocument((document) => ({
@@ -34,6 +38,8 @@ export function PresetAssistantPanel({ controller, connections }: PresetAssistan
     const text = draft.trim();
     if (!text || controller.busy || toolCapability === false) return;
     setDraft('');
+    // Sending is a request to watch the answer, even from halfway up the history.
+    scrollToBottom();
     void controller.send(text);
   };
 
@@ -50,7 +56,7 @@ export function PresetAssistantPanel({ controller, connections }: PresetAssistan
       : 'thinking';
 
   return (
-    <div className="preset-cc-assistant">
+    <div className="preset-cc-assistant" ref={scrollRef}>
       <details className="preset-cc-setup">
         <summary>Assistant model and instructions</summary>
         <div className="preset-cc-setup__body">
@@ -75,7 +81,7 @@ export function PresetAssistantPanel({ controller, connections }: PresetAssistan
         </div>
       </details>
 
-      <div className="preset-cc-assistant__conversation" aria-live="polite">
+      <div className="preset-cc-assistant__conversation" aria-live="polite" ref={conversationRef}>
         {messages.length === 0 && settings.assistant.connectionId === null ? (
           <div className="wc-empty">
             Choose a native tool-capable model, then describe what you want to improve.
