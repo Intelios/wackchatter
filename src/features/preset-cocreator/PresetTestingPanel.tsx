@@ -9,7 +9,8 @@ import type { ProposedPresetTest } from '@shared/types/preset-cocreator.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoBook, WorldInfoSettings } from '@shared/types/worldinfo.ts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import {
   ChevronIcon,
   ChevronLeftIcon,
@@ -92,6 +93,7 @@ export function PresetTestingPanel({
   // State, not a ref, so the resize observer below re-attaches when the dock first mounts.
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const fieldId = useId();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [lastShared, setLastShared] = useState<{ messageId: string; at: number } | null>(null);
   const shareRef = useRef<HTMLElement>(null);
@@ -384,53 +386,64 @@ export function PresetTestingPanel({
             onChange={patchTestingSettings}
           />
           <div className="preset-cc-scenario">
-            <label className="field">
-              <span className="wc-label">Character card</span>
-              <select
-                className="wc-select"
+            <div className="field">
+              <label className="wc-label" htmlFor={`${fieldId}-card`}>
+                Character card
+              </label>
+              <Select
+                id={`${fieldId}-card`}
+                label="Character card"
                 value={characterId}
-                onChange={(event) => setCharacterId(event.target.value)}
-              >
-                <option value="">Choose a card</option>
-                {characters.map((entry) => (
-                  <option key={entry.avatar} value={entry.avatar}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="wc-label">Greeting</span>
-              <select
-                className="wc-select"
+                placeholder="Choose a card"
+                options={characters.map((entry) => ({
+                  value: entry.avatar,
+                  label: entry.name,
+                  // Names repeat across a library; the folder or creator tells them apart.
+                  description: entry.folder || entry.creator || undefined,
+                }))}
+                onChange={setCharacterId}
+              />
+            </div>
+            <div className="field">
+              <label className="wc-label" htmlFor={`${fieldId}-greeting`}>
+                Greeting
+              </label>
+              <Select
+                id={`${fieldId}-greeting`}
+                label="Greeting"
                 value={greetingIndex}
                 disabled={!greetings.length}
-                onChange={(event) => setGreetingIndex(Number(event.target.value))}
-              >
-                {greetings.map((greeting, index) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: positional greeting list
-                  <option key={`${index}:${greeting.slice(0, 20)}`} value={index}>
-                    {index === 0 ? 'Primary' : `Alternate ${index}`} · {greeting.slice(0, 52)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="wc-label">Persona</span>
-              <select
-                className="wc-select"
+                disabledReason={
+                  character ? 'This card has no greeting.' : 'Choose a character card first.'
+                }
+                options={greetings.map((greeting, index) => ({
+                  value: index,
+                  label: index === 0 ? 'Primary' : `Alternate ${index}`,
+                  // The opening words are how you recognise a greeting, so they get the line.
+                  description: greeting.replace(/\s+/g, ' ').trim().slice(0, 120) || undefined,
+                }))}
+                onChange={setGreetingIndex}
+              />
+            </div>
+            <div className="field">
+              <label className="wc-label" htmlFor={`${fieldId}-persona`}>
+                Persona
+              </label>
+              <Select
+                id={`${fieldId}-persona`}
+                label="Persona"
                 value={personaId}
-                onChange={(event) => setPersonaId(event.target.value)}
-              >
-                <option value="">No persona</option>
-                {personas.map((persona) => (
-                  <option key={persona.id} value={persona.id}>
-                    {persona.name}
-                    {persona.variantLabel ? ` · ${persona.variantLabel}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={[
+                  { value: '', label: 'No persona' },
+                  ...personas.map((persona) => ({
+                    value: persona.id,
+                    label: persona.name,
+                    description: persona.variantLabel || undefined,
+                  })),
+                ]}
+                onChange={setPersonaId}
+              />
+            </div>
             <fieldset>
               <legend className="wc-label">Lorebooks</legend>
               {books.length ? (
@@ -499,18 +512,18 @@ export function PresetTestingPanel({
           <label className="wc-label" htmlFor="preset-cc-test-select">
             Saved conversation
           </label>
-          <select
+          <Select
             id="preset-cc-test-select"
-            className="wc-select"
+            label="Saved conversation"
             value={test?.id ?? ''}
-            onChange={(event) => testing.setActive(event.target.value)}
-          >
-            {controller.session.document.tests.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.title}
-              </option>
-            ))}
-          </select>
+            placeholder="Choose a conversation"
+            options={controller.session.document.tests.map((entry) => ({
+              value: entry.id,
+              label: entry.title,
+              description: `${entry.messages.length} message${entry.messages.length === 1 ? '' : 's'}`,
+            }))}
+            onChange={testing.setActive}
+          />
           <button
             type="button"
             className="wc-button wc-button--ghost"

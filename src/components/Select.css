@@ -1,0 +1,141 @@
+/*
+ * The app's dropdown. The trigger wears .wc-select so it matches every field around it;
+ * the list reuses the popup surface and the arena pickers' option shape.
+ */
+
+.wc-select-root,
+.wc-select-popover {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.wc-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wc-select-trigger__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-select-trigger[data-placeholder] .wc-select-trigger__text {
+  color: var(--wc-text-faint);
+}
+
+.wc-select-trigger__chevron {
+  flex-shrink: 0;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  transform: rotate(90deg);
+  transition: transform var(--wc-duration-fast) ease;
+}
+
+.wc-select-trigger[aria-expanded="true"] .wc-select-trigger__chevron {
+  transform: rotate(-90deg);
+}
+
+/* At least as wide as the trigger, wider when an option needs it, never off-screen. */
+.wc-select-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(28rem, calc(100vw - var(--wc-space-6)));
+}
+
+/* Pinned over the list so a long filter result never scrolls the query away. */
+.wc-select-search {
+  position: sticky;
+  top: calc(var(--wc-space-1) * -1);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  margin: calc(var(--wc-space-1) * -1) calc(var(--wc-space-1) * -1) 0;
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface-popup);
+  color: var(--wc-text-faint);
+}
+
+.wc-select-search svg {
+  flex-shrink: 0;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+.wc-select-search .wc-input {
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border-color: transparent;
+  background: transparent;
+}
+
+.wc-select-option {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: var(--wc-border-width) solid transparent;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Options only ever take focus on purpose, so focus alone shows where the keyboard is. */
+.wc-select-option:hover:not(:disabled),
+.wc-select-option:focus {
+  outline: none;
+  background: var(--wc-surface-hover);
+}
+
+.wc-select-option[data-selected] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+}
+
+.wc-select-option:disabled {
+  color: var(--wc-text-muted);
+  cursor: not-allowed;
+}
+
+.wc-select-option__label {
+  overflow: hidden;
+  font-size: var(--wc-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-select-option__description {
+  overflow: hidden;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-select-empty {
+  margin: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-sm);
+}

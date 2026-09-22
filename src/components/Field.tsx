@@ -3,6 +3,7 @@ import { type Ref, useEffect, useId, useLayoutEffect, useRef, useState } from 'r
 import { ExpandIcon } from '../layout/icons.tsx';
 import { FullscreenText } from './FullscreenText.tsx';
 import { MacroCompletionList, macroComboboxProps, useMacroCompletion } from './MacroCompletion.tsx';
+import { Select } from './Select.tsx';
 import './Field.css';
 
 interface TextFieldProps {
@@ -442,6 +443,10 @@ export function OptionalNumberField({
 interface SelectOption<T> {
   label: string;
   value: T;
+  /** A quieter second line in the list. */
+  description?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 interface SelectFieldProps<T> {
@@ -454,12 +459,12 @@ interface SelectFieldProps<T> {
 }
 
 /**
- * A select over arbitrary values, keyed by index.
+ * A labelled `Select` over arbitrary values.
  *
- * The index indirection is required, not incidental: `WiPosition`, `WiLogic` and `WiRole`
- * are numeric enums that include 0, and an `<option value={0}>` round-trips through the
- * DOM as the string "0". Mapping back through `options` by index keeps the real value —
- * including `false`, `0` and `null` — instead of guessing at a parse.
+ * Values never pass through the DOM, so the numeric enums that include 0 (`WiPosition`,
+ * `WiLogic`, `WiRole`), `false` and `null` all round-trip as themselves. That used to need
+ * an index indirection through a native `<select>`, whose option values are strings; the
+ * app's own dropdown compares the real values, and draws its list itself.
  */
 export function SelectField<T>({
   label,
@@ -470,30 +475,21 @@ export function SelectField<T>({
   disabled,
 }: SelectFieldProps<T>) {
   const id = useId();
-  const selected = options.findIndex((option) => option.value === value);
 
   return (
     <div className="field">
       <label className="wc-label" htmlFor={id}>
         {label}
       </label>
-      <select
+      <Select
         id={id}
-        className="wc-select"
-        value={selected === -1 ? '' : String(selected)}
+        label={label}
+        value={value}
+        options={options}
+        onChange={onChange}
         disabled={disabled}
-        onChange={(event) => {
-          const option = options[Number(event.target.value)];
-          if (option) onChange(option.value);
-        }}
-      >
-        {selected === -1 ? <option value="">—</option> : null}
-        {options.map((option, index) => (
-          <option key={option.label} value={index}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        placeholder="—"
+      />
       {hint ? <p className="wc-hint">{hint}</p> : null}
     </div>
   );
