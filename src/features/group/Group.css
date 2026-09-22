@@ -324,6 +324,10 @@
   overflow: hidden;
 }
 
+.group-member[open] {
+  overflow: visible;
+}
+
 .group-member__summary {
   display: flex;
   align-items: center;
