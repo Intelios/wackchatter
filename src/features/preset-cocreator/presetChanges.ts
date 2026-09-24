@@ -60,7 +60,7 @@ function humanize(key: string): string {
   return words ? words[0]!.toUpperCase() + words.slice(1) : key;
 }
 
-const settingLabel = (key: string) => SETTING_LABELS[key] ?? humanize(key);
+export const settingLabel = (key: string) => SETTING_LABELS[key] ?? humanize(key);
 const promptFieldLabel = (key: string) => PROMPT_FIELD_LABELS[key] ?? key.replace(/_/g, ' ');
 
 function unionKeys(before: object, after: object): string[] {
@@ -71,7 +71,7 @@ const unchanged = (before: unknown, after: unknown) => diffPreset(before, after)
 const isPlain = (value: unknown) => value === null || typeof value !== 'object';
 
 /** A one-line string this short reads better as "high → medium" than as a word diff. */
-const SHORT_TEXT = 80;
+export const SHORT_TEXT = 80;
 
 function leafChange(key: string, label: string, before: unknown, after: unknown): PresetChange {
   const isText = (value: unknown) => typeof value === 'string' || value === undefined;
@@ -124,7 +124,7 @@ function ordersOf(preset: Preset): PromptOrderList[] {
 }
 
 const promptKey = (prompt: Prompt, index: number) => prompt.identifier || `#${index}`;
-const promptName = (prompt: Prompt) => prompt.name?.trim() || prompt.identifier;
+export const promptName = (prompt: Prompt) => prompt.name?.trim() || prompt.identifier;
 
 function promptChanges(before: Preset, after: Preset): PresetChange[] {
   const changes: PresetChange[] = [];

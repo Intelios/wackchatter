@@ -1,11 +1,15 @@
+import type { PresetSummary } from '@shared/types/preset.ts';
 import type { ReferencePresetSummary } from '@shared/types/preset-cocreator.ts';
 import { useRef, useState } from 'react';
+import { Select } from '../../components/Select.tsx';
 import { UploadIcon } from '../../layout/icons.tsx';
 import { referencePresetApi } from '../../lib/api.ts';
 import { formatTimestamp } from '../chat/formatDate.ts';
 
 interface PresetReferencePanelProps {
   references: readonly ReferencePresetSummary[];
+  /** The user's own library presets, offered for copying in one at a time. */
+  presets: readonly PresetSummary[];
   /** Called after any mutation so the parent can re-list. */
   onChanged: () => Promise<void>;
   onError: (message: string) => void;
@@ -18,6 +22,7 @@ interface PresetReferencePanelProps {
  */
 export function PresetReferencePanel({
   references,
+  presets,
   onChanged,
   onError,
 }: PresetReferencePanelProps) {
@@ -26,6 +31,7 @@ export function PresetReferencePanel({
   const [openId, setOpenId] = useState<string | null>(null);
   const [openRaw, setOpenRaw] = useState('');
   const [openLoading, setOpenLoading] = useState(false);
+  const [copying, setCopying] = useState(false);
 
   const importFile = async (file: File | undefined) => {
     if (!file) return;
@@ -34,6 +40,19 @@ export function PresetReferencePanel({
       await onChanged();
     } catch (failure) {
       onError((failure as Error).message);
+    }
+  };
+
+  const copyFromLibrary = async (presetId: string) => {
+    if (!presetId || copying) return;
+    setCopying(true);
+    try {
+      await referencePresetApi.copyFromLibrary(presetId);
+      await onChanged();
+    } catch (failure) {
+      onError((failure as Error).message);
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -74,17 +93,32 @@ export function PresetReferencePanel({
     <section className="preset-cc-references">
       <div className="preset-cc-references__head">
         <h2>Reference presets</h2>
-        <button
-          type="button"
-          className="wc-button wc-button--ghost"
-          onClick={() => fileInput.current?.click()}
-        >
-          <UploadIcon /> Import
-        </button>
+        <div className="preset-cc-references__actions">
+          {/* A picker that acts on pick: the value never sticks, so the same preset can be
+              copied again (it lands under a suffixed name). */}
+          <Select
+            label="Copy from my presets"
+            value=""
+            placeholder={copying ? 'Copying…' : 'Copy from my presets…'}
+            disabled={copying || !presets.length}
+            disabledReason={copying ? 'Copying…' : 'You have no library presets.'}
+            placement="bottom-end"
+            options={presets.map((preset) => ({ value: preset.id, label: preset.name }))}
+            onChange={(presetId) => void copyFromLibrary(presetId)}
+          />
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            onClick={() => fileInput.current?.click()}
+          >
+            <UploadIcon /> Import
+          </button>
+        </div>
       </div>
       <p className="wc-hint">
-        Example presets for the Co-Creator assistant to study — they never appear in your preset
-        list.
+        Example presets for the Co-Creator assistant to study — import a file or copy one of your
+        own presets. They never appear in your preset list, and copying leaves the original
+        untouched.
       </p>
       {references.length ? (
         references.map((entry) => {
@@ -125,8 +159,8 @@ export function PresetReferencePanel({
         })
       ) : (
         <div className="wc-empty">
-          No reference presets yet — import a SillyTavern-format preset JSON to give the assistant
-          examples to study.
+          No reference presets yet — import a SillyTavern-format preset JSON or copy one of your own
+          presets to give the assistant examples to study.
         </div>
       )}
       <input

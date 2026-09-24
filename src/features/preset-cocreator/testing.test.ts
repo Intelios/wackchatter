@@ -18,6 +18,8 @@ import {
   createPresetTest,
   dismissPendingProposals,
   editPresetTestMessage,
+  NO_CARD_DEFAULT_NAME,
+  noCardCharacter,
   type PreparedPresetTestRequest,
   preparePresetTestRequest,
   REPORT_DEFAULT_REQUEST,
@@ -715,5 +717,47 @@ describe('proposed tests', () => {
       { ...base, id: 'c', status: 'pending' },
     ]);
     expect(cleared.map((proposal) => proposal.status)).toEqual(['dismissed', 'run', 'dismissed']);
+  });
+});
+
+describe('a test with no character card', () => {
+  const noCard = (name = 'Narrator') =>
+    createPresetTest(scenario({ characterId: null, character: noCardCharacter(name) }));
+
+  test('starts empty — there is no greeting to open with', () => {
+    expect(noCard().messages).toEqual([]);
+  });
+
+  test('a blank name falls back to the default rather than an empty {{char}}', () => {
+    expect(noCardCharacter('   ').name).toBe(NO_CARD_DEFAULT_NAME);
+    expect(noCardCharacter(' Narrator ').name).toBe('Narrator');
+  });
+
+  test('{{char}} resolves to the typed name', () => {
+    const preset = createDefaultPreset();
+    const sent = appendPresetTestUserMessage(noCard(), 'Hello {{char}}.', preset);
+    expect(sent?.messages.at(-1)?.mes).toBe('Hello Narrator.');
+  });
+
+  test('the prompt keeps the preset and carries no card blocks', () => {
+    const preset = createDefaultPreset();
+    preset.prompts = preset.prompts!.map((prompt) =>
+      prompt.identifier === 'main' ? { ...prompt, content: 'House rules for {{char}}.' } : prompt,
+    );
+    const sent = appendPresetTestUserMessage(noCard(), 'Hello.', preset)!;
+    const prepared = prepareSend(sent, preset)!;
+    expect(prepared.assembled.ok).toBe(true);
+
+    const contents = prepared.assembled.messages.map((message) => String(message.content));
+    // Empty card fields assemble to nothing — no blank system messages stand in for them.
+    expect(contents.every((content) => content.trim())).toBe(true);
+    expect(contents).toContain('House rules for Narrator.');
+    expect(contents.at(-1)).toBe('Hello.');
+    // The same preset with a card sends strictly more: the card's own blocks.
+    const withCard = prepareSend(
+      appendPresetTestUserMessage(createPresetTest(scenario()), 'Hello.', preset)!,
+      preset,
+    )!;
+    expect(withCard.assembled.messages.length).toBeGreaterThan(contents.length);
   });
 });

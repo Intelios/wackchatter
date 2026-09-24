@@ -31,8 +31,12 @@ import { composeLorebookSources } from '../lore/useLorebooks.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { ProposalTray } from './ProposalTray.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
+import { NO_CARD_DEFAULT_NAME, noCardCharacter } from './testing.ts';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 import type { PresetTestingController } from './usePresetTesting.ts';
+
+/** The card picker's "No character card" entry. A NUL can never be in a card filename. */
+const NO_CARD = '\u0000no-card';
 
 interface PresetTestingPanelProps {
   controller: PresetCocreatorController;
@@ -73,6 +77,8 @@ export function PresetTestingPanel({
   proposalBlockedReason,
 }: PresetTestingPanelProps) {
   const [characterId, setCharacterId] = useState(initialCharacterId ?? characters[0]?.avatar ?? '');
+  const [noCardName, setNoCardName] = useState(NO_CARD_DEFAULT_NAME);
+  const noCard = characterId === NO_CARD;
   const [character, setCharacter] = useState<CharacterDetail | null>(null);
   const [greetingIndex, setGreetingIndex] = useState(0);
   const [personaId, setPersonaId] = useState(initialPersonaId ?? '');
@@ -105,7 +111,7 @@ export function PresetTestingPanel({
   const { scrollToBottom, isFollowing } = useStickToBottom(scrollRef, bodyRef);
 
   useEffect(() => {
-    if (!characterId) {
+    if (!characterId || characterId === NO_CARD) {
       setCharacter(null);
       return;
     }
@@ -136,7 +142,7 @@ export function PresetTestingPanel({
     }));
 
   const snapshotScenario = async () => {
-    if (!character) {
+    if (!character && !noCard) {
       setSetupError('Choose a character card first.');
       return;
     }
@@ -144,9 +150,11 @@ export function PresetTestingPanel({
     setSetupError('');
     try {
       const persona = personas.find((entry) => entry.id === personaId) ?? null;
+      // No card means a name and nothing else: no greeting, no embedded or linked book.
+      const cardData = character ? character.card.data : noCardCharacter(noCardName);
       const linked =
-        typeof character.card.data.extensions?.world === 'string'
-          ? character.card.data.extensions.world
+        character && typeof cardData.extensions?.world === 'string'
+          ? cardData.extensions.world
           : null;
       const wanted = new Set(loreIds);
       if (linked) wanted.add(linked);
@@ -159,7 +167,7 @@ export function PresetTestingPanel({
         }),
       );
       const sources = composeLorebookSources({
-        character: character.card.data,
+        character: cardData,
         linkedName: linked,
         loaded,
         globalIds: loreIds,
@@ -167,9 +175,9 @@ export function PresetTestingPanel({
       });
       testing.start(
         {
-          characterId: character.avatar,
-          character: structuredClone(character.card.data),
-          greetingIndex,
+          characterId: character ? character.avatar : null,
+          character: structuredClone(cardData),
+          greetingIndex: character ? greetingIndex : 0,
           persona: persona ? structuredClone(persona) : null,
           worldInfoSources: structuredClone(sources),
           worldInfoSettings: structuredClone(worldInfoSettings),
@@ -178,7 +186,7 @@ export function PresetTestingPanel({
           ),
           variables: { local: {}, global: structuredClone(globalVariables) },
         },
-        `${character.name} · ${new Date().toLocaleTimeString()}`,
+        `${character ? character.name : 'No card'} · ${new Date().toLocaleTimeString()}`,
       );
     } catch (failure) {
       setSetupError((failure as Error).message);
@@ -395,15 +403,33 @@ export function PresetTestingPanel({
                 label="Character card"
                 value={characterId}
                 placeholder="Choose a card"
-                options={characters.map((entry) => ({
-                  value: entry.avatar,
-                  label: entry.name,
-                  // Names repeat across a library; the folder or creator tells them apart.
-                  description: entry.folder || entry.creator || undefined,
-                }))}
+                options={[
+                  {
+                    value: NO_CARD,
+                    label: 'No character card',
+                    description: 'Test the preset on its own — only a name for {{char}}.',
+                  },
+                  ...characters.map((entry) => ({
+                    value: entry.avatar,
+                    label: entry.name,
+                    // Names repeat across a library; the folder or creator tells them apart.
+                    description: entry.folder || entry.creator || undefined,
+                  })),
+                ]}
                 onChange={setCharacterId}
               />
             </div>
+            {noCard ? (
+              <label className="field">
+                <span className="wc-label">Character name</span>
+                <input
+                  className="wc-input"
+                  value={noCardName}
+                  placeholder={NO_CARD_DEFAULT_NAME}
+                  onChange={(event) => setNoCardName(event.target.value)}
+                />
+              </label>
+            ) : null}
             <div className="field">
               <label className="wc-label" htmlFor={`${fieldId}-greeting`}>
                 Greeting
@@ -414,7 +440,11 @@ export function PresetTestingPanel({
                 value={greetingIndex}
                 disabled={!greetings.length}
                 disabledReason={
-                  character ? 'This card has no greeting.' : 'Choose a character card first.'
+                  noCard
+                    ? 'No character card — the test starts with your message.'
+                    : character
+                      ? 'This card has no greeting.'
+                      : 'Choose a character card first.'
                 }
                 options={greetings.map((greeting, index) => ({
                   value: index,
@@ -493,7 +523,7 @@ export function PresetTestingPanel({
             <button
               type="button"
               className="wc-button wc-button--primary"
-              disabled={!character || setupBusy}
+              disabled={(!character && !noCard) || setupBusy}
               onClick={() => void snapshotScenario()}
             >
               {test ? 'Snapshot as new test' : 'Start test'}

@@ -209,7 +209,7 @@ export function usePresetTesting({
             feature: 'presetTest',
             generationId,
             sessionId: sessionRef.current.id,
-            character: baseTest.scenario.characterId,
+            character: baseTest.scenario.characterId ?? undefined,
             countText: countTokens.countText,
           },
         );

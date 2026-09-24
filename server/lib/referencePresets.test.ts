@@ -7,6 +7,7 @@ import { serializePreset } from '../../shared/prompt/preset-io.ts';
 import { handleReferencePresetRoute } from '../routes/referencePresets.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
 import {
+  copyPresetToReferences,
   deleteReferencePreset,
   getReferencePreset,
   importReferencePreset,
@@ -19,6 +20,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'wc-reference-presets-'));
   setDataDir(dir);
   mkdirSync(PATHS.referencePresets, { recursive: true });
+  mkdirSync(PATHS.presets, { recursive: true });
 });
 
 afterEach(() => {
@@ -115,5 +117,62 @@ describe('reference presets', () => {
     );
     expect(deleted?.status).toBe(200);
     expect(getReferencePreset('Ref')).toBeNull();
+  });
+
+  describe('copying a library preset', () => {
+    // Deliberately not serializePreset's exact output — the copy must be the file's bytes,
+    // not a re-serialisation of what the app parsed from them.
+    const raw = `${serializePreset({ ...createDefaultPreset(), temperature: 0.77 })}\n`;
+
+    test('stores the library file byte-for-byte under the preset name', async () => {
+      writeFileSync(join(PATHS.presets, 'Mine.json'), raw);
+
+      const copied = await copyPresetToReferences('Mine');
+      expect(copied?.id).toBe('Mine');
+      expect(readFileSync(join(PATHS.referencePresets, 'Mine.json'), 'utf8')).toBe(raw);
+      expect(readFileSync(join(PATHS.presets, 'Mine.json'), 'utf8')).toBe(raw);
+    });
+
+    test('a taken name gets a numeric suffix', async () => {
+      writeFileSync(join(PATHS.presets, 'Mine.json'), raw);
+      await copyPresetToReferences('Mine');
+      const second = await copyPresetToReferences('Mine');
+
+      expect(second?.id).toBe('Mine1');
+      expect(listReferencePresets().map((entry) => entry.id)).toEqual(['Mine', 'Mine1']);
+    });
+
+    test('a missing or escaping id copies nothing', async () => {
+      writeFileSync(join(dir, 'outside.json'), raw);
+      expect(await copyPresetToReferences('Nope')).toBeNull();
+      expect(await copyPresetToReferences('../outside')).toBeNull();
+      expect(listReferencePresets()).toEqual([]);
+    });
+
+    test('a library file that is not a preset is refused', async () => {
+      writeFileSync(join(PATHS.presets, 'Broken.json'), '"just a string"');
+      await expect(copyPresetToReferences('Broken')).rejects.toThrow();
+      expect(listReferencePresets()).toEqual([]);
+    });
+
+    test('the route copies, and 404s a missing preset', async () => {
+      writeFileSync(join(PATHS.presets, 'Mine.json'), raw);
+      const post = (presetId: unknown) =>
+        handleReferencePresetRoute(
+          new Request('http://x/api', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ presetId }),
+          }),
+          ['copy'],
+        );
+
+      const copied = await post('Mine');
+      expect(copied?.status).toBe(201);
+      expect(((await copied!.json()) as { id: string }).id).toBe('Mine');
+
+      expect((await post('Nope'))?.status).toBe(404);
+      expect((await post(42))?.status).toBe(400);
+    });
   });
 });

@@ -45,7 +45,8 @@ export interface ProposedPresetTest {
 }
 
 export interface PresetTestScenario {
-  characterId: string;
+  /** The card's filename; null for a test with no character card (`character` is blank). */
+  characterId: string | null;
   character: CardDataV2;
   greetingIndex: number;
   persona: Persona | null;

@@ -156,6 +156,13 @@
   margin: 0;
 }
 
+.preset-cc-references__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  min-width: 0;
+}
+
 .preset-cc-reference-row {
   display: flex;
   flex-direction: column;
@@ -361,7 +368,8 @@
 /* These columns now scroll themselves at a fixed height, so their rows must not squash. */
 .preset-cc-assistant > *,
 .preset-cc-testing > *,
-.preset-cc-history > * {
+.preset-cc-history > *,
+.preset-cc-compare > * {
   flex-shrink: 0;
 }
 
@@ -1170,6 +1178,164 @@
 .preset-cc-diff__side {
   color: var(--wc-text-faint);
   font-size: var(--wc-text-xs);
+}
+
+/* --- Compare: any two presets side by side ------------------------------------- */
+
+.preset-cc-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  height: 100%;
+  padding: var(--wc-space-3);
+  overflow-y: auto;
+}
+
+.preset-cc-compare__pickers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--wc-space-2);
+}
+
+.preset-cc-compare__swap {
+  font-size: var(--wc-text-lg);
+}
+
+.preset-cc-compare__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wc-space-3);
+}
+
+.preset-cc-compare__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+}
+
+.preset-cc-compare__section h3 {
+  margin: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.preset-cc-compare__row {
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface-raised);
+}
+
+.preset-cc-compare__row > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+  cursor: pointer;
+}
+
+.preset-cc-compare__label {
+  color: var(--wc-text);
+  font-size: var(--wc-text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.preset-cc-compare__status {
+  margin-left: auto;
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+}
+
+.preset-cc-compare__row[data-status="changed"] .preset-cc-compare__status {
+  color: var(--wc-accent);
+}
+
+.preset-cc-compare__row[data-status="added"] .preset-cc-compare__status {
+  color: var(--wc-success);
+}
+
+.preset-cc-compare__row[data-status="removed"] .preset-cc-compare__status {
+  color: var(--wc-danger);
+}
+
+/* Two equal columns, old then new; a meta line and a text cell per side. */
+.preset-cc-compare__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--wc-space-1) var(--wc-space-2);
+  padding: 0 var(--wc-space-3) var(--wc-space-3);
+}
+
+.preset-cc-compare__span {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.preset-cc-compare__meta {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.preset-cc-compare__meta[data-differs] {
+  color: var(--wc-accent);
+}
+
+.preset-cc-compare__text {
+  max-height: var(--wc-scroll-cap);
+  overflow-y: auto;
+}
+
+.preset-cc-compare__missing,
+.preset-cc-compare__empty {
+  display: flex;
+  align-self: start;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wc-space-2);
+  border: 1px dashed var(--wc-border-strong);
+  border-radius: var(--wc-radius-sm);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+/* A plain setting is one line: its name, then the two values under the two columns. */
+.preset-cc-compare__row--value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--wc-space-1) var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+}
+
+.preset-cc-compare__row--value .preset-cc-compare__label {
+  grid-column: 1 / -1;
+}
+
+.preset-cc-compare__value {
+  color: var(--wc-text-muted);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.preset-cc-compare__value del,
+.preset-cc-compare__value ins {
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.preset-cc-compare__value del {
+  background: var(--wc-danger-subtle);
+  text-decoration: none;
+}
+
+.preset-cc-compare__value ins {
+  background: var(--wc-success-subtle);
+  color: var(--wc-text);
+  text-decoration: none;
 }
 
 .preset-cc-changes__more {

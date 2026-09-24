@@ -25,6 +25,12 @@ function call(name: string, args: unknown): ProviderToolCall {
   };
 }
 
+const UNLINKED = {
+  sessionTitle: 'Default preset workshop',
+  sourcePresetId: null,
+  targetPresetId: null,
+};
+
 describe('Preset Co-Creator assistant boundary', () => {
   test('only the preset-scoped tools parse', () => {
     expect(parsePresetToolCall(call('read_preset', {}))).toEqual({ name: 'read_preset' });
@@ -116,14 +122,14 @@ describe('Preset Co-Creator assistant boundary', () => {
   });
 
   test('the preset reference shows ordered blocks without granting a path', () => {
-    const reference = presetReference(createDefaultPreset(), 3);
+    const reference = presetReference(createDefaultPreset(), 3, 'Mine');
     expect(reference.revision).toBe(3);
     expect(reference.order[0]).toMatchObject({ identifier: 'main', enabled: true });
     expect(JSON.stringify(reference)).not.toContain('filename');
   });
 
   test('every order entry carries the exact pointers for editing or toggling it', () => {
-    const reference = presetReference(createDefaultPreset(), 0);
+    const reference = presetReference(createDefaultPreset(), 0, null);
     const main = reference.order.find((entry) => entry.identifier === 'main')!;
     const promptsIndex = createDefaultPreset().prompts!.findIndex(
       (prompt) => prompt.identifier === 'main',
@@ -166,6 +172,7 @@ describe('Preset Co-Creator assistant boundary', () => {
         revision: 2,
         preset: createDefaultPreset(),
       }),
+      identity: () => ({ sessionTitle: 'Tuning', sourcePresetId: 'Mine', targetPresetId: 'Mine' }),
       // Faithful to the real dep: the server rejects an invalid patch, the executor passes
       // that rejection through, and nothing half-applies.
       patchDraft: async (input: { operations: Array<{ path: string }> }) => {
@@ -183,7 +190,7 @@ describe('Preset Co-Creator assistant boundary', () => {
     };
 
     const read = await executePresetToolCall(call('read_preset', {}), 'turn-1', deps);
-    expect(read).toMatchObject({ revision: 2 });
+    expect(read).toMatchObject({ revision: 2, presetName: 'Mine' });
 
     const patched = await executePresetToolCall(
       call('patch_preset', {
@@ -226,6 +233,7 @@ describe('Preset Co-Creator assistant boundary', () => {
   test('read_reference_preset resolves through the dep, and a miss rejects for the caller', async () => {
     const deps = {
       currentRevision: () => ({ revision: 0, preset: createDefaultPreset() }),
+      identity: () => ({ sessionTitle: 'S', sourcePresetId: null, targetPresetId: null }),
       patchDraft: async () => ({ revision: 1, diff: [] }),
       proposeTest: () => {},
       readReference: async (name: string) => {
@@ -252,13 +260,62 @@ describe('Preset Co-Creator assistant boundary', () => {
 
   test('the system prompt lists reference names only when there are any', () => {
     const revision = { revision: 0, preset: createDefaultPreset() };
-    const without = renderAssistantSystem(revision, '', []);
+    const without = renderAssistantSystem(revision, '', [], UNLINKED);
     expect(without).not.toContain('Reference presets available');
 
-    const withTwo = renderAssistantSystem(revision, '', ['Good One', 'Another']);
+    const withTwo = renderAssistantSystem(revision, '', ['Good One', 'Another'], UNLINKED);
     expect(withTwo).toContain('Reference presets available through read_reference_preset');
     expect(withTwo).toContain('- Good One');
     expect(withTwo).toContain('- Another');
+  });
+
+  test('the system prompt names the linked preset and the session', () => {
+    const revision = { revision: 0, preset: createDefaultPreset() };
+    const system = renderAssistantSystem(revision, '', [], {
+      sessionTitle: 'Darker narration',
+      sourcePresetId: 'Moody',
+      targetPresetId: 'Moody',
+    });
+    expect(system).toContain('Preset: "Moody"');
+    expect(system).toContain('Session: "Darker narration"');
+    // Nothing to say about where it started when it is the same preset.
+    expect(system).not.toContain('Started from');
+    // The name sits before the draft reference, as data like the rest of it.
+    expect(system.indexOf('Preset: "Moody"')).toBeLessThan(
+      system.indexOf('Current draft reference'),
+    );
+  });
+
+  test('after Save as new, the prompt names the new target and where it started', () => {
+    const system = renderAssistantSystem({ revision: 2, preset: createDefaultPreset() }, '', [], {
+      sessionTitle: 'Fork',
+      sourcePresetId: 'Moody',
+      targetPresetId: 'Moody v2',
+    });
+    expect(system).toContain('Preset: "Moody v2"');
+    expect(system).toContain('Started from "Moody"');
+  });
+
+  test('an unlinked draft is described as unnamed, never given a made-up name', () => {
+    const system = renderAssistantSystem(
+      { revision: 0, preset: createDefaultPreset() },
+      '',
+      [],
+      UNLINKED,
+    );
+    expect(system).toContain("isn't linked to a library preset");
+    expect(system).not.toContain('Preset: "');
+  });
+
+  test('read_preset reports a null name for an unlinked draft', async () => {
+    const read = await executePresetToolCall(call('read_preset', {}), 'turn-1', {
+      currentRevision: () => ({ revision: 0, preset: createDefaultPreset() }),
+      identity: () => UNLINKED,
+      patchDraft: async () => ({ revision: 1, diff: [] }),
+      proposeTest: () => {},
+      readReference: async () => null,
+    });
+    expect(read).toMatchObject({ revision: 0, presetName: null });
   });
 
   test('editing replaces only the targeted text', () => {

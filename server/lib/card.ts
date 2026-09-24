@@ -11,6 +11,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { blankCardData } from '../../shared/card/blank.ts';
 import type { CardDataV2, TavernCard } from '../../shared/types/card.ts';
 import { CARD_SPEC_V2, CARD_SPEC_V3, V1_REQUIRED_FIELDS } from '../../shared/types/card.ts';
 import { readTextChunks, replaceTextChunks } from './png.ts';
@@ -240,26 +241,7 @@ export function writeCard(png: Uint8Array, card: TavernCard): Uint8Array {
 
 /** A blank card, for "create new character". */
 export function createBlankCard(name: string): TavernCard {
-  return normalizeCard({
-    spec: CARD_SPEC_V2,
-    spec_version: '2.0',
-    data: {
-      name,
-      description: '',
-      personality: '',
-      scenario: '',
-      first_mes: '',
-      mes_example: '',
-      creator_notes: '',
-      system_prompt: '',
-      post_history_instructions: '',
-      alternate_greetings: [],
-      tags: [],
-      creator: '',
-      character_version: '',
-      extensions: {},
-    },
-  });
+  return normalizeCard({ spec: CARD_SPEC_V2, spec_version: '2.0', data: blankCardData(name) });
 }
 
 /**

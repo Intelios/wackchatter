@@ -1,3 +1,4 @@
+import { blankCardData } from '@shared/card/blank.ts';
 import {
   appendAlternates,
   appendSwipe,
@@ -16,6 +17,7 @@ import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
+import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, SwipeInfo } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type {
@@ -27,6 +29,18 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+
+/** What `{{char}}` becomes in a test with no character card, unless the user names it. */
+export const NO_CARD_DEFAULT_NAME = 'Assistant';
+
+/**
+ * The stand-in card for a test with no character card: a name and nothing else. Every
+ * empty field assembles to nothing, so the prompt is the preset, persona and lore alone —
+ * and with no greeting the test opens on the user's first message.
+ */
+export function noCardCharacter(name: string): CardDataV2 {
+  return blankCardData(name.trim() || NO_CARD_DEFAULT_NAME);
+}
 
 export type PresetTestGenerationKind = 'send' | 'regenerate' | 'swipe';
 

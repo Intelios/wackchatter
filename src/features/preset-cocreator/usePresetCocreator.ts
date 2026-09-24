@@ -20,6 +20,7 @@ import {
   editAssistantConversationMessage,
   executePresetToolCall,
   PRESET_ASSISTANT_TOOLS,
+  presetIdentity,
   referencePresetView,
   renderAssistantSystem,
   toolFailureResult,
@@ -245,6 +246,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
                 current.current,
                 current.document.settings.assistantInstructions,
                 referenceNames,
+                presetIdentity(current),
               ),
             },
             ...assistantWireMessages(messages),
@@ -303,6 +305,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
             try {
               result = await executePresetToolCall(call, turnId, {
                 currentRevision: () => sessionRef.current.current,
+                identity: () => presetIdentity(sessionRef.current),
                 patchDraft: async (input) => {
                   await flush();
                   const saved = await presetCocreatorApi.patchDraft(sessionRef.current.id, input);

@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { formatValue, type PresetChange } from './presetChanges.ts';
-import { diffText, foldParts } from './textDiff.ts';
+import { type DiffPart, diffText, foldParts } from './textDiff.ts';
 
 /**
  * Preset changes, drawn for reading: prompt text as a word diff with the untouched
@@ -35,6 +35,39 @@ function Change({ kind, text }: { kind: 'removed' | 'added'; text: string }) {
   );
 }
 
+/**
+ * A run of diff parts with the long unchanged stretches folded, each fold expandable in
+ * place. Shared by History's rows and the Compare tab's two columns.
+ */
+export const DiffParts = memo(function DiffParts({ parts }: { parts: readonly DiffPart[] }) {
+  const shown = useMemo(() => foldParts(parts), [parts]);
+  const [opened, setOpened] = useState<ReadonlySet<number>>(() => new Set());
+  return (
+    <>
+      {shown.map((part, index) => {
+        const key = `${index}:${part.kind}`;
+        if (part.kind === 'same') return <span key={key}>{part.text}</span>;
+        if (part.kind === 'fold') {
+          return opened.has(index) ? (
+            <span key={key}>{part.text}</span>
+          ) : (
+            <button
+              type="button"
+              className="preset-cc-diff__fold"
+              key={key}
+              title="Show the unchanged text"
+              onClick={() => setOpened((current) => new Set(current).add(index))}
+            >
+              ⋯ {part.words} unchanged word{part.words === 1 ? '' : 's'} ⋯
+            </button>
+          );
+        }
+        return <Change key={key} kind={part.kind} text={part.text} />;
+      })}
+    </>
+  );
+});
+
 const TextChangeRow = memo(function TextChangeRow({
   label,
   before,
@@ -45,8 +78,6 @@ const TextChangeRow = memo(function TextChangeRow({
   after: string;
 }) {
   const diff = useMemo(() => diffText(before, after), [before, after]);
-  const parts = useMemo(() => (diff.mode === 'words' ? foldParts(diff.parts) : []), [diff]);
-  const [opened, setOpened] = useState<ReadonlySet<number>>(() => new Set());
 
   return (
     <li className="preset-cc-change">
@@ -66,26 +97,7 @@ const TextChangeRow = memo(function TextChangeRow({
       </div>
       {diff.mode === 'words' ? (
         <div className="preset-cc-diff">
-          {parts.map((part, index) => {
-            const key = `${index}:${part.kind}`;
-            if (part.kind === 'same') return <span key={key}>{part.text}</span>;
-            if (part.kind === 'fold') {
-              return opened.has(index) ? (
-                <span key={key}>{part.text}</span>
-              ) : (
-                <button
-                  type="button"
-                  className="preset-cc-diff__fold"
-                  key={key}
-                  title="Show the unchanged text"
-                  onClick={() => setOpened((current) => new Set(current).add(index))}
-                >
-                  ⋯ {part.words} unchanged word{part.words === 1 ? '' : 's'} ⋯
-                </button>
-              );
-            }
-            return <Change key={key} kind={part.kind} text={part.text} />;
-          })}
+          <DiffParts parts={diff.parts} />
         </div>
       ) : (
         <div className="preset-cc-diff preset-cc-diff--rewritten">
