@@ -158,6 +158,48 @@ describe('Preset Co-Creator session store', () => {
     ).toEqual({ kind: 'stale', currentRevision: 1 });
   });
 
+  test('comparison snapshots survive document save and later draft changes', () => {
+    const session = create();
+    const frozenDraft = structuredClone(session.current.preset);
+    const frozenOther = structuredClone(session.current.preset);
+    frozenOther.temperature = 0.35;
+    const saved = store.saveDocument(session.id, {
+      expectedRevision: 0,
+      operationId: 'comparison-save',
+      document: {
+        ...session.document,
+        messages: [
+          {
+            id: 'comparison',
+            role: 'user',
+            content: 'Style',
+            created: 1,
+            comparison: {
+              draft: { label: 'Mine', revision: 0, preset: frozenDraft },
+              other: {
+                label: 'Old',
+                source: { kind: 'revision', revision: 0 },
+                preset: frozenOther,
+              },
+              focus: 'Style',
+            },
+          },
+        ],
+      },
+    });
+    expect(saved.kind).toBe('saved');
+    store.patchDraft(session.id, {
+      expectedRevision: 0,
+      operationId: 'later-edit',
+      source: 'manual',
+      summary: 'Later',
+      operations: [{ op: 'replace', path: '/temperature', value: 1.8 }],
+    });
+    const reloaded = store.getSession(session.id);
+    expect(reloaded?.document.messages[0]?.comparison?.draft.preset.temperature).toBe(1);
+    expect(reloaded?.document.messages[0]?.comparison?.other.preset.temperature).toBe(0.35);
+  });
+
   test('preset rename/delete references never discard the draft', () => {
     const session = create();
     expect(store.reassignPreset('Default', 'Renamed')).toBe(1);

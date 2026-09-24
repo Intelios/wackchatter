@@ -311,6 +311,8 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
               <PresetAssistantPanel
                 controller={controller}
                 connections={props.connections}
+                presets={props.presets}
+                references={props.references}
                 toolCapability={toolCapability}
                 onToolCapabilityChange={setToolCapability}
                 proposalActions={{

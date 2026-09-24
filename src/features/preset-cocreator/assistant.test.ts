@@ -6,12 +6,14 @@ import { ApiError } from '../../lib/api.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
+  configureAssistantMode,
   correlateToolMessages,
   editAssistantConversationMessage,
   executePresetToolCall,
   parsePresetToolCall,
   presetReference,
   referencePresetView,
+  rejectComparisonToolCalls,
   renderAssistantSystem,
   toolCallArguments,
   toolFailureResult,
@@ -345,6 +347,46 @@ describe('Preset Co-Creator assistant boundary', () => {
 
   test('assistant turns have a hard provider-request limit', () => {
     expect(ASSISTANT_REQUEST_LIMIT).toBe(6);
+  });
+
+  test('comparison sends frozen full presets and disables editing tools for that request only', () => {
+    const draft = createDefaultPreset();
+    const other = createDefaultPreset();
+    draft.temperature = 0.2;
+    other.temperature = 1.4;
+    const message: PresetCocreatorMessage = {
+      id: 'compare-1',
+      role: 'user',
+      content: 'Pacing',
+      created: 1,
+      comparison: {
+        draft: { label: 'Mine', revision: 3, preset: structuredClone(draft) },
+        other: {
+          label: 'Example',
+          source: { kind: 'reference', id: 'ref-1' },
+          preset: structuredClone(other),
+        },
+        focus: 'Pacing',
+      },
+    };
+    const body: { tools?: unknown; tool_choice?: unknown } = {};
+    configureAssistantMode(body, 'conversation');
+    expect(body.tools).toBeDefined();
+    configureAssistantMode(body, 'comparison');
+    expect(body).toEqual({});
+    expect(() => rejectComparisonToolCalls([call('patch_preset', {})])).toThrow('No tool was run');
+    expect(() => rejectComparisonToolCalls([])).not.toThrow();
+    const wire = assistantWireMessages([message]);
+    expect(wire[0]?.content).toContain('Pacing');
+    expect(wire[0]?.content).toContain('"temperature":0.2');
+    expect(wire[0]?.content).toContain('"temperature":1.4');
+    other.temperature = 0.5;
+    expect(wire[0]?.content).toContain('"temperature":1.4');
+    const edited = editAssistantConversationMessage([message], message.id, 'Efficiency');
+    expect(edited[0]?.comparison?.focus).toBe('Efficiency');
+    expect(edited[0]?.comparison?.other.preset.temperature).toBe(1.4);
+    configureAssistantMode(body, 'conversation');
+    expect(body.tools).toBeDefined();
   });
 });
 

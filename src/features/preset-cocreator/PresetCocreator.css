@@ -869,6 +869,133 @@
   flex: 1;
 }
 
+.preset-cc-composer__popover {
+  width: 100%;
+  min-width: 0;
+}
+
+.preset-cc-composer__popover .wc-textarea {
+  display: block;
+  width: 100%;
+}
+
+.preset-cc-composer__suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-1);
+  width: min(var(--wc-scroll-cap), 100%);
+  overflow-y: auto;
+}
+
+.preset-cc-composer__suggestions .composer__slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.preset-cc-composer__suggestions .composer__slash-item:hover {
+  background: var(--wc-surface-hover);
+}
+
+.preset-cc-composer__suggestions .composer__slash-item--active {
+  background: var(--wc-accent-subtle);
+}
+
+.preset-cc-composer__suggestions .composer__slash-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wc-accent);
+  font-family: var(--wc-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-cc-composer__suggestions .composer__slash-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-cc-composer__suggestions .composer__slash-usage {
+  flex-shrink: 0;
+  color: var(--wc-text-faint);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-composer__choice-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: var(--wc-border-width) solid var(--wc-border);
+}
+
+.preset-cc-composer__group-label,
+.preset-cc-composer__empty {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+}
+
+.preset-cc-composer__group-label {
+  border: 0;
+}
+
+.preset-cc-composer__selection,
+.preset-cc-composer__error {
+  grid-column: 1 / -1;
+}
+
+.preset-cc-composer__selection {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  min-width: 0;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.preset-cc-composer__selection > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-cc-comparison-card p,
+.preset-cc-comparison-card blockquote {
+  margin: var(--wc-space-2) 0;
+}
+
+.preset-cc-comparison-card__title {
+  color: var(--wc-accent);
+  font-family: var(--wc-font-mono);
+}
+
+.preset-cc-comparison-card pre {
+  max-height: var(--wc-scroll-cap);
+  overflow: auto;
+  font-size: var(--wc-text-xs);
+}
+
 /* The same patrol on the composer while its generation runs, exactly like the main chat. */
 .preset-cc-composer[data-busy] .preset-cc-composer__field::after {
   content: "";

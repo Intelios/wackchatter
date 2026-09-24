@@ -5,7 +5,7 @@ import type {
 } from '@shared/types/preset-cocreator.ts';
 import { memo, useEffect, useId, useMemo, useState } from 'react';
 import { Select, type SelectChoice } from '../../components/Select.tsx';
-import { presetApi, referencePresetApi } from '../../lib/api.ts';
+import { comparisonChoices, loadComparisonPreset } from './compareSources.ts';
 import { DiffParts } from './PresetChanges.tsx';
 import { formatValue } from './presetChanges.ts';
 import {
@@ -65,10 +65,7 @@ function useSourcePreset(
     }
     let cancelled = false;
     setRemote({ key: remoteKey });
-    const load =
-      decoded.kind === 'library'
-        ? presetApi.get(decoded.id)
-        : referencePresetApi.get(decoded.id).then((record) => record.preset);
+    const load = loadComparisonPreset(decoded, history);
     load
       .then((preset) => {
         if (!cancelled) setRemote({ key: remoteKey, preset });
@@ -275,25 +272,26 @@ export const PresetCompareView = memo(function PresetCompareView({
   );
 
   const options = useMemo((): SelectChoice<string>[] => {
-    const revisions = [...history].reverse().map((revision) => ({
-      value: encodeSource({ kind: 'revision', revision: revision.revision }),
-      label: `Revision ${revision.revision}${revision.revision === current.revision ? ' (current)' : ''}`,
-      description: revision.summary || revision.source,
-    }));
+    const catalogue = comparisonChoices(references, presets, history, current.revision + 1);
+    const mapGroup = (group: (typeof catalogue)[number]['group']) =>
+      catalogue
+        .filter((choice) => choice.group === group)
+        .map((choice) => ({
+          value: choice.key,
+          label:
+            choice.source.kind === 'revision' && choice.source.revision === current.revision
+              ? `${choice.label} (current)`
+              : choice.label,
+          description:
+            choice.source.kind === 'library' && choice.source.id === targetPresetId
+              ? 'My preset · this session saves here'
+              : choice.detail,
+        }));
     return [
       { value: 'draft', label: 'Current draft', description: `Revision ${current.revision}` },
-      ...revisions,
-      ...presets.map((preset) => ({
-        value: encodeSource({ kind: 'library', id: preset.id }),
-        label: preset.name,
-        description:
-          preset.id === targetPresetId ? 'My preset · this session saves here' : 'My preset',
-      })),
-      ...references.map((reference) => ({
-        value: encodeSource({ kind: 'reference', id: reference.id }),
-        label: reference.name,
-        description: 'Reference preset',
-      })),
+      ...mapGroup('Session revisions'),
+      ...mapGroup('My presets'),
+      ...mapGroup('Reference presets'),
     ];
   }, [history, current.revision, presets, references, targetPresetId]);
 

@@ -2,6 +2,7 @@ import { diffPreset } from '@shared/preset-cocreator/patch.ts';
 import { getPromptOrder } from '@shared/prompt/preset-io.ts';
 import type { Preset, Prompt } from '@shared/types/preset.ts';
 import { INJECTION_POSITION } from '@shared/types/preset.ts';
+import type { PresetComparisonSource } from '@shared/types/preset-cocreator.ts';
 import { describeOrderChange, promptName, SHORT_TEXT, settingLabel } from './presetChanges.ts';
 import type { DiffPart, TextDiff } from './textDiff.ts';
 
@@ -14,11 +15,7 @@ import type { DiffPart, TextDiff } from './textDiff.ts';
  * new row rather than a shift of every row below it.
  */
 
-export type CompareSource =
-  | { kind: 'draft' }
-  | { kind: 'revision'; revision: number }
-  | { kind: 'library'; id: string }
-  | { kind: 'reference'; id: string };
+export type CompareSource = { kind: 'draft' } | PresetComparisonSource;
 
 /** The string a `Select` option carries for a source. The id is kept whole after the colon. */
 export function encodeSource(source: CompareSource): string {
