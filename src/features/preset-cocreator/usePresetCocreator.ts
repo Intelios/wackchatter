@@ -6,6 +6,7 @@ import type {
   PresetCocreatorDocument,
   PresetCocreatorMessage,
   PresetCocreatorSession,
+  PresetComparisonSource,
   PresetTestReport,
   PublishPresetDraftRequest,
   ReplacePresetDraftRequest,
@@ -17,13 +18,16 @@ import { useTokenizer } from '../../lib/useTokenizer.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
+  configureAssistantMode,
   editAssistantConversationMessage,
   executePresetToolCall,
-  PRESET_ASSISTANT_TOOLS,
+  presetIdentity,
   referencePresetView,
+  rejectComparisonToolCalls,
   renderAssistantSystem,
   toolFailureResult,
 } from './assistant.ts';
+import { loadComparisonPreset } from './compareSources.ts';
 import { reportConversationMessage } from './testing.ts';
 
 interface DocumentSnapshot {
@@ -41,12 +45,14 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
   const [session, setSessionState] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
   const sessionRef = useRef(session);
   const serverDocumentRevision = useRef(new Map<string, number>());
   const abortRef = useRef<AbortController | null>(null);
+  const preparingComparison = useRef(false);
 
   const setSession = useCallback((next: PresetCocreatorSession) => {
     sessionRef.current = next;
@@ -199,7 +205,10 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
   );
 
   const executeAssistantTurn = useCallback(
-    async (startingMessages: PresetCocreatorMessage[]) => {
+    async (
+      startingMessages: PresetCocreatorMessage[],
+      mode: 'conversation' | 'comparison' = 'conversation',
+    ) => {
       if (!assistantConnection) {
         setError('Choose an assistant connection and model.');
         return;
@@ -221,7 +230,11 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
       }
 
       try {
-        for (let requestIndex = 0; requestIndex < ASSISTANT_REQUEST_LIMIT; requestIndex += 1) {
+        for (
+          let requestIndex = 0;
+          requestIndex < (mode === 'comparison' ? 1 : ASSISTANT_REQUEST_LIMIT);
+          requestIndex += 1
+        ) {
           if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
           const current = sessionRef.current;
           const generation = current.document.settings.assistant;
@@ -245,12 +258,12 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
                 current.current,
                 current.document.settings.assistantInstructions,
                 referenceNames,
+                presetIdentity(current),
               ),
             },
             ...assistantWireMessages(messages),
           ];
-          body.tools = PRESET_ASSISTANT_TOOLS;
-          body.tool_choice = 'auto';
+          configureAssistantMode(body, mode);
 
           setStreamingText('');
           setStreamingReasoning('');
@@ -285,6 +298,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
             ...(final.reasoningDetails?.length ? { reasoningDetails: final.reasoningDetails } : {}),
             ...(final.toolCalls?.length ? { toolCalls: final.toolCalls } : {}),
           };
+          if (mode === 'comparison') rejectComparisonToolCalls(final.toolCalls);
           messages = [...messages, assistantMessage];
           commitMessages(messages);
           setStreamingText('');
@@ -303,6 +317,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
             try {
               result = await executePresetToolCall(call, turnId, {
                 currentRevision: () => sessionRef.current.current,
+                identity: () => presetIdentity(sessionRef.current),
                 patchDraft: async (input) => {
                   await flush();
                   const saved = await presetCocreatorApi.patchDraft(sessionRef.current.id, input);
@@ -336,10 +351,12 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
             commitMessages(messages);
           }
         }
-        setError(
-          `The assistant reached the ${ASSISTANT_REQUEST_LIMIT}-request turn limit. Continue when ready.`,
-        );
-        await flush();
+        if (mode === 'conversation') {
+          setError(
+            `The assistant reached the ${ASSISTANT_REQUEST_LIMIT}-request turn limit. Continue when ready.`,
+          );
+          await flush();
+        }
       } catch (failure) {
         if ((failure as Error).name !== 'AbortError') setError((failure as Error).message);
         await flush().catch(() => {});
@@ -362,11 +379,15 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
 
   /** Post the user's side of a turn, then let the Co-Creator answer it. */
   const startTurnWith = useCallback(
-    async (message: PresetCocreatorMessage) => {
+    async (
+      message: PresetCocreatorMessage,
+      mode: 'conversation' | 'comparison' = 'conversation',
+    ) => {
       const messages = [...sessionRef.current.document.messages, message];
       commitMessages(messages);
       await flush();
-      await executeAssistantTurn(messages);
+      if (mode === 'comparison') setPreparing(false);
+      await executeAssistantTurn(messages, mode);
     },
     [commitMessages, executeAssistantTurn, flush],
   );
@@ -381,6 +402,47 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
         content: text,
         created: Date.now(),
       });
+    },
+    [busy, startTurnWith],
+  );
+
+  const compare = useCallback(
+    async (source: PresetComparisonSource, label: string, focus: string) => {
+      if (busy || preparingComparison.current)
+        throw new Error('The Co-Creator is already working.');
+      preparingComparison.current = true;
+      setPreparing(true);
+      setBusy(true);
+      setError(null);
+      try {
+        const before = sessionRef.current;
+        const other = await loadComparisonPreset(source, before.history);
+        const current = sessionRef.current.current;
+        const comparison = {
+          draft: {
+            label: before.targetPresetId ?? before.title,
+            revision: current.revision,
+            preset: structuredClone(current.preset),
+          },
+          other: { label, source: structuredClone(source), preset: structuredClone(other) },
+          focus: focus.trim(),
+        };
+        const message: PresetCocreatorMessage = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: comparison.focus,
+          comparison,
+          created: Date.now(),
+        };
+        await startTurnWith(message, 'comparison');
+      } catch (failure) {
+        setError((failure as Error).message);
+        throw failure;
+      } finally {
+        preparingComparison.current = false;
+        setPreparing(false);
+        setBusy(false);
+      }
     },
     [busy, startTurnWith],
   );
@@ -448,6 +510,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     session,
     saving,
     busy,
+    preparing,
     error,
     setError,
     streamingText,
@@ -458,6 +521,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     restoreDraft,
     undoTurn,
     send,
+    compare,
     sendReport,
     editMessage,
     stop: () => abortRef.current?.abort(),

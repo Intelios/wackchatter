@@ -636,6 +636,14 @@ export const referencePresetApi = {
     });
   },
 
+  /** Copy one library preset's file into the reference folder, verbatim. */
+  copyFromLibrary: (presetId: string) =>
+    request<ReferencePresetSummary>('/reference-presets/copy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ presetId }),
+    }),
+
   remove: (id: string) =>
     request<{ ok: true }>(`/reference-presets/${encodeURIComponent(id)}`, {
       method: 'DELETE',

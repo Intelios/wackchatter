@@ -197,6 +197,8 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
             initial={session}
             connections={props.connections}
             characters={props.characters}
+            presets={props.presets}
+            references={references}
             personas={props.personas}
             books={props.books}
             initialCharacterId={props.activeCharacterId}
@@ -283,7 +285,12 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
                 <div className="wc-empty">No preset design sessions yet.</div>
               )}
             </section>
-            <PresetReferencePanel references={references} onChanged={refresh} onError={setError} />
+            <PresetReferencePanel
+              references={references}
+              presets={props.presets}
+              onChanged={refresh}
+              onError={setError}
+            />
           </div>
         )}
       </main>

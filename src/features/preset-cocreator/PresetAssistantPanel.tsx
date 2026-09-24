@@ -1,5 +1,8 @@
 import type { Connection } from '@shared/providers/types.ts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PresetSummary } from '@shared/types/preset.ts';
+import type { PresetComparison, ReferencePresetSummary } from '@shared/types/preset-cocreator.ts';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Popover } from '../../components/Popover.tsx';
 import { EditIcon, PlugIcon, WandIcon } from '../../layout/icons.tsx';
 import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
@@ -7,6 +10,12 @@ import { Reasoning } from '../chat/Reasoning.tsx';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
 import '../chat/MessageBubble.css';
 import { correlateToolMessages } from './assistant.ts';
+import { compareCommandDraft, PRESET_SLASH_COMMANDS } from './compareCommands.ts';
+import {
+  type ComparisonChoice,
+  comparisonChoices,
+  filterComparisonChoices,
+} from './compareSources.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
 import { type ProposalControls, type RevisionPresets, ToolActivityCard } from './ToolActivity.tsx';
@@ -21,7 +30,39 @@ interface PresetAssistantPanelProps {
   onToolCapabilityChange: (supported: boolean | null) => void;
   /** Run and dismiss for the proposal cards; the proposals themselves live in the document. */
   proposalActions: Omit<ProposalControls, 'proposals'>;
+  presets: readonly PresetSummary[];
+  references: readonly ReferencePresetSummary[];
 }
+
+const ComparisonCard = memo(function ComparisonCard({
+  comparison,
+}: {
+  comparison: PresetComparison;
+}) {
+  return (
+    <div className="preset-cc-comparison-card">
+      <div className="preset-cc-comparison-card__title">/compare</div>
+      <p>
+        {comparison.draft.label} · revision {comparison.draft.revision} → {comparison.other.label}
+      </p>
+      <span className="wc-hint">
+        {comparison.other.source.kind === 'revision'
+          ? 'Session revision'
+          : comparison.other.source.kind === 'library'
+            ? 'My preset'
+            : 'Reference preset'}
+      </span>
+      {comparison.focus ? <blockquote>{comparison.focus}</blockquote> : null}
+      <details>
+        <summary>Preset snapshots used</summary>
+        <strong>Current draft · revision {comparison.draft.revision}</strong>
+        <pre>{JSON.stringify(comparison.draft.preset, null, 2)}</pre>
+        <strong>{comparison.other.label}</strong>
+        <pre>{JSON.stringify(comparison.other.preset, null, 2)}</pre>
+      </details>
+    </div>
+  );
+});
 
 export function PresetAssistantPanel({
   controller,
@@ -29,8 +70,39 @@ export function PresetAssistantPanel({
   toolCapability,
   onToolCapabilityChange,
   proposalActions,
+  presets,
+  references,
 }: PresetAssistantPanelProps) {
   const [draft, setDraft] = useState('');
+  const [comparison, setComparison] = useState<ComparisonChoice | null>(null);
+  const [preservedFocus, setPreservedFocus] = useState('');
+  const [commandError, setCommandError] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const submittingRef = useRef(false);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef(false);
+  const sawBusyRef = useRef(false);
+  const suggestionId = useId();
+  const choices = useMemo(
+    () =>
+      comparisonChoices(
+        references,
+        presets,
+        controller.session.history,
+        controller.session.draftRevision,
+      ),
+    [references, presets, controller.session.history, controller.session.draftRevision],
+  );
+  const parsedCommand = compareCommandDraft(draft);
+  const sourceMode = !comparison && parsedCommand.kind === 'source';
+  const sourceQuery = parsedCommand.kind === 'source' ? parsedCommand.query : '';
+  const matchingChoices = sourceMode ? filterComparisonChoices(choices, sourceQuery) : [];
+  const commandSuggestions = !comparison && parsedCommand.kind === 'command';
+  const visibleSuggestions = sourceMode ? matchingChoices.length : commandSuggestions ? 1 : 0;
+  const popupOpen =
+    suggestionsOpen && !controller.busy && !comparison && Boolean(sourceMode || commandSuggestions);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const settings = controller.session.document.settings;
@@ -53,6 +125,21 @@ export function PresetAssistantPanel({
   const conversationRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom } = useStickToBottom(scrollRef, conversationRef);
 
+  useEffect(() => {
+    if (controller.busy) {
+      sawBusyRef.current = true;
+    } else if (sawBusyRef.current) {
+      sawBusyRef.current = false;
+      if (restoreFocusRef.current) {
+        const active = document.activeElement;
+        if (active === document.body || active === null || composerRef.current?.contains(active)) {
+          textareaRef.current?.focus({ preventScroll: true });
+        }
+      }
+      restoreFocusRef.current = false;
+    }
+  }, [controller.busy]);
+
   // A report arrives from the other panel, so nothing here sent it: re-engage the follow,
   // or a reader scrolled up in the history would miss the reply starting.
   const lastMessage = messages.at(-1);
@@ -67,13 +154,60 @@ export function PresetAssistantPanel({
       settings: { ...document.settings, ...patch },
     }));
 
-  const submit = () => {
+  const chooseSource = (choice: ComparisonChoice) => {
+    setComparison(choice);
+    setDraft(preservedFocus);
+    setSuggestionsOpen(false);
+    setCommandError('');
+    setSuggestionIndex(0);
+    textareaRef.current?.focus({ preventScroll: true });
+  };
+
+  const submit = async () => {
     const text = draft.trim();
-    if (!text || controller.busy || toolCapability === false) return;
+    if (controller.busy) return;
+    if (!comparison && text.startsWith('/')) {
+      const parsed = compareCommandDraft(draft);
+      if (parsed.kind === 'command' && !parsed.completing) {
+        setDraft('/compare ');
+        setSuggestionsOpen(true);
+      } else {
+        setCommandError(
+          parsed.kind === 'source'
+            ? 'Choose a preset from the suggestions before comparing.'
+            : parsed.kind === 'invalid'
+              ? parsed.error
+              : 'Choose a command from the suggestions.',
+        );
+      }
+      return;
+    }
+    if ((toolCapability === false && !comparison) || !controller.assistantConnection) return;
+    if (comparison) {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
+      try {
+        restoreFocusRef.current = true;
+        scrollToBottom();
+        await controller.compare(comparison.source, comparison.label, text);
+        setComparison(null);
+        setPreservedFocus('');
+        setDraft('');
+        setCommandError('');
+        scrollToBottom();
+      } catch (failure) {
+        setCommandError((failure as Error).message);
+      } finally {
+        submittingRef.current = false;
+      }
+      return;
+    }
+    if (!text) return;
+    restoreFocusRef.current = true;
     setDraft('');
     // Sending is a request to watch the answer, even from halfway up the history.
     scrollToBottom();
-    void controller.send(text);
+    await controller.send(text);
   };
 
   // Tool results render as cards between the messages around them, in conversation order.
@@ -234,7 +368,7 @@ export function PresetAssistantPanel({
                         className="wc-button wc-button--ghost message__action"
                         onClick={() => {
                           setEditingId(message.id);
-                          setEditingText(message.content);
+                          setEditingText(message.comparison?.focus ?? message.content);
                         }}
                         title="Edit"
                         aria-label="Edit"
@@ -273,6 +407,8 @@ export function PresetAssistantPanel({
                       </button>
                     </div>
                   </div>
+                ) : message.comparison ? (
+                  <ComparisonCard comparison={message.comparison} />
                 ) : (
                   <Markdown text={message.content} className="message__text" />
                 )}
@@ -280,7 +416,7 @@ export function PresetAssistantPanel({
             </article>
           );
         })}
-        {controller.busy ? (
+        {controller.busy && !controller.preparing ? (
           <StreamingBubble
             name="Co-Creator"
             initial="C"
@@ -291,24 +427,193 @@ export function PresetAssistantPanel({
         ) : null}
       </div>
 
-      <div className="preset-cc-composer" data-busy={controller.busy || undefined}>
+      <div
+        className="preset-cc-composer"
+        data-busy={controller.busy || undefined}
+        ref={composerRef}
+      >
+        {comparison ? (
+          <div className="preset-cc-composer__selection">
+            <span>
+              Current draft · revision {controller.session.draftRevision} →{' '}
+              <strong>{comparison.label}</strong>
+            </span>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={() => {
+                setPreservedFocus(draft);
+                setComparison(null);
+                setDraft('/compare ');
+                setSuggestionsOpen(true);
+                textareaRef.current?.focus({ preventScroll: true });
+              }}
+            >
+              Change
+            </button>
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              aria-label="Remove comparison selection"
+              onClick={() => {
+                setPreservedFocus(draft);
+                setComparison(null);
+                setDraft('/compare ');
+                setSuggestionsOpen(true);
+                textareaRef.current?.focus({ preventScroll: true });
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+        {commandError ? (
+          <div className="preset-cc-inline-error preset-cc-composer__error" role="alert">
+            {commandError}
+          </div>
+        ) : null}
         <div className="preset-cc-composer__field">
-          <textarea
-            className="wc-textarea"
-            rows={3}
-            value={draft}
-            disabled={controller.busy}
-            placeholder="Ask for an improvement, explain a problem, or discuss a shared test…"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-          />
+          <Popover
+            label={sourceMode ? 'Choose a preset to compare' : 'Slash commands'}
+            icon={null}
+            open={popupOpen}
+            onOpenChange={setSuggestionsOpen}
+            role="listbox"
+            placement="top-start"
+            className="preset-cc-composer__popover"
+            popupClassName="preset-cc-composer__suggestions"
+            renderTrigger={(trigger) => (
+              <textarea
+                {...trigger}
+                ref={(node) => {
+                  trigger.ref(node);
+                  textareaRef.current = node;
+                }}
+                className="wc-textarea"
+                rows={3}
+                value={draft}
+                disabled={controller.busy}
+                placeholder={
+                  comparison
+                    ? 'Optional focus for this comparison…'
+                    : 'Ask for an improvement, or type / for commands…'
+                }
+                aria-autocomplete="list"
+                aria-activedescendant={
+                  popupOpen && visibleSuggestions ? `${suggestionId}-${suggestionIndex}` : undefined
+                }
+                onFocus={() => {
+                  if (draft.trimStart().startsWith('/') && !comparison) setSuggestionsOpen(true);
+                }}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setCommandError('');
+                  setSuggestionIndex(0);
+                  setSuggestionsOpen(event.target.value.trimStart().startsWith('/') && !comparison);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    popupOpen &&
+                    visibleSuggestions &&
+                    (event.key === 'ArrowDown' || event.key === 'ArrowUp')
+                  ) {
+                    event.preventDefault();
+                    setSuggestionIndex(
+                      (index) =>
+                        (index + (event.key === 'ArrowDown' ? 1 : visibleSuggestions - 1)) %
+                        visibleSuggestions,
+                    );
+                    return;
+                  }
+                  if (
+                    popupOpen &&
+                    visibleSuggestions &&
+                    (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))
+                  ) {
+                    event.preventDefault();
+                    if (sourceMode) chooseSource(matchingChoices[suggestionIndex]!);
+                    else {
+                      setDraft('/compare ');
+                      setSuggestionsOpen(true);
+                      setSuggestionIndex(0);
+                    }
+                    return;
+                  }
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    void submit();
+                  }
+                }}
+              />
+            )}
+          >
+            {sourceMode ? (
+              matchingChoices.length ? (
+                <div className="preset-cc-composer__choice-list">
+                  {(['Reference presets', 'My presets', 'Session revisions'] as const).map(
+                    (group) => {
+                      const members = matchingChoices.filter((choice) => choice.group === group);
+                      return members.length ? (
+                        <fieldset key={group} className="preset-cc-composer__choice-group">
+                          <legend className="preset-cc-composer__group-label">{group}</legend>
+                          {members.map((choice) => {
+                            const index = matchingChoices.indexOf(choice);
+                            return (
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={suggestionIndex === index}
+                                id={`${suggestionId}-${index}`}
+                                className={`composer__slash-item${suggestionIndex === index ? ' composer__slash-item--active' : ''}`}
+                                key={choice.key}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => chooseSource(choice)}
+                              >
+                                <span className="composer__slash-name">{choice.label}</span>
+                                <span className="composer__slash-desc">{choice.detail}</span>
+                              </button>
+                            );
+                          })}
+                        </fieldset>
+                      ) : null;
+                    },
+                  )}
+                </div>
+              ) : (
+                <div className="preset-cc-composer__empty">
+                  No matching presets. Add a reference or change your search.
+                </div>
+              )
+            ) : (
+              <button
+                type="button"
+                role="option"
+                aria-selected="true"
+                id={`${suggestionId}-0`}
+                className="composer__slash-item composer__slash-item--active"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setDraft('/compare ');
+                  setSuggestionsOpen(true);
+                }}
+              >
+                <span className="composer__slash-name">/{PRESET_SLASH_COMMANDS[0].name}</span>
+                <span className="composer__slash-desc">{PRESET_SLASH_COMMANDS[0].description}</span>
+                <span className="composer__slash-usage">{PRESET_SLASH_COMMANDS[0].usage}</span>
+              </button>
+            )}
+          </Popover>
         </div>
-        {controller.busy ? (
+        {controller.preparing ? (
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            disabled
+            title="Loading and saving the comparison snapshots."
+          >
+            Preparing…
+          </button>
+        ) : controller.busy ? (
           <button type="button" className="wc-button wc-button--danger" onClick={controller.stop}>
             Stop
           </button>
@@ -316,15 +621,21 @@ export function PresetAssistantPanel({
           <button
             type="button"
             className="wc-button wc-button--primary"
-            disabled={!draft.trim() || toolCapability === false}
-            title={
-              toolCapability === false
-                ? 'The selected provider reports that this model does not support tools.'
-                : undefined
+            disabled={
+              (!comparison && !draft.trim()) ||
+              (toolCapability === false && !comparison) ||
+              !controller.assistantConnection
             }
-            onClick={submit}
+            title={
+              !controller.assistantConnection
+                ? 'Choose a Co-Creator model first.'
+                : toolCapability === false && !comparison
+                  ? 'The selected provider reports that this model does not support tools.'
+                  : undefined
+            }
+            onClick={() => void submit()}
           >
-            Send
+            {comparison ? 'Compare' : 'Send'}
           </button>
         )}
       </div>

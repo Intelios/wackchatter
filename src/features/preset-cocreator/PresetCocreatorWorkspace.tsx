@@ -1,22 +1,30 @@
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
-import type { PresetCocreatorSession } from '@shared/types/preset-cocreator.ts';
+import type { PresetSummary } from '@shared/types/preset.ts';
+import type {
+  PresetCocreatorSession,
+  ReferencePresetSummary,
+} from '@shared/types/preset-cocreator.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import { ApiError, presetApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { PresetAssistantPanel } from './PresetAssistantPanel.tsx';
+import { type CompareSources, PresetCompareView } from './PresetCompareView.tsx';
 import { PresetDraftEditor } from './PresetDraftEditor.tsx';
 import { PresetHistoryPanel } from './PresetHistoryPanel.tsx';
 import { PresetTestingPanel } from './PresetTestingPanel.tsx';
+import { defaultCompareSources } from './presetCompare.ts';
 import { usePresetCocreator } from './usePresetCocreator.ts';
 import { usePresetTesting } from './usePresetTesting.ts';
 
@@ -24,6 +32,9 @@ interface PresetCocreatorWorkspaceProps {
   initial: PresetCocreatorSession;
   connections: readonly Connection[];
   characters: readonly CharacterSummary[];
+  /** Library and reference presets, offered on either side of the Compare tab. */
+  presets: readonly PresetSummary[];
+  references: readonly ReferencePresetSummary[];
   personas: readonly Persona[];
   books: readonly LorebookSummary[];
   initialCharacterId?: string | null;
@@ -50,7 +61,23 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
     connections: props.connections,
     tokenizerEncoding: props.tokenizerEncoding,
   });
-  const [tab, setTab] = useState<'conversation' | 'preset' | 'history'>('conversation');
+  const [tab, setTab] = useState<'conversation' | 'preset' | 'history' | 'compare'>('conversation');
+  // Null until the user picks a pair. Until then the pair is derived, so it follows the
+  // linked preset — Save as new relinks the session, and the default must move with it.
+  const [chosenSources, setChosenSources] = useState<CompareSources | null>(null);
+  const targetPresetId = controller.session.targetPresetId;
+  const firstRevision = controller.session.history[0]?.revision ?? 0;
+  const compareSources = useMemo(
+    () =>
+      chosenSources ??
+      defaultCompareSources({ targetPresetId, history: [{ revision: firstRevision }] }),
+    [chosenSources, targetPresetId, firstRevision],
+  );
+  // Stable, because History is memoised and stays mounted while replies stream.
+  const compareWithDraft = useCallback((revision: number) => {
+    setChosenSources({ left: { kind: 'revision', revision }, right: { kind: 'draft' } });
+    setTab('compare');
+  }, []);
   const [split, setSplit] = useState(50);
   const [title, setTitle] = useState(controller.session.title);
   const [publishError, setPublishError] = useState('');
@@ -258,7 +285,7 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
       >
         <section className="preset-cc-left">
           <nav className="preset-cc-tabs" aria-label="Preset Co-Creator workspace">
-            {(['conversation', 'preset', 'history'] as const).map((entry) => (
+            {(['conversation', 'preset', 'history', 'compare'] as const).map((entry) => (
               <button
                 type="button"
                 className="wc-button wc-button--ghost"
@@ -270,7 +297,7 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
               </button>
             ))}
           </nav>
-          {/* All three stay mounted and share one grid cell; the inactive two are hidden,
+          {/* All four stay mounted and share one grid cell; the inactive two are hidden,
               not unmounted. Unmounting threw away everything a panel held locally — the
               composer draft, a half-written message edit, unapplied preset edits, the
               scroll position — every time a tab was clicked. `visibility` rather than
@@ -284,6 +311,8 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
               <PresetAssistantPanel
                 controller={controller}
                 connections={props.connections}
+                presets={props.presets}
+                references={props.references}
                 toolCapability={toolCapability}
                 onToolCapabilityChange={setToolCapability}
                 proposalActions={{
@@ -316,6 +345,23 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
                 busy={controller.busy}
                 onRestore={controller.restoreDraft}
                 onUndoTurn={controller.undoTurn}
+                onCompare={compareWithDraft}
+              />
+            </div>
+            <div
+              className="preset-cc-left__panel"
+              data-active={tab === 'compare' || undefined}
+              inert={tab !== 'compare'}
+            >
+              <PresetCompareView
+                current={controller.session.current}
+                history={controller.session.history}
+                targetPresetId={controller.session.targetPresetId}
+                targetPresetVersion={controller.session.targetPresetVersion}
+                presets={props.presets}
+                references={props.references}
+                sources={compareSources}
+                onSourcesChange={setChosenSources}
               />
             </div>
           </div>

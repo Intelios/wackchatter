@@ -70,13 +70,30 @@ export function getReferencePreset(id: string): ReferencePresetRecord | null {
  * suggested filename. The text must parse and normalise — anything else is rejected
  * before a name is allocated.
  */
-export async function importReferencePreset(
+export function importReferencePreset(
   rawText: string,
   suggestedName: string,
 ): Promise<ReferencePresetSummary> {
+  return storeReference(rawText, suggestedName.replace(/\.json$/i, ''));
+}
+
+/**
+ * Copy one of the user's own library presets into the reference folder — the file's
+ * bytes, not a re-serialisation, so the reference is exactly what the library holds.
+ * The library file is only read. Null when there is no such preset.
+ */
+export async function copyPresetToReferences(
+  presetId: string,
+): Promise<ReferencePresetSummary | null> {
+  const source = safeJoin(PATHS.presets, `${presetId}.json`);
+  if (!source || !existsSync(source)) return null;
+  return storeReference(readFileSync(source, 'utf8'), presetId);
+}
+
+async function storeReference(rawText: string, name: string): Promise<ReferencePresetSummary> {
   normalizePreset(JSON.parse(rawText));
   return withResourceLock(`reference-presets:${PATHS.referencePresets}`, async () => {
-    const base = sanitizeFilename(suggestedName.replace(/\.json$/i, '')) ?? 'Imported Preset';
+    const base = sanitizeFilename(name) ?? 'Imported Preset';
     const id = uniqueName(base, referenceExists);
     const path = referencePath(id);
     if (!path) throw new Error(`"${id}" is not a usable reference preset name.`);

@@ -19,6 +19,18 @@ export interface PresetCocreatorMessage {
   toolCallId?: string;
   toolName?: string;
   report?: PresetTestReport;
+  comparison?: PresetComparison;
+}
+
+export type PresetComparisonSource =
+  | { kind: 'revision'; revision: number }
+  | { kind: 'library' | 'reference'; id: string };
+
+/** Frozen when the request is sent, so later edits or deletion cannot rewrite its meaning. */
+export interface PresetComparison {
+  draft: { label: string; revision: number; preset: Preset };
+  other: { label: string; source: PresetComparisonSource; preset: Preset };
+  focus: string;
 }
 
 export interface PresetCocreatorModelSettings {
@@ -45,7 +57,8 @@ export interface ProposedPresetTest {
 }
 
 export interface PresetTestScenario {
-  characterId: string;
+  /** The card's filename; null for a test with no character card (`character` is blank). */
+  characterId: string | null;
   character: CardDataV2;
   greetingIndex: number;
   persona: Persona | null;

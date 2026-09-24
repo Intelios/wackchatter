@@ -2,6 +2,7 @@
 
 import { errorResponse, json, notFound } from '../lib/http.ts';
 import {
+  copyPresetToReferences,
   deleteReferencePreset,
   getReferencePreset,
   importReferencePreset,
@@ -31,6 +32,20 @@ export async function handleReferencePresetRoute(
       });
     } catch (error) {
       return errorResponse(`Import failed: ${(error as Error).message}`);
+    }
+  }
+
+  // /api/reference-presets/copy — one of the user's own library presets, one at a time.
+  if (segments[0] === 'copy' && method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { presetId?: unknown } | null;
+    if (typeof body?.presetId !== 'string' || !body.presetId) {
+      return errorResponse('Choose a preset to copy.');
+    }
+    try {
+      const copied = await copyPresetToReferences(body.presetId);
+      return copied ? json(copied, { status: 201 }) : notFound('Preset not found.');
+    } catch (error) {
+      return errorResponse(`Copy failed: ${(error as Error).message}`);
     }
   }
 

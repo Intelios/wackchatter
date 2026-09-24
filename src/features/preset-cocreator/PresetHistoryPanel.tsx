@@ -10,6 +10,8 @@ interface PresetHistoryPanelProps {
   busy: boolean;
   onRestore: (revision: number) => Promise<void>;
   onUndoTurn: (turnId: string) => Promise<void>;
+  /** Open the Compare tab on this revision against the current draft. */
+  onCompare: (revision: number) => void;
 }
 
 interface HistoryEntryProps {
@@ -22,6 +24,7 @@ interface HistoryEntryProps {
   busy: boolean;
   onRestore: (revision: number) => Promise<void>;
   onUndoTurn: (turnId: string) => Promise<void>;
+  onCompare: (revision: number) => void;
 }
 
 /**
@@ -38,6 +41,7 @@ const HistoryEntry = memo(function HistoryEntry({
   busy,
   onRestore,
   onUndoTurn,
+  onCompare,
 }: HistoryEntryProps) {
   const [open, setOpen] = useState(defaultOpen);
   const changes = useMemo(
@@ -85,6 +89,19 @@ const HistoryEntry = memo(function HistoryEntry({
         >
           Restore this revision
         </button>
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          disabled={revision.revision === draftRevision}
+          title={
+            revision.revision === draftRevision
+              ? 'This is the current draft.'
+              : 'Show this revision side by side with the current draft.'
+          }
+          onClick={() => onCompare(revision.revision)}
+        >
+          Compare with current
+        </button>
         {canUndoTurn && revision.turnId ? (
           <button
             type="button"
@@ -111,6 +128,7 @@ export const PresetHistoryPanel = memo(function PresetHistoryPanel({
   busy,
   onRestore,
   onUndoTurn,
+  onCompare,
 }: PresetHistoryPanelProps) {
   const seenTurns = new Set<string>();
   const newest = history.at(-1)?.revision;
@@ -133,6 +151,7 @@ export const PresetHistoryPanel = memo(function PresetHistoryPanel({
               busy={busy}
               onRestore={onRestore}
               onUndoTurn={onUndoTurn}
+              onCompare={onCompare}
             />
           );
         })}
