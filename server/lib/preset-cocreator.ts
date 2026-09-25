@@ -14,6 +14,7 @@ import type {
   PresetCocreatorSession,
   PresetCocreatorSessionSummary,
   PresetDraftRevision,
+  PresetTestSource,
   PublishPresetDraftResult,
   ReplacePresetDraftRequest,
   RestorePresetDraftRequest,
@@ -90,6 +91,13 @@ export function defaultPresetCocreatorDocument(
     tests: [],
     activeTestId: null,
     proposedTests: [],
+    batchQueue: {
+      items: [],
+      note: '',
+      includeTranscript: true,
+      includePrompt: true,
+      includeDiagnostics: true,
+    },
   };
   if (input?.assistant) {
     document.settings.assistant = normalizeModelSettings(
@@ -149,11 +157,36 @@ function normalizeModelSettings(
   };
 }
 
+function normalizeTestSource(value: unknown): PresetTestSource {
+  if (!isRecord(value)) return { kind: 'draft' };
+  if (
+    value.kind === 'revision' &&
+    Number.isSafeInteger(value.revision) &&
+    Number(value.revision) >= 0
+  ) {
+    return { kind: 'revision', revision: Number(value.revision) };
+  }
+  if (
+    (value.kind === 'library' || value.kind === 'reference') &&
+    typeof value.id === 'string' &&
+    value.id
+  ) {
+    return { kind: value.kind, id: value.id };
+  }
+  return { kind: 'draft' };
+}
+
 /** Repair only the outer session shape; immutable reports/tests remain byte-for-byte JSON. */
 export function normalizePresetCocreatorDocument(value: unknown): PresetCocreatorDocument {
   const defaults = defaultPresetCocreatorDocument();
   if (!isRecord(value)) return defaults;
   const settings = isRecord(value.settings) ? value.settings : {};
+  const normalizedSettings = {
+    assistant: normalizeModelSettings(settings.assistant, defaults.settings.assistant),
+    testing: normalizeModelSettings(settings.testing, defaults.settings.testing),
+    assistantInstructions:
+      typeof settings.assistantInstructions === 'string' ? settings.assistantInstructions : '',
+  };
   const messages = Array.isArray(value.messages)
     ? value.messages.filter(
         (message) =>
@@ -164,9 +197,16 @@ export function normalizePresetCocreatorDocument(value: unknown): PresetCocreato
       )
     : [];
   const tests = Array.isArray(value.tests)
-    ? value.tests.filter(
-        (test) => isRecord(test) && typeof test.id === 'string' && Array.isArray(test.messages),
-      )
+    ? value.tests
+        .filter(
+          (test) => isRecord(test) && typeof test.id === 'string' && Array.isArray(test.messages),
+        )
+        .map((test) => ({
+          ...structuredClone(test),
+          presetSource: normalizeTestSource(test.presetSource),
+          testingSettings: normalizeModelSettings(test.testingSettings, normalizedSettings.testing),
+          composerDraft: typeof test.composerDraft === 'string' ? test.composerDraft : '',
+        }))
     : [];
   const proposedTests = Array.isArray(value.proposedTests)
     ? value.proposedTests.filter(
@@ -174,17 +214,27 @@ export function normalizePresetCocreatorDocument(value: unknown): PresetCocreato
       )
     : [];
   const active = typeof value.activeTestId === 'string' ? value.activeTestId : null;
+  const queue = isRecord(value.batchQueue) ? value.batchQueue : {};
+  const queuedItems = Array.isArray(queue.items)
+    ? queue.items.filter(
+        (item) => isRecord(item) && typeof item.id === 'string' && typeof item.testId === 'string',
+      )
+    : [];
   return {
-    settings: {
-      assistant: normalizeModelSettings(settings.assistant, defaults.settings.assistant),
-      testing: normalizeModelSettings(settings.testing, defaults.settings.testing),
-      assistantInstructions:
-        typeof settings.assistantInstructions === 'string' ? settings.assistantInstructions : '',
-    },
+    settings: normalizedSettings,
     messages: structuredClone(messages) as PresetCocreatorDocument['messages'],
-    tests: structuredClone(tests) as PresetCocreatorDocument['tests'],
+    tests: tests as PresetCocreatorDocument['tests'],
     activeTestId: active && tests.some((test) => test.id === active) ? active : null,
     proposedTests: structuredClone(proposedTests) as PresetCocreatorDocument['proposedTests'],
+    batchQueue: {
+      items: structuredClone(queuedItems) as PresetCocreatorDocument['batchQueue']['items'],
+      note: typeof queue.note === 'string' ? queue.note : '',
+      includeTranscript:
+        typeof queue.includeTranscript === 'boolean' ? queue.includeTranscript : true,
+      includePrompt: typeof queue.includePrompt === 'boolean' ? queue.includePrompt : true,
+      includeDiagnostics:
+        typeof queue.includeDiagnostics === 'boolean' ? queue.includeDiagnostics : true,
+    },
   };
 }
 

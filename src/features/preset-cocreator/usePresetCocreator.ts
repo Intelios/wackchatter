@@ -28,7 +28,11 @@ import {
   toolFailureResult,
 } from './assistant.ts';
 import { loadComparisonPreset } from './compareSources.ts';
-import { reportConversationMessage } from './testing.ts';
+import {
+  batchConversationMessage,
+  buildPresetTestBatch,
+  reportConversationMessage,
+} from './testing.ts';
 
 interface DocumentSnapshot {
   document: PresetCocreatorDocument;
@@ -46,6 +50,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [batchSending, setBatchSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
@@ -53,6 +58,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
   const serverDocumentRevision = useRef(new Map<string, number>());
   const abortRef = useRef<AbortController | null>(null);
   const preparingComparison = useRef(false);
+  const preparingBatch = useRef(false);
 
   const setSession = useCallback((next: PresetCocreatorSession) => {
     sessionRef.current = next;
@@ -460,6 +466,43 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     [busy, startTurnWith],
   );
 
+  /** Move the saved queue into one conversation turn before contacting the provider. */
+  const sendBatch = useCallback(async () => {
+    if (busy || preparingBatch.current) throw new Error('The Co-Creator is already working.');
+    const previousQueue = structuredClone(sessionRef.current.document.batchQueue);
+    const batch = buildPresetTestBatch(previousQueue);
+    const message = batchConversationMessage(batch);
+    preparingBatch.current = true;
+    setBatchSending(true);
+    setError(null);
+    const messages = [...sessionRef.current.document.messages, message];
+    updateDocument((document) => ({
+      ...document,
+      messages,
+      batchQueue: { ...document.batchQueue, items: [], note: '' },
+    }));
+    try {
+      try {
+        await flush();
+      } catch (failure) {
+        updateDocument((document) => ({
+          ...document,
+          messages: document.messages.filter((entry) => entry.id !== message.id),
+          batchQueue: previousQueue,
+        }));
+        throw failure;
+      }
+      void executeAssistantTurn(messages);
+      return batch;
+    } catch (failure) {
+      setError((failure as Error).message);
+      throw failure;
+    } finally {
+      preparingBatch.current = false;
+      setBatchSending(false);
+    }
+  }, [busy, executeAssistantTurn, flush, updateDocument]);
+
   const editMessage = useCallback(
     (id: string, text: string) => {
       if (busy) return;
@@ -511,6 +554,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     saving,
     busy,
     preparing,
+    batchSending,
     error,
     setError,
     streamingText,
@@ -523,6 +567,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     send,
     compare,
     sendReport,
+    sendBatch,
     editMessage,
     stop: () => abortRef.current?.abort(),
     publish,

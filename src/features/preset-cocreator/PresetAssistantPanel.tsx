@@ -20,6 +20,7 @@ import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
 import { type ProposalControls, type RevisionPresets, ToolActivityCard } from './ToolActivity.tsx';
 import { summarizeReport } from './testing.ts';
+import { describePresetUsed } from './testingSources.ts';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 
 interface PresetAssistantPanelProps {
@@ -266,6 +267,60 @@ export function PresetAssistantPanel({
             ) : null;
           }
           if (message.role === 'report') {
+            if (message.batch) {
+              const batch = message.batch;
+              const timestamp = formatTimestamp(new Date(message.created).toISOString());
+              return (
+                <article className="message" data-role="report" key={message.id}>
+                  <div className="message__bubble">
+                    <header className="message__head">
+                      <div className="message__avatar">
+                        <span aria-hidden="true">Y</span>
+                      </div>
+                      <div className="message__ident">
+                        <span className="message__name">You</span>
+                        <span className="message__badge">shared {batch.reports.length} tests</span>
+                        {timestamp ? (
+                          <time
+                            className="message__time"
+                            dateTime={timestamp.iso}
+                            title={timestamp.full}
+                          >
+                            {timestamp.short}
+                          </time>
+                        ) : null}
+                      </div>
+                    </header>
+                    {batch.note ? (
+                      <blockquote className="preset-cc-report__note">{batch.note}</blockquote>
+                    ) : null}
+                    <ol className="preset-cc-report__batch-items">
+                      {batch.reports.map((report) => (
+                        <li key={report.id}>
+                          <strong>{report.testTitle ?? 'Saved test'}</strong>
+                          <span>
+                            {report.presetUsed
+                              ? describePresetUsed(report.presetUsed)
+                              : 'Working draft'}
+                          </span>
+                          {report.replyText ? (
+                            <p>
+                              {report.replyText.slice(0, 180)}
+                              {report.replyText.length > 180 ? '…' : ''}
+                            </p>
+                          ) : null}
+                          {report.note ? <blockquote>{report.note}</blockquote> : null}
+                        </li>
+                      ))}
+                    </ol>
+                    <details className="preset-cc-tool__raw">
+                      <summary>Full batch</summary>
+                      <pre>{JSON.stringify(batch, null, 2)}</pre>
+                    </details>
+                  </div>
+                </article>
+              );
+            }
             // The report is the user's turn, so it reads as one: who sent it, which test
             // and reply it covers, what it carries, and their note — the JSON on request.
             const report = message.report;
@@ -302,7 +357,11 @@ export function PresetAssistantPanel({
                     <p className="preset-cc-report__source">
                       <strong>{summary.testTitle ?? 'A deleted test'}</strong>
                       {through ? ` — through ${through}` : ''}
-                      {summary.revision !== null ? ` · rev ${summary.revision}` : ''}
+                      {report?.presetUsed
+                        ? ` · ${describePresetUsed(report.presetUsed)}`
+                        : summary.revision !== null
+                          ? ` · rev ${summary.revision}`
+                          : ''}
                     </p>
                   ) : null}
                   {summary?.sections.length ? (

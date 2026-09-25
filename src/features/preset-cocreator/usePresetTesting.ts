@@ -1,14 +1,16 @@
 import type { Connection } from '@shared/providers/types.ts';
 import type { ChatMessage } from '@shared/types/chat.ts';
 import type {
+  PresetCocreatorModelSettings,
   PresetTest,
   PresetTestEvidence,
   PresetTestReport,
   PresetTestScenario,
+  PresetTestSource,
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { streamGenerate } from '../../lib/api.ts';
+import { presetApi, referencePresetApi, streamGenerate } from '../../lib/api.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import {
   appendPresetTestUserMessage,
@@ -16,6 +18,7 @@ import {
   createPresetTest,
   dismissPendingProposals,
   editPresetTestMessage,
+  enqueuePresetTestReport,
   evidenceForSelectedResponse,
   type PresetTestGenerationKind,
   preparePresetTestRequest,
@@ -24,6 +27,7 @@ import {
   settlePresetTestGeneration,
   updateProposedTest,
 } from './testing.ts';
+import { resolvePresetTestSource } from './testingSources.ts';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 
 interface UsePresetTestingOptions {
@@ -47,16 +51,9 @@ export function usePresetTesting({
   const [error, setError] = useState<string | null>(null);
   const [inspectedEvidenceId, setInspectedEvidenceId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const preparingRef = useRef(false);
   const sessionRef = useRef(controller.session);
   sessionRef.current = controller.session;
-
-  const setting = controller.session.document.settings.testing;
-  const connection = useMemo(() => {
-    const selected =
-      connections.find((entry) => entry.id === setting.connectionId) ?? connections[0] ?? null;
-    return selected ? { ...selected, model: setting.model.trim() || selected.model } : null;
-  }, [connections, setting.connectionId, setting.model]);
-  const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
 
   const activeTest = useMemo(
     () =>
@@ -65,6 +62,12 @@ export function usePresetTesting({
       ) ?? null,
     [controller.session.document.activeTestId, controller.session.document.tests],
   );
+  const setting = activeTest?.testingSettings ?? controller.session.document.settings.testing;
+  const connection = useMemo(() => {
+    const selected = connections.find((entry) => entry.id === setting.connectionId) ?? null;
+    return selected ? { ...selected, model: setting.model.trim() || selected.model } : null;
+  }, [connections, setting.connectionId, setting.model]);
+  const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
 
   const saveTest = useCallback(
     (test: PresetTest, makeActive = true) => {
@@ -84,44 +87,168 @@ export function usePresetTesting({
   );
 
   const start = useCallback(
-    (scenario: PresetTestScenario, title?: string) => saveTest(createPresetTest(scenario, title)),
-    [saveTest],
+    (scenario: PresetTestScenario, title?: string) => {
+      if (busy || preparingRef.current) return null;
+      const document = sessionRef.current.document;
+      const parent = document.tests.find((test) => test.id === document.activeTestId);
+      return saveTest(
+        createPresetTest(scenario, title, {
+          presetSource: parent?.presetSource ?? { kind: 'draft' },
+          testingSettings: parent?.testingSettings ?? document.settings.testing,
+        }),
+      );
+    },
+    [busy, saveTest],
   );
 
   const restart = useCallback(
-    (test = activeTest) => (test ? saveTest(restartPresetTest(test)) : null),
-    [activeTest, saveTest],
+    (test = activeTest) =>
+      test && !busy && !preparingRef.current ? saveTest(restartPresetTest(test)) : null,
+    [activeTest, busy, saveTest],
   );
 
   const setActive = useCallback(
-    (id: string) =>
+    (id: string) => {
+      if (busy || preparingRef.current) return;
       controller.updateDocument((document) =>
         document.tests.some((test) => test.id === id)
           ? { ...document, activeTestId: id }
           : document,
-      ),
-    [controller],
+      );
+      setInspectedEvidenceId(null);
+    },
+    [busy, controller],
+  );
+
+  const updateActiveTest = useCallback(
+    (update: (test: PresetTest) => PresetTest) => {
+      if (busy || preparingRef.current) return;
+      controller.updateDocument((document) => ({
+        ...document,
+        tests: document.tests.map((test) =>
+          test.id === document.activeTestId ? update(test) : test,
+        ),
+      }));
+    },
+    [busy, controller],
+  );
+
+  const setPresetSource = useCallback(
+    (source: PresetTestSource) =>
+      updateActiveTest((test) => ({ ...test, presetSource: structuredClone(source) })),
+    [updateActiveTest],
+  );
+  const setTestingSettings = useCallback(
+    (settings: PresetCocreatorModelSettings) => {
+      if (activeTest) updateActiveTest((test) => ({ ...test, testingSettings: settings }));
+      else
+        controller.updateDocument((document) => ({
+          ...document,
+          settings: { ...document.settings, testing: settings },
+        }));
+    },
+    [activeTest, controller, updateActiveTest],
+  );
+  const setComposerDraft = useCallback(
+    (value: string) => updateActiveTest((test) => ({ ...test, composerDraft: value })),
+    [updateActiveTest],
   );
 
   const generate = useCallback(
-    async (kind: PresetTestGenerationKind, baseTest: PresetTest) => {
-      if (busy) return;
-      if (!connection) {
-        setError('Choose a testing connection and model.');
+    async (
+      kind: PresetTestGenerationKind,
+      originalTest: PresetTest,
+      options: { userText?: string; proposalId?: string } = {},
+    ) => {
+      if (busy || preparingRef.current) return;
+      preparingRef.current = true;
+      const controllerAbort = new AbortController();
+      abortRef.current = controllerAbort;
+      setBusy(true);
+      setError(null);
+      setStreamingText('');
+      setStreamingReasoning('');
+      const finish = () => {
+        if (abortRef.current === controllerAbort) abortRef.current = null;
+        preparingRef.current = false;
+        setBusy(false);
+        setStreamingText('');
+        setStreamingReasoning('');
+      };
+
+      const selectedConnection = connections.find(
+        (entry) => entry.id === originalTest.testingSettings.connectionId,
+      );
+      const model = originalTest.testingSettings.model.trim() || selectedConnection?.model || '';
+      if (!selectedConnection || !model) {
+        setError('Choose a testing connection and model for this chat.');
+        finish();
         return;
       }
-      const draft = structuredClone(sessionRef.current.current);
-      const requestConnection = { ...connection };
-      const prepared = preparePresetTestRequest({
-        test: structuredClone(baseTest),
-        kind,
-        preset: draft.preset,
-        connection: requestConnection,
-        countTokens,
-      });
+      const requestConnection = { ...selectedConnection, model };
+      const dispatchSession = sessionRef.current;
+      let resolved: Awaited<ReturnType<typeof resolvePresetTestSource>>;
+      try {
+        resolved = await resolvePresetTestSource(originalTest.presetSource, dispatchSession, {
+          library: presetApi.getVersioned,
+          reference: async (id) => referencePresetApi.get(id),
+        });
+      } catch (failure) {
+        setError((failure as Error).message);
+        finish();
+        return;
+      }
+      if (controllerAbort.signal.aborted) {
+        finish();
+        return;
+      }
+      let withUser: PresetTest | null;
+      try {
+        withUser =
+          options.userText === undefined
+            ? originalTest
+            : appendPresetTestUserMessage(originalTest, options.userText, resolved.preset);
+      } catch (failure) {
+        setError((failure as Error).message);
+        finish();
+        return;
+      }
+      if (!withUser) {
+        finish();
+        return;
+      }
+      const baseTest =
+        options.userText === undefined ? withUser : { ...withUser, composerDraft: '' };
+      let prepared: ReturnType<typeof preparePresetTestRequest>;
+      try {
+        prepared = preparePresetTestRequest({
+          test: structuredClone(baseTest),
+          kind,
+          preset: resolved.preset,
+          connection: requestConnection,
+          countTokens,
+        });
+      } catch (failure) {
+        setError((failure as Error).message);
+        finish();
+        return;
+      }
       if (!prepared) {
         setError('There is no assistant response to regenerate or swipe.');
+        finish();
         return;
+      }
+      if (options.proposalId) {
+        controller.updateDocument((document) => ({
+          ...document,
+          tests: document.tests.some((entry) => entry.id === baseTest.id)
+            ? document.tests.map((entry) => (entry.id === baseTest.id ? baseTest : entry))
+            : [...document.tests, baseTest],
+          activeTestId: baseTest.id,
+          proposedTests: updateProposedTest(document.proposedTests, options.proposalId!, 'run'),
+        }));
+      } else if (options.userText !== undefined) {
+        saveTest(baseTest);
       }
 
       const generationId = crypto.randomUUID();
@@ -140,7 +267,8 @@ export function usePresetTesting({
         created: Date.now(),
         messageId: prepared.target.id,
         swipeIndex: options.swipeIndex,
-        draftRevision: draft.revision,
+        draftRevision: dispatchSession.current.revision,
+        presetUsed: structuredClone(resolved.used),
         connectionId: requestConnection.id,
         model: requestConnection.model,
         generationId,
@@ -179,15 +307,10 @@ export function usePresetTesting({
         saveTest({ ...baseTest, modified: Date.now(), evidence: [...baseTest.evidence, evidence] });
         setInspectedEvidenceId(evidence.id);
         setError(overflow);
+        finish();
         return;
       }
 
-      const controllerAbort = new AbortController();
-      abortRef.current = controllerAbort;
-      setBusy(true);
-      setError(null);
-      setStreamingText('');
-      setStreamingReasoning('');
       let text = '';
       let reasoning = '';
       try {
@@ -288,24 +411,18 @@ export function usePresetTesting({
         setInspectedEvidenceId(evidence.id);
         if (!aborted) setError(message);
       } finally {
-        if (abortRef.current === controllerAbort) abortRef.current = null;
-        setBusy(false);
-        setStreamingText('');
-        setStreamingReasoning('');
+        finish();
       }
     },
-    [busy, connection, countTokens, saveTest],
+    [busy, connections, controller, countTokens, saveTest],
   );
 
   const send = useCallback(
     async (text: string, test = activeTest) => {
       if (!test || busy) return;
-      const withUser = appendPresetTestUserMessage(test, text, sessionRef.current.current.preset);
-      if (!withUser) return;
-      saveTest(withUser);
-      await generate('send', withUser);
+      await generate('send', test, { userText: text });
     },
-    [activeTest, busy, generate, saveTest],
+    [activeTest, busy, generate],
   );
 
   const regenerate = useCallback(async () => {
@@ -361,23 +478,63 @@ export function usePresetTesting({
         return;
       }
       const target = proposal.restart ? restartPresetTest(activeTest) : activeTest;
-      const withUser = appendPresetTestUserMessage(
-        target,
-        editedMessage,
-        sessionRef.current.current.preset,
-      );
-      if (!withUser) return;
+      await generate('send', target, { userText: editedMessage, proposalId: proposal.id });
+    },
+    [activeTest, busy, generate],
+  );
+
+  const queueReply = useCallback(
+    (messageId: string, testId = activeTest?.id) => {
+      const test = sessionRef.current.document.tests.find((entry) => entry.id === testId);
+      const message = test?.messages.find((entry) => entry.id === messageId);
+      if (!test || !message || message.is_user || !evidenceForSelectedResponse(test, message))
+        return false;
+      const report = buildPresetTestReport({
+        test,
+        throughMessageId: messageId,
+        note: '',
+        includeTranscript: true,
+        includePrompt: true,
+        includeDiagnostics: true,
+      });
       controller.updateDocument((document) => ({
         ...document,
-        tests: document.tests.some((entry) => entry.id === withUser.id)
-          ? document.tests.map((entry) => (entry.id === withUser.id ? withUser : entry))
-          : [...document.tests, withUser],
-        activeTestId: withUser.id,
-        proposedTests: updateProposedTest(document.proposedTests, proposal.id, 'run'),
+        batchQueue: enqueuePresetTestReport(document.batchQueue, report),
       }));
-      await generate('send', withUser);
+      return true;
     },
-    [activeTest, busy, controller, generate],
+    [activeTest?.id, controller],
+  );
+
+  const updateBatch = useCallback(
+    (
+      update: (
+        queue: typeof controller.session.document.batchQueue,
+      ) => typeof controller.session.document.batchQueue,
+    ) =>
+      controller.updateDocument((document) => ({
+        ...document,
+        batchQueue: update(document.batchQueue),
+      })),
+    [controller],
+  );
+
+  const removeBatchItem = useCallback(
+    (id: string) =>
+      updateBatch((queue) => ({
+        ...queue,
+        items: queue.items.filter((item) => item.id !== id),
+      })),
+    [updateBatch],
+  );
+
+  const setBatchItemNote = useCallback(
+    (id: string, note: string) =>
+      updateBatch((queue) => ({
+        ...queue,
+        items: queue.items.map((item) => (item.id === id ? { ...item, note } : item)),
+      })),
+    [updateBatch],
   );
 
   const share = useCallback(
@@ -422,6 +579,9 @@ export function usePresetTesting({
     start,
     restart,
     setActive,
+    setPresetSource,
+    setTestingSettings,
+    setComposerDraft,
     send,
     regenerate,
     swipe,
@@ -431,6 +591,11 @@ export function usePresetTesting({
     dismissAllProposals,
     runProposal,
     share,
+    queueReply,
+    updateBatch,
+    removeBatchItem,
+    setBatchItemNote,
+    sendBatch: controller.sendBatch,
   };
 }
 

@@ -99,13 +99,14 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
   useEffect(() => setTitle(controller.session.title), [controller.session.title]);
 
   const assistantConnection = controller.assistantConnection;
-  const coCreatorBlockedReason = controller.busy
-    ? 'The Co-Creator is still replying.'
-    : !assistantConnection
-      ? 'Choose a Co-Creator model first, under "Assistant model and instructions".'
-      : toolCapability === false
-        ? 'The Co-Creator model does not support tools.'
-        : null;
+  const coCreatorBlockedReason =
+    controller.busy || controller.batchSending
+      ? 'The Co-Creator is still replying.'
+      : !assistantConnection
+        ? 'Choose a Co-Creator model first, under "Assistant model and instructions".'
+        : toolCapability === false
+          ? 'The Co-Creator model does not support tools.'
+          : null;
   // One rule for both places a proposal can run from: the tray and the Co-Creator's card.
   const proposalBlockedReason = !testing.activeTest
     ? 'Start a test scenario first.'
@@ -386,6 +387,8 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
             controller={controller}
             testing={testing}
             connections={props.connections}
+            presets={props.presets}
+            references={props.references}
             characters={props.characters}
             personas={props.personas}
             books={props.books}
