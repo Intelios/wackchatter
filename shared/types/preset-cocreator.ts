@@ -19,12 +19,23 @@ export interface PresetCocreatorMessage {
   toolCallId?: string;
   toolName?: string;
   report?: PresetTestReport;
+  batch?: PresetTestBatch;
   comparison?: PresetComparison;
 }
 
 export type PresetComparisonSource =
   | { kind: 'revision'; revision: number }
   | { kind: 'library' | 'reference'; id: string };
+
+export type PresetTestSource = { kind: 'draft' } | PresetComparisonSource;
+
+/** The exact preset source used for one response, including its content identity. */
+export interface PresetTestPresetUsed {
+  source: PresetTestSource;
+  label: string;
+  revision?: number;
+  version?: string;
+}
 
 /** Frozen when the request is sent, so later edits or deletion cannot rewrite its meaning. */
 export interface PresetComparison {
@@ -78,6 +89,8 @@ export interface PresetTestEvidence {
   messageId: string;
   swipeIndex: number;
   draftRevision: number;
+  /** Absent on reports created before per-chat preset selection existed. */
+  presetUsed?: PresetTestPresetUsed;
   connectionId: string;
   model: string;
   generationId: string;
@@ -106,6 +119,9 @@ export interface PresetTest {
   created: number;
   modified: number;
   scenario: PresetTestScenario;
+  presetSource: PresetTestSource;
+  testingSettings: PresetCocreatorModelSettings;
+  composerDraft: string;
   /** Private working copies. They never write back to application settings. */
   localVariables: MacroVariableMap;
   globalVariables: MacroVariableMap;
@@ -119,11 +135,33 @@ export interface PresetTestReport {
   testId: string;
   throughMessageId: string;
   note: string;
+  testTitle?: string;
+  characterName?: string;
+  personaName?: string | null;
+  /** The chosen visible response survives every report-section choice. */
+  replyText?: string;
+  presetUsed?: PresetTestPresetUsed;
   includeTranscript: boolean;
   includePrompt: boolean;
   includeDiagnostics: boolean;
   transcript?: ChatMessage[];
   evidence?: PresetTestEvidence;
+}
+
+export interface PresetTestBatchQueue {
+  /** Full frozen reports; the section switches only trim copies when sending. */
+  items: PresetTestReport[];
+  note: string;
+  includeTranscript: boolean;
+  includePrompt: boolean;
+  includeDiagnostics: boolean;
+}
+
+export interface PresetTestBatch {
+  id: string;
+  created: number;
+  note: string;
+  reports: PresetTestReport[];
 }
 
 /** Autosaved independently from the immutable preset revision history. */
@@ -133,6 +171,7 @@ export interface PresetCocreatorDocument {
   tests: PresetTest[];
   activeTestId: string | null;
   proposedTests: ProposedPresetTest[];
+  batchQueue: PresetTestBatchQueue;
 }
 
 export interface PresetDraftRevision {

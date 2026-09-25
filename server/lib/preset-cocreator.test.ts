@@ -1,11 +1,14 @@
 import { Database } from 'bun:sqlite';
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { blankCardData } from '../../shared/card/blank.ts';
 import { createDefaultPreset } from '../../shared/prompt/defaults.ts';
 import type { PresetCocreatorDocument } from '../../shared/types/preset-cocreator.ts';
+import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { createSchema } from './db.ts';
 import {
   createPresetCocreatorStore,
   defaultPresetCocreatorDocument,
+  normalizePresetCocreatorDocument,
   type PresetCocreatorStore,
 } from './preset-cocreator.ts';
 
@@ -28,6 +31,100 @@ function create() {
 }
 
 describe('Preset Co-Creator session store', () => {
+  test('older test chats gain per-chat defaults and an empty saved batch', () => {
+    const legacy = defaultPresetCocreatorDocument() as unknown as Record<string, unknown>;
+    delete legacy.batchQueue;
+    legacy.tests = [{ id: 'old-test', title: 'Old test', messages: [], evidence: [] }];
+    legacy.activeTestId = 'old-test';
+
+    const document = normalizePresetCocreatorDocument(legacy);
+    expect(document.tests[0]?.presetSource).toEqual({ kind: 'draft' });
+    expect(document.tests[0]?.testingSettings).toEqual(document.settings.testing);
+    expect(document.tests[0]?.composerDraft).toBe('');
+    expect(document.batchQueue).toEqual({
+      items: [],
+      note: '',
+      includeTranscript: true,
+      includePrompt: true,
+      includeDiagnostics: true,
+    });
+  });
+
+  test('per-chat choices, unsent text and frozen batch reports survive a document save', () => {
+    const session = create();
+    const testChat: PresetCocreatorDocument['tests'][number] = {
+      id: 'chat-1',
+      title: 'Comparison chat',
+      created: 1,
+      modified: 1,
+      scenario: {
+        characterId: null,
+        character: blankCardData('Assistant'),
+        greetingIndex: 0,
+        persona: null,
+        worldInfoSources: [],
+        worldInfoSettings: DEFAULT_WI_SETTINGS,
+        regexScripts: [],
+        variables: { local: {}, global: {} },
+      },
+      presetSource: { kind: 'reference', id: 'Example' },
+      testingSettings: {
+        ...session.document.settings.testing,
+        connectionId: 'connection-1',
+        model: 'model-one',
+      },
+      composerDraft: 'Unsent question',
+      localVariables: {},
+      globalVariables: {},
+      messages: [],
+      evidence: [],
+    };
+    const document: PresetCocreatorDocument = {
+      ...session.document,
+      tests: [testChat],
+      activeTestId: testChat.id,
+      batchQueue: {
+        ...session.document.batchQueue,
+        note: 'Compare the results',
+        includePrompt: false,
+        items: [
+          {
+            id: 'report-1',
+            created: 2,
+            testId: testChat.id,
+            testTitle: testChat.title,
+            throughMessageId: 'reply-1',
+            replyText: 'Frozen reply',
+            note: 'Look at the tone',
+            includeTranscript: true,
+            includePrompt: true,
+            includeDiagnostics: true,
+            presetUsed: {
+              source: testChat.presetSource,
+              label: 'Example',
+              version: 'content-version',
+            },
+          },
+        ],
+      },
+    };
+    const saved = store.saveDocument(session.id, {
+      expectedRevision: 0,
+      operationId: 'save-test-chats',
+      document,
+    });
+
+    expect(saved.kind).toBe('saved');
+    const loaded = store.getSession(session.id)!.document;
+    expect(loaded.tests[0]?.presetSource).toEqual({ kind: 'reference', id: 'Example' });
+    expect(loaded.tests[0]?.testingSettings.model).toBe('model-one');
+    expect(loaded.tests[0]?.composerDraft).toBe('Unsent question');
+    expect(loaded.batchQueue.note).toBe('Compare the results');
+    expect(loaded.batchQueue.includePrompt).toBe(false);
+    expect(loaded.batchQueue.items[0]?.replyText).toBe('Frozen reply');
+    expect(loaded.batchQueue.items[0]?.presetUsed?.version).toBe('content-version');
+  });
+
   test('creates an immutable initial revision and a separate session document', () => {
     const session = create();
 

@@ -6,6 +6,7 @@ import type { Connection } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
+import type { PresetTestEvidence } from '@shared/types/preset-cocreator.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT, REGEX_SUBSTITUTE } from '@shared/types/regex.ts';
 import type { WorldInfoEntry, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -14,10 +15,14 @@ import type { WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
   appendPresetTestUserMessage,
+  batchConversationMessage,
+  buildPresetTestBatch,
   buildPresetTestReport,
   createPresetTest,
   dismissPendingProposals,
   editPresetTestMessage,
+  enqueuePresetTestReport,
+  evidenceForSelectedResponse,
   NO_CARD_DEFAULT_NAME,
   noCardCharacter,
   type PreparedPresetTestRequest,
@@ -135,6 +140,26 @@ function prepareSend(
 }
 
 describe('scenario snapshots', () => {
+  test('a new chat remembers its preset, testing model and draft; restart copies the setup only', () => {
+    const testChat = createPresetTest(scenario(), 'Compare', {
+      presetSource: { kind: 'library', id: 'Other' },
+      testingSettings: {
+        connectionId: 'conn-1',
+        model: 'test-model',
+        maxTokens: 1024,
+        temperature: 0.2,
+        reasoningEffort: 'auto',
+      },
+    });
+    testChat.composerDraft = 'unfinished question';
+    const restarted = restartPresetTest(testChat);
+
+    expect(restarted.presetSource).toEqual({ kind: 'library', id: 'Other' });
+    expect(restarted.testingSettings).toEqual(testChat.testingSettings);
+    expect(restarted.composerDraft).toBe('');
+    expect(restarted.messages).toHaveLength(1);
+  });
+
   test('a test freezes the scenario: later changes to the inputs do not leak in', () => {
     const input = scenario();
     const test = createPresetTest(input);
@@ -349,35 +374,50 @@ describe('swipes, regenerate and failure recovery', () => {
 
   test('an overswipe appends and keeps every alternate cached', () => {
     const { withUser, prepared } = settledTest();
+    const alternateEvidence: PresetTestEvidence = {
+      id: 'ev-alt',
+      created: 1,
+      messageId: prepared.target.id,
+      swipeIndex: 1,
+      draftRevision: 0,
+      presetUsed: {
+        source: { kind: 'library', id: 'Other' },
+        label: 'Other',
+        version: 'alternate-version',
+      },
+      connectionId: 'conn-1',
+      model: 'test-model',
+      generationId: 'gen-1',
+      kind: 'send',
+      status: 'complete',
+      responseText: 'alternate one',
+      messages: [],
+      body: null,
+      tokenCounts: {},
+      totalTokens: 0,
+      droppedMessages: 0,
+      macroWarnings: [],
+    };
     const settled = settlePresetTestGeneration({
       test: withUser,
       prepared,
-      evidence: [],
+      evidence: [
+        {
+          ...alternateEvidence,
+          id: 'ev-main',
+          swipeIndex: 0,
+          presetUsed: { source: { kind: 'draft' }, label: 'Working draft', revision: 0 },
+          responseText: 'main reply',
+        },
+        alternateEvidence,
+      ],
       text: 'main reply',
       reasoning: '',
       alternates: [
         {
           text: 'alternate one',
           info: { send_date: 't' },
-          evidence: {
-            id: 'ev-alt',
-            created: 1,
-            messageId: prepared.target.id,
-            swipeIndex: 1,
-            draftRevision: 0,
-            connectionId: 'conn-1',
-            model: 'test-model',
-            generationId: 'gen-1',
-            kind: 'send',
-            status: 'complete',
-            responseText: 'alternate one',
-            messages: [],
-            body: null,
-            tokenCounts: {},
-            totalTokens: 0,
-            droppedMessages: 0,
-            macroWarnings: [],
-          },
+          evidence: alternateEvidence,
         },
       ],
     });
@@ -387,6 +427,11 @@ describe('swipes, regenerate and failure recovery', () => {
     expect(reply.swipe_id).toBe(0);
     // Each swipe carries its own evidence identity, so the inspector can open either.
     expect(reply.swipe_info?.[1]?.extra?.preset_test_evidence_id).toBe('ev-alt');
+    expect(reply.swipe_info?.[1]?.extra?.preset_test_used).toEqual({
+      source: { kind: 'library', id: 'Other' },
+      label: 'Other',
+      version: 'alternate-version',
+    });
 
     const swiping = preparePresetTestRequest({
       test: settled,
@@ -402,6 +447,9 @@ describe('swipes, regenerate and failure recovery', () => {
     const selected = selectPresetTestSwipe(settled, reply.id, 1);
     expect(selected.messages.at(-1)!.swipe_id).toBe(1);
     expect(selected.messages.at(-1)!.mes).toBe('alternate one');
+    expect(
+      evidenceForSelectedResponse(selected, selected.messages.at(-1)!)?.presetUsed?.version,
+    ).toBe('alternate-version');
   });
 
   test('a failed generation undoes exactly what starting it did', () => {
@@ -469,6 +517,7 @@ describe('shared reports', () => {
       messageId: prepared.target.id,
       swipeIndex: 0,
       draftRevision: 4,
+      presetUsed: { source: { kind: 'draft' as const }, label: 'Working draft', revision: 4 },
       connectionId: 'conn-1',
       model: 'test-model',
       generationId: 'gen-1',
@@ -491,6 +540,95 @@ describe('shared reports', () => {
     });
     return { settled, prepared };
   }
+
+  test('a batch freezes chosen replies, preserves notes, and sends one turn', () => {
+    const { settled } = sharedTest();
+    const report = buildPresetTestReport({
+      test: settled,
+      throughMessageId: settled.messages.at(-1)!.id,
+      note: 'Compare how this preset handles the greeting.',
+      includeTranscript: true,
+      includePrompt: true,
+      includeDiagnostics: true,
+    });
+    const queue = enqueuePresetTestReport(
+      {
+        items: [],
+        note: 'Which preset gives the stronger reply?',
+        includeTranscript: true,
+        includePrompt: false,
+        includeDiagnostics: true,
+      },
+      report,
+    );
+    const batch = buildPresetTestBatch(queue);
+    const message = batchConversationMessage(batch);
+    const edited = editPresetTestMessage(settled, settled.messages.at(-1)!.id, 'edited later');
+
+    expect(enqueuePresetTestReport(queue, report).items).toHaveLength(1);
+    expect(batch.reports).toHaveLength(1);
+    expect(batch.reports[0]?.note).toBe('Compare how this preset handles the greeting.');
+    expect(batch.reports[0]?.testTitle).toBe(settled.title);
+    expect(batch.reports[0]?.replyText).toBe('the reply under review');
+    expect(batch.reports[0]?.presetUsed?.revision).toBe(4);
+    expect(batch.reports[0]?.evidence?.messages).toEqual([]);
+    expect(batch.reports[0]?.transcript?.at(-1)?.mes).toBe('the reply under review');
+    expect(edited.messages.at(-1)?.mes).toBe('edited later');
+    expect(message.role).toBe('report');
+    expect(message.batch?.reports).toHaveLength(1);
+    expect(message.content).toContain('Which preset gives the stronger reply?');
+    expect(message.content).toContain('Compare how this preset handles the greeting.');
+  });
+
+  test('one chat can queue replies made with different presets', () => {
+    const { settled: first } = sharedTest();
+    const next = appendPresetTestUserMessage(first, 'And now?', createDefaultPreset())!;
+    const prepared = prepareSend(next, createDefaultPreset())!;
+    const second = settlePresetTestGeneration({
+      test: next,
+      prepared,
+      evidence: [
+        {
+          ...first.evidence[0]!,
+          id: 'ev-2',
+          messageId: prepared.target.id,
+          presetUsed: {
+            source: { kind: 'library', id: 'Other' },
+            label: 'Other',
+            version: 'version-two',
+          },
+          responseText: 'second reply',
+        },
+      ],
+      text: 'second reply',
+      reasoning: '',
+    });
+    const report = (messageId: string) =>
+      buildPresetTestReport({
+        test: second,
+        throughMessageId: messageId,
+        note: '',
+        includeTranscript: true,
+        includePrompt: true,
+        includeDiagnostics: true,
+      });
+    const firstReport = report(first.messages.at(-1)!.id);
+    const secondReport = report(second.messages.at(-1)!.id);
+    const batch = buildPresetTestBatch({
+      items: [firstReport, secondReport],
+      note: '',
+      includeTranscript: true,
+      includePrompt: true,
+      includeDiagnostics: true,
+    });
+
+    expect(batch.reports).toHaveLength(2);
+    expect(batch.reports[0]!.transcript?.at(-1)?.mes).toBe('the reply under review');
+    expect(batch.reports[1]!.transcript?.at(-1)?.mes).toBe('second reply');
+    expect(batch.reports[0]!.presetUsed?.revision).toBe(4);
+    expect(batch.reports[1]!.presetUsed?.version).toBe('version-two');
+    expect(summarizeReport(batch.reports[1]!, []).replyNumber).toBe(2);
+  });
 
   test('a report is an immutable attachment: later edits do not rewrite it', () => {
     const { settled } = sharedTest();
@@ -529,6 +667,7 @@ describe('shared reports', () => {
     })!;
 
     expect(report.transcript).toBeUndefined();
+    expect(report.replyText).toBe('the reply under review');
     // With neither prompt nor diagnostics wanted, no evidence rides along at all.
     expect(report.evidence).toBeUndefined();
 
@@ -633,7 +772,7 @@ describe('shared reports', () => {
     });
     // The test is deleted afterwards: the transcript the report carries still answers.
     const summary = summarizeReport(report, []);
-    expect(summary.testTitle).toBeNull();
+    expect(summary.testTitle).toBe(settled.title);
     expect(summary.replyNumber).toBe(1);
     expect(summary.revision).toBe(4);
   });

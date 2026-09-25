@@ -5,19 +5,27 @@ import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
-import type { ProposedPresetTest } from '@shared/types/preset-cocreator.ts';
+import type { PresetSummary } from '@shared/types/preset.ts';
+import type {
+  PresetTestSource,
+  ProposedPresetTest,
+  ReferencePresetSummary,
+} from '@shared/types/preset-cocreator.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoBook, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Popover } from '../../components/Popover.tsx';
 import { Select } from '../../components/Select.tsx';
 import {
   ChevronIcon,
   ChevronLeftIcon,
   EditIcon,
+  LayersIcon,
   MessagesIcon,
   NotesIcon,
   PlugIcon,
+  PlusIcon,
   RefreshIcon,
   SearchIcon,
 } from '../../layout/icons.tsx';
@@ -31,7 +39,8 @@ import { composeLorebookSources } from '../lore/useLorebooks.ts';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { ProposalTray } from './ProposalTray.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
-import { NO_CARD_DEFAULT_NAME, noCardCharacter } from './testing.ts';
+import { evidenceForSelectedResponse, NO_CARD_DEFAULT_NAME, noCardCharacter } from './testing.ts';
+import { describePresetUsed, presetTestSourceKey } from './testingSources.ts';
 import type { PresetCocreatorController } from './usePresetCocreator.ts';
 import type { PresetTestingController } from './usePresetTesting.ts';
 
@@ -42,6 +51,8 @@ interface PresetTestingPanelProps {
   controller: PresetCocreatorController;
   testing: PresetTestingController;
   connections: readonly Connection[];
+  presets: readonly PresetSummary[];
+  references: readonly ReferencePresetSummary[];
   characters: readonly CharacterSummary[];
   personas: readonly Persona[];
   books: readonly LorebookSummary[];
@@ -63,6 +74,8 @@ export function PresetTestingPanel({
   controller,
   testing,
   connections,
+  presets,
+  references,
   characters,
   personas,
   books,
@@ -86,10 +99,10 @@ export function PresetTestingPanel({
   const [regexIds, setRegexIds] = useState<string[]>(regexScripts.map((script) => script.id));
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState('');
-  const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [shareNote, setShareNote] = useState('');
   const [shareTranscript, setShareTranscript] = useState(true);
   const [sharePrompt, setSharePrompt] = useState(true);
@@ -132,14 +145,6 @@ export function PresetTestingPanel({
       cancelled = true;
     };
   }, [characterId]);
-
-  const patchTestingSettings = (
-    testingSettings: typeof controller.session.document.settings.testing,
-  ) =>
-    controller.updateDocument((document) => ({
-      ...document,
-      settings: { ...document.settings, testing: testingSettings },
-    }));
 
   const snapshotScenario = async () => {
     if (!character && !noCard) {
@@ -196,17 +201,74 @@ export function PresetTestingPanel({
   };
 
   const test = testing.activeTest;
+  const draft = test?.composerDraft ?? '';
+  const setDraft = testing.setComposerDraft;
+  const batchQueue = controller.session.document.batchQueue;
   const latestAssistant = test
     ? ([...test.messages].reverse().find((message) => !message.is_user) ?? null)
     : null;
-  const hasOldRevisions = Boolean(
-    test?.messages.some(
-      (message) =>
-        !message.is_user &&
-        typeof message.extra?.preset_revision === 'number' &&
-        message.extra.preset_revision !== controller.session.draftRevision,
-    ),
-  );
+  const usedPresets =
+    test?.messages
+      .filter((message) => !message.is_user)
+      .map((message) => {
+        const evidence = evidenceForSelectedResponse(test, message);
+        if (evidence?.presetUsed) {
+          const used = evidence.presetUsed;
+          return `${presetTestSourceKey(used.source)}:${used.revision ?? used.version ?? ''}`;
+        }
+        return typeof message.extra?.preset_revision === 'number'
+          ? `draft:${message.extra.preset_revision}`
+          : null;
+      })
+      .filter((value) => value !== null) ?? [];
+  const hasMixedPresets = new Set(usedPresets).size > 1;
+  const sourceOptions: {
+    key: string;
+    source: PresetTestSource;
+    label: string;
+    description: string;
+  }[] = [
+    {
+      key: 'draft',
+      source: { kind: 'draft' },
+      label: 'Working draft',
+      description: `Current revision ${controller.session.draftRevision}`,
+    },
+    ...[...controller.session.history].reverse().map((entry) => ({
+      key: `revision:${entry.revision}`,
+      source: { kind: 'revision' as const, revision: entry.revision },
+      label: `Revision ${entry.revision}`,
+      description: entry.summary || 'Session history',
+    })),
+    ...presets.map((entry) => ({
+      key: `library:${entry.id}`,
+      source: { kind: 'library' as const, id: entry.id },
+      label: `My preset · ${entry.name}`,
+      description: 'Reads the latest saved file for each reply',
+    })),
+    ...references.map((entry) => ({
+      key: `reference:${entry.id}`,
+      source: { kind: 'reference' as const, id: entry.id },
+      label: `Reference · ${entry.name}`,
+      description: 'Reads the latest reference file for each reply',
+    })),
+  ];
+  const selectedSourceKey = test ? presetTestSourceKey(test.presetSource) : '';
+  if (test && !sourceOptions.some((option) => option.key === selectedSourceKey)) {
+    const missing = test.presetSource;
+    sourceOptions.push({
+      key: selectedSourceKey,
+      source: missing,
+      label:
+        missing.kind === 'revision'
+          ? `Missing revision ${missing.revision}`
+          : missing.kind === 'draft'
+            ? 'Missing working draft'
+            : `Missing ${missing.kind === 'library' ? 'my preset' : 'reference'} · ${missing.id}`,
+      description: 'Choose another preset to keep testing.',
+    });
+  }
+  const sourceByKey = new Map(sourceOptions.map((option) => [option.key, option.source]));
   const pendingProposals = controller.session.document.proposedTests.filter(
     (proposal) => proposal.status === 'pending',
   );
@@ -267,6 +329,14 @@ export function PresetTestingPanel({
   useEffect(() => {
     scrollToBottom();
   }, [test?.id, scrollToBottom]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing chats clears transient controls
+  useEffect(() => {
+    setEditingId(null);
+    setComposerProposalId(null);
+    setShareOpen(false);
+    setInspectorOpen(false);
+  }, [test?.id]);
 
   // Asking to inspect a reply means showing the inspector, which sits below the transcript.
   // The panel's own offset rather than scrollIntoView, which also scrolls the clipped
@@ -332,10 +402,8 @@ export function PresetTestingPanel({
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    setDraft('');
     scrollToBottom();
     if (composerProposal) {
-      setComposerProposalId(null);
       void testing.runProposal(composerProposal, text);
       return;
     }
@@ -344,6 +412,18 @@ export function PresetTestingPanel({
 
   const shareBlockedReason =
     coCreatorBlockedReason ?? (testing.busy ? 'Wait for the test reply to finish.' : null);
+  const batchBlockedReason = shareBlockedReason;
+
+  const sendBatch = () => {
+    if (!batchQueue.items.length || batchBlockedReason) return;
+    void testing
+      .sendBatch()
+      .then(() => {
+        setBatchOpen(false);
+        onReportSent();
+      })
+      .catch((failure) => testing.setError((failure as Error).message));
+  };
 
   const share = () => {
     if (!latestAssistant || shareBlockedReason) return;
@@ -384,15 +464,65 @@ export function PresetTestingPanel({
 
   return (
     <div className="preset-cc-testing" ref={scrollRef}>
+      <div className="preset-cc-test-header">
+        <div className="preset-cc-test-header__row">
+          <span className="wc-label">Chat</span>
+          <Select
+            label="Saved testing chat"
+            value={test?.id ?? ''}
+            placeholder="Start a test below"
+            disabled={!controller.session.document.tests.length || testing.busy}
+            options={controller.session.document.tests.map((entry) => ({
+              value: entry.id,
+              label: entry.title,
+              description: `${entry.messages.length} messages · ${entry.presetSource.kind === 'draft' ? 'Working draft' : entry.presetSource.kind === 'revision' ? `Revision ${entry.presetSource.revision}` : entry.presetSource.id} · ${entry.testingSettings.model || 'No model'}`,
+            }))}
+            onChange={testing.setActive}
+          />
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            disabled={!test || testing.busy}
+            title="New chat from this scenario"
+            aria-label="New chat from this scenario"
+            onClick={() => testing.restart()}
+          >
+            <PlusIcon />
+          </button>
+        </div>
+        <div className="preset-cc-test-header__row">
+          <span className="wc-label">Preset</span>
+          <Select
+            label="Preset for future test replies"
+            value={selectedSourceKey}
+            placeholder="Choose a test chat"
+            disabled={!test || testing.busy}
+            searchable
+            options={sourceOptions.map((option) => ({
+              value: option.key,
+              label: option.label,
+              description: option.description,
+              disabled: option.key === selectedSourceKey && option.label.startsWith('Missing '),
+              disabledReason: option.description,
+            }))}
+            onChange={(key) => {
+              const source = sourceByKey.get(key);
+              if (source) testing.setPresetSource(source);
+            }}
+          />
+        </div>
+      </div>
       <details className="preset-cc-setup" open={!test}>
         <summary>Scenario and testing model</summary>
         <div className="preset-cc-setup__body">
-          <PresetModelSettings
-            label="Testing model"
-            value={controller.session.document.settings.testing}
-            connections={connections}
-            onChange={patchTestingSettings}
-          />
+          <fieldset className="preset-cc-testing-model" disabled={testing.busy}>
+            <PresetModelSettings
+              label="Testing model"
+              value={test?.testingSettings ?? controller.session.document.settings.testing}
+              connections={connections}
+              onChange={testing.setTestingSettings}
+            />
+          </fieldset>
           <div className="preset-cc-scenario">
             <div className="field">
               <label className="wc-label" htmlFor={`${fieldId}-card`}>
@@ -537,48 +667,33 @@ export function PresetTestingPanel({
         {setupError ? <p className="preset-cc-inline-error">{setupError}</p> : null}
       </details>
 
-      {controller.session.document.tests.length ? (
-        <div className="preset-cc-test-history">
-          <label className="wc-label" htmlFor="preset-cc-test-select">
-            Saved conversation
-          </label>
-          <Select
-            id="preset-cc-test-select"
-            label="Saved conversation"
-            value={test?.id ?? ''}
-            placeholder="Choose a conversation"
-            options={controller.session.document.tests.map((entry) => ({
-              value: entry.id,
-              label: entry.title,
-              description: `${entry.messages.length} message${entry.messages.length === 1 ? '' : 's'}`,
-            }))}
-            onChange={testing.setActive}
-          />
-          <button
-            type="button"
-            className="wc-button wc-button--ghost"
-            disabled={!test || testing.busy}
-            onClick={() => testing.restart()}
-          >
-            Restart
-          </button>
-        </div>
-      ) : null}
-
       {/* Only the transcript region is watched for growth. The composer and the controls
           below it stay direct children of the scroller so the composer's sticky edge spans
           the whole panel, not just this box. */}
       <div className="preset-cc-test-body" ref={bodyRef}>
         {test ? (
           <>
-            {hasOldRevisions ? (
+            {hasMixedPresets ? (
               <p className="preset-cc-revision-warning">
-                This conversation contains replies generated with older preset revisions.
+                This conversation contains replies from different presets or versions. Each reply
+                keeps its source label.
               </p>
             ) : null}
             <div className="preset-cc-transcript">
               {test.messages.map((message) => {
                 const revision = message.extra?.preset_revision;
+                const evidence = evidenceForSelectedResponse(test, message);
+                const presetLabel = evidence?.presetUsed
+                  ? describePresetUsed(evidence.presetUsed)
+                  : typeof revision === 'number'
+                    ? `Working draft · rev ${revision}`
+                    : null;
+                const queued = batchQueue.items.some(
+                  (item) =>
+                    item.testId === test.id &&
+                    item.throughMessageId === message.id &&
+                    item.evidence?.id === evidence?.id,
+                );
                 const model = message.extra?.model;
                 const timestamp = formatTimestamp(message.send_date);
                 const isLatest = message.id === latestAssistant?.id;
@@ -606,17 +721,12 @@ export function PresetTestingPanel({
                               {timestamp.short}
                             </time>
                           ) : null}
-                          {!message.is_user && typeof revision === 'number' ? (
+                          {!message.is_user && presetLabel ? (
                             <span
                               className="message__badge"
-                              title={`Generated with preset revision ${revision}${
-                                revision !== controller.session.draftRevision
-                                  ? ' — older than the current draft'
-                                  : ''
-                              }`}
+                              title={`Generated with ${presetLabel}`}
                             >
-                              rev {revision}
-                              {revision !== controller.session.draftRevision ? ' · old' : ''}
+                              {presetLabel}
                             </span>
                           ) : null}
                           {!message.is_user && model ? (
@@ -628,6 +738,18 @@ export function PresetTestingPanel({
                         </div>
                         {!testing.busy ? (
                           <div className="message__tools">
+                            {!message.is_user && evidence ? (
+                              <button
+                                type="button"
+                                className="wc-button wc-button--ghost message__action"
+                                disabled={queued}
+                                onClick={() => testing.queueReply(message.id)}
+                                title={queued ? 'Already in batch' : 'Add this reply to the batch'}
+                                aria-label={queued ? 'Already in batch' : 'Add reply to batch'}
+                              >
+                                <PlusIcon />
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="wc-button wc-button--ghost message__action"
@@ -862,7 +984,10 @@ export function PresetTestingPanel({
               onToggle={(event) => setInspectorOpen(event.currentTarget.open)}
             >
               <summary>
-                Request inspector · revision {testing.inspectedEvidence.draftRevision}
+                Request inspector ·{' '}
+                {testing.inspectedEvidence.presetUsed
+                  ? describePresetUsed(testing.inspectedEvidence.presetUsed)
+                  : `revision ${testing.inspectedEvidence.draftRevision}`}
               </summary>
               <dl>
                 <dt>Model</dt>
@@ -912,6 +1037,98 @@ export function PresetTestingPanel({
       {/* One sticky dock for everything you act on next: the proposals, any error, and the
           composer. The error used to render below the composer's sticky edge, out of view. */}
       <div className="preset-cc-dock" ref={setDock}>
+        <div className="preset-cc-batch-bar">
+          <Popover
+            label="Test report batch"
+            icon={<LayersIcon />}
+            triggerText={`Batch (${batchQueue.items.length})`}
+            open={batchOpen}
+            onOpenChange={setBatchOpen}
+            placement="top-start"
+            popupClassName="preset-cc-batch-popup"
+          >
+            <div className="preset-cc-batch">
+              <h3>Send test results together</h3>
+              {batchQueue.items.length ? (
+                <ol className="preset-cc-batch__items">
+                  {batchQueue.items.map((item) => (
+                    <li key={item.id} className="preset-cc-batch__item">
+                      <div className="preset-cc-batch__item-head">
+                        <strong>{item.testTitle ?? 'Saved test'}</strong>
+                        <button
+                          type="button"
+                          className="wc-button wc-button--ghost"
+                          onClick={() => testing.removeBatchItem(item.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <span className="wc-hint">
+                        {item.presetUsed ? describePresetUsed(item.presetUsed) : 'Working draft'}
+                      </span>
+                      <p>{item.replyText ?? item.transcript?.at(-1)?.mes ?? ''}</p>
+                      <label className="field">
+                        <span className="wc-label">Note for this result · optional</span>
+                        <textarea
+                          className="wc-textarea"
+                          rows={2}
+                          value={item.note}
+                          onChange={(event) =>
+                            testing.setBatchItemNote(item.id, event.target.value)
+                          }
+                        />
+                      </label>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="wc-hint">Add a generated reply from any testing chat.</p>
+              )}
+              <label className="field">
+                <span className="wc-label">Overall request · optional</span>
+                <textarea
+                  className="wc-textarea"
+                  rows={2}
+                  value={batchQueue.note}
+                  onChange={(event) =>
+                    testing.updateBatch((queue) => ({ ...queue, note: event.target.value }))
+                  }
+                />
+              </label>
+              <div className="preset-cc-batch__sections">
+                {(
+                  [
+                    ['includeTranscript', 'Visible conversations'],
+                    ['includePrompt', 'Assembled prompts and requests'],
+                    ['includeDiagnostics', 'Diagnostics and tokens'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label className="preset-cc-check" key={key}>
+                    <input
+                      type="checkbox"
+                      checked={batchQueue[key]}
+                      onChange={(event) =>
+                        testing.updateBatch((queue) => ({ ...queue, [key]: event.target.checked }))
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="wc-button wc-button--primary"
+                disabled={!batchQueue.items.length || Boolean(batchBlockedReason)}
+                title={batchBlockedReason ?? undefined}
+                onClick={sendBatch}
+              >
+                Send {batchQueue.items.length} result{batchQueue.items.length === 1 ? '' : 's'}
+              </button>
+              {batchBlockedReason ? <span className="wc-hint">{batchBlockedReason}</span> : null}
+            </div>
+          </Popover>
+          {batchQueue.items.length ? <span className="wc-hint">Ready to share</span> : null}
+        </div>
         <ProposalTray
           proposals={pendingProposals}
           editingId={composerProposal?.id ?? null}
