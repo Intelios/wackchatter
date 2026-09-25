@@ -1,0 +1,14 @@
+name: Rebuild website on release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  rebuild-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Workers Builds deploy
+        run: curl -fsSL -X POST "$CLOUDFLARE_DEPLOY_HOOK"
+        env:
+          CLOUDFLARE_DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
