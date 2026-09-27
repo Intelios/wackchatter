@@ -114,6 +114,122 @@ describe('prompt order', () => {
     expect(assemble({ preset, generationType: 'normal' }).messages).toHaveLength(0);
     expect(assemble({ preset, generationType: 'continue' }).messages).toHaveLength(1);
   });
+
+  test('documentation is inert regardless of enablement, placement, or trigger', () => {
+    const base = createDefaultPreset();
+    const documentation = [
+      {
+        identifier: 'relative-docs',
+        name: 'Relative documentation',
+        role: 'documentation' as const,
+        content: 'RELATIVE SECRET',
+      },
+      {
+        identifier: 'absolute-docs',
+        name: 'Absolute documentation',
+        role: 'documentation' as const,
+        content: 'ABSOLUTE SECRET',
+        injection_position: INJECTION_POSITION.ABSOLUTE,
+        injection_depth: 0,
+        injection_trigger: ['normal' as const],
+      },
+      {
+        identifier: 'disabled-docs',
+        name: 'Disabled documentation',
+        role: 'documentation' as const,
+        content: 'DISABLED SECRET',
+      },
+    ];
+    const preset = setPromptOrder({ ...base, prompts: [...base.prompts!, ...documentation] }, [
+      { identifier: 'relative-docs', enabled: true },
+      { identifier: 'absolute-docs', enabled: true },
+      { identifier: 'disabled-docs', enabled: false },
+      { identifier: 'main', enabled: true },
+    ]);
+
+    const result = assemble({ preset, generationType: 'normal' });
+    const content = result.messages.map((message) => message.content).join('\n');
+
+    expect(content).not.toContain('SECRET');
+    expect(result.messages).toHaveLength(1);
+    expect(result.tokenCounts).toMatchObject({
+      'relative-docs': 0,
+      'absolute-docs': 0,
+      'disabled-docs': 0,
+    });
+  });
+
+  test('documentation never resolves macros or consumes context budget', () => {
+    const base = createDefaultPreset();
+    const note = {
+      identifier: 'docs',
+      name: 'Documentation',
+      role: 'documentation' as const,
+      content: `${'budget '.repeat(200)}{{setvar::leaked::yes}} {{unknownDocsMacro}}`,
+    };
+    const preset = {
+      ...setPromptOrder({ ...base, prompts: [...base.prompts!, note] }, [
+        { identifier: 'docs', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+      ]),
+      new_chat_prompt: '',
+      openai_max_context: 20,
+      openai_max_tokens: 5,
+    };
+
+    const result = assemble({ preset, messages: makeMessages(5) });
+
+    expect(result.messages).toHaveLength(5);
+    expect(result.droppedMessages).toBe(0);
+    expect(result.variableUpdates.local.leaked).toBeUndefined();
+    expect(result.macroWarnings).not.toContainEqual(
+      expect.objectContaining({ source: 'prompt:docs' }),
+    );
+  });
+
+  test('documentation built-ins cannot run card overrides and do not act as summary anchors', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'main', {
+      role: 'documentation',
+      content: 'DOCUMENTED MAIN',
+    });
+    preset = updatePrompt(preset, 'jailbreak', {
+      role: 'documentation',
+      content: 'DOCUMENTED JAILBREAK',
+    });
+    preset = {
+      ...setPromptOrder(preset, [
+        { identifier: 'main', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+        { identifier: 'jailbreak', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+
+    const result = assemble({
+      preset,
+      character: makeCharacter({
+        system_prompt: 'CARD MAIN OVERRIDE',
+        post_history_instructions: 'CARD JAILBREAK OVERRIDE',
+      }),
+      messages: makeMessages(1),
+      summary: { text: 'The gate is open.', checkpointMessageId: 'm0' },
+      summarySettings: { position: 'beforeMain' },
+    });
+
+    expect(result.messages.map((message) => message.content)).toEqual([
+      '[Summary: The gate is open.]',
+      'message number 0',
+    ]);
+  });
+
+  test('an imported marker assigned the documentation role is defensively ignored', () => {
+    let preset = updatePrompt(createDefaultPreset(), 'chatHistory', { role: 'documentation' });
+    preset = setPromptOrder(preset, [{ identifier: 'chatHistory', enabled: true }]);
+
+    expect(
+      assemble({ preset, messages: makeMessages(2), requireChatHistory: true }).messages,
+    ).toEqual([]);
+  });
 });
 
 describe('rolling summary injection', () => {

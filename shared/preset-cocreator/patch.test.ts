@@ -115,6 +115,19 @@ describe('Preset Co-Creator patch boundary', () => {
     );
   });
 
+  test('accepts documentation on text blocks and rejects it on generated markers', () => {
+    const base = createDefaultPreset();
+    const documented = structuredClone(base);
+    const main = documented.prompts!.find((prompt) => prompt.identifier === 'main')!;
+    main.role = 'documentation';
+    expect(validatePresetDraft(documented, base)).toEqual(documented);
+
+    const invalid = structuredClone(base);
+    const history = invalid.prompts!.find((prompt) => prompt.identifier === 'chatHistory')!;
+    history.role = 'documentation';
+    expect(() => validatePresetDraft(invalid, base)).toThrow('marker');
+  });
+
   test('rejects duplicate prompt identities and broken live orders', () => {
     const base = createDefaultPreset();
     const duplicate = structuredClone(base);

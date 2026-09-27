@@ -166,7 +166,10 @@ function validatePrompt(prompt: unknown, index: number): asserts prompt is Promp
     throw new Error(`Prompt ${index + 1} needs a non-empty identifier.`);
   }
   if (typeof prompt.name !== 'string') throw new Error(`Prompt ${prompt.identifier} needs a name.`);
-  if (prompt.role !== undefined && !['system', 'user', 'assistant'].includes(String(prompt.role))) {
+  if (
+    prompt.role !== undefined &&
+    !['system', 'user', 'assistant', 'documentation'].includes(String(prompt.role))
+  ) {
     throw new Error(`Prompt ${prompt.identifier} has an invalid role.`);
   }
   if (prompt.content !== undefined && typeof prompt.content !== 'string') {
@@ -255,9 +258,13 @@ export function validatePresetDraft(candidate: unknown, previous?: Preset): Pres
   }
   for (const identifier of MARKER_IDENTIFIERS) {
     const marker = candidate.prompts.find((prompt) => prompt.identifier === identifier)!;
-    if (marker.marker !== true || Object.hasOwn(marker, 'content')) {
+    if (
+      marker.marker !== true ||
+      Object.hasOwn(marker, 'content') ||
+      marker.role === 'documentation'
+    ) {
       throw new Error(
-        `Built-in marker prompt "${identifier}" must remain a marker with no content.`,
+        `Built-in marker prompt "${identifier}" must remain a generated marker with no content or documentation role.`,
       );
     }
   }

@@ -1,6 +1,6 @@
 /**
- * Preset storage. One JSON file per preset in data/presets, written in SillyTavern's
- * exact byte format so files can be copied between the two apps directly.
+ * Preset storage. One JSON file per preset in data/presets, using SillyTavern's byte format
+ * plus preserved WackChatter extensions such as inert documentation blocks.
  */
 
 import { createHash } from 'node:crypto';

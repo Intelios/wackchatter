@@ -2,7 +2,7 @@
 
 A chat frontend for cloud LLMs with character cards, lorebooks, personas, and long-term story memory — all running locally in your browser. Uses your own API keys; nothing is sent anywhere except the model you pick.
 
-Your existing character cards and presets from [SillyTavern](https://github.com/SillyTavern/SillyTavern) work here without conversion.
+Your existing character cards and presets from [SillyTavern](https://github.com/SillyTavern/SillyTavern) import without conversion. WackChatter presets may also use documented extensions described below.
 
 ![Chat view](images/chat.jpeg)
 
@@ -47,7 +47,9 @@ Your characters, chats, presets, and keys are all in `data/`, which git ignores 
 
 **Character Co-Creator** — An AI design partner that helps you build characters through conversation. Describe a vague idea and it'll ask the right questions, draft fields, and propose openings. Everything it suggests appears as a labelled block you can file into the card with one click. Attach favourite cards from your library as style examples, and when you're happy, hand off to the Studio for final polish. The AI never edits the card directly — you curate what goes in.
 
-**Prompt Manager** — Drag to reorder prompts, set depth injections, use marker prompts. Shows live token counts using a real tokenizer so you can see exactly how your context budget is being spent.
+**Prompt Manager** — Drag to reorder prompts, set depth injections, use marker prompts, and add Documentation blocks for author notes and design rationale. Documentation is readable by people and the Preset Co-Creator but is never sent in chat requests. Shows live token counts using a real tokenizer so you can see exactly how your context budget is being spent.
+
+Documentation blocks are a WackChatter preset extension saved as `role: "documentation"`. They remain in normal exports; another app may not understand the role or guarantee that the text stays out of model requests.
 
 **Lorebooks** — Standalone World Info books and embedded character books, with a full activation engine (keyword matching, regex, budget, recursion, groups).
 

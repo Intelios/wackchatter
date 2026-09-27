@@ -107,6 +107,7 @@ const promptsOf = (preset: Preset): Prompt[] =>
 const same = (a: unknown, b: unknown) => diffPreset(a, b).length === 0;
 
 function placement(prompt: Prompt): string {
+  if (prompt.role === 'documentation') return 'documentation · excluded from generation';
   const parts: string[] = [prompt.role ?? 'system'];
   if (prompt.injection_position === INJECTION_POSITION.ABSOLUTE) {
     parts.push(

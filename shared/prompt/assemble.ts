@@ -470,7 +470,9 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   });
 
   const promptsById = new Map<string, Prompt>();
-  for (const prompt of preset.prompts ?? []) promptsById.set(prompt.identifier, prompt);
+  for (const prompt of preset.prompts ?? []) {
+    promptsById.set(prompt.identifier, prompt);
+  }
 
   // Where the persona description goes. `{{persona}}` keeps expanding whatever this says,
   // as it does in ST — otherwise a preset that references the macro would break the
@@ -530,6 +532,11 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   // --- Materialise fixed prompt collections -----------------------------
   const tokenCounts: Record<string, number> = {};
+  // Documentation is visible in the preset but has no wire representation. Recording a
+  // zero keeps the Prompt Manager honest in every prompt-cost preview.
+  for (const prompt of promptsById.values()) {
+    if (prompt.role === 'documentation') tokenCounts[prompt.identifier] = 0;
+  }
   const slots: Slot[] = [];
   const absolutePrompts: DepthInjection[] = [];
   const mandatoryIdentifiers: string[] = [];
@@ -651,13 +658,21 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   const hasScenarioAnchor = order.some((entry) => {
     const prompt = promptsById.get(entry.identifier);
     return (
-      entry.identifier === 'scenario' && entry.enabled && Boolean(prompt) && shouldTrigger(prompt!)
+      entry.identifier === 'scenario' &&
+      entry.enabled &&
+      Boolean(prompt) &&
+      prompt!.role !== 'documentation' &&
+      shouldTrigger(prompt!)
     );
   });
   const hasMainAnchor = order.some((entry) => {
     const prompt = promptsById.get(entry.identifier);
     return (
-      entry.identifier === 'main' && entry.enabled && Boolean(prompt) && shouldTrigger(prompt!)
+      entry.identifier === 'main' &&
+      entry.enabled &&
+      Boolean(prompt) &&
+      prompt!.role !== 'documentation' &&
+      shouldTrigger(prompt!)
     );
   });
   /** Index in `slots` where chat history goes; -1 until we see the marker. */
@@ -666,6 +681,10 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
 
   for (const entry of order) {
     const prompt = promptsById.get(entry.identifier);
+    // This is intentionally before enablement, trigger checks, marker handling, content
+    // resolution and card overrides: documentation must be completely inert, including
+    // macros with side effects and malformed imported marker blocks.
+    if (prompt?.role === 'documentation') continue;
     const entryEnabled =
       entry.enabled || (options.requireChatHistory && entry.identifier === 'chatHistory');
     if (!prompt || !entryEnabled || !shouldTrigger(prompt)) continue;
@@ -785,7 +804,11 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     }
   }
 
-  if (options.requireChatHistory && historySlotIndex === -1) {
+  if (
+    options.requireChatHistory &&
+    historySlotIndex === -1 &&
+    promptsById.get('chatHistory')?.role !== 'documentation'
+  ) {
     historySlotIndex = slots.length;
     slots.push({ identifier: 'chatHistory', messages: [], tokens: 0 });
   }

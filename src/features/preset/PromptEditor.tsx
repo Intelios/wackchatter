@@ -21,7 +21,8 @@ interface PromptEditorProps {
   onDelete: (identifier: string) => void;
 }
 
-const ROLES: PromptRole[] = ['system', 'user', 'assistant'];
+const MESSAGE_ROLES: PromptRole[] = ['system', 'user', 'assistant'];
+const TEXT_ROLES: PromptRole[] = [...MESSAGE_ROLES, 'documentation'];
 const TRIGGERS: Array<{ value: GenerationType; label: string; unavailable?: boolean }> = [
   { value: 'normal', label: 'Normal' },
   { value: 'continue', label: 'Continue' },
@@ -44,6 +45,7 @@ export function PromptEditor({
 
   const isMarker = isMarkerIdentifier(identifier);
   const isAbsolute = prompt.injection_position === INJECTION_POSITION.ABSOLUTE;
+  const isDocumentation = prompt.role === 'documentation';
   const isOverridable = (OVERRIDABLE_IDENTIFIERS as readonly string[]).includes(identifier);
   const isBuiltin = isBuiltinIdentifier(identifier);
 
@@ -82,29 +84,34 @@ export function PromptEditor({
               id={`${identifier}-role`}
               label="Role"
               value={prompt.role ?? 'system'}
-              options={ROLES.map((role) => ({ value: role, label: role }))}
+              options={(isMarker ? MESSAGE_ROLES : TEXT_ROLES).map((role) => ({
+                value: role,
+                label: role === 'documentation' ? 'Documentation' : role,
+              }))}
               onChange={(role) => set('role', role)}
             />
           </div>
 
-          <div className="field">
-            <label className="wc-label" htmlFor={`${identifier}-position`}>
-              Position
-            </label>
-            <Select
-              id={`${identifier}-position`}
-              label="Position"
-              value={isAbsolute ? INJECTION_POSITION.ABSOLUTE : INJECTION_POSITION.RELATIVE}
-              options={[
-                { value: INJECTION_POSITION.RELATIVE, label: 'In order' },
-                { value: INJECTION_POSITION.ABSOLUTE, label: 'In chat @ depth' },
-              ]}
-              onChange={(position) => set('injection_position', position)}
-            />
-          </div>
+          {!isDocumentation ? (
+            <div className="field">
+              <label className="wc-label" htmlFor={`${identifier}-position`}>
+                Position
+              </label>
+              <Select
+                id={`${identifier}-position`}
+                label="Position"
+                value={isAbsolute ? INJECTION_POSITION.ABSOLUTE : INJECTION_POSITION.RELATIVE}
+                options={[
+                  { value: INJECTION_POSITION.RELATIVE, label: 'In order' },
+                  { value: INJECTION_POSITION.ABSOLUTE, label: 'In chat @ depth' },
+                ]}
+                onChange={(position) => set('injection_position', position)}
+              />
+            </div>
+          ) : null}
         </div>
 
-        {isAbsolute ? (
+        {isAbsolute && !isDocumentation ? (
           <div className="prompt-editor__row">
             <div className="field">
               <label className="wc-label" htmlFor={`${identifier}-depth`}>
@@ -137,25 +144,29 @@ export function PromptEditor({
           </div>
         ) : null}
 
-        <fieldset className="prompt-editor__triggers">
-          <legend className="wc-label">Generation triggers</legend>
-          <p className="wc-hint">No selection means the prompt is always active.</p>
-          {TRIGGERS.map((trigger) => (
-            <label key={trigger.value} className="prompt-editor__check">
-              <input
-                type="checkbox"
-                checked={prompt.injection_trigger?.includes(trigger.value) ?? false}
-                onChange={(event) => toggleTrigger(trigger.value, event.target.checked)}
-              />
-              <span>
-                {trigger.label}
-                {trigger.unavailable ? (
-                  <span className="wc-hint">Preserved for ST; this mode is not available yet.</span>
-                ) : null}
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        {!isDocumentation ? (
+          <fieldset className="prompt-editor__triggers">
+            <legend className="wc-label">Generation triggers</legend>
+            <p className="wc-hint">No selection means the prompt is always active.</p>
+            {TRIGGERS.map((trigger) => (
+              <label key={trigger.value} className="prompt-editor__check">
+                <input
+                  type="checkbox"
+                  checked={prompt.injection_trigger?.includes(trigger.value) ?? false}
+                  onChange={(event) => toggleTrigger(trigger.value, event.target.checked)}
+                />
+                <span>
+                  {trigger.label}
+                  {trigger.unavailable ? (
+                    <span className="wc-hint">
+                      Preserved for ST; this mode is not available yet.
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
 
         {isMarker ? (
           <p className="prompt-editor__note">
@@ -170,12 +181,23 @@ export function PromptEditor({
             multiline
             expandable
             rows={12}
-            macros
-            hint="Type {{ for the macro list — {{char}}, {{roll::1d20}}, {{random::a::b}} and the rest."
+            macros={!isDocumentation}
+            hint={
+              isDocumentation
+                ? 'Plain text or Markdown for people reading the preset.'
+                : 'Type {{ for the macro list — {{char}}, {{roll::1d20}}, {{random::a::b}} and the rest.'
+            }
           />
         )}
 
-        {isOverridable ? (
+        {isDocumentation ? (
+          <p className="prompt-editor__note">
+            Author notes for readers and the Preset Co-Creator. Never sent when this preset
+            generates chat responses. Other apps may not honor this exclusion.
+          </p>
+        ) : null}
+
+        {isOverridable && !isDocumentation ? (
           <label className="prompt-editor__check">
             <input
               type="checkbox"

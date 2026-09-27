@@ -1,9 +1,10 @@
 # WackChatter
 
-A lightweight chat frontend for cloud LLMs, **data-compatible with SillyTavern**: character
-cards and chat-completion presets move between the two apps untouched. Chats and app
-settings are ours and deliberately not portable. The app is not in use by anyone yet, so
-compatibility of *our own* stored formats is not a concern.
+A lightweight chat frontend for cloud LLMs, based on SillyTavern-compatible character cards
+and chat-completion presets. Imports remain compatible; WackChatter presets may add documented
+extensions that other apps do not understand. Chats and app settings are ours and deliberately
+not portable. The app is not in use by anyone yet, so compatibility of *our own* stored formats
+is not a concern.
 
 Bun (server) + React 19 + TypeScript + Vite (client). Desktop only. A read-only
 SillyTavern reference copy lives at `Documents/Github/SillyTavernSource` (format research
@@ -132,6 +133,10 @@ users' libraries silently.
 - Serialise as `JSON.stringify(preset, null, 4)` with **no trailing newline**. All 12
   built-in prompts must be present. Marker prompts carry no `content` on disk. Unknown
   keys are preserved on save.
+- `role: "documentation"` is WackChatter-only author context. Preserve it on every preset
+  path, expose it to the Preset Co-Creator, and exclude it in `assemblePrompt` before marker
+  handling, overrides, macros, triggers, placement and token counting. Built-in markers may
+  not use the role; imported malformed marker documentation is still inert.
 
 **Macros** (`shared/prompt/`)
 - Three entry points, three runtime rules, not interchangeable:

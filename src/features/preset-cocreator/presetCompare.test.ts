@@ -72,6 +72,16 @@ describe('side by side', () => {
     expect(view.settings.every((row) => row.status === 'same')).toBe(true);
   });
 
+  test('documentation blocks are identified as excluded from generation', () => {
+    const preset = addPrompt(createDefaultPreset(), 'docs', 'For preset authors.');
+    preset.prompts!.find((prompt) => prompt.identifier === 'docs')!.role = 'documentation';
+
+    const row = buildSideBySide(preset, structuredClone(preset)).prompts.find(
+      (prompt) => prompt.key === 'prompt:docs',
+    );
+    expect(row?.left?.meta).toBe('documentation · excluded from generation');
+  });
+
   test('prompts follow the new side’s live order and match by identifier', () => {
     const left = createDefaultPreset();
     const right = withPrompt(left, 'main', 'A rewritten main prompt.');

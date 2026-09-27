@@ -313,6 +313,35 @@ describe('assembly parity', () => {
     expect(prompt).not.toContain('whispers');
   });
 
+  test('documentation never reaches a Co-Creator test provider request', () => {
+    const test = createPresetTest(scenario());
+    const base = createDefaultPreset();
+    const preset: Preset = {
+      ...base,
+      prompts: [
+        ...base.prompts!,
+        {
+          identifier: 'docs',
+          name: 'Author notes',
+          role: 'documentation',
+          content: 'PRIVATE PRESET RATIONALE',
+        },
+      ],
+      prompt_order: base.prompt_order!.map((list) =>
+        Number(list.character_id) === 100001
+          ? { ...list, order: [...list.order, { identifier: 'docs', enabled: true }] }
+          : list,
+      ),
+    };
+    const withUser = appendPresetTestUserMessage(test, 'hello', preset)!;
+    const prepared = prepareSend(withUser, preset)!;
+    const body = JSON.stringify(prepared.body);
+
+    expect(body).not.toContain('PRIVATE PRESET RATIONALE');
+    expect(body).not.toContain('documentation');
+    expect(prepared.assembled.tokenCounts.docs).toBe(0);
+  });
+
   test('the placeholder excludes itself from its own prompt', () => {
     const test = createPresetTest(scenario());
     const withUser = appendPresetTestUserMessage(test, 'hello', createDefaultPreset())!;

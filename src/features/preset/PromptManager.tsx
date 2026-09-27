@@ -15,7 +15,12 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { addCustomPrompt, getPromptOrder, setPromptOrder } from '@shared/prompt/preset-io.ts';
+import {
+  addCustomPrompt,
+  addDocumentationPrompt,
+  getPromptOrder,
+  setPromptOrder,
+} from '@shared/prompt/preset-io.ts';
 import type { Preset, Prompt, PromptOrderEntry } from '@shared/types/preset.ts';
 import { INJECTION_POSITION, isMarkerIdentifier } from '@shared/types/preset.ts';
 import { useMemo } from 'react';
@@ -36,7 +41,8 @@ function PromptRow({ entry, prompt, tokens, selected, onToggle, onSelect }: Prom
   });
 
   const isMarker = isMarkerIdentifier(entry.identifier);
-  const isAbsolute = prompt?.injection_position === INJECTION_POSITION.ABSOLUTE;
+  const isDocumentation = prompt?.role === 'documentation';
+  const isAbsolute = !isDocumentation && prompt?.injection_position === INJECTION_POSITION.ABSOLUTE;
 
   return (
     <li
@@ -45,6 +51,7 @@ function PromptRow({ entry, prompt, tokens, selected, onToggle, onSelect }: Prom
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-dragging={isDragging}
       data-enabled={entry.enabled}
+      data-documentation={isDocumentation || undefined}
       data-selected={selected}
     >
       <button
@@ -64,11 +71,19 @@ function PromptRow({ entry, prompt, tokens, selected, onToggle, onSelect }: Prom
         </svg>
       </button>
 
-      <label className="prompt-row__check">
+      <label
+        className="prompt-row__check"
+        title={
+          isDocumentation
+            ? 'Documentation is always excluded from chat requests; this saved setting is preserved.'
+            : undefined
+        }
+      >
         <input
           type="checkbox"
           checked={entry.enabled}
           onChange={onToggle}
+          disabled={isDocumentation}
           aria-label={`Enable ${prompt?.name ?? entry.identifier}`}
         />
       </label>
@@ -77,16 +92,21 @@ function PromptRow({ entry, prompt, tokens, selected, onToggle, onSelect }: Prom
         <span className="prompt-row__name">{prompt?.name ?? entry.identifier}</span>
         <span className="prompt-row__tags">
           {isMarker ? <span className="prompt-tag prompt-tag--marker">marker</span> : null}
+          {isDocumentation ? (
+            <span className="prompt-tag prompt-tag--documentation">Documentation</span>
+          ) : null}
           {isAbsolute ? (
             <span className="prompt-tag prompt-tag--depth">@{prompt?.injection_depth ?? 4}</span>
           ) : null}
-          {prompt?.role && prompt.role !== 'system' ? (
+          {prompt?.role && prompt.role !== 'system' && !isDocumentation ? (
             <span className="prompt-tag">{prompt.role}</span>
           ) : null}
         </span>
       </button>
 
-      <span className="prompt-row__tokens">{tokens != null ? tokens : ''}</span>
+      <span className="prompt-row__tokens">
+        {isDocumentation ? 0 : tokens != null ? tokens : ''}
+      </span>
     </li>
   );
 }
@@ -141,6 +161,7 @@ export function PromptManager({
   }
 
   function handleToggle(identifier: string) {
+    if (promptsById.get(identifier)?.role === 'documentation') return;
     onChange(
       setPromptOrder(
         preset,
@@ -151,6 +172,12 @@ export function PromptManager({
 
   function handleAdd() {
     const created = addCustomPrompt(preset);
+    onChange(created.preset);
+    onSelect(created.identifier);
+  }
+
+  function handleAddDocumentation() {
+    const created = addDocumentationPrompt(preset);
     onChange(created.preset);
     onSelect(created.identifier);
   }
@@ -182,9 +209,18 @@ export function PromptManager({
           </ul>
         </SortableContext>
       </DndContext>
-      <button type="button" className="wc-button wc-button--ghost" onClick={handleAdd}>
-        Add custom prompt
-      </button>
+      <div className="prompt-manager__actions">
+        <button type="button" className="wc-button wc-button--ghost" onClick={handleAdd}>
+          Add custom prompt
+        </button>
+        <button
+          type="button"
+          className="wc-button wc-button--ghost"
+          onClick={handleAddDocumentation}
+        >
+          Add documentation
+        </button>
+      </div>
     </div>
   );
 }

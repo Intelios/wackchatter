@@ -1,6 +1,6 @@
 /**
- * Preset normalisation: reading a SillyTavern preset into a shape we can rely on,
- * and writing one back that SillyTavern will read without complaint.
+ * Preset normalisation: reading a SillyTavern preset into a shape we can rely on and writing
+ * the same JSON structure back, including WackChatter extensions such as documentation.
  *
  * Read side is permissive (migrate renames, fill defaults, never reject on unknown keys).
  * Write side preserves everything we didn't touch — SillyTavern itself discards unknown
@@ -268,6 +268,28 @@ export function addCustomPrompt(
     identifier,
     name: 'New prompt',
     role: 'system',
+    content: '',
+    injection_position: INJECTION_POSITION.RELATIVE,
+  };
+
+  return {
+    identifier,
+    preset: setPromptOrder({ ...preset, prompts: [...(preset.prompts ?? []), prompt] }, [
+      ...getPromptOrder(preset),
+      { identifier, enabled: true },
+    ]),
+  };
+}
+
+/** Add an inert author-documentation block to the end of the live order. */
+export function addDocumentationPrompt(
+  preset: Preset,
+  identifier = `documentation-${crypto.randomUUID()}`,
+): { preset: Preset; identifier: string } {
+  const prompt: Prompt = {
+    identifier,
+    name: 'Documentation',
+    role: 'documentation',
     content: '',
     injection_position: INJECTION_POSITION.RELATIVE,
   };
