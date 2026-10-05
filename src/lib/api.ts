@@ -786,7 +786,10 @@ export interface UsageMeta {
    * store nothing.
    */
   generationId?: string;
-  /** Chat id, arena round id, or co-creator session id. */
+  /**
+   * Stable chat, arena round, or design-workflow id. Also used for provider session routing:
+   * re-rolls and auxiliary requests must keep it, rather than using a new generation id.
+   */
   sessionId?: string;
   character?: string;
   /**
@@ -928,7 +931,11 @@ export async function streamGenerate(
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ body, ...(connectionId ? { connectionId } : {}) }),
+    body: JSON.stringify({
+      body,
+      ...(connectionId ? { connectionId } : {}),
+      ...(meta?.sessionId ? { sessionId: meta.sessionId } : {}),
+    }),
     signal,
   });
 

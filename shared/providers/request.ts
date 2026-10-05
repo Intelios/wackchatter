@@ -50,6 +50,15 @@ export function isGoogleAiStudioEndpoint(baseUrl: string): boolean {
   }
 }
 
+/** Only OpenCode's own host receives its routing headers, never a lookalike URL. */
+function isOpenCodeEndpoint(baseUrl: string): boolean {
+  try {
+    return new URL(normalizeBase(baseUrl)).hostname === 'opencode.ai';
+  } catch {
+    return false;
+  }
+}
+
 function isGeminiModel(model: string): boolean {
   return /(?:^|\/)gemini(?:[-/]|$)/i.test(model.trim());
 }
@@ -107,6 +116,7 @@ export function buildHeaders(
   connection: ConnectionSettings,
   apiKey: string | null,
   appUrl: string,
+  sessionId?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
@@ -118,6 +128,13 @@ export function buildHeaders(
     // OpenRouter attributes traffic with these and shows the title in its dashboard.
     headers['HTTP-Referer'] = appUrl;
     headers['X-Title'] = 'WackChatter';
+  }
+
+  if (isOpenCodeEndpoint(connection.baseUrl)) {
+    // Go requires a stable conversation id for routing and prompt caching. Identify the
+    // real client, not OpenCode or a generic HTTP library. Catalogue requests have no id.
+    headers['user-agent'] = 'WackChatter';
+    if (sessionId) headers['x-opencode-session'] = sessionId;
   }
 
   const resolved: Record<string, string> = { ...headers };

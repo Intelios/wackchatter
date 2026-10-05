@@ -477,6 +477,80 @@ describe('headers', () => {
   });
 });
 
+describe('OpenCode headers', () => {
+  const go = connection({ baseUrl: 'https://opencode.ai/zen/go/v1' });
+  const appUrl = 'http://localhost:5173';
+
+  test('Go receives a conversation session id and an honest client identity', () => {
+    const headers = buildHeaders(go, 'sk-test', appUrl, 'chat-1');
+    expect(headers['x-opencode-session']).toBe('chat-1');
+    expect(headers['user-agent']).toBe('WackChatter');
+    expect(headers.authorization).toBe('Bearer sk-test');
+  });
+
+  test('the session stays stable across requests and changes for another conversation', () => {
+    expect(buildHeaders(go, null, appUrl, 'chat-1')['x-opencode-session']).toBe('chat-1');
+    expect(buildHeaders(go, null, appUrl, 'chat-1')['x-opencode-session']).toBe('chat-1');
+    expect(buildHeaders(go, null, appUrl, 'chat-2')['x-opencode-session']).toBe('chat-2');
+  });
+
+  test('normalised OpenCode Zen endpoints receive the same session support', () => {
+    const headers = buildHeaders(
+      connection({ baseUrl: '  https://OpenCode.ai/zen/v1//  ' }),
+      null,
+      appUrl,
+      'design-session',
+    );
+    expect(headers['x-opencode-session']).toBe('design-session');
+    expect(headers['user-agent']).toBe('WackChatter');
+  });
+
+  test('session ids are not sent to unrelated or lookalike endpoints', () => {
+    for (const baseUrl of [
+      'https://openrouter.ai/api/v1',
+      'http://localhost:1234/v1',
+      'https://opencode.ai.example.com/zen/go/v1',
+      'https://example.com/opencode.ai/zen/go/v1',
+      'https://opencode.ai@example.com/zen/go/v1',
+      'not a URL',
+    ]) {
+      const headers = buildHeaders(connection({ baseUrl }), null, appUrl, 'private-chat-id');
+      expect(Object.hasOwn(headers, 'x-opencode-session')).toBe(false);
+      expect(Object.hasOwn(headers, 'user-agent')).toBe(false);
+    }
+  });
+
+  test('model-list requests identify the client without inventing a conversation', () => {
+    const headers = buildHeaders(go, null, appUrl);
+    expect(headers['user-agent']).toBe('WackChatter');
+    expect(Object.hasOwn(headers, 'x-opencode-session')).toBe(false);
+  });
+
+  test('custom headers override automatic OpenCode headers case-insensitively', () => {
+    const headers = buildHeaders(
+      { ...go, headers: { 'X-OpenCode-Session': 'proxy-session', 'User-Agent': 'MyClient/1.0' } },
+      null,
+      appUrl,
+      'chat-1',
+    );
+    expect(headers['X-OpenCode-Session']).toBe('proxy-session');
+    expect(headers['User-Agent']).toBe('MyClient/1.0');
+    expect(Object.hasOwn(headers, 'x-opencode-session')).toBe(false);
+    expect(Object.hasOwn(headers, 'user-agent')).toBe(false);
+  });
+
+  test('empty custom values can remove automatic OpenCode headers', () => {
+    const headers = buildHeaders(
+      { ...go, headers: { 'X-OpenCode-Session': '', 'User-Agent': '' } },
+      null,
+      appUrl,
+      'chat-1',
+    );
+    expect(new Headers(headers).has('x-opencode-session')).toBe(false);
+    expect(new Headers(headers).has('user-agent')).toBe(false);
+  });
+});
+
 describe('urls', () => {
   test('the completions path is appended to the base', () => {
     expect(completionsUrl(connection())).toBe('https://api.example.com/v1/chat/completions');

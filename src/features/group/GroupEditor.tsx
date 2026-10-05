@@ -114,6 +114,9 @@ export function GroupEditor({
   const [drafts, setDrafts] = useState<Record<string, string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
+  // This editor is a standalone design workflow, not yet a saved chat. Keep one routing
+  // identity across profile re-rolls without exposing a cast's names as a session id.
+  const [profileSessionId] = useState(() => crypto.randomUUID());
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -193,7 +196,7 @@ export function GroupEditor({
         { onTick() {} },
         '',
         connection.id,
-        { feature: 'groupProfiles', countText: counter.countText },
+        { feature: 'groupProfiles', sessionId: profileSessionId, countText: counter.countText },
       );
       const parsed = looseParseJson(result.content) as {
         profiles?: { id: string; text: string }[];

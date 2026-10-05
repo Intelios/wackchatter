@@ -84,6 +84,7 @@ export async function callUpstream(
   body: ChatCompletionBody,
   signal: AbortSignal,
   connectionId?: string,
+  sessionId?: string,
 ): Promise<Response> {
   const settings = getSettings();
   const connection = generationConnection(settings, connectionId);
@@ -96,7 +97,7 @@ export async function callUpstream(
 
   return fetch(completionsUrl(connection), {
     method: 'POST',
-    headers: buildHeaders(connection, getApiKey(connection.id), appUrl()),
+    headers: buildHeaders(connection, getApiKey(connection.id), appUrl(), sessionId),
     body: JSON.stringify(body),
     signal,
   });

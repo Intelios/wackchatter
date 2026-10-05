@@ -54,6 +54,51 @@ describe('streamGenerate', () => {
     });
   });
 
+  test('conversation ids travel beside the body, independently of per-request generation ids', async () => {
+    const posted: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === '/api/generate') {
+        posted.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+      }
+      return jsonResponse({ ok: true });
+    }) as unknown as typeof fetch;
+
+    const body = { model: 'test-model', messages: [{ role: 'user', content: 'Hello' }] };
+    const features = ['chat', 'summary', 'memory'] as const;
+    for (const [i, feature] of features.entries()) {
+      await streamGenerate(body, signal, noop, '', 'go-connection', {
+        feature,
+        sessionId: i === 2 ? 'chat-2' : 'chat-1',
+        generationId: `generation-${i}`,
+        countText: () => 1,
+      });
+    }
+    expect(posted).toEqual([
+      { body, connectionId: 'go-connection', sessionId: 'chat-1' },
+      { body, connectionId: 'go-connection', sessionId: 'chat-1' },
+      { body, connectionId: 'go-connection', sessionId: 'chat-2' },
+    ]);
+  });
+
+  test('a streamed request also forwards its session without requiring a connection override', async () => {
+    let payload: unknown;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === '/api/generate') {
+        payload = JSON.parse(String(init?.body));
+        return sseResponse([JSON.stringify({ choices: [{ delta: { content: 'hello' } }] })]);
+      }
+      return jsonResponse({ ok: true });
+    }) as unknown as typeof fetch;
+
+    await streamGenerate({ stream: true }, signal, noop, '', undefined, {
+      feature: 'chat',
+      sessionId: 'chat-1',
+      countText: () => 1,
+    });
+    expect(payload).toEqual({ body: { stream: true }, sessionId: 'chat-1' });
+  });
+
   test('a completion-shaped error in a 200 non-stream body throws', async () => {
     globalThis.fetch = (async () =>
       jsonResponse({ error: { message: 'provider exploded' } })) as unknown as typeof fetch;

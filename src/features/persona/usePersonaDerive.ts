@@ -88,7 +88,11 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
    * The resolved source, cached for the life of the converter view. Belt and braces with the
    * per-card seed: every take reads byte-identical source text.
    */
-  const profileRef = useRef<{ avatar: string; profile: PersonaSourceProfile } | null>(null);
+  const profileRef = useRef<{
+    avatar: string;
+    profile: PersonaSourceProfile;
+    sessionId: string;
+  } | null>(null);
 
   // Without the abort, leaving the panel keeps the provider generating — and billing.
   useEffect(() => {
@@ -137,6 +141,8 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
           cached = {
             avatar: character.avatar,
             profile: resolveProfile(detail.card.data, character.avatar, preset, globalVariables),
+            // Stable across takes of this source; reset/new source starts a new workflow.
+            sessionId: crypto.randomUUID(),
           };
           profileRef.current = cached;
         }
@@ -158,7 +164,7 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
           { onTick: () => {} },
           '',
           connection.id,
-          { feature: 'persona' },
+          { feature: 'persona', sessionId: cached.sessionId },
         );
         // A non-streaming reply can resolve in the same turn as the abort, so the signal is
         // re-read after the await rather than only before it.

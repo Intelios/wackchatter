@@ -27,6 +27,18 @@ That's it. The launcher handles dependencies, builds the app, and opens your bro
 
 Once it's open, head to **Connection** in the left panel, add your API key and pick a model. Drop character cards (`.png` files) into `data/characters/` or import them from the Characters panel.
 
+### OpenCode Go
+
+For Go's **Chat Completions-compatible models**, add a Custom connection with base URL
+`https://opencode.ai/zen/go/v1`, your Go API key, and the model's bare ID (without
+`opencode-go/`). WackChatter automatically sends its own User-Agent and a stable
+`x-opencode-session` per conversation; no manual routing header is needed.
+
+Models requiring Anthropic Messages or OpenAI Responses aren't supported by this app's
+Chat Completions transport. OpenCode Go is intended for coding-agent traffic, so this
+header support does not guarantee that general chat or roleplay use is permitted; see
+[Go's usage requirements and model endpoints](https://opencode.ai/docs/go/#where-can-i-use-it).
+
 ### Updating
 
 ```sh

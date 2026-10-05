@@ -23,12 +23,22 @@ export async function handleGenerateRoute(
 ): Promise<Response | null> {
   if (segments.length !== 0 || request.method !== 'POST') return null;
 
-  const payload = await readJson<{ body?: ChatCompletionBody; connectionId?: unknown }>(request);
+  const payload = await readJson<{
+    body?: ChatCompletionBody;
+    connectionId?: unknown;
+    sessionId?: unknown;
+  }>(request);
   if (!payload?.body || typeof payload.body !== 'object') {
     return errorResponse('Expected a JSON object with a "body" property.');
   }
   if (payload.connectionId !== undefined && typeof payload.connectionId !== 'string') {
     return errorResponse('"connectionId" must be a saved connection id.');
+  }
+  if (
+    payload.sessionId !== undefined &&
+    (typeof payload.sessionId !== 'string' || !/^[\x21-\x7e]{1,256}$/.test(payload.sessionId))
+  ) {
+    return errorResponse('"sessionId" must be 1–256 printable ASCII characters without spaces.');
   }
 
   // Stringified, not the object: Bun's console truncates long arrays and deep objects
@@ -44,7 +54,12 @@ export async function handleGenerateRoute(
 
   let upstream: Response;
   try {
-    upstream = await callUpstream(payload.body, request.signal, payload.connectionId);
+    upstream = await callUpstream(
+      payload.body,
+      request.signal,
+      payload.connectionId,
+      payload.sessionId,
+    );
   } catch (error) {
     finished();
     // A client that hung up mid-connect is not an error worth reporting back.
