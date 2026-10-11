@@ -68,7 +68,6 @@ import type {
   SavePresetCocreatorDocument,
 } from '@shared/types/preset-cocreator.ts';
 import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
-import type { CharacterStats, StatsOverview } from '@shared/types/stats.ts';
 import type { UsageFeature, UsageReport } from '@shared/types/usage.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
 import { type EncodingName, encodingForModel, loadCounter } from './tokenizer.ts';
@@ -871,6 +870,7 @@ async function reportUsage(
       ...(timing.ttftMs !== undefined ? { ttftMs: timing.ttftMs } : {}),
       estimated: !reported,
       aborted: timing.aborted,
+      outcome: timing.aborted ? 'cancelled' : state.error ? 'failed' : 'completed',
     };
 
     await fetch('/api/usage', {
@@ -1032,15 +1032,6 @@ export interface VersionInfo {
 
 export const versionApi = {
   get: () => request<VersionInfo>('/version'),
-};
-
-export const statsApi = {
-  /** The whole library. Aggregated server-side — see server/lib/stats.ts. */
-  overview: () => request<StatsOverview>('/stats'),
-
-  /** One card. A card with no chats answers with zeros rather than a 404. */
-  character: (avatar: string) =>
-    request<CharacterStats>(`/stats/characters/${encodeURIComponent(avatar)}`),
 };
 
 export const arenaApi = {

@@ -154,3 +154,18 @@ The Memory Nexus's local semantic search uses [BGE-small-en-v1.5](https://huggin
 ## Licence
 
 [GNU Affero General Public License v3.0](LICENSE) — free to use, fork, and modify, but derivatives must stay open source and give credit.
+
+### Stats in TokenTrail
+
+[TokenTrail](https://github.com/Intelios/TokenTrail/releases) is the Stats home for
+WackChatter, WackCode, and your other AI tools. **Stats in TokenTrail** opens your
+library's character portraits, conversations, personas, models, and habits. Library
+Stats remain available while WackChatter is closed. Opening a conversation requires
+WackChatter to be running with that library.
+
+**Record usage for TokenTrail** is on by default and keeps a local, retained generation
+ledger. Existing explicit off choices stay off. Turn on provider usage reporting per
+connection for measured counts; estimated completion counts stay separate and are never
+priced. Any cost shown is an API-equivalent list-price estimate, not subscription spend.
+No prompts, replies, credentials, or endpoint URLs are recorded. See the
+[integration contract](docs/tokentrail-integration.md) for paths and coverage limits.

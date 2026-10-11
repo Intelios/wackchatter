@@ -16,7 +16,7 @@ import { initDataLocation } from './lib/location.ts';
 import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
 import { degradedReason, isSwitching } from './lib/relocate.ts';
-import { publishLibraryPointer } from './lib/usage.ts';
+import { publishLibraryPointer, configureRuntime } from './lib/usage.ts';
 import { handleArenaRoute } from './routes/arena.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';
@@ -34,7 +34,7 @@ import { handlePresetRoute } from './routes/presets.ts';
 import { handleReferencePresetRoute } from './routes/referencePresets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
 import { handleShutdownRoute } from './routes/shutdown.ts';
-import { handleStatsRoute } from './routes/stats.ts';
+import { handleIntegrationRoute } from './routes/integration.ts';
 import { handleUsageRoute } from './routes/usage.ts';
 import { handleVersionRoute } from './routes/version.ts';
 
@@ -93,7 +93,7 @@ const API_ROUTES: Record<string, RouteHandler> = {
   generate: handleGenerateRoute,
   settings: handleSettingsRoute,
   shutdown: handleShutdownRoute,
-  stats: handleStatsRoute,
+  integration: handleIntegrationRoute,
   usage: handleUsageRoute,
   version: handleVersionRoute,
 };
@@ -209,6 +209,7 @@ function startServer() {
 const server = startServer();
 
 const appUrl = IS_PROD ? `http://localhost:${server.port}` : 'http://localhost:5173';
+configureRuntime(`http://localhost:${server.port}`, appUrl);
 const dataNote =
   dataLocation.source === 'env'
     ? ' (WC_DATA_DIR)'

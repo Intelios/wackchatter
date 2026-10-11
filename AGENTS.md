@@ -47,7 +47,7 @@ server/          Bun. Thin: files, DB, streaming proxy. Never builds a prompt.
   lib/secrets.ts API keys. Mode 0600. Never leaves the machine.
   lib/generate.ts The one place that calls a provider.
   lib/lorebooks.ts / personas.ts / cocreator.ts  Standalone books; personas; design sessions.
-  lib/stats.ts   Library statistics, aggregated in SQL. Built per request, never memoised.
+  lib/usage.ts   Retained local usage ledger and TokenTrail discovery.
   lib/arena.ts   Blind benchmark rounds. Write-once rows; no ratings table, by design.
 shared/          Pure, no I/O. Imported by both server and client.
   chat/          MessageState — the swipe invariant; branch.ts — branch-time id repair.
@@ -59,11 +59,11 @@ shared/          Pure, no I/O. Imported by both server and client.
   providers/     Request building + SSE parsing. looseJson.ts is shared by both extractors.
   regex/         User regex scripts: engine, depth, import/export. Macros are injected.
   worldinfo/     Lorebook conversion + the activation engine.
-  types/         Card, preset, worldinfo, chat, settings, regex, cocreator, stats, arena.
+  types/         Card, preset, worldinfo, chat, settings, regex, cocreator, usage, arena.
 src/             React app.
   layout/        AppShell — the three-column grid.
   features/      character/, preset/, chat/, connection/, lore/, persona/, studio/,
-                 cocreator/, stats/, arena/, memory/, regex/, settings/, start/, summary/.
+                 cocreator/, integrations/, arena/, memory/, regex/, settings/, start/, summary/.
   lib/revisionQueue.ts  The revision-aware save queue. Chat and the Co-Creator both bind it.
 data/            Gitignored. characters/**/*.png, presets/*.json, reference-presets/*.json,
                 chats.db, settings.json, secrets.json, lorebooks/, personas/, backups/,
@@ -287,7 +287,7 @@ impersonation's reducer contract (no transcript message). Single-chat only.
 
 - `migratePreset` evaluates **all** migration rules before deleting a key.
 - A failed regenerate restores the original message **and its alternates**.
-- The **usage log** (`usageLog`, off by default) appends JSONL to `~/.wackchatter/usage.jsonl`.
+- The **usage ledger** (`usageLog`, on by default; explicit false preserved) retains JSONL in `~/.wackchatter/usage/v2/`. See `docs/tokentrail-integration.md`.
 - `extra.usage_reported` separates provider counts from estimates.
 - Real token usage is opt-in (`reportUsage`), off by default for `custom`.
 - Unsupported World Info positions fold into before/after rather than being dropped.
@@ -322,10 +322,7 @@ have named tests. Per-entry `matchWholeWords` and regex keys are the escape hatc
   line that fails to parse is an **error, never a silent send**.
 - Error boundaries wrap the root and each shell region.
 
-**Stats** — Counting in SQL, client gets ids and numbers (never display names). Rerolls
-exclude `position 0` (alternate greetings are swipes). Server sends UTC hour buckets, client
-folds the calendar. `extra.token_count` is completion tokens only — **never present as a
-cost**.
+**Stats** lives in TokenTrail. The Stats action flushes saves and opens the matching library through `tokentrail:` without aborting generation. Runtime discovery stays separate from the persistent library pointer and is never published under `WC_DATA_DIR`. TokenTrail reads library files read-only; navigation must never create a chat or switch libraries.
 
 **Model Arena** — Rounds are stored write-once; the leaderboard is replayed from them on
 every render. `bad` moves no ratings. Ties lift both by `TIE_BONUS`. Only blind rounds are

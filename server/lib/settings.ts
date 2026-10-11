@@ -777,7 +777,7 @@ export function getSettings(): AppSettings {
     backgroundEffects: normalizeBackgroundEffects(stored.backgroundEffects),
     // Pinned rather than spread, because this one gates a write outside the library: a
     // hand-edited `"usageLog": "yes"` must not read as consent.
-    usageLog: stored.usageLog === true,
+    usageLog: stored.usageLog === undefined ? true : stored.usageLog === true,
     // Pinned to the two legal values, the `characterListSort` shape: anything else is a
     // stale or hand-edited file, and behind is the default.
     backgroundEffectLayer: stored.backgroundEffectLayer === 'front' ? 'front' : 'behind',

@@ -1397,3 +1397,19 @@ describe('getSettings on disk', () => {
     }
   });
 });
+
+
+describe('TokenTrail recording defaults', () => {
+  test('absent defaults on and explicit false survives migration', () => {
+    const original = PATHS.root;
+    const dir = mkdtempSync(join(tmpdir(), 'wc-tokentrail-default-'));
+    try {
+      setDataDir(dir);
+      for (const [stored, expected] of [[{}, true], [{ usageLog: false }, false], [{ usageLog: true }, true], [{ usageLog: 'yes' }, false]] as const) {
+        writeFileSync(PATHS.settings, JSON.stringify(stored));
+        resetSettingsCache();
+        expect(getSettings().usageLog).toBe(expected);
+      }
+    } finally { setDataDir(original); resetSettingsCache(); rmSync(dir, { recursive: true, force: true }); }
+  });
+});

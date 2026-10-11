@@ -4,7 +4,7 @@
  * One record per generation, appended as JSONL to a file in the home directory rather
  * than inside the library. The library moves (see location.ts) and may sit in a synced
  * folder; a reader outside this app cannot follow it there, and should not have to open
- * chats.db to answer "what did today cost". A fixed path it can tail is the whole point.
+ * chats.db to answer "what did today cost". Monthly per-process segments under ~/.wackchatter/usage/v2 retain the ledger indefinitely.
  *
  * The wire shape is snake_case and versioned because it is read by another program.
  * `UsageReport` — what the browser posts — stays camelCase like the rest of our API, and
@@ -50,7 +50,7 @@ export function isUsageFeature(value: unknown): value is UsageFeature {
 
 /** What the browser reports. The server resolves `provider` and writes the record. */
 export interface UsageReport {
-  /** The provider's response id when it gave one, else a uuid minted before the request. */
+  /** Stable UUID minted for this generation and shared with its stored swipe. */
   id: string;
   /** ISO 8601. When the generation settled, not when it started. */
   ts: string;
@@ -74,12 +74,16 @@ export interface UsageReport {
   /** True when `outputTokens` is our tokenizer's guess rather than the provider's count. */
   estimated: boolean;
   /** True when the user stopped the generation. It was still generated, and still billed. */
+  outcome?: 'completed' | 'failed' | 'cancelled' | 'unknown';
   aborted: boolean;
 }
 
-/** One line of usage.jsonl. */
+/** One retained v2 ledger record. */
 export interface UsageRecord {
-  v: 1;
+  v: 2;
+  library_id: string;
+  provider_name?: string;
+  outcome: 'completed' | 'failed' | 'cancelled' | 'unknown';
   id: string;
   ts: string;
   feature: UsageFeature;
@@ -109,10 +113,5 @@ export const USAGE_DIR_NAME = '.wackchatter';
 export const USAGE_LOG_NAME = 'usage.jsonl';
 export const LIBRARY_POINTER_NAME = 'library.json';
 
-/**
- * Rotate at 5 MB — roughly 20k generations, years of use. One generation back is kept
- * and the reader ignores it: re-ingestion is idempotent on `id`, so the worst a rotation
- * can cost is events missed while the reader was not running, which its own database
- * backfill covers.
- */
+/** Legacy v1 rotation threshold, retained for migration tests only. v2 never rotates away history. */
 export const USAGE_LOG_MAX_BYTES = 5 * 1024 * 1024;

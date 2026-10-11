@@ -61,7 +61,7 @@ import { PresetCocreatorShell } from './features/preset-cocreator/PresetCocreato
 import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
 import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
-import { StatsShell } from './features/stats/StatsShell.tsx';
+import { TokenTrailPanel } from './features/integrations/TokenTrailPanel.tsx';
 import { StudioShell } from './features/studio/StudioShell.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
@@ -112,7 +112,7 @@ function personaPickSettings(
 }
 
 export function App() {
-  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'stats' | 'arena'>('app');
+  const [view, setView] = useState<'app' | 'studio' | 'cocreator' | 'tokentrail' | 'arena'>('app');
   const [coCreatorMode, setCoCreatorMode] = useState<'landing' | 'character' | 'preset'>('landing');
   /** The card the Co-Creator just produced, opened once on arrival in the Studio. */
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
@@ -832,6 +832,41 @@ export function App() {
     [chat, groupChat.flushSaves, selected],
   );
 
+  const handoffStarted = useRef(false);
+  useEffect(() => {
+    if (handoffStarted.current || !settings || loading) return;
+    const params = new URLSearchParams(window.location.search);
+    const library = params.get('ttLibrary');
+    if (!library) return;
+    handoffStarted.current = true;
+    void (async () => {
+      try {
+        const response = await fetch('/api/integration');
+        if (!response.ok) throw new Error('Could not verify WackChatter library.');
+        const identity = await response.json() as { libraryId: string };
+        if (identity.libraryId !== library) throw new Error('This link belongs to another WackChatter library.');
+        const id = params.get('ttChat');
+        const avatar = params.get('ttCharacter');
+        if (id) {
+          const target = await chatApi.get(id);
+          if (target.kind === 'group') await openGroup(id);
+          else if (target.characterId) {
+            if (!characters.some(c => c.avatar === target.characterId)) throw new Error('This character is no longer in the library.');
+            await transitionToCharacter(target.characterId, { chatId: id, panel: null });
+          }
+        } else if (avatar) {
+          if (!characters.some(c => c.avatar === avatar)) throw new Error('This character is no longer in the library.');
+          await chat.flushSaves();
+          await groupChat.flushSaves();
+          await flushRightPanel();
+          setStudioInitialAvatar(avatar);
+          setView('studio');
+        }
+      } catch (e) { setError((e as Error).message); }
+      finally { const url = new URL(window.location.href); for (const key of ['ttLibrary','ttChat','ttCharacter']) url.searchParams.delete(key); window.history.replaceState(null, '', url); }
+    })();
+  }, [settings, loading, characters, openGroup, transitionToCharacter, chat, groupChat, flushRightPanel]);
+
   const handleSelect = useCallback(
     (avatar: string) => {
       void transitionToCharacter(avatar);
@@ -1172,15 +1207,11 @@ export function App() {
   }, [refresh]);
 
   /**
-   * Stats replaces the chat shell like its two siblings, so pending work lands first for
-   * the same reason — except here it is also what makes the numbers right: a chat still
-   * sitting in the save queue is a chat the server has not been told about yet.
+   * Publish saved changes before opening TokenTrail. The existing generation hooks
+   * stay mounted: visiting Stats must not cancel an in-flight generation.
    */
   const enterStats = useCallback(async () => {
     try {
-      chat.abort();
-      chat.cancelSummary();
-      chat.cancelMemoryRun();
       await chat.flushSaves();
       await groupChat.flushSaves();
       await flushRightPanel();
@@ -1188,7 +1219,7 @@ export function App() {
       setError((err as Error).message);
       return;
     }
-    setView('stats');
+    setView('tokentrail');
   }, [chat, flushRightPanel, groupChat.flushSaves]);
 
   /** Read-only throughout, so there is nothing of its own to flush on the way out. */
@@ -1290,7 +1321,7 @@ export function App() {
       if (coCreatorMode === 'preset') return 'Preset Co-Creator';
       return 'Co-Creator';
     }
-    if (view === 'stats') return 'Stats';
+    if (view === 'tokentrail') return 'Stats in TokenTrail';
     if (view === 'arena') return 'Model Arena';
     // A scene has no character to name it, and its own header is gone — the tab is the one
     // place left that says which scene is open, so it says it the way a one-on-one chat
@@ -1336,20 +1367,8 @@ export function App() {
     );
   }
 
-  if (view === 'stats') {
-    return (
-      <StatsShell
-        characters={characters}
-        personas={personas}
-        backgroundUrl={resolveBackgroundUrl(settings?.background)}
-        backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
-        backgroundDim={Number(settings?.backgroundDim ?? 0.55)}
-        glass={settings?.glass !== false}
-        effect={backgroundEffect}
-        effectLayer={backgroundEffectLayer}
-        onExit={exitStats}
-      />
-    );
+  if (view === 'tokentrail') {
+    return <TokenTrailPanel character={selected} onExit={exitStats} />;
   }
 
   if (view === 'cocreator') {

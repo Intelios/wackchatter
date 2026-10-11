@@ -31,7 +31,9 @@ afterEach(() => {
 
 function record(overrides: Partial<UsageRecord> = {}): UsageRecord {
   return {
-    v: 1,
+    v: 2,
+    library_id: "test-library",
+    outcome: "completed",
     id: 'gen-1',
     ts: '2026-08-31T10:00:05.000Z',
     feature: 'chat',
@@ -80,16 +82,16 @@ describe('appendUsage', () => {
     expect(statSync(usageLogPath(home)).mode & 0o777).toBe(0o600);
   });
 
-  test('rotates once past the size cap and starts a fresh log', () => {
+  test('retains the ledger after the old size cap', () => {
     const path = usageLogPath(home);
     appendUsage(record(), home);
     writeFileSync(path, 'x'.repeat(USAGE_LOG_MAX_BYTES + 1));
 
     appendUsage(record({ id: 'after-rotation' }), home);
 
-    expect(existsSync(`${path}.1`)).toBe(true);
-    expect(lines()).toHaveLength(1);
-    expect(JSON.parse(lines()[0]!).id).toBe('after-rotation');
+    expect(existsSync(`${path}.1`)).toBe(false);
+    expect(readFileSync(path, 'utf8')).toContain('after-rotation');
+    expect(statSync(path).size).toBeGreaterThan(USAGE_LOG_MAX_BYTES);
   });
 
   test('a log below the cap is left alone', () => {
@@ -155,5 +157,21 @@ describe('publishLibraryPointer', () => {
     delete process.env.WC_DATA_DIR;
     publishLibraryPointer(home);
     expect(JSON.parse(readFileSync(path, 'utf8')).version).toBe(1);
+  });
+});
+
+// Discovery must follow relocation without publishing scratch test libraries.
+describe('runtime discovery', () => {
+  test('uses the actual server addresses and does not overwrite the persistent pointer', async () => {
+    const { configureRuntime, runtimeDescriptor, libraryIdentity } = await import('./usage.ts');
+    configureRuntime('http://localhost:9898', 'http://localhost:5173', home);
+    const runtime = JSON.parse(readFileSync(join(home, '.wackchatter/runtime.json'), 'utf8'));
+    expect(runtime).toEqual(runtimeDescriptor());
+    expect(runtime.libraryId).toBe(libraryIdentity());
+    expect(runtime.apiUrl).toBe('http://localhost:9898');
+    expect(existsSync(libraryPointerPath(home))).toBe(false);
+    process.env.WC_DATA_DIR = 'scratch';
+    configureRuntime('http://localhost:9999', 'http://localhost:9999', home);
+    expect(JSON.parse(readFileSync(join(home, '.wackchatter/runtime.json'), 'utf8')).apiUrl).toBe('http://localhost:9898');
   });
 });

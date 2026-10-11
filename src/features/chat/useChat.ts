@@ -599,12 +599,12 @@ export function useChat(options: UseChatOptions): UseChat {
       try {
         const targetChatId = pendingChatRef.current;
         if (targetChatId) {
-          pendingChatRef.current = null;
           const [summaries, chat] = await Promise.all([
             chatApi.list(characterId),
             chatApi.get(targetChatId),
           ]);
           if (cancelled) return;
+          if (pendingChatRef.current === targetChatId) pendingChatRef.current = null;
           setChats(summaries);
           setLoadError(null);
           loadChat(chat);

@@ -1,0 +1,5 @@
+.tokentrail-panel { padding: var(--wc-space-6); max-width: var(--wc-stats-canvas-width); margin: auto; }
+.tokentrail-panel section { padding-block: var(--wc-space-6); }
+.tokentrail-panel p { color: var(--wc-text-muted); line-height: normal; }
+.tokentrail-panel .wc-button { margin-right: var(--wc-space-2); }
+.tokentrail-panel__eyebrow { font-size: var(--wc-text-sm); }

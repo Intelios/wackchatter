@@ -14,7 +14,7 @@ import { isUsageFeature, type UsageRecord, type UsageReport } from '../../shared
 import { generationConnection } from '../lib/generate.ts';
 import { errorResponse, json, readJson } from '../lib/http.ts';
 import { getSettings } from '../lib/settings.ts';
-import { appendUsage } from '../lib/usage.ts';
+import { appendUsage, libraryIdentity } from '../lib/usage.ts';
 
 /** Non-negative integer, or 0. Counts arrive from a provider and are not to be trusted. */
 function count(value: unknown): number {
@@ -46,8 +46,11 @@ export async function handleUsageRoute(
   if (!report) return errorResponse('Malformed usage report.');
 
   let provider: string | undefined;
+  let providerName: string | undefined;
   try {
-    provider = generationConnection(settings, report.connectionId)?.provider;
+    const connection = generationConnection(settings, report.connectionId);
+    provider = connection?.provider;
+    providerName = connection?.name;
   } catch {
     // A connection deleted between the generation and this report. The tokens were still
     // spent, so the record is worth keeping without the provider attribution.
@@ -55,7 +58,10 @@ export async function handleUsageRoute(
   }
 
   const record: UsageRecord = {
-    v: 1,
+    v: 2,
+    library_id: libraryIdentity(),
+    ...(providerName ? { provider_name: providerName } : {}),
+    outcome: report.aborted ? 'cancelled' : ['completed','failed','unknown'].includes(report.outcome ?? '') ? report.outcome! : 'unknown',
     id: report.id,
     ts: report.ts,
     feature: report.feature,

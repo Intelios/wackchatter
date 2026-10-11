@@ -60,9 +60,8 @@ export interface AppSettings {
   /** Force a tokenizer encoding instead of inferring it from the model id. */
   tokenizerEncoding: 'auto' | 'o200k_base' | 'cl100k_base';
   /**
-   * Append one line per generation to ~/.wackchatter/usage.jsonl, for an external token
-   * accountant to read. Off by default: it writes outside the library, which is not
-   * something to start doing to someone's home directory unasked.
+   * Append one line per generation to ~/.wackchatter/usage/v2, for an external token
+   * accountant to read. On by default; an explicit off preference is preserved.
    *
    * Named for what it is rather than for whoever reads it — the file is a plain usage
    * log, and nothing about it is specific to one consumer.
@@ -504,7 +503,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   variables: {},
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
-  usageLog: false,
+  usageLog: true,
   presetId: null,
   background: null,
   backgroundBlur: 8,

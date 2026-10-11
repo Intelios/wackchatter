@@ -257,7 +257,7 @@ export function StartScreen({
             </button>
             <button type="button" className="wc-button start-screen__tool" onClick={onOpenStats}>
               <StatsIcon />
-              Stats
+              Stats in TokenTrail
             </button>
           </div>
         </div>
