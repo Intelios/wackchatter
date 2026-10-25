@@ -56,18 +56,11 @@ import { QuickCommands } from './QuickCommands.tsx';
 import { type RecapMeta, RecapOverlay, type RecapViewState } from './RecapOverlay.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
 import { createCardStore } from './state/cardStore.ts';
-import {
-  appendTranscriptWindow,
-  initialTranscriptWindow,
-  prependTranscriptWindow,
-  windowForJump,
-} from './transcriptWindow.ts';
+import { windowForJump } from './transcriptWindow.ts';
 import type { UseChat } from './useChat.ts';
 import { useStickToBottom } from './useStickToBottom.ts';
+import { useTranscriptWindow } from './useTranscriptWindow.ts';
 import './ChatView.css';
-
-/** How far from the top or bottom the reader has to be before the next page appears. */
-const LOAD_AHEAD_PX = 800;
 
 interface ChatViewProps {
   chat: UseChat;
@@ -127,12 +120,6 @@ interface ChatViewProps {
   onCollapsedMenuGroupsChange: (next: string[]) => void;
 }
 
-interface TranscriptWindowState {
-  chatId: string | null;
-  start: number;
-  end: number;
-}
-
 export function ChatView({
   chat,
   characterName,
@@ -164,18 +151,35 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { scrollToBottom, stopFollowing } = useStickToBottom(scrollRef, contentRef);
-  const [window, setWindow] = useState<TranscriptWindowState>({ chatId: null, start: 0, end: 0 });
   // The message a jump just centred on, held briefly so the row can flash. Null = nothing
   // to show; the jump's centring effect is the only writer.
   const [flashId, setFlashId] = useState<string | null>(null);
-  // The first rendered message and where its top sat relative to the viewport, captured
-  // before a prepend so the same document position can be restored after it commits.
-  const restorePrependScroll = useRef<{ messageId: string; offset: number } | null>(null);
 
   // The write path from quick commands into the composer's private draft.
   const composerRef = useRef<ComposerHandle>(null);
 
   const { state, stream, busy, generationBlocked } = chat;
+
+  // The sliding transcript window and its scroll protocol — declared after
+  // useStickToBottom so its listener, which drops the follow at page boundaries,
+  // subscribes after the follow's own and wins the same scroll event. The key folds the
+  // reload count in: a reload replaces the transcript, so the old window position would
+  // point at the wrong rows.
+  const {
+    start: visibleStart,
+    end: visibleEnd,
+    setWindowRange,
+    suppressLoadAhead,
+    programmaticScrollRef,
+    snapToEnd,
+  } = useTranscriptWindow({
+    transcriptKey: state.chatId ? `${state.chatId}#${chat.reloadCount}` : null,
+    messageCount: state.messages.length,
+    scrollRef,
+    contentRef,
+    scrollToBottom,
+    stopFollowing,
+  });
   // A generation whose text belongs to the composer rather than the transcript. The mode
   // is what distinguishes it — the status alone cannot, since both kinds are "busy".
   const impersonating = state.status !== 'idle' && state.mode === 'impersonate';
@@ -226,58 +230,15 @@ export function ChatView({
     [resolvePersona, chatPersona],
   );
 
-  // Jump to the end when a different chat is opened, and again after a reload — a reload
-  // replaces the transcript, so the old window position would point at the wrong rows.
+  // Jump to the end when a different chat is opened, and again after a reload — the hook
+  // resets its window and scroll on the same key; the flash marker is what remains here.
   // Keyed on the chat plus the reload count, by design.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on chat identity and reloads
   useEffect(() => {
-    const initial = initialTranscriptWindow(state.messages.length);
-    setWindow({ chatId: state.chatId, start: initial.start, end: initial.end });
     setFlashId(null);
-    scrollToBottom();
   }, [state.chatId, chat.reloadCount]);
 
-  // A chat can render its loaded messages before the chat-change effect has set state.
-  // Deriving the initial tail page here prevents that first paint from mounting every
-  // Markdown bubble in a long chat.
-  const fallbackWindow = initialTranscriptWindow(state.messages.length);
-  const visibleStart =
-    window.chatId === state.chatId
-      ? Math.min(window.start, state.messages.length)
-      : fallbackWindow.start;
-  const visibleEnd =
-    window.chatId === state.chatId
-      ? Math.min(window.end, state.messages.length)
-      : fallbackWindow.end;
   const visibleMessages = state.messages.slice(visibleStart, visibleEnd);
-
-  // While the window is not anchored to the tail, bottom-follow must stay off: the
-  // "bottom" of the scroll container is a page boundary, not the transcript's end, and an
-  // auto-scroll there would cascade page loads with no reader action. A ref so the scroll
-  // listener can read it without re-subscribing on every message.
-  const atEndRef = useRef(true);
-  atEndRef.current = visibleEnd >= state.messages.length;
-
-  // Prepending adds DOM above the reader. Restore the same document position after the
-  // layout commits, rather than leaving them unexpectedly at the oldest newly loaded row.
-  //
-  // Anchored to the first rendered message rather than a height difference: the newer
-  // load-ahead can append below in the same commit, and a `scrollHeight` delta cannot
-  // tell "grew above" from "grew below". The message's new top is measured after the
-  // commit, so the restore is exact regardless of what else moved.
-  useLayoutEffect(() => {
-    const restore = restorePrependScroll.current;
-    const scroll = scrollRef.current;
-    const content = contentRef.current;
-    if (!restore || !scroll || !content) return;
-    const el = content.querySelector(`[data-message-id="${restore.messageId}"]`);
-    if (el) {
-      const scrollRect = scroll.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      scroll.scrollTop += elRect.top - scrollRect.top - restore.offset;
-    }
-    restorePrependScroll.current = null;
-  });
 
   // --- /jump -----------------------------------------------------------------
 
@@ -288,13 +249,6 @@ export function ChatView({
   // closed, and nothing scrolled. That is the common case for Nexus — memories are
   // extracted from recent messages, the ones already loaded.
   const [jumpSeq, setJumpSeq] = useState(0);
-  // After a jump, the load-ahead must stand down until the reader actually scrolls: the
-  // jump's own centering scroll lands inside the load-ahead band, and letting the band
-  // logic fire there would cascade page loads and restores that walk the viewport away
-  // from the target. `programmaticScrollRef` marks the centering scroll itself so the
-  // listener does not mistake it for a reader scroll.
-  const suppressLoadAheadRef = useRef(false);
-  const programmaticScrollRef = useRef(false);
 
   const jumpTo = useCallback(
     (index: number) => {
@@ -303,12 +257,12 @@ export function ChatView({
       const target = Math.min(Math.max(0, index), count - 1);
       const win = windowForJump(target, count);
       pendingJumpRef.current = state.messages[target]?.id ?? null;
-      suppressLoadAheadRef.current = true;
+      suppressLoadAhead();
       stopFollowing();
-      setWindow({ chatId: state.chatId, start: win.start, end: win.end });
+      setWindowRange(win);
       setJumpSeq((s) => s + 1);
     },
-    [state.chatId, state.messages, stopFollowing],
+    [state.messages, stopFollowing, suppressLoadAhead, setWindowRange],
   );
 
   useEffect(() => {
@@ -322,9 +276,8 @@ export function ChatView({
   // The target only exists in the DOM once the new window has committed, so the scroll
   // waits for this layout effect. Centred, not snapped to the top: the reader lands with
   // context above and below, and a jump to the very start still shows the first message.
-  // Declared before the load-ahead effects so their scroll captures happen after the
-  // centering — otherwise a prepend queued by the same commit would restore the viewport
-  // to the pre-jump position and the jump would land somewhere else entirely.
+  // The hook's load-ahead effects stand down for this commit — `suppressLoadAhead` is
+  // what `jumpTo` armed — so the centering is never chased by a page load of its own.
   // Keyed on the jump sequence, not the window bounds — see `jumpSeq` for why identical
   // bounds must still run this.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the sequence is the trigger
@@ -360,141 +313,9 @@ export function ChatView({
 
   // --- Sending ---------------------------------------------------------------
 
-  /**
-   * Put the reader at the end of the transcript, because that is what sending asks for.
-   *
-   * Reading back a few messages drops the bottom-follow — right while reading, wrong the
-   * moment you send, since the message you just wrote and the reply after it would arrive
-   * below the fold. The window is re-anchored too, not just the scroll: a window that is
-   * not at the tail never renders the new rows at all, so a send from the middle of a long
-   * chat would otherwise have nowhere to land. An already-tail-anchored window is left
-   * alone, pages loaded above it included — it is only the end that has to be visible.
-   */
-  const snapToEnd = useCallback(() => {
-    suppressLoadAheadRef.current = false;
-    setWindow((current) =>
-      current.chatId === state.chatId && current.end >= state.messages.length
-        ? current
-        : { chatId: state.chatId, ...initialTranscriptWindow(state.messages.length) },
-    );
-    // Marked like the jump's centering scroll, and for the opposite reason: this
-    // container's listener still reads the pre-snap `atEndRef`, so it would answer our own
-    // scroll by dropping the follow the snap just re-engaged. Released after the scroll
-    // event this queues has been dispatched.
-    programmaticScrollRef.current = true;
-    // Lands on the current layout; anything the window snap or the new message adds is
-    // growth the re-engaged follow picks up through the ResizeObserver.
-    scrollToBottom();
-    requestAnimationFrame(() => {
-      programmaticScrollRef.current = false;
-    });
-  }, [state.chatId, state.messages.length, scrollToBottom]);
-
-  const loadOlderMessages = useCallback(() => {
-    if (visibleStart === 0) return;
-    const scroll = scrollRef.current;
-    const content = contentRef.current;
-    const first = content?.querySelector<HTMLElement>('[data-message-id]');
-    if (scroll && first) {
-      const scrollRect = scroll.getBoundingClientRect();
-      const firstRect = first.getBoundingClientRect();
-      restorePrependScroll.current = {
-        messageId: first.dataset.messageId!,
-        offset: firstRect.top - scrollRect.top,
-      };
-    }
-    setWindow((current) =>
-      current.chatId === state.chatId
-        ? {
-            chatId: current.chatId,
-            ...prependTranscriptWindow(
-              { start: current.start, end: current.end },
-              state.messages.length,
-            ),
-          }
-        : current,
-    );
-  }, [visibleStart, state.chatId, state.messages.length]);
-
-  const loadNewerMessages = useCallback(() => {
-    if (visibleEnd >= state.messages.length) return;
-    setWindow((current) =>
-      current.chatId === state.chatId
-        ? {
-            chatId: current.chatId,
-            ...appendTranscriptWindow(
-              { start: current.start, end: current.end },
-              state.messages.length,
-            ),
-          }
-        : current,
-    );
-  }, [visibleEnd, state.chatId, state.messages.length]);
-
-  // Scrolling up loads the next older page on the way — the reader is never made to ask.
-  // A bounded window appends the next page when they reach its bottom, but only when the
-  // window is not at the transcript's end: there the stick-to-bottom follow owns the
-  // edge, and the two would cascade page loads against each other.
-  //
-  // The jump's centering scroll is marked programmatic, so it neither counts as a reader
-  // scroll nor clears the jump's load-ahead suppression — the first real scroll does both.
-  useEffect(() => {
-    const scroll = scrollRef.current;
-    if (!scroll) return;
-    const onScroll = () => {
-      if (programmaticScrollRef.current) return;
-      suppressLoadAheadRef.current = false;
-      if (!atEndRef.current) stopFollowing();
-      if (scroll.scrollTop < LOAD_AHEAD_PX) loadOlderMessages();
-      if (atEndRef.current) return;
-      if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < LOAD_AHEAD_PX) {
-        loadNewerMessages();
-      }
-    };
-    scroll.addEventListener('scroll', onScroll, { passive: true });
-    return () => scroll.removeEventListener('scroll', onScroll);
-  }, [loadOlderMessages, loadNewerMessages, stopFollowing]);
-
-  // The listeners run on scroll events; a page too short to scroll never fires one. After
-  // a chat opens, a page lands, or a jump lands, keep loading while the reader is still
-  // inside the load-ahead band. Declared after the restore effect so a load queued here
-  // is restored on the next commit, not this one. A jump suppresses both until the reader
-  // scrolls — the centering scroll is not a request for more pages.
-  useLayoutEffect(() => {
-    if (suppressLoadAheadRef.current) return;
-    const scroll = scrollRef.current;
-    if (!scroll || visibleStart === 0) return;
-    // The chat-change effect has not synced the window yet; its scrollToBottom still runs.
-    if (window.chatId !== state.chatId) return;
-    if (scroll.scrollTop >= LOAD_AHEAD_PX) return;
-    loadOlderMessages();
-  }, [visibleStart, window.chatId, state.chatId, loadOlderMessages]);
-
-  useLayoutEffect(() => {
-    if (suppressLoadAheadRef.current) return;
-    const scroll = scrollRef.current;
-    if (!scroll || atEndRef.current) return;
-    if (window.chatId !== state.chatId) return;
-    if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight >= LOAD_AHEAD_PX) return;
-    loadNewerMessages();
-  }, [window, state.chatId, loadNewerMessages]);
-
-  // A window anchored to the tail follows it. Without this, a reply streaming into a
-  // window whose end was computed before the growth would land past the rendered rows and
-  // be invisible — the transcript would look like the model said nothing.
-  const lastCountRef = useRef(state.messages.length);
-  useEffect(() => {
-    const previous = lastCountRef.current;
-    lastCountRef.current = state.messages.length;
-    if (window.chatId !== state.chatId) return;
-    if (state.messages.length > previous && window.end >= previous) {
-      setWindow((current) =>
-        current.chatId === state.chatId && current.end >= previous
-          ? { ...current, end: state.messages.length }
-          : current,
-      );
-    }
-  }, [state.messages.length, window.chatId, state.chatId, window.end]);
+  // `snapToEnd` comes from the window hook: it re-anchors the window to the tail and
+  // re-engages the follow, so a send from the middle of a long chat lands at the end it
+  // just wrote to — and a send while already tail-anchored leaves the loaded pages alone.
 
   // --- The card reader -------------------------------------------------------
 

@@ -8,6 +8,7 @@ import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
 import { Reasoning } from '../chat/Reasoning.tsx';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
+import { useTranscriptWindow } from '../chat/useTranscriptWindow.ts';
 import '../chat/MessageBubble.css';
 import { correlateToolMessages } from './assistant.ts';
 import { compareCommandDraft, PRESET_SLASH_COMMANDS } from './compareCommands.ts';
@@ -133,7 +134,23 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
   }, [history]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
-  const { scrollToBottom } = useStickToBottom(scrollRef, conversationRef);
+  const { scrollToBottom, stopFollowing } = useStickToBottom(scrollRef, conversationRef);
+  // The bounded transcript — the same sliding window the chat and the desk use, so a
+  // long design session mounts a neighbourhood, not the whole conversation. Declared
+  // after useStickToBottom so the window's listener drops the follow at page boundaries
+  // after the follow's own check ran.
+  const {
+    start: visibleStart,
+    end: visibleEnd,
+    snapToEnd,
+  } = useTranscriptWindow({
+    transcriptKey: controller.session.id,
+    messageCount: messages.length,
+    scrollRef,
+    contentRef: conversationRef,
+    scrollToBottom,
+    stopFollowing,
+  });
 
   useEffect(() => {
     if (controller.busy) {
@@ -150,12 +167,13 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
     }
   }, [controller.busy]);
 
-  // A report arrives from the other panel, so nothing here sent it: re-engage the follow,
-  // or a reader scrolled up in the history would miss the reply starting.
+  // A report arrives from the other panel, so nothing here sent it: re-anchor to the
+  // tail, or a reader scrolled up in the history would miss the reply starting — the
+  // window would not even render it.
   const lastMessage = messages.at(-1);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the newest message id is the trigger
   useEffect(() => {
-    if (lastMessage?.role === 'report') scrollToBottom();
+    if (lastMessage?.role === 'report') snapToEnd();
   }, [lastMessage?.id]);
 
   const patchSettings = (patch: Partial<typeof settings>) =>
@@ -198,13 +216,13 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
       submittingRef.current = true;
       try {
         restoreFocusRef.current = true;
-        scrollToBottom();
+        snapToEnd();
         await controller.compare(comparison.source, comparison.label, text);
         setComparison(null);
         setPreservedFocus('');
         setDraft('');
         setCommandError('');
-        scrollToBottom();
+        snapToEnd();
       } catch (failure) {
         setCommandError((failure as Error).message);
       } finally {
@@ -215,8 +233,9 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
     if (!text) return;
     restoreFocusRef.current = true;
     setDraft('');
-    // Sending is a request to watch the answer, even from halfway up the history.
-    scrollToBottom();
+    // Sending is a request to watch the answer, even from halfway up the history — the
+    // window snaps to the tail so the new rows render at all.
+    snapToEnd();
     await controller.send(text);
   };
 
@@ -263,16 +282,19 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
             Choose a native tool-capable model, then describe what you want to improve.
           </div>
         ) : null}
-        {messages.map((message) => {
+        {messages.slice(visibleStart, visibleEnd).map((message) => {
           if (message.role === 'tool') {
             const exchange = toolCards.get(message.id);
+            // The wrapper carries the anchor attribute so a windowed slice keeps
+            // row-for-row correspondence with `data-message-id` elements.
             return exchange ? (
-              <ToolActivityCard
-                exchange={exchange}
-                proposalControls={proposalControls}
-                revisionPresets={revisionPresets}
-                key={message.id}
-              />
+              <div data-message-id={message.id} key={message.id}>
+                <ToolActivityCard
+                  exchange={exchange}
+                  proposalControls={proposalControls}
+                  revisionPresets={revisionPresets}
+                />
+              </div>
             ) : null;
           }
           if (message.role === 'report') {
@@ -280,7 +302,12 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
               const batch = message.batch;
               const timestamp = formatTimestamp(new Date(message.created).toISOString());
               return (
-                <article className="message" data-role="report" key={message.id}>
+                <article
+                  className="message"
+                  data-role="report"
+                  data-message-id={message.id}
+                  key={message.id}
+                >
                   <div className="message__bubble">
                     <header className="message__head">
                       <div className="message__avatar">
@@ -341,7 +368,12 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
                   ? `reply ${summary.replyNumber}`
                   : null;
             return (
-              <article className="message" data-role="report" key={message.id}>
+              <article
+                className="message"
+                data-role="report"
+                data-message-id={message.id}
+                key={message.id}
+              >
                 <div className="message__bubble">
                   <header className="message__head">
                     <div className="message__avatar">
@@ -395,7 +427,12 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
               ? controller.assistantConnection.model
               : null;
           return (
-            <article className="message" data-role={message.role} key={message.id}>
+            <article
+              className="message"
+              data-role={message.role}
+              data-message-id={message.id}
+              key={message.id}
+            >
               <div className="message__bubble">
                 <header className="message__head">
                   <div className="message__avatar">

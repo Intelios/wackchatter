@@ -34,6 +34,7 @@ import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
 import { Reasoning } from '../chat/Reasoning.tsx';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
+import { useTranscriptWindow } from '../chat/useTranscriptWindow.ts';
 import '../chat/MessageBubble.css';
 import { composeLorebookSources } from '../lore/useLorebooks.ts';
 import { JsonDetails, JsonPre } from './JsonDetails.tsx';
@@ -131,7 +132,23 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inspectorRef = useRef<HTMLDetailsElement>(null);
-  const { scrollToBottom, isFollowing } = useStickToBottom(scrollRef, bodyRef);
+  const { scrollToBottom, stopFollowing, isFollowing } = useStickToBottom(scrollRef, bodyRef);
+  // The bounded transcript — a multi-turn test can run to a real chat's length, so it
+  // mounts a neighbourhood like every other transcript surface. Declared after
+  // useStickToBottom so the window's listener wins the page-boundary scroll event.
+  const testMessageCount = testing.activeTest?.messages.length ?? 0;
+  const {
+    start: visibleStart,
+    end: visibleEnd,
+    snapToEnd,
+  } = useTranscriptWindow({
+    transcriptKey: testing.activeTest?.id ?? null,
+    messageCount: testMessageCount,
+    scrollRef,
+    contentRef: bodyRef,
+    scrollToBottom,
+    stopFollowing,
+  });
 
   useEffect(() => {
     if (!characterId || characterId === NO_CARD) {
@@ -311,12 +328,15 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
       rendered.set(first.id, resolveGreetingMacros(first.mes, options));
     }
     if (!testScenario.regexScripts.length) return { texts: rendered, reasoning };
+    // Depths come from the WHOLE transcript — a script pinned to the last three messages
+    // means that regardless of how far the reader has scrolled — while the substitution
+    // pass only pays for the mounted window.
     const depths = regexDepths(testMessages);
     const regexOptions = {
       macros: createDisplayRegexMacros(options),
       cache: createRegexCompileCache(),
     };
-    for (const message of testMessages) {
+    for (const message of testMessages.slice(visibleStart, visibleEnd)) {
       const context = {
         placement: message.is_user ? REGEX_PLACEMENT.USER_INPUT : REGEX_PLACEMENT.AI_OUTPUT,
         display: true,
@@ -349,13 +369,9 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
     testScenario,
     testLocalVariables,
     testGlobalVariables,
+    visibleStart,
+    visibleEnd,
   ]);
-
-  // A different conversation starts at its newest reply, whatever the last one was showing.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the test id is the trigger
-  useEffect(() => {
-    scrollToBottom();
-  }, [test?.id, scrollToBottom]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing chats clears transient controls
   useEffect(() => {
@@ -377,11 +393,12 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
   }, [inspectRequest]);
 
   // A turn can start from the tray or from the Co-Creator's card on the left, not only
-  // from this composer — whoever sent it, the reader should see it land.
+  // from this composer — whoever sent it, the reader should see it land: re-anchor to
+  // the tail, or a reader mid-history watches rows the window does not render.
   const lastTestMessage = test?.messages.at(-1);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the newest message id is the trigger
   useEffect(() => {
-    if (lastTestMessage?.is_user) scrollToBottom();
+    if (lastTestMessage?.is_user) snapToEnd();
   }, [lastTestMessage?.id]);
 
   /*
@@ -422,14 +439,14 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
 
   const runProposal = (proposal: ProposedPresetTest, text = proposal.message) => {
     if (proposalBlockedReason) return;
-    scrollToBottom();
+    snapToEnd();
     void testing.runProposal(proposal, text);
   };
 
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    scrollToBottom();
+    snapToEnd();
     if (composerProposal) {
       void testing.runProposal(composerProposal, text);
       return;
@@ -707,7 +724,7 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
               </p>
             ) : null}
             <div className="preset-cc-transcript">
-              {test.messages.map((message) => {
+              {test.messages.slice(visibleStart, visibleEnd).map((message) => {
                 const revision = message.extra?.preset_revision;
                 const evidence = evidenceForSelectedResponse(test, message);
                 const presetLabel = evidence?.presetUsed
@@ -730,6 +747,7 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
                   <article
                     className="message preset-cc-test-message"
                     data-role={message.is_user ? 'user' : 'assistant'}
+                    data-message-id={message.id}
                     key={message.id}
                   >
                     <div className="message__bubble">

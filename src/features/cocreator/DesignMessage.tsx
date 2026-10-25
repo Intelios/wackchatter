@@ -114,7 +114,12 @@ export const DesignMessage = memo(function DesignMessage({
   const hasBlocks = Boolean(parsed?.blocks.length);
 
   return (
-    <article className="design-message" data-user={message.is_user || undefined}>
+    <article
+      className="design-message"
+      data-user={message.is_user || undefined}
+      // The window's scroll anchor finds its rows by this attribute.
+      data-message-id={message.id}
+    >
       <header className="design-message__header">
         <span className="design-message__name">
           {message.is_user ? DESIGNER_NAME : ASSISTANT_NAME}
