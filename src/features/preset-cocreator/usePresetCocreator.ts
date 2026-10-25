@@ -105,6 +105,14 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     queue.adopt(initial.id, 0);
   }, [initial, queue, setSession]);
 
+  /**
+   * The one way the session document changes. Updaters are pure, targeted edits — they
+   * spread the path they touch and share every other subtree with the previous document.
+   * That is what makes a per-keystroke composer draft cheap: the session holds megabytes
+   * of immutable test transcripts and evidence, and neither the update nor the queued
+   * save copies any of it (`scheduleImmutable` stores the document by reference, which
+   * only stays correct while updaters never mutate in place).
+   */
   const updateDocument = useCallback(
     (
       update:
@@ -112,11 +120,11 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
         | ((current: PresetCocreatorDocument) => PresetCocreatorDocument),
     ): PresetCocreatorDocument => {
       const current = sessionRef.current;
-      const document =
-        typeof update === 'function' ? update(structuredClone(current.document)) : update;
+      const document = typeof update === 'function' ? update(current.document) : update;
+      if (document === current.document) return document;
       const next = { ...current, document, modified: Date.now() };
       setSession(next);
-      queue.schedule(current.id, queue.nextRevision(current.id), {
+      queue.scheduleImmutable(current.id, queue.nextRevision(current.id), {
         document,
         operationId: crypto.randomUUID(),
       });
@@ -206,7 +214,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
 
   const commitMessages = useCallback(
     (messages: PresetCocreatorMessage[]) =>
-      updateDocument((document) => ({ ...document, messages: structuredClone(messages) })),
+      updateDocument((document) => ({ ...document, messages: [...messages] })),
     [updateDocument],
   );
 

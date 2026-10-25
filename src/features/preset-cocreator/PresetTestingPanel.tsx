@@ -273,30 +273,40 @@ export function PresetTestingPanel({
     (proposal) => proposal.status === 'pending',
   );
   const greetings = character ? greetingTexts(character.card.data) : [];
+  // Deps are the test's stable subtrees, not `test` itself: every composer keystroke
+  // produces a new test object that shares scenario, messages and variables, and typing
+  // must not re-run the greeting/regex pass over the whole transcript.
+  const testId = test?.id;
+  const testMessages = test?.messages;
+  const testScenario = test?.scenario;
+  const testLocalVariables = test?.localVariables;
+  const testGlobalVariables = test?.globalVariables;
   const display = useMemo(() => {
     const rendered = new Map<string, string>();
     const reasoning = new Map<string, string>();
-    if (!test) return { texts: rendered, reasoning };
+    if (!testId || !testMessages || !testScenario || !testLocalVariables || !testGlobalVariables) {
+      return { texts: rendered, reasoning };
+    }
     const options = {
-      character: test.scenario.character,
+      character: testScenario.character,
       preset: controller.session.current.preset,
-      persona: test.scenario.persona,
-      messages: test.messages,
-      metadata: { variables: test.localVariables },
-      globalVariables: test.globalVariables,
-      seed: test.id,
+      persona: testScenario.persona,
+      messages: testMessages,
+      metadata: { variables: testLocalVariables },
+      globalVariables: testGlobalVariables,
+      seed: testId,
     };
-    const first = test.messages[0];
+    const first = testMessages[0];
     if (first && !first.is_user) {
       rendered.set(first.id, resolveGreetingMacros(first.mes, options));
     }
-    if (!test.scenario.regexScripts.length) return { texts: rendered, reasoning };
-    const depths = regexDepths(test.messages);
+    if (!testScenario.regexScripts.length) return { texts: rendered, reasoning };
+    const depths = regexDepths(testMessages);
     const regexOptions = {
       macros: createDisplayRegexMacros(options),
       cache: createRegexCompileCache(),
     };
-    for (const message of test.messages) {
+    for (const message of testMessages) {
       const context = {
         placement: message.is_user ? REGEX_PLACEMENT.USER_INPUT : REGEX_PLACEMENT.AI_OUTPUT,
         display: true,
@@ -305,7 +315,7 @@ export function PresetTestingPanel({
       const source = rendered.get(message.id) ?? message.mes;
       rendered.set(
         message.id,
-        applyRegexScripts(source, test.scenario.regexScripts, context, regexOptions),
+        applyRegexScripts(source, testScenario.regexScripts, context, regexOptions),
       );
       // The thinking runs through its own placement, exactly as the main chat does it.
       const thinking = message.extra?.reasoning;
@@ -314,7 +324,7 @@ export function PresetTestingPanel({
           message.id,
           applyRegexScripts(
             thinking,
-            test.scenario.regexScripts,
+            testScenario.regexScripts,
             { ...context, placement: REGEX_PLACEMENT.REASONING },
             regexOptions,
           ),
@@ -322,7 +332,14 @@ export function PresetTestingPanel({
       }
     }
     return { texts: rendered, reasoning };
-  }, [controller.session.current.preset, test]);
+  }, [
+    controller.session.current.preset,
+    testId,
+    testMessages,
+    testScenario,
+    testLocalVariables,
+    testGlobalVariables,
+  ]);
 
   // A different conversation starts at its newest reply, whatever the last one was showing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the test id is the trigger

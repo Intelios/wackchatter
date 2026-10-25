@@ -4,7 +4,11 @@
  * Generalised from the chat save queue (`features/chat/chatPersistence.ts`) so every
  * editor — character, lorebook, persona, embedded book — shares one set of guarantees:
  *
- * - A scheduled save owns an immutable snapshot. Later edits cannot mutate it in flight.
+ * - A scheduled save owns an immutable snapshot. `schedule` deep-copies the snapshot up
+ *   front so later edits cannot mutate it in flight — including callers that pass a live
+ *   ref they keep mutating. `scheduleImmutable` skips that copy for callers whose
+ *   snapshots are already built by immutable updates: the queue stores the reference it
+ *   was given, and the caller's own state discipline is what keeps it frozen.
  * - Only revisions newer than the queued one are accepted, so a stale callback is ignored.
  * - Writes for one entity are serialised; a slow older response can never land after a
  *   newer one, because the newer one does not start until the older one settles.
@@ -71,12 +75,25 @@ export class AutosaveQueue<TSnapshot, TResult = unknown> {
     return Math.max(this.latest.get(entityId)?.revision ?? 0, this.saved.get(entityId) ?? 0) + 1;
   }
 
-  /** Debounce a new immutable revision, discarding only older unsent revisions. */
+  /** Debounce a new revision, discarding only older unsent revisions. */
   schedule(entityId: string, revision: number, snapshot: TSnapshot): void {
-    const owned = structuredClone(snapshot);
+    this.enqueue(entityId, revision, structuredClone(snapshot));
+  }
+
+  /**
+   * `schedule` for snapshots the caller already built immutably — the object is stored
+   * as passed, so nothing may mutate it, or anything it shares structure with, afterwards.
+   * Use it where cloning every draft costs more than the save it prepares: a large
+   * document edited per keystroke shares its unchanged subtrees instead of copying them.
+   */
+  scheduleImmutable(entityId: string, revision: number, snapshot: TSnapshot): void {
+    this.enqueue(entityId, revision, snapshot);
+  }
+
+  private enqueue(entityId: string, revision: number, snapshot: TSnapshot): void {
     const existing = this.latest.get(entityId);
     if (existing && existing.revision >= revision) return;
-    this.latest.set(entityId, { revision, snapshot: owned });
+    this.latest.set(entityId, { revision, snapshot });
 
     const previousTimer = this.timers.get(entityId);
     if (previousTimer) clearTimeout(previousTimer);

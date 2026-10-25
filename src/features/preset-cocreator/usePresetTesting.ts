@@ -71,13 +71,16 @@ export function usePresetTesting({
 
   const saveTest = useCallback(
     (test: PresetTest, makeActive = true) => {
+      // Tests are immutable once built (updateDocument's contract): the document stores
+      // this object by reference, sharing scenario, transcript and evidence with whatever
+      // produced it instead of deep-copying megabytes of generation evidence.
       controller.updateDocument((document) => {
         const exists = document.tests.some((entry) => entry.id === test.id);
         return {
           ...document,
           tests: exists
-            ? document.tests.map((entry) => (entry.id === test.id ? structuredClone(test) : entry))
-            : [...document.tests, structuredClone(test)],
+            ? document.tests.map((entry) => (entry.id === test.id ? test : entry))
+            : [...document.tests, test],
           activeTestId: makeActive ? test.id : document.activeTestId,
         };
       });
