@@ -130,6 +130,27 @@ describe('Preset Co-Creator assistant boundary', () => {
     expect(JSON.stringify(reference)).not.toContain('filename');
   });
 
+  test('the preset reference preserves documentation for the assistant to read', () => {
+    const preset = createDefaultPreset();
+    preset.prompts!.push({
+      identifier: 'docs',
+      name: 'Design notes',
+      role: 'documentation',
+      content: 'Keep the prose restrained.',
+    });
+    preset.prompt_order![0]!.order.push({ identifier: 'docs', enabled: true });
+
+    const reference = presetReference(preset, 4, 'Mine');
+    expect(reference.preset.prompts?.at(-1)).toMatchObject({
+      role: 'documentation',
+      content: 'Keep the prose restrained.',
+    });
+    expect(reference.order.at(-1)).toMatchObject({
+      identifier: 'docs',
+      role: 'documentation',
+    });
+  });
+
   test('every order entry carries the exact pointers for editing or toggling it', () => {
     const reference = presetReference(createDefaultPreset(), 0, null);
     const main = reference.order.find((entry) => entry.identifier === 'main')!;

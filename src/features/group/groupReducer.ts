@@ -85,12 +85,21 @@ export function groupReducer(state: GroupState, action: GroupAction): GroupState
   }
   return status({ ...state, ...chatReducer(state, action) });
 }
-export function persistedGroupMessages(state: GroupState): ChatMessage[] {
+/**
+ * The persisted transcript as `MessageState` objects: in-flight replies fold back to
+ * their pre-job originals so a save mid-exchange stores only what is durable. Keeping
+ * the objects rather than wire messages is what lets the save queue diff by reference.
+ */
+export function persistedGroupStates(state: GroupState): MessageState[] {
   const pending = new Map(Object.values(state.jobs).map((j) => [j.messageId, j]));
   return state.messages.flatMap((m) => {
     const job = pending.get(m.id);
-    return job ? (job.original ? [toChatMessage(job.original)] : []) : [toChatMessage(m)];
+    return job ? (job.original ? [job.original] : []) : [m];
   });
+}
+
+export function persistedGroupMessages(state: GroupState): ChatMessage[] {
+  return persistedGroupStates(state).map(toChatMessage);
 }
 export function completedGroupMessages(state: GroupState): ChatMessage[] {
   const pending = new Set(Object.values(state.jobs).map((j) => j.messageId));

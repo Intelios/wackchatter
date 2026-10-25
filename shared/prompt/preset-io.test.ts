@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { PROMPT_ORDER_LEGACY_ID, PROMPT_ORDER_LIVE_ID } from '../types/preset.ts';
 import {
   addCustomPrompt,
+  addDocumentationPrompt,
   deleteCustomPrompt,
   getPromptOrder,
   migratePreset,
@@ -95,6 +96,38 @@ describe('serialization format', () => {
     expect(text.startsWith('{\n    "')).toBe(true);
     expect(text.endsWith('\n')).toBe(false);
     expect(text.endsWith('}')).toBe(true);
+  });
+
+  test('documentation blocks round-trip with their order and unknown fields intact', () => {
+    const raw = {
+      prompts: [
+        {
+          identifier: 'notes',
+          name: 'How this preset works',
+          role: 'documentation',
+          content: '# Design notes\nKeep the narration restrained.',
+          future_extension: { audience: 'preset authors' },
+        },
+      ],
+      prompt_order: [
+        {
+          character_id: PROMPT_ORDER_LIVE_ID,
+          order: [{ identifier: 'notes', enabled: false }],
+        },
+      ],
+    };
+
+    const written = JSON.parse(serializePreset(normalizePreset(raw)));
+    const note = written.prompts.find(
+      (prompt: { identifier: string }) => prompt.identifier === 'notes',
+    );
+
+    expect(note).toEqual(raw.prompts[0]);
+    expect(
+      written.prompt_order[0].order.find(
+        (entry: { identifier: string }) => entry.identifier === 'notes',
+      ),
+    ).toEqual({ identifier: 'notes', enabled: false });
   });
 });
 
@@ -369,6 +402,23 @@ describe('editing', () => {
       enabled: true,
     });
     expect(preset.prompts?.some((item) => item.identifier === 'custom-test-id')).toBe(false);
+  });
+
+  test('creates an enabled documentation block at the end of the live order', () => {
+    const preset = normalizePreset(loadStDefault());
+    const created = addDocumentationPrompt(preset, 'documentation-test-id');
+    const prompt = created.preset.prompts?.find((item) => item.identifier === created.identifier);
+
+    expect(prompt).toMatchObject({
+      identifier: 'documentation-test-id',
+      name: 'Documentation',
+      role: 'documentation',
+      content: '',
+    });
+    expect(getPromptOrder(created.preset).at(-1)).toEqual({
+      identifier: 'documentation-test-id',
+      enabled: true,
+    });
   });
 
   test('deletes a custom prompt from prompts and every order list', () => {

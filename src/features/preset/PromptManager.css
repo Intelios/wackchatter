@@ -7,6 +7,12 @@
   gap: 1px;
 }
 
+.prompt-manager__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+}
+
 .prompt-row {
   display: flex;
   align-items: center;
@@ -113,6 +119,11 @@
   font-family: var(--wc-font-mono);
 }
 
+.prompt-tag--documentation {
+  color: var(--wc-accent);
+  background: var(--wc-accent-subtle);
+}
+
 .prompt-row__tokens {
   font-size: var(--wc-text-xs);
   color: var(--wc-text-faint);
@@ -128,4 +139,14 @@
   opacity: 0.45;
   text-decoration: line-through;
   text-decoration-thickness: 1px;
+}
+
+.prompt-row[data-documentation="true"] .prompt-row__name,
+.prompt-row[data-documentation="true"] .prompt-row__tokens {
+  opacity: 1;
+  text-decoration: none;
+}
+
+.prompt-row[data-documentation="true"] .prompt-row__check {
+  cursor: help;
 }

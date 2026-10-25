@@ -12,6 +12,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { presetApi, referencePresetApi, streamGenerate } from '../../lib/api.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
+import { createStreamStore } from '../chat/state/streamStore.ts';
 import {
   appendPresetTestUserMessage,
   buildPresetTestReport,
@@ -34,6 +35,7 @@ interface UsePresetTestingOptions {
   controller: PresetCocreatorController;
   connections: readonly Connection[];
   tokenizerEncoding?: string;
+  streamingFps: number;
 }
 
 function latestAssistant(messages: readonly ChatMessage[]): ChatMessage | null {
@@ -44,16 +46,21 @@ export function usePresetTesting({
   controller,
   connections,
   tokenizerEncoding,
+  streamingFps,
 }: UsePresetTestingOptions) {
   const [busy, setBusy] = useState(false);
-  const [streamingText, setStreamingText] = useState('');
-  const [streamingReasoning, setStreamingReasoning] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [inspectedEvidenceId, setInspectedEvidenceId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const preparingRef = useRef(false);
   const sessionRef = useRef(controller.session);
   sessionRef.current = controller.session;
+
+  // The streaming hot path, same bargain as the chat: the growing text lives in this
+  // store and reaches one leaf (the StreamingBubble) through useSyncExternalStore, so a
+  // streamed test reply re-renders nothing else. Recreated only when the rate changes,
+  // so a running stream keeps its store.
+  const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
 
   const activeTest = useMemo(
     () =>
@@ -71,13 +78,16 @@ export function usePresetTesting({
 
   const saveTest = useCallback(
     (test: PresetTest, makeActive = true) => {
+      // Tests are immutable once built (updateDocument's contract): the document stores
+      // this object by reference, sharing scenario, transcript and evidence with whatever
+      // produced it instead of deep-copying megabytes of generation evidence.
       controller.updateDocument((document) => {
         const exists = document.tests.some((entry) => entry.id === test.id);
         return {
           ...document,
           tests: exists
-            ? document.tests.map((entry) => (entry.id === test.id ? structuredClone(test) : entry))
-            : [...document.tests, structuredClone(test)],
+            ? document.tests.map((entry) => (entry.id === test.id ? test : entry))
+            : [...document.tests, test],
           activeTestId: makeActive ? test.id : document.activeTestId,
         };
       });
@@ -166,14 +176,15 @@ export function usePresetTesting({
       abortRef.current = controllerAbort;
       setBusy(true);
       setError(null);
-      setStreamingText('');
-      setStreamingReasoning('');
+      // The bubble mounts the moment `busy` flips, and the store may still hold the
+      // previous generation's last frame — reset it before the first await can show that.
+      stream.begin('', true);
       const finish = () => {
         if (abortRef.current === controllerAbort) abortRef.current = null;
         preparingRef.current = false;
+        // Flushes whatever a throttled frame was still holding and marks the store idle.
+        stream.end();
         setBusy(false);
-        setStreamingText('');
-        setStreamingReasoning('');
       };
 
       const selectedConnection = connections.find(
@@ -314,6 +325,9 @@ export function usePresetTesting({
       let text = '';
       let reasoning = '';
       try {
+        // One stream per request, carrying whether this request actually streams: a test
+        // preset may disable it, and a caret on an empty bubble would indicate nothing.
+        stream.begin('', resolved.preset.stream_openai !== false);
         const final = await streamGenerate(
           prepared.body,
           controllerAbort.signal,
@@ -322,8 +336,7 @@ export function usePresetTesting({
               if (abortRef.current !== controllerAbort) return;
               text = state.content;
               reasoning = state.reasoning;
-              setStreamingText(text);
-              setStreamingReasoning(reasoning);
+              stream.set(text, reasoning);
             },
           },
           '',
@@ -414,7 +427,7 @@ export function usePresetTesting({
         finish();
       }
     },
-    [busy, connections, controller, countTokens, saveTest],
+    [busy, connections, controller, countTokens, saveTest, stream],
   );
 
   const send = useCallback(
@@ -564,39 +577,75 @@ export function usePresetTesting({
     return message ? evidenceForSelectedResponse(activeTest, message) : null;
   }, [activeTest, inspectedEvidenceId]);
 
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  return {
-    activeTest,
-    connection,
-    busy,
-    error,
-    setError,
-    streamingText,
-    streamingReasoning,
-    inspectedEvidence,
-    inspect: setInspectedEvidenceId,
-    start,
-    restart,
-    setActive,
-    setPresetSource,
-    setTestingSettings,
-    setComposerDraft,
-    send,
-    regenerate,
-    swipe,
-    editMessage,
-    stop: () => abortRef.current?.abort(),
-    dismissProposal,
-    dismissAllProposals,
-    runProposal,
-    share,
-    queueReply,
-    updateBatch,
-    removeBatchItem,
-    setBatchItemNote,
-    sendBatch: controller.sendBatch,
-  };
+  /*
+   * One identity for the whole controller, changing only when its contents change — the
+   * memoised testing panel is handed this object, so a fresh identity per render would
+   * defeat its memo.
+   */
+  return useMemo(
+    () => ({
+      activeTest,
+      connection,
+      busy,
+      error,
+      setError,
+      stream,
+      inspectedEvidence,
+      inspect: setInspectedEvidenceId,
+      start,
+      restart,
+      setActive,
+      setPresetSource,
+      setTestingSettings,
+      setComposerDraft,
+      send,
+      regenerate,
+      swipe,
+      editMessage,
+      stop,
+      dismissProposal,
+      dismissAllProposals,
+      runProposal,
+      share,
+      queueReply,
+      updateBatch,
+      removeBatchItem,
+      setBatchItemNote,
+      sendBatch: controller.sendBatch,
+    }),
+    [
+      activeTest,
+      connection,
+      busy,
+      error,
+      stream,
+      inspectedEvidence,
+      start,
+      restart,
+      setActive,
+      setPresetSource,
+      setTestingSettings,
+      setComposerDraft,
+      send,
+      regenerate,
+      swipe,
+      editMessage,
+      stop,
+      dismissProposal,
+      dismissAllProposals,
+      runProposal,
+      share,
+      queueReply,
+      updateBatch,
+      removeBatchItem,
+      setBatchItemNote,
+      controller.sendBatch,
+    ],
+  );
 }
 
 export type PresetTestingController = ReturnType<typeof usePresetTesting>;

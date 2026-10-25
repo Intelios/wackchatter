@@ -363,6 +363,9 @@
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
+  /* The window restores the anchor row's position itself — the browser's
+     content-anchoring would double-compensate the same commit. */
+  overflow-anchor: none;
 }
 
 /* These columns now scroll themselves at a fixed height, so their rows must not squash. */

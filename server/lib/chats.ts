@@ -11,12 +11,18 @@ import { createGroupStore } from './groups.ts';
 
 import type { Database } from 'bun:sqlite';
 import { remapBranchMetadata } from '../../shared/chat/branch.ts';
-import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
+import {
+  fromChatMessage,
+  type MessageState,
+  normalizeState,
+  toChatMessage,
+} from '../../shared/chat/message.ts';
 import type {
   BranchOrigin,
   Chat,
   ChatMessage,
   ChatMetadata,
+  ChatSaveAck,
   ChatSummary,
   StaleChatRevision,
 } from '../../shared/types/chat.ts';
@@ -34,6 +40,8 @@ interface ChatRow {
   created: number;
   modified: number;
   revision: number;
+  /** Idempotency token of the incremental save that wrote this revision; see db.ts. */
+  save_token: string | null;
   metadata: string;
 }
 
@@ -76,15 +84,31 @@ export interface ChatStore {
     metadata?: ChatMetadata;
     messages?: ChatMessage[];
   }): Chat;
-  /** Whole-chat write: the only path that changes messages. */
+  /**
+   * Whole-chat replace. The write path of the whole-document semantics: revision-gated,
+   * content-compared at equal revisions, and the returned chat re-read after the write.
+   * The route saves through `saveChat` instead; this remains for callers that already
+   * hold a full transcript.
+   */
   replaceChat(
     id: string,
     chat: { revision: number; title?: string; metadata?: ChatMetadata; messages: ChatMessage[] },
   ): ChatSaveResult;
+  /**
+   * The incremental write — the path every queued save takes.
+   *
+   * Applies `input` only while the row's revision still equals `input.baseRevision`
+   * (compare-and-swap), and acknowledges an exact redelivery of the same save via
+   * `input.saveId` instead of writing twice. `order` is the complete post-save
+   * transcript order: rows it omits are deleted, and only `upsert` messages are
+   * inserted or rewritten — everything else moves by position update alone.
+   */
+  saveChat(id: string, input: ChatSaveInput): ChatSaveAckResult;
+  /** Title/metadata-only write; never reads or touches message rows. */
   updateChatMeta(
     id: string,
     updates: { revision: number; title?: string; metadata?: ChatMetadata },
-  ): ChatSaveResult;
+  ): ChatSaveAckResult;
   /**
    * Migration door: replace a chat's metadata and bump its revision, without restamping
    * `modified` and without reading the transcript. Returns null for an unknown chat.
@@ -132,6 +156,39 @@ export type ChatSaveResult =
   | { kind: 'saved'; chat: Chat }
   | { kind: 'notFound' }
   | { kind: 'stale'; conflict: StaleChatRevision };
+
+/** The small acknowledgement — saves never echo the transcript back. */
+export type ChatSaveAckResult =
+  | { kind: 'saved'; ack: ChatSaveAck }
+  | { kind: 'notFound' }
+  | { kind: 'stale'; conflict: StaleChatRevision };
+
+/**
+ * One incremental save.
+ *
+ * `order` plus `upsert` describe the transcript delta: `order` is every message id in
+ * position order, `upsert` only the rows to insert or rewrite. When both are absent the
+ * save touches the head fields only — which is also what an unchanged transcript looks
+ * like, the client never sending an order it could have omitted.
+ */
+export interface ChatSaveInput {
+  revision: number;
+  /** Idempotency token minted by the client per save unit. */
+  saveId: string;
+  /** The server revision this save is computed against. */
+  baseRevision: number;
+  title?: string;
+  metadata?: ChatMetadata;
+  order?: string[];
+  upsert?: ChatMessage[];
+}
+
+/** Thrown inside the save transaction when the delta cannot describe the write. */
+class DeltaConflict extends Error {
+  constructor(readonly revision: number) {
+    super('Save cannot be applied against this revision.');
+  }
+}
 
 function parseJson<T>(raw: string, fallback: T): T {
   try {
@@ -196,13 +253,21 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     ),
     replaceChat: database.query(
       `UPDATE chats
-         SET title = $title, metadata = $metadata, modified = $modified, revision = $revision
+         SET title = $title, metadata = $metadata, modified = $modified, revision = $revision,
+             save_token = NULL
+       WHERE id = $id`,
+    ),
+    saveChat: database.query(
+      `UPDATE chats
+         SET title = $title, metadata = $metadata, modified = $modified, revision = $revision,
+             save_token = $saveToken
        WHERE id = $id`,
     ),
     // Note the absent $modified: this is the migration door, and leaving recency alone is
     // the entire point of it. See migrateChatMeta.
     migrateChatMeta: database.query(
-      `UPDATE chats SET metadata = $metadata, revision = $revision WHERE id = $id`,
+      `UPDATE chats SET metadata = $metadata, revision = $revision, save_token = NULL
+       WHERE id = $id`,
     ),
     deleteChat: database.query('DELETE FROM chats WHERE id = ?'),
     reassignCharacter: database.query(
@@ -219,11 +284,56 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     selectMessages: database.query<MessageRow, [string]>(
       'SELECT * FROM messages WHERE chat_id = ? ORDER BY position ASC',
     ),
+    // Ids only, in position order — all an incremental save needs of the stored
+    // transcript to compute which rows move, go or stay.
+    selectMessageIds: database.query<{ id: string }, [string]>(
+      'SELECT id FROM messages WHERE chat_id = ? ORDER BY position ASC',
+    ),
     deleteMessages: database.query('DELETE FROM messages WHERE chat_id = ?'),
+    // Every message row whose id is NOT in the $order JSON array — including all of them
+    // when the array is empty.
+    deleteNotInOrder: database.query(
+      'DELETE FROM messages WHERE chat_id = $chatId AND id NOT IN (SELECT value FROM json_each($order))',
+    ),
     insertMessage: database.query(
       `INSERT INTO messages
          (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, member_id, character_id, swipe_id, swipes, swipe_info)
        VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $memberId, $speakerCharacterId, $swipeId, $swipes, $swipeInfo)`,
+    ),
+    upsertMessage: database.query(
+      `INSERT INTO messages
+         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, member_id, character_id, swipe_id, swipes, swipe_info)
+       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $memberId, $speakerCharacterId, $swipeId, $swipes, $swipeInfo)
+       ON CONFLICT(chat_id, id) DO UPDATE SET
+         position = excluded.position,
+         name = excluded.name,
+         is_user = excluded.is_user,
+         is_system = excluded.is_system,
+         hidden_by = excluded.hidden_by,
+         persona_id = excluded.persona_id,
+         member_id = excluded.member_id,
+         character_id = excluded.character_id,
+         swipe_id = excluded.swipe_id,
+         swipes = excluded.swipes,
+         swipe_info = excluded.swipe_info`,
+    ),
+    /*
+     * Reordering on a UNIQUE(chat_id, position) index cannot be done in place: moving a
+     * row onto a position another row still holds would collide. Shifted rows park at
+     * -1 - desired (a disjoint negative range), then settle once inserts have claimed
+     * their finals. The FROM join over json_each keeps both passes to one statement.
+     */
+    shiftToScratch: database.query(
+      `UPDATE messages SET position = -1 - CAST(o.key AS INTEGER)
+         FROM (SELECT key, value FROM json_each($order)) AS o
+        WHERE chat_id = $chatId AND messages.id = o.value
+          AND position != CAST(o.key AS INTEGER)`,
+    ),
+    settleScratch: database.query(
+      `UPDATE messages SET position = CAST(o.key AS INTEGER)
+         FROM (SELECT key, value FROM json_each($order)) AS o
+        WHERE chat_id = $chatId AND messages.id = o.value
+          AND position < 0`,
     ),
   };
 
@@ -279,29 +389,32 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     `${summarySelect} WHERE c.character_id = ? ORDER BY c.modified DESC`,
   );
 
+  function messageInsertParams(chatId: string, state: MessageState, position: number) {
+    return {
+      $chatId: chatId,
+      $id: state.id,
+      $position: position,
+      $name: state.name,
+      $memberId: state.memberId ?? null,
+      $speakerCharacterId: state.characterId ?? null,
+      $isUser: state.is_user ? 1 : 0,
+      $isSystem: state.is_system ? 1 : 0,
+      $hiddenBy: state.hiddenBy ?? null,
+      // NULL is reserved for "speaker not recorded"; the explicit no-persona stores
+      // as an empty string so a legacy row and a persona-less message stay distinct.
+      $personaId: state.persona_id === undefined ? null : (state.persona_id ?? ''),
+      $swipeId: state.swipe_id,
+      $swipes: JSON.stringify(state.swipes),
+      $swipeInfo: JSON.stringify(state.swipe_info),
+    };
+  }
+
   function writeMessages(chatId: string, messages: ChatMessage[]): void {
     statements.deleteMessages.run(chatId);
 
     messages.forEach((message, position) => {
       // Repair on the way in, so the row can only ever hold a consistent message.
-      const state = fromChatMessage(message);
-      statements.insertMessage.run({
-        $chatId: chatId,
-        $id: state.id,
-        $position: position,
-        $name: state.name,
-        $memberId: state.memberId ?? null,
-        $speakerCharacterId: state.characterId ?? null,
-        $isUser: state.is_user ? 1 : 0,
-        $isSystem: state.is_system ? 1 : 0,
-        $hiddenBy: state.hiddenBy ?? null,
-        // NULL is reserved for "speaker not recorded"; the explicit no-persona stores
-        // as an empty string so a legacy row and a persona-less message stay distinct.
-        $personaId: state.persona_id === undefined ? null : (state.persona_id ?? ''),
-        $swipeId: state.swipe_id,
-        $swipes: JSON.stringify(state.swipes),
-        $swipeInfo: JSON.stringify(state.swipe_info),
-      });
+      statements.insertMessage.run(messageInsertParams(chatId, fromChatMessage(message), position));
     });
   }
 
@@ -391,45 +504,131 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     },
   );
 
+  /*
+   * The incremental write. Reads only the head row plus the stored id order — never the
+   * transcript — and writes only what the delta names: unlisted ids deleted, upserted
+   * messages inserted or rewritten, everything else moved by position update alone.
+   *
+   * Idempotency and conflict detection are one column pair, (revision, save_token):
+   * an exact redelivery of the save that already landed acknowledges instead of
+   * rewriting or conflicting, while a different save at the same revision, a newer
+   * revision already recorded, or a base that is not the row's revision all report
+   * stale. Revisions never move backwards.
+   */
+  const saveChatTx = database.transaction((id: string, input: ChatSaveInput): ChatSaveAckResult => {
+    const row = statements.selectChat.get(id);
+    if (!row) return { kind: 'notFound' };
+
+    if (input.revision === row.revision) {
+      return row.save_token !== null && row.save_token === input.saveId
+        ? { kind: 'saved', ack: { revision: row.revision, modified: row.modified } }
+        : {
+            kind: 'stale',
+            conflict: { code: 'stale_revision', currentRevision: row.revision },
+          };
+    }
+    if (input.revision < row.revision || input.baseRevision !== row.revision) {
+      return {
+        kind: 'stale',
+        conflict: { code: 'stale_revision', currentRevision: row.revision },
+      };
+    }
+
+    const title = input.title?.trim() || row.title;
+    const metadata = input.metadata ?? parseMetadata(row.metadata);
+    if (row.kind === 'group' && !validateGroup(metadata.group, 0))
+      throw new Error('Invalid group scene.');
+
+    if (input.order) {
+      const existing = statements.selectMessageIds.all(id).map((r) => r.id);
+      const existingIds = new Set(existing);
+      const upsertIds = new Set((input.upsert ?? []).map((message) => message.id));
+
+      // Every id the client claims its new order needs must either already be a row
+      // or arrive in upsert. Anything else means the delta was computed against a
+      // transcript this server does not hold — a base lie, not a write to guess at.
+      for (const orderId of input.order) {
+        if (!existingIds.has(orderId) && !upsertIds.has(orderId)) {
+          throw new DeltaConflict(row.revision);
+        }
+      }
+
+      const orderJson = JSON.stringify(input.order);
+      // Park every row whose position changes before any upsert writes its target,
+      // so an insert never collides with a row still holding that slot. See the
+      // statement's comment for why two passes are needed at all.
+      statements.shiftToScratch.run({ $chatId: id, $order: orderJson });
+      statements.deleteNotInOrder.run({ $chatId: id, $order: orderJson });
+
+      const positions = new Map(input.order.map((orderId, index) => [orderId, index]));
+      for (const message of input.upsert ?? []) {
+        const position = positions.get(message.id);
+        if (position === undefined) {
+          // Route validation is supposed to refuse this; refuse loudly rather than
+          // orphan the row outside the declared order.
+          throw new DeltaConflict(row.revision);
+        }
+        statements.upsertMessage.run(messageInsertParams(id, fromChatMessage(message), position));
+      }
+      statements.settleScratch.run({ $chatId: id, $order: orderJson });
+    }
+
+    const modified = Date.now();
+    statements.saveChat.run({
+      $id: id,
+      $title: title,
+      $metadata: JSON.stringify(metadata),
+      $modified: modified,
+      $revision: input.revision,
+      $saveToken: input.saveId,
+    });
+    return { kind: 'saved', ack: { revision: input.revision, modified } };
+  });
+
   const saveMeta = database.transaction(
     (
       id: string,
       input: { revision: number; title?: string; metadata?: ChatMetadata },
-    ): ChatSaveResult => {
-      const existing = readChat(id);
-      if (!existing) return { kind: 'notFound' };
+    ): ChatSaveAckResult => {
+      // The head row alone: a metadata write has no business paying for a transcript it
+      // never touches, which on a long chat is where the old readChat went.
+      const row = statements.selectChat.get(id);
+      if (!row) return { kind: 'notFound' };
 
-      const title = input.title?.trim() || existing.title;
-      const metadata = input.metadata ?? existing.metadata;
-      if (existing.kind === 'group' && !validateGroup(metadata.group, 0))
+      const title = input.title?.trim() || row.title;
+      const metadata = input.metadata ?? parseMetadata(row.metadata);
+      if (row.kind === 'group' && !validateGroup(metadata.group, 0))
         throw new Error('Invalid group scene.');
-      if (input.revision < existing.revision) {
+      if (input.revision < row.revision) {
         return {
           kind: 'stale',
-          conflict: { code: 'stale_revision', currentRevision: existing.revision },
+          conflict: { code: 'stale_revision', currentRevision: row.revision },
         };
       }
-      if (input.revision === existing.revision) {
+      if (input.revision === row.revision) {
+        // Canonical-versus-canonical: the column text may not have been written by us,
+        // so key order and whitespace cannot take part in "same document".
         if (
-          title === existing.title &&
-          JSON.stringify(metadata) === JSON.stringify(existing.metadata)
+          title === row.title &&
+          JSON.stringify(metadata) === JSON.stringify(parseMetadata(row.metadata))
         ) {
-          return { kind: 'saved', chat: existing };
+          return { kind: 'saved', ack: { revision: row.revision, modified: row.modified } };
         }
         return {
           kind: 'stale',
-          conflict: { code: 'stale_revision', currentRevision: existing.revision },
+          conflict: { code: 'stale_revision', currentRevision: row.revision },
         };
       }
 
+      const modified = Date.now();
       statements.replaceChat.run({
         $id: id,
         $title: title,
         $metadata: JSON.stringify(metadata),
-        $modified: Date.now(),
+        $modified: modified,
         $revision: input.revision,
       });
-      return { kind: 'saved', chat: readChat(id)! };
+      return { kind: 'saved', ack: { revision: input.revision, modified } };
     },
   );
 
@@ -468,6 +667,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
           created: now,
           modified: now,
           revision: 0,
+          save_token: null,
           metadata: JSON.stringify(input.metadata ?? {}),
         },
         input.messages ?? [],
@@ -480,7 +680,21 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       return saveWholeChat(id, chat);
     },
 
-    updateChatMeta(id, updates): ChatSaveResult {
+    saveChat(id, input): ChatSaveAckResult {
+      try {
+        return saveChatTx(id, input);
+      } catch (error) {
+        if (error instanceof DeltaConflict) {
+          return {
+            kind: 'stale',
+            conflict: { code: 'stale_revision', currentRevision: error.revision },
+          };
+        }
+        throw error;
+      }
+    },
+
+    updateChatMeta(id, updates): ChatSaveAckResult {
       return saveMeta(id, updates);
     },
 
@@ -540,6 +754,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
           created: now,
           modified: now,
           revision: 0,
+          save_token: null,
           metadata: JSON.stringify({
             ...remapBranchMetadata(source.metadata, source.messages, idMap),
             branchedFrom: {
@@ -576,8 +791,10 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
           const metadata = parseMetadata(row.metadata);
           if (metadata.group?.members.some((m) => m.characterId === oldCharacterId)) {
             metadata.group = rename(metadata.group);
+            // Written outside the save protocol, so any token claiming this revision
+            // is no longer describing this row's content.
             database
-              .query('UPDATE chats SET metadata = ? WHERE id = ?')
+              .query('UPDATE chats SET metadata = ?, save_token = NULL WHERE id = ?')
               .run(JSON.stringify(metadata), row.id);
           }
         }

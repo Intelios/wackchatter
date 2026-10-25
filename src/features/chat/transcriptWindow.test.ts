@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
   appendTranscriptWindow,
+  growTranscriptWindow,
   initialTranscriptWindow,
   prependTranscriptWindow,
+  TRANSCRIPT_MAX_MESSAGES,
   TRANSCRIPT_PAGE_SIZE,
   windowForJump,
 } from './transcriptWindow.ts';
@@ -29,11 +31,15 @@ describe('prepending and appending', () => {
   test('prepending moves back exactly one page without crossing the start', () => {
     const at = { start: 100, end: 140 };
     expect(prependTranscriptWindow(at, 140)).toEqual({ start: 60, end: 140 });
+    // A window already at capacity sheds the same distance off the far end.
     expect(prependTranscriptWindow({ start: 20, end: 140 }, 140)).toEqual({
       start: 0,
-      end: 140,
+      end: TRANSCRIPT_MAX_MESSAGES,
     });
-    expect(prependTranscriptWindow({ start: 0, end: 140 }, 140)).toEqual({ start: 0, end: 140 });
+    expect(prependTranscriptWindow({ start: 0, end: 140 }, 140)).toEqual({
+      start: 0,
+      end: TRANSCRIPT_MAX_MESSAGES,
+    });
   });
 
   test('appending moves forward exactly one page without crossing the end', () => {
@@ -43,6 +49,62 @@ describe('prepending and appending', () => {
       start: 60,
       end: 140,
     });
+  });
+
+  test('the window never exceeds the cap, whichever end grows', () => {
+    let window = initialTranscriptWindow(5_000);
+    for (let page = 0; page < 24; page++) {
+      window = prependTranscriptWindow(window, 5_000);
+      expect(window.end - window.start).toBeLessThanOrEqual(TRANSCRIPT_MAX_MESSAGES);
+    }
+    // Twenty-four pages back leaves the reader near the head of a capped window,
+    // not holding a thousand mounted rows.
+    expect(window).toEqual({
+      start: 5_000 - TRANSCRIPT_PAGE_SIZE - 24 * TRANSCRIPT_PAGE_SIZE,
+      end: 5_000 - TRANSCRIPT_PAGE_SIZE - 24 * TRANSCRIPT_PAGE_SIZE + TRANSCRIPT_MAX_MESSAGES,
+    });
+  });
+
+  test("prepending at capacity evicts the newest end, keeping the reader's rows", () => {
+    const full = { start: 100, end: 100 + TRANSCRIPT_MAX_MESSAGES };
+    const next = prependTranscriptWindow(full, 5_000);
+    expect(next).toEqual({
+      start: 100 - TRANSCRIPT_PAGE_SIZE,
+      end: 100 - TRANSCRIPT_PAGE_SIZE + TRANSCRIPT_MAX_MESSAGES,
+    });
+  });
+
+  test("appending at capacity evicts the oldest end, keeping the reader's rows", () => {
+    const full = { start: 100, end: 100 + TRANSCRIPT_MAX_MESSAGES };
+    const next = appendTranscriptWindow(full, 5_000);
+    expect(next).toEqual({
+      start: 100 + TRANSCRIPT_PAGE_SIZE,
+      end: 100 + TRANSCRIPT_MAX_MESSAGES + TRANSCRIPT_PAGE_SIZE,
+    });
+  });
+
+  test('a partial page at the transcript start still evicts at capacity', () => {
+    const full = { start: 10, end: 10 + TRANSCRIPT_MAX_MESSAGES };
+    const next = prependTranscriptWindow(full, 5_000);
+    expect(next).toEqual({ start: 0, end: TRANSCRIPT_MAX_MESSAGES });
+  });
+});
+
+describe('growTranscriptWindow', () => {
+  test('a tail-anchored window follows new messages', () => {
+    expect(growTranscriptWindow({ start: 60, end: 100 }, 101)).toEqual({ start: 60, end: 101 });
+  });
+
+  test('growth past the cap evicts the oldest end — a streaming tail stays bounded', () => {
+    const grown = growTranscriptWindow(
+      { start: 100, end: 100 + TRANSCRIPT_MAX_MESSAGES },
+      200 + TRANSCRIPT_MAX_MESSAGES,
+    );
+    expect(grown).toEqual({ start: 200, end: 200 + TRANSCRIPT_MAX_MESSAGES });
+  });
+
+  test('growth shorter than the cap never pulls the start forward', () => {
+    expect(growTranscriptWindow({ start: 3, end: 10 }, 20)).toEqual({ start: 3, end: 20 });
   });
 });
 

@@ -13,6 +13,8 @@ import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import { useStickToBottom } from '../chat/useStickToBottom.ts';
+import { useTranscriptWindow } from '../chat/useTranscriptWindow.ts';
 import { AvatarDrop } from './AvatarDrop.tsx';
 import { SLOT_LABELS } from './blocks.ts';
 import { CocreatorComposer } from './CocreatorComposer.tsx';
@@ -99,9 +101,29 @@ export function CocreatorDesk({
   const [setupMode, setSetupMode] = useState<'session' | 'defaults'>('session');
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
-  const programmatic = useRef(false);
   const { persistence, saving, saveError, state, busy, blockedReason } = design;
+
+  /*
+   * Follow the tail, and window the transcript.
+   *
+   * The design conversation is the same bounded slice the chat renders: sessions grow to
+   * a thousand turns in use, so `state.messages.map` over the lot is the regression the
+   * shared hook exists to undo. Declared after useStickToBottom so the window's listener
+   * — the one that drops the follow at page boundaries — wins the same scroll event.
+   */
+  const { scrollToBottom, stopFollowing, isFollowing } = useStickToBottom(scrollRef, contentRef);
+  const {
+    start: visibleStart,
+    end: visibleEnd,
+    snapToEnd,
+  } = useTranscriptWindow({
+    transcriptKey: session.id,
+    messageCount: state.messages.length,
+    scrollRef,
+    contentRef,
+    scrollToBottom,
+    stopFollowing,
+  });
 
   useEffect(() => {
     registerPersistence(persistence);
@@ -112,59 +134,14 @@ export function CocreatorDesk({
     onStatusChange(saveError ? saveError : saving ? 'Saving…' : '');
   }, [saving, saveError, onStatusChange]);
 
-  /*
-   * Follow the tail.
-   *
-   * A layout effect, not an effect: on mount it runs before paint, so opening a session with
-   * history does not flash the top of the transcript before jumping. The transcript is short
-   * enough that chat's windowing scheme would be machinery with no problem to solve — a
-   * design session is tens of turns, not hundreds.
-   *
-   * Only scrolls when the user is already at the bottom — scrolling up to read something
-   * pauses the follow until they come back down.
-   */
-  const pinBottom = useCallback(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-    programmatic.current = true;
-    node.scrollTop = node.scrollHeight;
-    requestAnimationFrame(() => {
-      programmatic.current = false;
-    });
-  }, []);
-
-  // Track whether the user is still at the bottom.
-  useEffect(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-
-    const onScroll = () => {
-      if (programmatic.current) return;
-      const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
-      following.current = distance <= 80;
-    };
-
-    node.addEventListener('scroll', onScroll, { passive: true });
-    return () => node.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // Follow content growth React never re-rendered the list for (per-token streaming).
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-
-    const observer = new ResizeObserver(() => {
-      if (following.current) pinBottom();
-    });
-
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [pinBottom]);
-
+  // A layout effect, not an effect: on mount it runs before paint, so opening a session
+  // with history does not flash the top of the transcript before jumping. Only scrolls
+  // while the reader is already at the bottom — scrolling up pauses the follow until
+  // they come back down.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the trigger
   useLayoutEffect(() => {
-    if (following.current) pinBottom();
-  }, [state.messages.length, state.status, pinBottom]);
+    if (isFollowing.current) scrollToBottom();
+  }, [state.messages.length, state.status, scrollToBottom, isFollowing]);
 
   /**
    * File a piece of the transcript into a slot.
@@ -202,6 +179,18 @@ export function CocreatorDesk({
 
   const isFilled = useCallback((slot: CardSlot) => isSlotFilled(state.stash, slot), [state.stash]);
 
+  /*
+   * Every send lands at the tail, so every send earns the snap — otherwise a reader
+   * mid-history dispatches a turn the window does not render and watches nothing arrive.
+   */
+  const send = useCallback(
+    (text: string, extra?: Parameters<typeof design.send>[1]) => {
+      snapToEnd();
+      void design.send(text, extra);
+    },
+    [design, snapToEnd],
+  );
+
   /** Show the assistant the stash — as a visible turn, never as a hidden prompt addition. */
   const showStashToModel = useCallback(() => {
     const slots: { label: string; text: string }[] = [];
@@ -215,8 +204,8 @@ export function CocreatorDesk({
     if (state.stash.tags.length) {
       slots.push({ label: SLOT_LABELS.tags, text: state.stash.tags.map((e) => e.text).join(', ') });
     }
-    void design.send(renderStashRequest(slots));
-  }, [design, state.stash]);
+    send(renderStashRequest(slots));
+  }, [send, state.stash]);
 
   const analysed = useMemo(
     () =>
@@ -304,9 +293,7 @@ export function CocreatorDesk({
             })
           }
           onExampleSetsChange={(sets) => onDefaultsChange({ exampleSets: sets })}
-          onAnalyse={() =>
-            void design.send(design.analysisPrompt, { coCreatorAction: 'analyseExamples' })
-          }
+          onAnalyse={() => send(design.analysisPrompt, { coCreatorAction: 'analyseExamples' })}
         />
 
         <div className="cocreator-transcript">
@@ -317,37 +304,39 @@ export function CocreatorDesk({
                   Describe the character you have in mind, and work it out together.
                 </p>
               ) : (
-                state.messages.map((message, index) => (
-                  <DesignMessage
-                    key={message.id}
-                    message={message}
-                    canReroll={index === lastIndex && !message.is_user}
-                    canRetry={index === lastIndex && message.is_user}
-                    streaming={state.streamingId === message.id && state.status !== 'idle'}
-                    stream={design.stream}
-                    busy={busy}
-                    countTokens={countTokens}
-                    isFilled={isFilled}
-                    onUse={(slot, text, source, label) =>
-                      handleUse(
-                        message.id,
-                        message.swipe_id,
-                        message.swipe_info[message.swipe_id]?.extra?.model as string | undefined,
-                        slot,
-                        text,
-                        source,
-                        label,
-                      )
-                    }
-                    onSelectSwipe={(id, swipeIndex) =>
-                      design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
-                    }
-                    onReroll={() => void design.reroll()}
-                    onRetry={() => void design.retry()}
-                    onEdit={(id, text) => design.dispatch({ type: 'message/edited', id, text })}
-                    onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
-                  />
-                ))
+                state.messages
+                  .slice(visibleStart, visibleEnd)
+                  .map((message, index) => (
+                    <DesignMessage
+                      key={message.id}
+                      message={message}
+                      canReroll={visibleStart + index === lastIndex && !message.is_user}
+                      canRetry={visibleStart + index === lastIndex && message.is_user}
+                      streaming={state.streamingId === message.id && state.status !== 'idle'}
+                      stream={design.stream}
+                      busy={busy}
+                      countTokens={countTokens}
+                      isFilled={isFilled}
+                      onUse={(slot, text, source, label) =>
+                        handleUse(
+                          message.id,
+                          message.swipe_id,
+                          message.swipe_info[message.swipe_id]?.extra?.model as string | undefined,
+                          slot,
+                          text,
+                          source,
+                          label,
+                        )
+                      }
+                      onSelectSwipe={(id, swipeIndex) =>
+                        design.dispatch({ type: 'swipe/select', id, index: swipeIndex })
+                      }
+                      onReroll={() => void design.reroll()}
+                      onRetry={() => void design.retry()}
+                      onEdit={(id, text) => design.dispatch({ type: 'message/edited', id, text })}
+                      onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
+                    />
+                  ))
               )}
 
               {state.error ? (
@@ -361,7 +350,7 @@ export function CocreatorDesk({
           <CocreatorComposer
             busy={busy}
             blockedReason={blockedReason}
-            onSend={(text) => void design.send(text)}
+            onSend={send}
             onStop={design.abort}
             quickCommands={defaults.quickCommands ?? []}
             onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}

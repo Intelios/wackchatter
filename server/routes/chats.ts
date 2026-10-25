@@ -4,14 +4,9 @@ import { validateGroup } from '../../shared/types/group.ts';
 /** Chat CRUD. Storage is ours, so there is no external format to honour here. */
 
 import { emptyNexus, migrateMemories } from '../../shared/nexus/state.ts';
-import type {
-  Chat,
-  ChatMessage,
-  ChatMetadata,
-  StaleChatRevision,
-} from '../../shared/types/chat.ts';
+import type { ChatMessage, ChatMetadata, StaleChatRevision } from '../../shared/types/chat.ts';
 import { parseChatExport } from '../lib/backups.ts';
-import { chatStore } from '../lib/chats.ts';
+import { type ChatSaveAckResult, type ChatSaveInput, chatStore } from '../lib/chats.ts';
 import { getDb } from '../lib/db.ts';
 import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import { readNexusIndex, validEmbedding, writeNexusIndex } from '../lib/nexus.ts';
@@ -25,13 +20,27 @@ interface CreateBody {
   messages?: ChatMessage[];
 }
 
-type ReplaceBody = Pick<Chat, 'messages' | 'revision'> & Partial<Pick<Chat, 'title' | 'metadata'>>;
+interface SaveBody {
+  revision?: number;
+  baseRevision?: number;
+  saveId?: string;
+  title?: string;
+  metadata?: ChatMetadata;
+  order?: unknown[];
+  upsert?: ChatMessage[];
+}
 
-function saveResponse(result: ReturnType<ReturnType<typeof chatStore>['replaceChat']>): Response {
-  if (result.kind === 'saved') return json(result.chat);
+function saveResponse(result: ChatSaveAckResult): Response {
+  // The small acknowledgement, never the saved chat: the client already holds
+  // everything it sent, so echoing the transcript back would only tax the request.
+  if (result.kind === 'saved') return json(result.ack);
   if (result.kind === 'notFound') return notFound('Chat not found.');
   const conflict: StaleChatRevision = result.conflict;
   return json({ error: 'Chat changed elsewhere.', ...conflict }, { status: 409 });
+}
+
+function badRevision(revision: unknown): boolean {
+  return typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0;
 }
 
 export async function handleChatRoute(
@@ -171,24 +180,57 @@ export async function handleChatRoute(
       return chat ? json(chat) : notFound('Chat not found.');
     }
 
-    // Whole-chat write. Granular message endpoints would add a family of
-    // client-and-server-disagree bugs to save a couple of milliseconds.
+    /*
+     * The queued save: an incremental write, not a whole-document replace.
+     *
+     * `order` + `upsert` describe the transcript delta (omitted for a metadata-only
+     * save), `baseRevision` is the compare-and-swap the delta stands on, and `saveId`
+     * makes a redelivery idempotent. The client computes the delta against the snapshot
+     * the server last acknowledged, so a stale answer can only mean the server moved —
+     * the client then retries once with the full document.
+     */
     if (method === 'PUT') {
-      const body = await readJson<ReplaceBody>(request);
+      const body = await readJson<SaveBody>(request);
       if (!body) return errorResponse('Request body is not valid JSON.');
-      if (!Array.isArray(body.messages)) return errorResponse('A messages array is required.');
-      if (!Number.isSafeInteger(body.revision) || body.revision < 0) {
-        return errorResponse('A non-negative revision is required.');
+      if (badRevision(body.revision) || badRevision(body.baseRevision)) {
+        return errorResponse('Non-negative revision and baseRevision are required.');
+      }
+      if (typeof body.saveId !== 'string' || body.saveId.length === 0 || body.saveId.length > 128) {
+        return errorResponse('A saveId is required.');
+      }
+      if (body.order !== undefined) {
+        if (!Array.isArray(body.order) || !body.order.every((id) => typeof id === 'string')) {
+          return errorResponse('order must be an array of message ids.');
+        }
+        const order = body.order as string[];
+        if (new Set(order).size !== order.length) {
+          return errorResponse('order contains a duplicate message id.');
+        }
+      }
+      if (body.upsert !== undefined) {
+        if (
+          !Array.isArray(body.upsert) ||
+          !body.upsert.every((m) => m && typeof m === 'object' && typeof m.id === 'string') ||
+          body.order === undefined
+        ) {
+          return errorResponse('upsert must be an array of messages and requires order.');
+        }
+        const order = new Set(body.order as string[]);
+        if (!(body.upsert as ChatMessage[]).every((m) => order.has(m.id))) {
+          return errorResponse('Every upserted message must appear in order.');
+        }
       }
 
-      return saveResponse(
-        store.replaceChat(id, {
-          revision: body.revision,
-          title: body.title,
-          metadata: body.metadata,
-          messages: body.messages,
-        }),
-      );
+      const input: ChatSaveInput = {
+        revision: body.revision as number,
+        baseRevision: body.baseRevision as number,
+        saveId: body.saveId,
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
+        ...(body.order !== undefined ? { order: body.order as string[] } : {}),
+        ...(body.upsert !== undefined ? { upsert: body.upsert } : {}),
+      };
+      return saveResponse(store.saveChat(id, input));
     }
 
     if (method === 'PATCH') {
@@ -197,13 +239,13 @@ export async function handleChatRoute(
       );
       if (!body) return errorResponse('Request body is not valid JSON.');
       const revision = body.revision;
-      if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
+      if (badRevision(revision)) {
         return errorResponse('A non-negative revision is required.');
       }
 
       return saveResponse(
         store.updateChatMeta(id, {
-          revision,
+          revision: revision as number,
           title: body.title,
           metadata: body.metadata,
         }),

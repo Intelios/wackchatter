@@ -11,6 +11,7 @@ import { type NexusController, useNexus } from '../nexus/useNexus.ts';
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
 import { buildRecapRequest } from '@shared/chat/recap.ts';
+import type { ChatSaveRecord } from '@shared/chat/save.ts';
 import {
   buildExtractionMessages,
   memoryBacklog,
@@ -38,7 +39,6 @@ import type {
   Chat,
   ChatMessage,
   ChatMetadata,
-  ChatSaveSnapshot,
   ChatSummary,
   MacroVariableMap,
   Memory,
@@ -89,7 +89,7 @@ import {
   initialChatState,
   type PromptInspection,
   toChatMessages,
-  toPersistedChatMessages,
+  toPersistedMessageStates,
 } from './state/chatReducer.ts';
 import { createStreamStore, type StreamStore } from './state/streamStore.ts';
 
@@ -428,33 +428,37 @@ export function useChat(options: UseChatOptions): UseChat {
 
   const pendingChatRef = useRef<string | null>(null);
 
-  const captureSnapshot = useCallback((source: ChatState): ChatSaveSnapshot | null => {
+  /*
+   * One immutable save record. The states are the reducer's own objects — shared, not
+   * cloned — which is what makes both the capture and the queue's diff cheap: identity
+   * against the acknowledged base does the work two transcript-sized clones used to.
+   * `saveId` is minted here so every redelivery of this record — debounce, flush,
+   * keepalive — carries the same idempotency token.
+   */
+  const captureSnapshot = useCallback((source: ChatState): ChatSaveRecord | null => {
     if (!source.chatId) return null;
-    return structuredClone({
+    return {
       chatId: source.chatId,
       revision: source.revision,
+      saveId: crypto.randomUUID(),
       title: source.title,
       metadata: source.metadata,
-      messages: toPersistedChatMessages(source),
-    });
+      states: toPersistedMessageStates(source),
+    };
   }, []);
 
   const persistenceRef = useRef<ChatSaveQueue | null>(null);
   if (!persistenceRef.current) {
-    persistenceRef.current = new ChatSaveQueue(
-      (snapshot, requestOptions) => chatApi.save(snapshot, requestOptions),
-      SAVE_DELAY_MS,
-      {
-        onSaved: (snapshot) => {
-          dispatch({ type: 'chat/saved', chatId: snapshot.chatId, revision: snapshot.revision });
-          if (stateRef.current.chatId === snapshot.chatId) setSaveError(null);
-        },
-        onFailed: (chatId, error) => {
-          if (stateRef.current.chatId === chatId) setSaveError(error.message);
-        },
-        onPendingChange: setSaving,
+    persistenceRef.current = new ChatSaveQueue(chatApi.save, SAVE_DELAY_MS, {
+      onSaved: (snapshot) => {
+        dispatch({ type: 'chat/saved', chatId: snapshot.chatId, revision: snapshot.revision });
+        if (stateRef.current.chatId === snapshot.chatId) setSaveError(null);
       },
-    );
+      onFailed: (chatId, error) => {
+        if (stateRef.current.chatId === chatId) setSaveError(error.message);
+      },
+      onPendingChange: setSaving,
+    });
   }
   const persistence = persistenceRef.current;
 
@@ -655,7 +659,17 @@ export function useChat(options: UseChatOptions): UseChat {
 
   useEffect(() => {
     if (!state.chatId) return;
-    persistence.adopt(state.chatId, state.persistedRevision);
+    persistence.adopt(
+      state.chatId,
+      state.persistedRevision,
+      state.revision === state.persistedRevision
+        ? {
+            title: state.title,
+            metadata: state.metadata,
+            states: toPersistedMessageStates(state),
+          }
+        : undefined,
+    );
     if (state.revision <= state.persistedRevision) return;
     const snapshot = captureSnapshot(state);
     if (snapshot) persistence.schedule(snapshot);

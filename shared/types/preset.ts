@@ -23,7 +23,12 @@ export const PROMPT_ORDER_LIVE_ID = 100001;
 /** Legacy id found in older presets. Preserved on write, never read. */
 export const PROMPT_ORDER_LEGACY_ID = 100000;
 
-export type PromptRole = 'system' | 'user' | 'assistant';
+/**
+ * `documentation` is a WackChatter extension. It is stored with ordinary prompt blocks so
+ * authors and the Preset Co-Creator can read it, but prompt assembly never turns it into an
+ * API message.
+ */
+export type PromptRole = 'system' | 'user' | 'assistant' | 'documentation';
 
 export type GenerationType =
   | 'normal'

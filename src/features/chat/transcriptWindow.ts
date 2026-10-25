@@ -8,6 +8,17 @@
  */
 export const TRANSCRIPT_PAGE_SIZE = 40;
 
+/**
+ * The most messages the window may hold before the far edge evicts.
+ *
+ * Prepending past this drops the newest end; appending and tail-anchored growth drop the
+ * oldest end — the window slides after the reader rather than growing one row per page
+ * until every loaded message is mounted. Three pages keeps a full page either side of a
+ * viewport-sized neighbourhood: close enough that scrolling back re-mounts before the
+ * reader notices, small enough that a transcript of any length stays cheap.
+ */
+export const TRANSCRIPT_MAX_MESSAGES = TRANSCRIPT_PAGE_SIZE * 3;
+
 export interface TranscriptWindow {
   /** First visible message index, inclusive. */
   start: number;
@@ -23,25 +34,48 @@ export function initialTranscriptWindow(messageCount: number): TranscriptWindow 
   };
 }
 
-/** Extend the window one page back. `end` never moves, so a prepend is stable. */
+/**
+ * Extend the window one page back. At capacity the newest end evicts the same distance,
+ * so the reader gains history without the mount count growing.
+ */
 export function prependTranscriptWindow(
   window: TranscriptWindow,
   messageCount: number,
 ): TranscriptWindow {
+  const start = Math.max(0, window.start - TRANSCRIPT_PAGE_SIZE);
   return {
-    start: Math.max(0, window.start - TRANSCRIPT_PAGE_SIZE),
-    end: Math.min(messageCount, window.end),
+    start,
+    end: Math.min(messageCount, Math.min(window.end, start + TRANSCRIPT_MAX_MESSAGES)),
   };
 }
 
-/** Extend the window one page forward. `start` never moves, so an append is stable. */
+/**
+ * Extend the window one page forward. At capacity the oldest end evicts the same
+ * distance — the mirror of prepending.
+ */
 export function appendTranscriptWindow(
   window: TranscriptWindow,
   messageCount: number,
 ): TranscriptWindow {
+  const end = Math.min(messageCount, window.end + TRANSCRIPT_PAGE_SIZE);
   return {
-    start: window.start,
-    end: Math.min(messageCount, window.end + TRANSCRIPT_PAGE_SIZE),
+    start: Math.max(window.start, end - TRANSCRIPT_MAX_MESSAGES),
+    end,
+  };
+}
+
+/**
+ * Grow a tail-anchored window to cover new messages, evicting the oldest end at
+ * capacity. The reader's tail stays live; the rows that scroll out of the window come
+ * back through the ordinary page loads.
+ */
+export function growTranscriptWindow(
+  window: TranscriptWindow,
+  messageCount: number,
+): TranscriptWindow {
+  return {
+    start: Math.min(messageCount, Math.max(window.start, messageCount - TRANSCRIPT_MAX_MESSAGES)),
+    end: messageCount,
   };
 }
 

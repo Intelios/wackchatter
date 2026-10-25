@@ -14,7 +14,7 @@ import type {
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoBook, WorldInfoSettings } from '@shared/types/worldinfo.ts';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Popover } from '../../components/Popover.tsx';
 import { Select } from '../../components/Select.tsx';
 import {
@@ -34,8 +34,10 @@ import { formatTimestamp } from '../chat/formatDate.ts';
 import { Markdown } from '../chat/Markdown.tsx';
 import { Reasoning } from '../chat/Reasoning.tsx';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
+import { useTranscriptWindow } from '../chat/useTranscriptWindow.ts';
 import '../chat/MessageBubble.css';
 import { composeLorebookSources } from '../lore/useLorebooks.ts';
+import { JsonDetails, JsonPre } from './JsonDetails.tsx';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { ProposalTray } from './ProposalTray.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
@@ -70,7 +72,16 @@ interface PresetTestingPanelProps {
   proposalBlockedReason: string | null;
 }
 
-export function PresetTestingPanel({
+/**
+ * The multi-turn preset testing chat.
+ *
+ * Memoised on the stable controller and testing identities: the workspace re-renders for
+ * its own reasons — split drags, tab switches, the title field, turns on the left — and
+ * this panel's regex-over-transcript work must not re-run for any of them. The streamed
+ * test reply never comes through here at all; it lives in the stream store and reaches
+ * the StreamingBubble leaf alone.
+ */
+export const PresetTestingPanel = memo(function PresetTestingPanel({
   controller,
   testing,
   connections,
@@ -121,7 +132,23 @@ export function PresetTestingPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inspectorRef = useRef<HTMLDetailsElement>(null);
-  const { scrollToBottom, isFollowing } = useStickToBottom(scrollRef, bodyRef);
+  const { scrollToBottom, stopFollowing, isFollowing } = useStickToBottom(scrollRef, bodyRef);
+  // The bounded transcript — a multi-turn test can run to a real chat's length, so it
+  // mounts a neighbourhood like every other transcript surface. Declared after
+  // useStickToBottom so the window's listener wins the page-boundary scroll event.
+  const testMessageCount = testing.activeTest?.messages.length ?? 0;
+  const {
+    start: visibleStart,
+    end: visibleEnd,
+    snapToEnd,
+  } = useTranscriptWindow({
+    transcriptKey: testing.activeTest?.id ?? null,
+    messageCount: testMessageCount,
+    scrollRef,
+    contentRef: bodyRef,
+    scrollToBottom,
+    stopFollowing,
+  });
 
   useEffect(() => {
     if (!characterId || characterId === NO_CARD) {
@@ -273,30 +300,43 @@ export function PresetTestingPanel({
     (proposal) => proposal.status === 'pending',
   );
   const greetings = character ? greetingTexts(character.card.data) : [];
+  // Deps are the test's stable subtrees, not `test` itself: every composer keystroke
+  // produces a new test object that shares scenario, messages and variables, and typing
+  // must not re-run the greeting/regex pass over the whole transcript.
+  const testId = test?.id;
+  const testMessages = test?.messages;
+  const testScenario = test?.scenario;
+  const testLocalVariables = test?.localVariables;
+  const testGlobalVariables = test?.globalVariables;
   const display = useMemo(() => {
     const rendered = new Map<string, string>();
     const reasoning = new Map<string, string>();
-    if (!test) return { texts: rendered, reasoning };
+    if (!testId || !testMessages || !testScenario || !testLocalVariables || !testGlobalVariables) {
+      return { texts: rendered, reasoning };
+    }
     const options = {
-      character: test.scenario.character,
+      character: testScenario.character,
       preset: controller.session.current.preset,
-      persona: test.scenario.persona,
-      messages: test.messages,
-      metadata: { variables: test.localVariables },
-      globalVariables: test.globalVariables,
-      seed: test.id,
+      persona: testScenario.persona,
+      messages: testMessages,
+      metadata: { variables: testLocalVariables },
+      globalVariables: testGlobalVariables,
+      seed: testId,
     };
-    const first = test.messages[0];
+    const first = testMessages[0];
     if (first && !first.is_user) {
       rendered.set(first.id, resolveGreetingMacros(first.mes, options));
     }
-    if (!test.scenario.regexScripts.length) return { texts: rendered, reasoning };
-    const depths = regexDepths(test.messages);
+    if (!testScenario.regexScripts.length) return { texts: rendered, reasoning };
+    // Depths come from the WHOLE transcript — a script pinned to the last three messages
+    // means that regardless of how far the reader has scrolled — while the substitution
+    // pass only pays for the mounted window.
+    const depths = regexDepths(testMessages);
     const regexOptions = {
       macros: createDisplayRegexMacros(options),
       cache: createRegexCompileCache(),
     };
-    for (const message of test.messages) {
+    for (const message of testMessages.slice(visibleStart, visibleEnd)) {
       const context = {
         placement: message.is_user ? REGEX_PLACEMENT.USER_INPUT : REGEX_PLACEMENT.AI_OUTPUT,
         display: true,
@@ -305,7 +345,7 @@ export function PresetTestingPanel({
       const source = rendered.get(message.id) ?? message.mes;
       rendered.set(
         message.id,
-        applyRegexScripts(source, test.scenario.regexScripts, context, regexOptions),
+        applyRegexScripts(source, testScenario.regexScripts, context, regexOptions),
       );
       // The thinking runs through its own placement, exactly as the main chat does it.
       const thinking = message.extra?.reasoning;
@@ -314,7 +354,7 @@ export function PresetTestingPanel({
           message.id,
           applyRegexScripts(
             thinking,
-            test.scenario.regexScripts,
+            testScenario.regexScripts,
             { ...context, placement: REGEX_PLACEMENT.REASONING },
             regexOptions,
           ),
@@ -322,13 +362,16 @@ export function PresetTestingPanel({
       }
     }
     return { texts: rendered, reasoning };
-  }, [controller.session.current.preset, test]);
-
-  // A different conversation starts at its newest reply, whatever the last one was showing.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the test id is the trigger
-  useEffect(() => {
-    scrollToBottom();
-  }, [test?.id, scrollToBottom]);
+  }, [
+    controller.session.current.preset,
+    testId,
+    testMessages,
+    testScenario,
+    testLocalVariables,
+    testGlobalVariables,
+    visibleStart,
+    visibleEnd,
+  ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing chats clears transient controls
   useEffect(() => {
@@ -350,11 +393,12 @@ export function PresetTestingPanel({
   }, [inspectRequest]);
 
   // A turn can start from the tray or from the Co-Creator's card on the left, not only
-  // from this composer — whoever sent it, the reader should see it land.
+  // from this composer — whoever sent it, the reader should see it land: re-anchor to
+  // the tail, or a reader mid-history watches rows the window does not render.
   const lastTestMessage = test?.messages.at(-1);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the newest message id is the trigger
   useEffect(() => {
-    if (lastTestMessage?.is_user) scrollToBottom();
+    if (lastTestMessage?.is_user) snapToEnd();
   }, [lastTestMessage?.id]);
 
   /*
@@ -395,14 +439,14 @@ export function PresetTestingPanel({
 
   const runProposal = (proposal: ProposedPresetTest, text = proposal.message) => {
     if (proposalBlockedReason) return;
-    scrollToBottom();
+    snapToEnd();
     void testing.runProposal(proposal, text);
   };
 
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    scrollToBottom();
+    snapToEnd();
     if (composerProposal) {
       void testing.runProposal(composerProposal, text);
       return;
@@ -680,7 +724,7 @@ export function PresetTestingPanel({
               </p>
             ) : null}
             <div className="preset-cc-transcript">
-              {test.messages.map((message) => {
+              {test.messages.slice(visibleStart, visibleEnd).map((message) => {
                 const revision = message.extra?.preset_revision;
                 const evidence = evidenceForSelectedResponse(test, message);
                 const presetLabel = evidence?.presetUsed
@@ -703,6 +747,7 @@ export function PresetTestingPanel({
                   <article
                     className="message preset-cc-test-message"
                     data-role={message.is_user ? 'user' : 'assistant'}
+                    data-message-id={message.id}
                     key={message.id}
                   >
                     <div className="message__bubble">
@@ -876,8 +921,7 @@ export function PresetTestingPanel({
                 <StreamingBubble
                   name={test.scenario.character.name}
                   initial={test.scenario.character.name}
-                  reasoning={testing.streamingReasoning}
-                  text={testing.streamingText}
+                  store={testing.stream}
                   note="thinking"
                 />
               ) : null}
@@ -1008,27 +1052,20 @@ export function PresetTestingPanel({
               {testing.inspectedEvidence.error ? (
                 <p className="preset-cc-inline-error">{testing.inspectedEvidence.error}</p>
               ) : null}
-              <details>
-                <summary>Assembled messages</summary>
-                <pre>{JSON.stringify(testing.inspectedEvidence.messages, null, 2)}</pre>
-              </details>
-              <details>
-                <summary>Effective request</summary>
-                <pre>{JSON.stringify(testing.inspectedEvidence.body, null, 2)}</pre>
-              </details>
-              <details>
-                <summary>Activated lore and warnings</summary>
-                <pre>
-                  {JSON.stringify(
-                    {
-                      worldInfo: testing.inspectedEvidence.worldInfo,
-                      macroWarnings: testing.inspectedEvidence.macroWarnings,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
+              <JsonDetails summary="Assembled messages">
+                <JsonPre value={testing.inspectedEvidence.messages} />
+              </JsonDetails>
+              <JsonDetails summary="Effective request">
+                <JsonPre value={testing.inspectedEvidence.body} />
+              </JsonDetails>
+              <JsonDetails summary="Activated lore and warnings">
+                <JsonPre
+                  value={{
+                    worldInfo: testing.inspectedEvidence.worldInfo,
+                    macroWarnings: testing.inspectedEvidence.macroWarnings,
+                  }}
+                />
+              </JsonDetails>
             </details>
           ) : null}
         </>
@@ -1205,4 +1242,4 @@ export function PresetTestingPanel({
       </div>
     </div>
   );
-}
+});

@@ -23,6 +23,39 @@ describe('AutosaveQueue', () => {
     ]);
   });
 
+  test('scheduleImmutable saves the exact snapshot it was given, without copying', async () => {
+    const writes: Array<{ text: string; nested: { value: number } }> = [];
+    const queue = new AutosaveQueue<{ text: string; nested: { value: number } }>(
+      async (_id, snapshot) => {
+        writes.push(snapshot);
+      },
+      60_000,
+    );
+
+    const snapshot = { text: 'A', nested: { value: 1 } };
+    queue.scheduleImmutable('a', 1, snapshot);
+    await queue.flush('a');
+
+    // Identity, not just equality: the queued save is the caller's own object. Keeping
+    // it frozen — and everything it shares structure with — is the caller's contract.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toBe(snapshot);
+  });
+
+  test('scheduleImmutable coalesces revisions like schedule', async () => {
+    const writes: number[] = [];
+    const queue = new AutosaveQueue<number>(async (_id, snapshot) => {
+      writes.push(snapshot);
+    }, 60_000);
+
+    queue.scheduleImmutable('a', 1, 1);
+    queue.scheduleImmutable('a', 2, 2);
+    queue.scheduleImmutable('a', 2, 99); // an older-or-equal revision never lands
+    await queue.flush('a');
+
+    expect(writes).toEqual([2]);
+  });
+
   test('coalesces only updates to the same entity', async () => {
     const writes: Array<[string, number]> = [];
     const queue = new AutosaveQueue<number>(async (id, snapshot) => {

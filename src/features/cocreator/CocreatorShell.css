@@ -282,6 +282,9 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--wc-space-5) var(--wc-space-4);
+  /* The window restores the anchor row's position itself — the browser's
+     content-anchoring would double-compensate the same commit. */
+  overflow-anchor: none;
 }
 
 /*
