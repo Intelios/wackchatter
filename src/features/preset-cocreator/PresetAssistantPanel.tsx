@@ -16,6 +16,7 @@ import {
   comparisonChoices,
   filterComparisonChoices,
 } from './compareSources.ts';
+import { JsonDetails, JsonPre } from './JsonDetails.tsx';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
 import { type ProposalControls, type RevisionPresets, ToolActivityCard } from './ToolActivity.tsx';
@@ -54,18 +55,26 @@ const ComparisonCard = memo(function ComparisonCard({
             : 'Reference preset'}
       </span>
       {comparison.focus ? <blockquote>{comparison.focus}</blockquote> : null}
-      <details>
-        <summary>Preset snapshots used</summary>
+      <JsonDetails summary="Preset snapshots used">
         <strong>Current draft · revision {comparison.draft.revision}</strong>
-        <pre>{JSON.stringify(comparison.draft.preset, null, 2)}</pre>
+        <JsonPre value={comparison.draft.preset} />
         <strong>{comparison.other.label}</strong>
-        <pre>{JSON.stringify(comparison.other.preset, null, 2)}</pre>
-      </details>
+        <JsonPre value={comparison.other.preset} />
+      </JsonDetails>
     </div>
   );
 });
 
-export function PresetAssistantPanel({
+/**
+ * The Co-Creator conversation.
+ *
+ * Memoised on the stable controller identity, like the History panel beside it: this
+ * panel stays mounted behind the other tabs, and the workspace re-renders for its own
+ * reasons — split drags, tab switches, the title field — without touching the session.
+ * The streaming text never comes through here at all; it lives in the stream store and
+ * reaches the StreamingBubble leaf alone.
+ */
+export const PresetAssistantPanel = memo(function PresetAssistantPanel({
   controller,
   connections,
   toolCapability,
@@ -313,10 +322,9 @@ export function PresetAssistantPanel({
                         </li>
                       ))}
                     </ol>
-                    <details className="preset-cc-tool__raw">
-                      <summary>Full batch</summary>
-                      <pre>{JSON.stringify(batch, null, 2)}</pre>
-                    </details>
+                    <JsonDetails className="preset-cc-tool__raw" summary="Full batch">
+                      <JsonPre value={batch} />
+                    </JsonDetails>
                   </div>
                 </article>
               );
@@ -374,10 +382,9 @@ export function PresetAssistantPanel({
                   {report?.note.trim() ? (
                     <blockquote className="preset-cc-report__note">{report.note.trim()}</blockquote>
                   ) : null}
-                  <details className="preset-cc-tool__raw">
-                    <summary>Full report</summary>
-                    <pre>{JSON.stringify(report, null, 2)}</pre>
-                  </details>
+                  <JsonDetails className="preset-cc-tool__raw" summary="Full report">
+                    <JsonPre value={report} />
+                  </JsonDetails>
                 </div>
               </article>
             );
@@ -479,8 +486,7 @@ export function PresetAssistantPanel({
           <StreamingBubble
             name="Co-Creator"
             initial="C"
-            reasoning={controller.streamingReasoning}
-            text={controller.streamingText}
+            store={controller.stream}
             note={workingNote}
           />
         ) : null}
@@ -700,4 +706,4 @@ export function PresetAssistantPanel({
       </div>
     </div>
   );
-}
+});

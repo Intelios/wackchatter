@@ -4,6 +4,7 @@ import type { ProposedPresetTest } from '@shared/types/preset-cocreator.ts';
 import { useMemo } from 'react';
 import { EyeIcon, NotesIcon, WandIcon } from '../../layout/icons.tsx';
 import { type ToolExchange, toolCallArguments } from './assistant.ts';
+import { JsonDetails, JsonPre } from './JsonDetails.tsx';
 import { PresetChangeList } from './PresetChanges.tsx';
 import { describeDiffEntries, describePresetChanges } from './presetChanges.ts';
 
@@ -198,13 +199,12 @@ export function ToolActivityCard({
             presets={revision !== null ? (revisionPresets?.(revision) ?? null) : null}
           />
         ) : null}
-        <details className="preset-cc-tool__raw">
-          <summary>Raw exchange</summary>
+        <JsonDetails className="preset-cc-tool__raw" summary="Raw exchange">
           {exchange.call ? (
             <pre>{`call: ${exchange.call.function.name} ${exchange.call.function.arguments}`}</pre>
           ) : null}
-          <pre>{`result: ${JSON.stringify(exchange.result, null, 2)}`}</pre>
-        </details>
+          <JsonPre label="result" value={exchange.result} />
+        </JsonDetails>
       </div>
     );
   }

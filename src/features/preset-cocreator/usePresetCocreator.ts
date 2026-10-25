@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { presetCocreatorApi, referencePresetApi, streamGenerate } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
+import { createStreamStore } from '../chat/state/streamStore.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantWireMessages,
@@ -45,20 +46,28 @@ export interface UsePresetCocreatorOptions {
   streamingFps: number;
 }
 
-export function usePresetCocreator({ initial, connections }: UsePresetCocreatorOptions) {
+export function usePresetCocreator({
+  initial,
+  connections,
+  streamingFps,
+}: UsePresetCocreatorOptions) {
   const [session, setSessionState] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [batchSending, setBatchSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streamingText, setStreamingText] = useState('');
-  const [streamingReasoning, setStreamingReasoning] = useState('');
   const sessionRef = useRef(session);
   const serverDocumentRevision = useRef(new Map<string, number>());
   const abortRef = useRef<AbortController | null>(null);
   const preparingComparison = useRef(false);
   const preparingBatch = useRef(false);
+
+  // The streaming hot path, same bargain as the chat: the growing text never enters
+  // React state, it lives in this store and reaches one leaf (the StreamingBubble)
+  // through useSyncExternalStore, so a streamed reply re-renders nothing else. Recreated
+  // only when the rate changes, so a running stream keeps its store.
+  const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
 
   const setSession = useCallback((next: PresetCocreatorSession) => {
     sessionRef.current = next;
@@ -231,6 +240,9 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
       abortRef.current = controller;
       setBusy(true);
       setError(null);
+      // The bubble mounts the moment `busy` flips, and the store may still hold the
+      // previous turn's last frame — reset it before the first await can show that.
+      stream.begin('', true);
       const turnId = crypto.randomUUID();
       let messages = [...startingMessages];
       // The folder can change between turns, so the catalogue is refreshed per turn and
@@ -279,8 +291,9 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
           ];
           configureAssistantMode(body, mode);
 
-          setStreamingText('');
-          setStreamingReasoning('');
+          // Every provider request is its own stream: the store resets for it, and again
+          // below once the transcript owns the reply.
+          stream.begin('', true);
           const generationId = crypto.randomUUID();
           const final = await streamGenerate(
             body,
@@ -288,8 +301,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
             {
               onTick: (state) => {
                 if (abortRef.current !== controller) return;
-                setStreamingText(state.content);
-                setStreamingReasoning(state.reasoning);
+                stream.set(state.content, state.reasoning);
               },
             },
             '',
@@ -315,8 +327,9 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
           if (mode === 'comparison') rejectComparisonToolCalls(final.toolCalls);
           messages = [...messages, assistantMessage];
           commitMessages(messages);
-          setStreamingText('');
-          setStreamingReasoning('');
+          // The committed message renders the reply in the transcript now; the bubble
+          // resets to its quiet working note for the tool call or the next request.
+          stream.begin('', true);
 
           if (!final.toolCalls?.length) {
             await flush();
@@ -376,8 +389,9 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
         await flush().catch(() => {});
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
-        setStreamingText('');
-        setStreamingReasoning('');
+        // Flushes whatever a throttled frame was still holding and marks the store idle,
+        // so the next turn starts from a clean snapshot.
+        stream.end();
         setBusy(false);
       }
     },
@@ -387,6 +401,7 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
       commitMessages,
       countTokens.countText,
       flush,
+      stream,
       updateDocument,
     ],
   );
@@ -555,34 +570,67 @@ export function usePresetCocreator({ initial, connections }: UsePresetCocreatorO
     [flush, setSession],
   );
 
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  return {
-    session,
-    saving,
-    busy,
-    preparing,
-    batchSending,
-    error,
-    setError,
-    streamingText,
-    streamingReasoning,
-    assistantConnection,
-    updateDocument,
-    replaceDraft,
-    restoreDraft,
-    undoTurn,
-    send,
-    compare,
-    sendReport,
-    sendBatch,
-    editMessage,
-    stop: () => abortRef.current?.abort(),
-    publish,
-    rename,
-    flush,
-    persistence,
-  };
+  /*
+   * One identity for the whole controller, changing only when its contents change. The
+   * workspace re-renders for its own reasons — split drags, tab switches, the title
+   * field — and the panels below are memoised on this object, so those re-renders must
+   * not hand them a fresh identity and defeat the memo.
+   */
+  return useMemo(
+    () => ({
+      session,
+      saving,
+      busy,
+      preparing,
+      batchSending,
+      error,
+      setError,
+      stream,
+      assistantConnection,
+      updateDocument,
+      replaceDraft,
+      restoreDraft,
+      undoTurn,
+      send,
+      compare,
+      sendReport,
+      sendBatch,
+      editMessage,
+      stop,
+      publish,
+      rename,
+      flush,
+      persistence,
+    }),
+    [
+      session,
+      saving,
+      busy,
+      preparing,
+      batchSending,
+      error,
+      stream,
+      assistantConnection,
+      updateDocument,
+      replaceDraft,
+      restoreDraft,
+      undoTurn,
+      send,
+      compare,
+      sendReport,
+      sendBatch,
+      editMessage,
+      stop,
+      publish,
+      rename,
+      flush,
+      persistence,
+    ],
+  );
 }
 
 export type PresetCocreatorController = ReturnType<typeof usePresetCocreator>;

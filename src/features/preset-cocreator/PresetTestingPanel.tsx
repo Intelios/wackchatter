@@ -14,7 +14,7 @@ import type {
 import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
 import type { LorebookSummary, WorldInfoBook, WorldInfoSettings } from '@shared/types/worldinfo.ts';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Popover } from '../../components/Popover.tsx';
 import { Select } from '../../components/Select.tsx';
 import {
@@ -36,6 +36,7 @@ import { Reasoning } from '../chat/Reasoning.tsx';
 import { useStickToBottom } from '../chat/useStickToBottom.ts';
 import '../chat/MessageBubble.css';
 import { composeLorebookSources } from '../lore/useLorebooks.ts';
+import { JsonDetails, JsonPre } from './JsonDetails.tsx';
 import { PresetModelSettings } from './PresetModelSettings.tsx';
 import { ProposalTray } from './ProposalTray.tsx';
 import { StreamingBubble } from './StreamingBubble.tsx';
@@ -70,7 +71,16 @@ interface PresetTestingPanelProps {
   proposalBlockedReason: string | null;
 }
 
-export function PresetTestingPanel({
+/**
+ * The multi-turn preset testing chat.
+ *
+ * Memoised on the stable controller and testing identities: the workspace re-renders for
+ * its own reasons — split drags, tab switches, the title field, turns on the left — and
+ * this panel's regex-over-transcript work must not re-run for any of them. The streamed
+ * test reply never comes through here at all; it lives in the stream store and reaches
+ * the StreamingBubble leaf alone.
+ */
+export const PresetTestingPanel = memo(function PresetTestingPanel({
   controller,
   testing,
   connections,
@@ -893,8 +903,7 @@ export function PresetTestingPanel({
                 <StreamingBubble
                   name={test.scenario.character.name}
                   initial={test.scenario.character.name}
-                  reasoning={testing.streamingReasoning}
-                  text={testing.streamingText}
+                  store={testing.stream}
                   note="thinking"
                 />
               ) : null}
@@ -1025,27 +1034,20 @@ export function PresetTestingPanel({
               {testing.inspectedEvidence.error ? (
                 <p className="preset-cc-inline-error">{testing.inspectedEvidence.error}</p>
               ) : null}
-              <details>
-                <summary>Assembled messages</summary>
-                <pre>{JSON.stringify(testing.inspectedEvidence.messages, null, 2)}</pre>
-              </details>
-              <details>
-                <summary>Effective request</summary>
-                <pre>{JSON.stringify(testing.inspectedEvidence.body, null, 2)}</pre>
-              </details>
-              <details>
-                <summary>Activated lore and warnings</summary>
-                <pre>
-                  {JSON.stringify(
-                    {
-                      worldInfo: testing.inspectedEvidence.worldInfo,
-                      macroWarnings: testing.inspectedEvidence.macroWarnings,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
+              <JsonDetails summary="Assembled messages">
+                <JsonPre value={testing.inspectedEvidence.messages} />
+              </JsonDetails>
+              <JsonDetails summary="Effective request">
+                <JsonPre value={testing.inspectedEvidence.body} />
+              </JsonDetails>
+              <JsonDetails summary="Activated lore and warnings">
+                <JsonPre
+                  value={{
+                    worldInfo: testing.inspectedEvidence.worldInfo,
+                    macroWarnings: testing.inspectedEvidence.macroWarnings,
+                  }}
+                />
+              </JsonDetails>
             </details>
           ) : null}
         </>
@@ -1222,4 +1224,4 @@ export function PresetTestingPanel({
       </div>
     </div>
   );
-}
+});

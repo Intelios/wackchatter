@@ -25,6 +25,7 @@ import { PresetDraftEditor } from './PresetDraftEditor.tsx';
 import { PresetHistoryPanel } from './PresetHistoryPanel.tsx';
 import { PresetTestingPanel } from './PresetTestingPanel.tsx';
 import { defaultCompareSources } from './presetCompare.ts';
+import type { ProposalControls } from './ToolActivity.tsx';
 import { usePresetCocreator } from './usePresetCocreator.ts';
 import { usePresetTesting } from './usePresetTesting.ts';
 
@@ -60,6 +61,7 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
     controller,
     connections: props.connections,
     tokenizerEncoding: props.tokenizerEncoding,
+    streamingFps: props.streamingFps,
   });
   const [tab, setTab] = useState<'conversation' | 'preset' | 'history' | 'compare'>('conversation');
   // Null until the user picks a pair. Until then the pair is derived, so it follows the
@@ -113,6 +115,18 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
     : testing.busy
       ? 'Wait for the test reply to finish.'
       : null;
+  // One identity for that rule's actions: the memoised assistant panel takes this object
+  // as a prop, so a fresh one per workspace render would defeat its memo.
+  const proposalActions = useMemo<Omit<ProposalControls, 'proposals'>>(
+    () => ({
+      blockedReason: proposalBlockedReason,
+      onRun: (proposal) => void testing.runProposal(proposal, proposal.message),
+      onDismiss: testing.dismissProposal,
+    }),
+    [proposalBlockedReason, testing.runProposal, testing.dismissProposal],
+  );
+  // A shared report starts a Co-Creator turn on the left; the workspace follows it there.
+  const showConversationTab = useCallback(() => setTab('conversation'), []);
 
   const publish = async (
     mode: 'update' | 'new' | 'overwrite',
@@ -316,11 +330,7 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
                 references={props.references}
                 toolCapability={toolCapability}
                 onToolCapabilityChange={setToolCapability}
-                proposalActions={{
-                  blockedReason: proposalBlockedReason,
-                  onRun: (proposal) => void testing.runProposal(proposal, proposal.message),
-                  onDismiss: testing.dismissProposal,
-                }}
+                proposalActions={proposalActions}
               />
             </div>
             <div
@@ -399,7 +409,7 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
             globalVariables={props.globalVariables}
             regexScripts={props.regexScripts}
             coCreatorBlockedReason={coCreatorBlockedReason}
-            onReportSent={() => setTab('conversation')}
+            onReportSent={showConversationTab}
             proposalBlockedReason={proposalBlockedReason}
           />
         </section>
