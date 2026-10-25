@@ -619,15 +619,19 @@ export function toChatMessages(state: ChatState): ChatMessage[] {
 }
 
 /**
- * The durable transcript represented by `state.revision`.
+ * The durable transcript represented by `state.revision`, as `MessageState` objects.
  *
  * Starting a generation deliberately does not increment the revision: a blank
  * placeholder, a tentative swipe, or regenerate's temporary replacement is UI state
  * until the request settles. A save that was prompted by the preceding user edit must
  * therefore project the pre-generation transcript rather than accidentally make that
  * transient state durable under the earlier revision.
+ *
+ * Returning states rather than wire messages is what makes incremental saves cheap:
+ * untouched messages keep their object identity, so the save queue can diff against
+ * the last acknowledged transcript by reference.
  */
-export function toPersistedChatMessages(state: ChatState): ChatMessage[] {
+export function toPersistedMessageStates(state: ChatState): MessageState[] {
   let messages = state.messages;
 
   if (state.status !== 'idle' && state.streamingId) {
@@ -658,5 +662,10 @@ export function toPersistedChatMessages(state: ChatState): ChatMessage[] {
     }
   }
 
-  return messages.map(toChatMessage);
+  return messages;
+}
+
+/** The persisted projection in wire form — what assemblePrompt and exports consume. */
+export function toPersistedChatMessages(state: ChatState): ChatMessage[] {
+  return toPersistedMessageStates(state).map(toChatMessage);
 }

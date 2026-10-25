@@ -120,8 +120,10 @@ export function GroupsPanel({
         chat.dispatch({ type: 'chat/renamed', title: newTitle });
         await chat.saveNow();
       } else {
+        // A meta write still claims a revision like any save: the next one, not the
+        // revision the chat is currently at — equal only acknowledges an identical doc.
         const current = await chatApi.get(id);
-        await chatApi.updateMeta(id, { revision: current.revision, title: newTitle });
+        await chatApi.updateMeta(id, { revision: current.revision + 1, title: newTitle });
       }
       await refresh();
     });

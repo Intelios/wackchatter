@@ -1,6 +1,6 @@
-import type { GroupConfig, GroupTemplate } from '@shared/types/group.ts';
 /** Typed client for the local API. */
 
+import type { ChatSaveBody } from '@shared/chat/save.ts';
 import type { StreamState } from '@shared/providers/sse.ts';
 import {
   createSseParser,
@@ -32,7 +32,7 @@ import type {
   ChatBackupSummary,
   ChatMessage,
   ChatMetadata,
-  ChatSaveSnapshot,
+  ChatSaveAck,
   ChatSummary,
   Persona,
   StaleChatRevision,
@@ -45,6 +45,7 @@ import type {
   ExampleSelection,
   SessionModelSettings,
 } from '@shared/types/cocreator.ts';
+import type { GroupConfig, GroupTemplate } from '@shared/types/group.ts';
 import type {
   BrowseResult,
   LocationInfo,
@@ -443,12 +444,16 @@ export const chatApi = {
       body: JSON.stringify(input),
     }),
 
-  /** Whole-chat write — the only path that changes messages. */
-  save: (snapshot: ChatSaveSnapshot, options?: Pick<RequestInit, 'keepalive'>) =>
-    request<Chat>(`/chats/${encodeURIComponent(snapshot.chatId)}`, {
+  /**
+   * The queued save: an incremental write carrying only what changed, acknowledged
+   * with the row's new revision — never the transcript back. `ChatSaveQueue` builds
+   * the body; see `shared/chat/save.ts` for the contract.
+   */
+  save: (chatId: string, body: ChatSaveBody, options?: Pick<RequestInit, 'keepalive'>) =>
+    request<ChatSaveAck>(`/chats/${encodeURIComponent(chatId)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(snapshot),
+      body: JSON.stringify(body),
       ...options,
     }),
 
@@ -456,7 +461,7 @@ export const chatApi = {
     id: string,
     updates: { revision: number; title?: string; metadata?: ChatMetadata },
   ) =>
-    request<Chat>(`/chats/${encodeURIComponent(id)}`, {
+    request<ChatSaveAck>(`/chats/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(updates),

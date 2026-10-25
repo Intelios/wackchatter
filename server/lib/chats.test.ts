@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { coveredMessageIds } from '../../shared/memory/memories.ts';
 import type { Chat, ChatMessage, Memory } from '../../shared/types/chat.ts';
-import { type ChatSaveResult, type ChatStore, createChatStore } from './chats.ts';
+import {
+  type ChatSaveAckResult,
+  type ChatSaveResult,
+  type ChatStore,
+  createChatStore,
+} from './chats.ts';
 import { createSchema, SCHEMA_VERSION } from './db.ts';
 
 let store: ChatStore;
@@ -53,6 +58,12 @@ function saved(result: ChatSaveResult): Chat {
   expect(result.kind).toBe('saved');
   if (result.kind !== 'saved') throw new Error('Expected chat save to succeed.');
   return result.chat;
+}
+
+function acked(result: ChatSaveAckResult) {
+  expect(result.kind).toBe('saved');
+  if (result.kind !== 'saved') throw new Error('Expected chat save to succeed.');
+  return result.ack;
 }
 
 describe('creating and reading', () => {
@@ -519,6 +530,281 @@ describe('schema migration', () => {
   });
 });
 
+describe('incremental saves', () => {
+  test('appending writes the new message at the end of the order', () => {
+    const first = message({ mes: 'one' });
+    const second = message({ mes: 'two' });
+    const created = store.createChat({
+      characterId: 'a.png',
+      title: 't',
+      messages: [first, second],
+    });
+    const third = message({ mes: 'three' });
+
+    const ack = acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        order: [first.id, second.id, third.id],
+        upsert: [third],
+      }),
+    );
+
+    expect(ack.revision).toBe(1);
+    expect(store.getChat(created.id)!.messages.map((m) => [m.id, m.mes])).toEqual([
+      [first.id, 'one'],
+      [second.id, 'two'],
+      [third.id, 'three'],
+    ]);
+  });
+
+  test('editing one message rewrites only that row', () => {
+    const first = message({ mes: 'one' });
+    const second = message({ mes: 'two' });
+    const created = store.createChat({
+      characterId: 'a.png',
+      messages: [first, second],
+    });
+
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        order: [first.id, second.id],
+        upsert: [
+          message({
+            id: second.id,
+            mes: 'two, revised',
+            swipes: ['two', 'two, revised'],
+            swipe_id: 1,
+          }),
+        ],
+      }),
+    );
+
+    const loaded = store.getChat(created.id)!.messages;
+    expect(loaded[0]!.mes).toBe('one');
+    expect(loaded[1]!.mes).toBe('two, revised');
+    expect(loaded[1]!.swipes).toEqual(['two', 'two, revised']);
+    expect(loaded[1]!.swipe_id).toBe(1);
+  });
+
+  test('a deletion drops the row and positions stay dense', () => {
+    const [a, b, c] = [message({ mes: 'a' }), message({ mes: 'b' }), message({ mes: 'c' })];
+    const created = store.createChat({ characterId: 'a.png', messages: [a, b, c] });
+
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        order: [a.id, c.id],
+      }),
+    );
+
+    const rows = database
+      .query<{ id: string; position: number }, [string]>(
+        'SELECT id, position FROM messages WHERE chat_id = ? ORDER BY position',
+      )
+      .all(created.id);
+    expect(rows).toEqual([
+      { id: a.id, position: 0 },
+      { id: c.id, position: 1 },
+    ]);
+  });
+
+  test('an order with no upsert moves rows without touching their payloads', () => {
+    const [a, b, c] = [message({ mes: 'a' }), message({ mes: 'b' }), message({ mes: 'c' })];
+    const created = store.createChat({ characterId: 'a.png', messages: [a, b, c] });
+
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        order: [c.id, a.id, b.id],
+      }),
+    );
+
+    expect(store.getChat(created.id)!.messages.map((m) => m.mes)).toEqual(['c', 'a', 'b']);
+    const positions = database
+      .query<{ position: number }, [string]>(
+        'SELECT position FROM messages WHERE chat_id = ? ORDER BY position',
+      )
+      .all(created.id)
+      .map((row) => row.position);
+    expect(positions).toEqual([0, 1, 2]);
+  });
+
+  test('a head-only save leaves the transcript alone', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      title: 'old',
+      messages: [message({ mes: 'kept' })],
+    });
+
+    const ack = acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        title: 'new',
+        metadata: { persona: 'jack' },
+      }),
+    );
+
+    expect(ack.revision).toBe(1);
+    const loaded = store.getChat(created.id)!;
+    expect(loaded.title).toBe('new');
+    expect(loaded.metadata).toEqual({ persona: 'jack' });
+    expect(loaded.messages.map((m) => m.mes)).toEqual(['kept']);
+  });
+
+  test('a redelivered save acknowledges instead of writing again', () => {
+    const created = store.createChat({ characterId: 'a.png', messages: [message()] });
+    const input = {
+      revision: 1,
+      saveId: 's1',
+      baseRevision: 0,
+      title: 'renamed',
+    };
+
+    const first = acked(store.saveChat(created.id, input));
+    const replay = acked(store.saveChat(created.id, input));
+
+    // Same modified stamp, same revision: the replay changed nothing.
+    expect(replay).toEqual(first);
+    expect(store.getChat(created.id)!.title).toBe('renamed');
+  });
+
+  test('a different save claiming the same revision is stale', () => {
+    const created = store.createChat({ characterId: 'a.png', messages: [message()] });
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        title: 'first',
+      }),
+    );
+
+    const result = store.saveChat(created.id, {
+      revision: 1,
+      saveId: 's2',
+      baseRevision: 0,
+      title: 'second',
+    });
+
+    expect(result).toEqual({
+      kind: 'stale',
+      conflict: { code: 'stale_revision', currentRevision: 1 },
+    });
+    expect(store.getChat(created.id)!.title).toBe('first');
+  });
+
+  test('a save based on a revision the server moved past is stale and writes nothing', () => {
+    const first = message({ mes: 'first' });
+    const created = store.createChat({ characterId: 'a.png', messages: [first] });
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        title: 'rev1',
+      }),
+    );
+
+    const result = store.saveChat(created.id, {
+      revision: 2,
+      saveId: 's2',
+      baseRevision: 0,
+      title: 'rev2',
+    });
+
+    expect(result).toEqual({
+      kind: 'stale',
+      conflict: { code: 'stale_revision', currentRevision: 1 },
+    });
+    const loaded = store.getChat(created.id)!;
+    expect(loaded.title).toBe('rev1');
+    expect(loaded.revision).toBe(1);
+  });
+
+  test('an order naming a message the server does not hold is refused', () => {
+    const first = message({ mes: 'first' });
+    const created = store.createChat({ characterId: 'a.png', messages: [first] });
+
+    const result = store.saveChat(created.id, {
+      revision: 1,
+      saveId: 's1',
+      baseRevision: 0,
+      order: [first.id, 'ghost'],
+    });
+
+    expect(result.kind).toBe('stale');
+    expect(store.getChat(created.id)!.messages.map((m) => m.mes)).toEqual(['first']);
+  });
+
+  test('an upsert outside the declared order is refused', () => {
+    const first = message({ mes: 'first' });
+    const created = store.createChat({ characterId: 'a.png', messages: [first] });
+
+    const result = store.saveChat(created.id, {
+      revision: 1,
+      saveId: 's1',
+      baseRevision: 0,
+      order: [first.id],
+      upsert: [message({ id: 'stray', mes: 'stray' })],
+    });
+
+    expect(result.kind).toBe('stale');
+    expect(store.getChat(created.id)!.messages.map((m) => m.mes)).toEqual(['first']);
+  });
+
+  test('an upsert with a desynced mes is repaired on the way in', () => {
+    const created = store.createChat({ characterId: 'a.png' });
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        order: ['m1'],
+        upsert: [message({ id: 'm1', mes: 'B', swipes: ['A'], swipe_id: 0 })],
+      }),
+    );
+
+    const loaded = store.getChat(created.id)!.messages[0]!;
+    expect(loaded.mes).toBe('B');
+    expect(loaded.swipes).toEqual(['B']);
+  });
+
+  test('an empty order deletes every message', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      messages: [message(), message()],
+    });
+
+    acked(
+      store.saveChat(created.id, {
+        revision: 1,
+        saveId: 's1',
+        baseRevision: 0,
+        order: [],
+      }),
+    );
+
+    expect(store.getChat(created.id)!.messages).toEqual([]);
+  });
+
+  test('an unknown chat reports notFound', () => {
+    expect(store.saveChat('nope', { revision: 1, saveId: 's1', baseRevision: 0 })).toEqual({
+      kind: 'notFound',
+    });
+  });
+});
+
 describe('renaming and deleting', () => {
   test('updateChatMeta changes the title without touching messages', () => {
     const created = store.createChat({
@@ -526,9 +812,11 @@ describe('renaming and deleting', () => {
       messages: [message({ mes: 'kept' })],
     });
 
-    const renamed = saved(store.updateChatMeta(created.id, { revision: 1, title: 'Renamed' }));
-    expect(renamed.title).toBe('Renamed');
-    expect(renamed.messages.map((m) => m.mes)).toEqual(['kept']);
+    const renamed = acked(store.updateChatMeta(created.id, { revision: 1, title: 'Renamed' }));
+    expect(renamed.revision).toBe(1);
+    const reloaded = store.getChat(created.id)!;
+    expect(reloaded.title).toBe('Renamed');
+    expect(reloaded.messages.map((m) => m.mes)).toEqual(['kept']);
   });
 
   test('deleting a chat cascades to its messages', () => {

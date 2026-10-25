@@ -1,3 +1,4 @@
+import type { ChatSaveRecord } from '@shared/chat/save.ts';
 import { applyExtraction, buildNexusExtraction, parseExtraction } from '@shared/nexus/extract.ts';
 import { filterRecallFindings, recallSearchMessages } from '@shared/nexus/findings.ts';
 import { nexusMaxTokens, nexusPreset, nexusRequestError } from '@shared/nexus/generate.ts';
@@ -28,7 +29,7 @@ import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { looseParseJson } from '@shared/providers/looseJson.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
-import type { ApiMessage, ChatMessage, ChatSaveSnapshot } from '@shared/types/chat.ts';
+import type { ApiMessage, ChatMessage } from '@shared/types/chat.ts';
 import {
   type Dispatch,
   type RefObject,
@@ -56,9 +57,9 @@ interface Options {
   counter: TokenCounter;
   enabled: boolean;
   profile: string;
-  captureSnapshot: (state: ChatState) => ChatSaveSnapshot | null;
+  captureSnapshot: (state: ChatState) => ChatSaveRecord | null;
   persistence: {
-    schedule: (snapshot: ChatSaveSnapshot) => void;
+    schedule: (record: ChatSaveRecord) => void;
     flush: (chatId: string) => Promise<void>;
   };
 }

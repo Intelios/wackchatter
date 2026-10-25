@@ -1,15 +1,10 @@
+import type { ChatSaveRecord } from '@shared/chat/save.ts';
 import { directorMessages, parseDirector, publicCast } from '@shared/group/director.ts';
 import type { NexusSettings } from '@shared/nexus/types.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
-import type {
-  ChatMetadata,
-  ChatSaveSnapshot,
-  MacroVariableMap,
-  MessageExtra,
-  Persona,
-} from '@shared/types/chat.ts';
+import type { ChatMetadata, MacroVariableMap, MessageExtra, Persona } from '@shared/types/chat.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
 import type { SummarySettings } from '@shared/types/settings.ts';
 import { DEFAULT_GUIDANCE } from '@shared/types/settings.ts';
@@ -30,7 +25,7 @@ import {
   type GroupState,
   groupReducer,
   initialGroupState,
-  persistedGroupMessages,
+  persistedGroupStates,
 } from './groupReducer.ts';
 import { useGroupSummary } from './useGroupSummary.ts';
 
@@ -89,14 +84,15 @@ export function useGroupChat(options: GroupChatOptions) {
     [],
   );
   const captureSnapshot = useCallback(
-    (s: ChatState): ChatSaveSnapshot | null =>
+    (s: ChatState): ChatSaveRecord | null =>
       s.chatId
         ? {
             chatId: s.chatId,
             revision: s.revision,
+            saveId: crypto.randomUUID(),
             title: s.title,
             metadata: s.metadata,
-            messages: persistedGroupMessages(s as GroupState),
+            states: persistedGroupStates(s as GroupState),
           }
         : null,
     [],
@@ -369,12 +365,26 @@ export function useGroupChat(options: GroupChatOptions) {
         if (cancelled) return;
         if (chat.kind !== 'group' || !chat.metadata.group)
           throw new Error('This is not a group scene.');
-        persistence.adopt(id, chat.revision);
         dispatch({
           type: 'chat/loaded',
           chat,
           personaId: chat.metadata.persona ?? opts.current.personaId,
         });
+        // Adopt the just-loaded document as the diff base — but only when the load
+        // stayed clean: a stamped migration revision means the queued transcript is
+        // already newer than the file the base would describe.
+        const loaded = stateRef.current;
+        persistence.adopt(
+          id,
+          loaded.persistedRevision,
+          loaded.revision === loaded.persistedRevision
+            ? {
+                title: loaded.title,
+                metadata: loaded.metadata,
+                states: persistedGroupStates(loaded),
+              }
+            : undefined,
+        );
         opts.current.onPersonaSwitch(chat.metadata.persona ?? null);
         setSelectedMemberId(
           chat.metadata.group.composerMemberId ??

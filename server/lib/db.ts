@@ -15,7 +15,7 @@ import { PATHS } from './paths.ts';
  * an upgraded database is stamped with the CURRENT version — a literal in each test would
  * only pin that someone remembered to edit three files.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS chats (
   created      INTEGER NOT NULL,
   modified     INTEGER NOT NULL,
   revision     INTEGER NOT NULL DEFAULT 0,
+  -- Token of the incremental save that set this revision. A redelivered save carries
+  -- the same token, so it can acknowledge instead of writing twice — or conflicting
+  -- with itself. NULL on rows no protocol save has written (creates, migrations).
+  save_token   TEXT,
   metadata     TEXT    NOT NULL DEFAULT '{}'
 );
 
@@ -307,6 +311,14 @@ export function createSchema(database: Database): void {
     } finally {
       database.exec('PRAGMA foreign_keys = ON');
     }
+  }
+
+  // The incremental save's idempotency token, distinct from the revision: two different
+  // saves can claim the same revision number, and only the token says which of them a
+  // replay belongs to. Must run after the kind rebuild, whose replacement table inherits
+  // every pre-existing column.
+  if (!chatColumns.some((column) => column.name === 'save_token')) {
+    database.exec('ALTER TABLE chats ADD COLUMN save_token TEXT');
   }
 
   // The persona a user message was sent as. NULL means "speaker not recorded" — rows

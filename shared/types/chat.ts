@@ -284,19 +284,20 @@ export interface Chat {
   messages: ChatMessage[];
 }
 
-/** A complete immutable client save. The server accepts it only at its revision. */
-export interface ChatSaveSnapshot {
-  chatId: string;
-  revision: number;
-  title: string;
-  metadata: ChatMetadata;
-  messages: ChatMessage[];
-}
-
 /** Returned for a save that lost a revision race. */
 export interface StaleChatRevision {
   code: 'stale_revision';
   currentRevision: number;
+}
+
+/**
+ * A save's acknowledgement — the row's new revision and modification time. Deliberately
+ * not the saved chat: the client already holds everything it sent, so echoing the whole
+ * transcript back would make every save a history-sized download nobody reads.
+ */
+export interface ChatSaveAck {
+  revision: number;
+  modified: number;
 }
 
 export interface ChatSummary {

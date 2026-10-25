@@ -32,12 +32,19 @@ function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-/** A small per-entity queue; different entities may save independently, never out of order. */
+/**
+ * A small per-entity queue; different entities may save independently, never out of order.
+ *
+ * `own()` is the one place a subclass can change how a scheduled snapshot is secured.
+ * The default deep-clones: a queued save must never see a caller's later mutation. A
+ * binding whose snapshots are already immutable — like the chat's, which holds the
+ * reducer's own objects — overrides it to skip copying a transcript-sized document.
+ */
 export class RevisionSaveQueue<TSnapshot extends { revision: number }> {
   private readonly latest = new Map<string, TSnapshot>();
   private readonly saved = new Map<string, number>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly running = new Map<string, Promise<void>>();
+  protected readonly running = new Map<string, Promise<void>>();
 
   constructor(
     private readonly save: RevisionSaveTransport<TSnapshot>,
@@ -57,7 +64,7 @@ export class RevisionSaveQueue<TSnapshot extends { revision: number }> {
   schedule(snapshot: TSnapshot): void {
     // Defend the boundary as well as the hook: callers can never mutate a queued save
     // after scheduling it.
-    const owned = structuredClone(snapshot);
+    const owned = this.own(snapshot);
     const key = this.keyOf(owned);
     const existing = this.latest.get(key);
     if (existing && existing.revision >= owned.revision) return;
@@ -116,7 +123,12 @@ export class RevisionSaveQueue<TSnapshot extends { revision: number }> {
     }
   }
 
-  private isDirty(key: string): boolean {
+  /** Take ownership of a snapshot about to be queued. The default deep-clones it. */
+  protected own(snapshot: TSnapshot): TSnapshot {
+    return structuredClone(snapshot);
+  }
+
+  protected isDirty(key: string): boolean {
     const snapshot = this.latest.get(key);
     return Boolean(snapshot && snapshot.revision > (this.saved.get(key) ?? 0));
   }
