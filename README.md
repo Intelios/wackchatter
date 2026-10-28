@@ -1,5 +1,7 @@
 # Wack**Chatter**
-(Notice: This is the 2.0 Legacy Branch that is designed to keep the old 2.0 version avaliable for compatability reasons for those who may wish to stay on this branch.)
+
+# (Notice: This is the 2.0 Legacy Branch that is designed to keep the old 2.0 version avaliable for compatability reasons for those who may wish to stay on this branch.)
+
 A chat frontend for cloud LLMs with character cards, lorebooks, personas, and long-term story memory — all running locally in your browser. Uses your own API keys; nothing is sent anywhere except the model you pick.
 
 Your existing character cards and presets from [SillyTavern](https://github.com/SillyTavern/SillyTavern) import without conversion. WackChatter presets may also use documented extensions described below.
