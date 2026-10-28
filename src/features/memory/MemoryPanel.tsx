@@ -105,7 +105,7 @@ export function MemoryPanel(props: Props) {
       <Section title="New chats">
         <SelectField
           label="Default story memory"
-          value={props.defaultMode === 'memories' ? 'nexus' : props.defaultMode}
+          value={props.defaultMode}
           options={[
             { value: 'classic' as const, label: 'Summary' },
             { value: 'nexus' as const, label: 'Nexus' },

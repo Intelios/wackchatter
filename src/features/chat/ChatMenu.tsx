@@ -43,14 +43,11 @@ export interface ChatMenuState {
   busy: boolean;
   /** A blocking summary request prevents only provider-generating actions. */
   summaryRunning?: boolean;
-  /** A blocking memory extraction prevents only provider-generating actions. */
-  memoryRunning?: boolean;
   /**
-   * The chat's effective story-memory mode — the resolved one `useChat` exposes, where a
-   * legacy `memories` already reads as `nexus`. The Memory family, header and entry
-   * together, exists only for a Nexus chat: a Summary or Off chat has no explorer behind
-   * the entry, and a lone "Memory" eyebrow over nothing would be worse than the entry
-   * simply not being there.
+   * The chat's effective story-memory mode — the one `useChat` exposes. The Memory family,
+   * header and entry together, exists only for a Nexus chat: a Summary or Off chat has no
+   * explorer behind the entry, and a lone "Memory" eyebrow over nothing would be worse than
+   * the entry simply not being there.
    */
   memoryMode: MemoryMode;
   /** The open chat — the branch timeline has nothing to centre on without one. */
@@ -83,14 +80,12 @@ export interface ChatMenuActions {
 
 const BUSY = 'Wait for the current reply to finish.';
 const SUMMARY_BUSY = 'Cancel or finish the current summary first.';
-const MEMORY_BUSY = 'Cancel or finish the current memory extraction first.';
 const EMPTY = 'This chat has no messages yet.';
 
 export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): MenuEntry[] {
   const {
     busy,
     summaryRunning = false,
-    memoryRunning = false,
     memoryMode,
     chatId,
     messageCount,
@@ -98,12 +93,8 @@ export function buildChatMenu(state: ChatMenuState, actions: ChatMenuActions): M
     lastIsUser,
   } = state;
   const empty = messageCount === 0;
-  const generationBlocked = busy || summaryRunning || memoryRunning;
-  const generationBlockedReason = summaryRunning
-    ? SUMMARY_BUSY
-    : memoryRunning
-      ? MEMORY_BUSY
-      : BUSY;
+  const generationBlocked = busy || summaryRunning;
+  const generationBlockedReason = summaryRunning ? SUMMARY_BUSY : BUSY;
 
   /*
    * Entries are laid out as labelled families rather than one flat column: everything that
@@ -371,7 +362,6 @@ export function ChatMenu({
     {
       busy: chat.busy,
       summaryRunning: chat.summaryStatus.running,
-      memoryRunning: chat.memoryStatus.running,
       memoryMode: chat.memoryMode,
       chatId: chat.state.chatId,
       messageCount: messages.length,

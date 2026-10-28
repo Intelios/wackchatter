@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { coveredMessageIds } from '../../shared/memory/memories.ts';
-import type { Chat, ChatMessage, Memory } from '../../shared/types/chat.ts';
+import type { Chat, ChatMessage } from '../../shared/types/chat.ts';
 import {
   type ChatSaveAckResult,
   type ChatSaveResult,
@@ -12,6 +11,7 @@ import {
   createChatStore,
 } from './chats.ts';
 import { createSchema, SCHEMA_VERSION } from './db.ts';
+import { LibraryTooOldError } from './libraryVersion.ts';
 
 let store: ChatStore;
 let database: Database;
@@ -35,21 +35,6 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
     is_system: false,
     mes: 'Hello.',
     send_date: '2026-01-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function memory(overrides: Partial<Memory> = {}): Memory {
-  return {
-    id: crypto.randomUUID(),
-    title: 'A scene',
-    text: 'Something happened.',
-    keywords: ['key'],
-    pinned: false,
-    enabled: true,
-    source: 'generated',
-    edited: false,
-    generatedAt: 0,
     ...overrides,
   };
 }
@@ -310,7 +295,6 @@ describe('listing', () => {
 
     expect(store.listChats().map((chat) => chat.id)).toEqual([direct.id]);
     expect(store.listRecent(10).map((chat) => chat.id)).toEqual([direct.id]);
-    expect(store.listChatMetas().map((meta) => meta.id)).toEqual([direct.id]);
     expect(store.getChat('old-group')).toBeNull();
     expect(store.deleteChat('old-group')).toBe(false);
     expect(database.query("SELECT COUNT(*) AS n FROM chats WHERE id = 'old-group'").get()).toEqual({
@@ -437,98 +421,61 @@ describe('replacing', () => {
   });
 });
 
-describe('schema migration', () => {
-  test('adds revision to a v1 database without losing its chat or messages', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
+describe('schema', () => {
+  /** A database as WackChatter 2.2.4 left it: schema 13, a chats table and a version. */
+  function olderLibrary(version: string | null): Database {
+    const older = new Database(':memory:');
+    older.exec(`
       CREATE TABLE chats (
         id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
         created INTEGER NOT NULL, modified INTEGER NOT NULL, metadata TEXT NOT NULL DEFAULT '{}'
       );
-      CREATE TABLE messages (
-        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
-        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, swipe_id INTEGER NOT NULL DEFAULT 0,
-        swipes TEXT NOT NULL, swipe_info TEXT NOT NULL, PRIMARY KEY (chat_id, id)
-      ) WITHOUT ROWID;
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '1');
-      INSERT INTO chats VALUES ('legacy', 'a.png', 'Old chat', 1, 2, '{}');
-      INSERT INTO messages VALUES ('legacy', 'm1', 0, 'User', 1, 0, 0, '["hello"]', '[{"send_date":""}]');
+      INSERT INTO chats VALUES ('old', 'a.png', 'Old chat', 1, 2, '{}');
     `);
+    if (version !== null) {
+      older.query('INSERT INTO meta VALUES (?, ?)').run('schema_version', version);
+    }
+    return older;
+  }
 
-    createSchema(legacy);
-    const migrated = createChatStore(legacy, { backupDir: null }).getChat('legacy');
+  test('a library older than 2.3 is refused before anything is written', () => {
+    const older = olderLibrary('13');
 
-    expect(migrated?.revision).toBe(0);
-    expect(migrated?.title).toBe('Old chat');
-    expect(migrated?.messages.map((item) => item.mes)).toEqual(['hello']);
+    expect(() => createSchema(older)).toThrow(LibraryTooOldError);
+    // Not stamped, and no table created: the library is exactly as 2.2.4 left it.
     expect(
-      legacy
-        .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
-        .get('schema_version')?.value,
-    ).toBe(String(SCHEMA_VERSION));
+      older
+        .query<{ value: string }, []>("SELECT value FROM meta WHERE key = 'schema_version'")
+        .get()?.value,
+    ).toBe('13');
+    expect(
+      older.query("SELECT name FROM sqlite_master WHERE name = 'cocreator_sessions'").get(),
+    ).toBeNull();
   });
 
-  test('adds persona_id to a v2 database without losing its messages', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
-      CREATE TABLE chats (
-        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
-        created INTEGER NOT NULL, modified INTEGER NOT NULL,
-        revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE TABLE messages (
-        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
-        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, swipe_id INTEGER NOT NULL DEFAULT 0,
-        swipes TEXT NOT NULL, swipe_info TEXT NOT NULL, PRIMARY KEY (chat_id, id)
-      ) WITHOUT ROWID;
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '2');
-      INSERT INTO chats VALUES ('legacy', 'a.png', 'Old chat', 1, 2, 5, '{}');
-      INSERT INTO messages VALUES ('legacy', 'm1', 0, 'User', 1, 0, 0, '["hello"]', '[{"send_date":""}]');
-    `);
-
-    createSchema(legacy);
-    const migrated = createChatStore(legacy, { backupDir: null }).getChat('legacy');
-
-    expect(migrated?.revision).toBe(5);
-    expect(migrated?.messages.map((item) => item.mes)).toEqual(['hello']);
-    // A row from before speakers were recorded reads as unrecorded, not as no-persona.
-    expect(migrated?.messages[0]?.persona_id).toBeUndefined();
-    expect(
-      legacy
-        .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
-        .get('schema_version')?.value,
-    ).toBe(String(SCHEMA_VERSION));
+  test('a chats table with no recorded version is refused too', () => {
+    expect(() => createSchema(olderLibrary(null))).toThrow(LibraryTooOldError);
   });
 
-  test('adds hidden_by to a v4 database, leaving existing hides owned by nobody', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
-      CREATE TABLE chats (
-        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
-        created INTEGER NOT NULL, modified INTEGER NOT NULL,
-        revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE TABLE messages (
-        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
-        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, persona_id TEXT,
-        swipe_id INTEGER NOT NULL DEFAULT 0,
-        swipes TEXT NOT NULL, swipe_info TEXT NOT NULL, PRIMARY KEY (chat_id, id)
-      ) WITHOUT ROWID;
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '4');
-      INSERT INTO chats VALUES ('legacy', 'a.png', 'Old chat', 1, 2, 5, '{}');
-      INSERT INTO messages VALUES ('legacy', 'm1', 0, 'User', 1, 1, NULL, 0, '["hidden"]', '[{"send_date":""}]');
-    `);
+  test('a 2.3 library opens, and a fresh one gets every column the store writes', () => {
+    expect(() => createSchema(database)).not.toThrow();
 
-    createSchema(legacy);
-    const migrated = createChatStore(legacy, { backupDir: null }).getChat('legacy');
-
-    // A message hidden before memories existed stays hidden and stays unowned, so no
-    // memory can ever reveal it.
-    expect(migrated?.messages[0]?.is_system).toBe(true);
-    expect(migrated?.messages[0]?.hiddenBy).toBeUndefined();
+    const columns = (table: string) =>
+      database
+        .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+        .all()
+        .map((column) => column.name);
+    expect(columns('chats')).toEqual(expect.arrayContaining(['kind', 'revision', 'save_token']));
+    expect(columns('messages')).toEqual(expect.arrayContaining(['persona_id', 'hidden_by']));
+    expect(columns('cocreator_sessions')).toEqual(
+      expect.arrayContaining(['seed_avatar', 'side_chat']),
+    );
+    expect(
+      database
+        .query<{ value: string }, []>("SELECT value FROM meta WHERE key = 'schema_version'")
+        .get()?.value,
+    ).toBe(String(SCHEMA_VERSION));
   });
 
   test('the memory that hid a message survives a save and reload', () => {
@@ -1047,94 +994,6 @@ describe('branching', () => {
       chatId: created.id,
       messageId: branchPoint,
     });
-  });
-
-  test('a branch remaps memory ranges and the watermark onto its own message ids', () => {
-    const created = store.createChat({
-      characterId: 'a.png',
-      metadata: {
-        memories: [memory({ id: 'mem-1', range: { startId: 'm0', endId: 'm1' } })],
-        memoryWatermark: 'm1',
-      },
-      messages: [
-        // The stamp a hide left behind, copied with the message it belongs to.
-        message({ id: 'm0', mes: '1', is_system: true, hiddenBy: 'mem-1' }),
-        message({ id: 'm1', mes: '2' }),
-        message({ id: 'm2', mes: '3' }),
-      ],
-    });
-
-    const branch = store.branchChat(created.id, 'm1')!;
-    const b0 = branch.messages[0]!;
-    const b1 = branch.messages[1]!;
-    const stored = branch.metadata.memories![0]!;
-
-    // The range resolves against the branch's transcript, so revealing and deleting
-    // the memory work — and the copied stamp names a memory that can account for it.
-    expect(stored.range).toEqual({ startId: b0.id, endId: b1.id });
-    expect(coveredMessageIds(stored, branch.messages)).toEqual([b0.id, b1.id]);
-    expect(b0.hiddenBy).toBe('mem-1');
-    expect(branch.metadata.memoryWatermark).toBe(b1.id);
-  });
-
-  test('memories of transcript past the branch point are not carried into the branch', () => {
-    const created = store.createChat({
-      characterId: 'a.png',
-      metadata: {
-        memories: [
-          memory({ range: { startId: 'm0', endId: 'm1' } }),
-          memory({ range: { startId: 'm2', endId: 'm3' } }),
-        ],
-      },
-      messages: [
-        message({ id: 'm0', mes: '1' }),
-        message({ id: 'm1', mes: '2' }),
-        message({ id: 'm2', mes: '3' }),
-        message({ id: 'm3', mes: '4' }),
-      ],
-    });
-
-    const branch = store.branchChat(created.id, 'm1')!;
-
-    expect(branch.metadata.memories).toHaveLength(1);
-    expect(branch.metadata.memories![0]!.range?.endId).toBe(branch.messages[1]!.id);
-  });
-
-  test('a memory straddling the branch point clamps to it and is flagged stale', () => {
-    const created = store.createChat({
-      characterId: 'a.png',
-      metadata: { memories: [memory({ range: { startId: 'm0', endId: 'm2' } })] },
-      messages: [
-        message({ id: 'm0', mes: '1' }),
-        message({ id: 'm1', mes: '2' }),
-        message({ id: 'm2', mes: '3' }),
-      ],
-    });
-
-    const branch = store.branchChat(created.id, 'm1')!;
-    const stored = branch.metadata.memories![0]!;
-
-    expect(stored.range).toEqual({
-      startId: branch.messages[0]!.id,
-      endId: branch.messages[1]!.id,
-    });
-    expect(stored.stale).toBe('deleted');
-  });
-
-  test('a watermark past the branch point becomes the branch point', () => {
-    const created = store.createChat({
-      characterId: 'a.png',
-      metadata: { memoryWatermark: 'm2' },
-      messages: [
-        message({ id: 'm0', mes: '1' }),
-        message({ id: 'm1', mes: '2' }),
-        message({ id: 'm2', mes: '3' }),
-      ],
-    });
-
-    const branch = store.branchChat(created.id, 'm1')!;
-
-    expect(branch.metadata.memoryWatermark).toBe(branch.messages[1]!.id);
   });
 
   test('a summary checkpoint inside the branch remaps onto the copied messages', () => {

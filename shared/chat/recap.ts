@@ -4,9 +4,9 @@
  * A recap is not a chat turn. Going through `assemblePrompt` would carry the preset's main
  * prompt, the character sheet, the persona, the lorebook and every stored macro into the
  * request — and the whole point of the feature is that the user asked for the transcript
- * and nothing else. So the request is built here by hand, the same way memory extraction
- * (`shared/memory/extract.ts`) and persona derivation (`shared/persona/derive.ts`) bypass
- * assembly, and for the same reason: what a preset says must not weigh in.
+ * and nothing else. So the request is built here by hand, the same way persona derivation
+ * (`shared/persona/derive.ts`) bypasses assembly, and for the same reason: what a preset
+ * says must not weigh in.
  *
  * Pure, and tested without a DOM. The prompt is two messages; the only interesting decision
  * is what to drop when a long chat does not fit the context the user declared.

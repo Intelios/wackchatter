@@ -26,9 +26,9 @@ import type {
 } from '../../shared/types/chat.ts';
 import { writeChatBackup } from './backups.ts';
 import { getDb } from './db.ts';
-import { migrateNexusLibrary } from './nexus.ts';
 import { PATHS } from './paths.ts';
-import { getSettings } from './settings.ts';
+import { resetSettingsCache } from './settings.ts';
+import { upgradeLibrary } from './upgrade.ts';
 
 interface ChatRow {
   id: string;
@@ -56,21 +56,9 @@ interface MessageRow {
   swipe_info: string;
 }
 
-/**
- * A chat's metadata without its transcript, which is all a library-wide pass needs. The
- * summary query is deliberately not reused here: it exists to render a recents list, and
- * its per-chat preview subqueries would be paid for on every chat to deliver nothing.
- */
-export interface ChatMeta {
-  id: string;
-  revision: number;
-  metadata: ChatMetadata;
-}
-
 export interface ChatStore {
   listChats(characterId?: string): ChatSummary[];
   listRecent(limit: number): ChatSummary[];
-  listChatMetas(): ChatMeta[];
   getChat(id: string): Chat | null;
   createChat(input: {
     characterId: string;
@@ -103,16 +91,6 @@ export interface ChatStore {
     id: string,
     updates: { revision: number; title?: string; metadata?: ChatMetadata },
   ): ChatSaveAckResult;
-  /**
-   * Migration door: replace a chat's metadata and bump its revision, without restamping
-   * `modified` and without reading the transcript. Returns null for an unknown chat.
-   *
-   * Deliberately not a general-purpose save. A library-wide repair is not the user
-   * touching every chat, so recency — and with it the recents list, the character picker
-   * and every "last spoke" figure — has to survive the pass untouched. The revision does
-   * move, so a client holding a pre-migration snapshot cannot write it back.
-   */
-  migrateChatMeta(id: string, metadata: ChatMetadata): ChatMeta | null;
   /**
    * Delete one chat. Backed up first, so a misclick on the trash is recoverable — and a
    * backup failure aborts the delete instead of destroying the transcript unrecorded.
@@ -238,11 +216,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     selectChat: database.query<ChatRow, [string]>(
       "SELECT * FROM chats WHERE id = ? AND kind = 'direct'",
     ),
-    // Metadata and revision only. A library-wide pass must not pay for transcripts it will
-    // not read, and must not be slowed by the newest chat being the largest.
-    selectChatMetas: database.query<{ id: string; revision: number; metadata: string }, []>(
-      "SELECT id, revision, metadata FROM chats WHERE kind = 'direct'",
-    ),
     replaceChat: database.query(
       `UPDATE chats
          SET title = $title, metadata = $metadata, modified = $modified, revision = $revision,
@@ -253,12 +226,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       `UPDATE chats
          SET title = $title, metadata = $metadata, modified = $modified, revision = $revision,
              save_token = $saveToken
-       WHERE id = $id`,
-    ),
-    // Note the absent $modified: this is the migration door, and leaving recency alone is
-    // the entire point of it. See migrateChatMeta.
-    migrateChatMeta: database.query(
-      `UPDATE chats SET metadata = $metadata, revision = $revision, save_token = NULL
        WHERE id = $id`,
     ),
     deleteChat: database.query('DELETE FROM chats WHERE id = ?'),
@@ -609,14 +576,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       return listRecent.all(limit).map(rowToSummary);
     },
 
-    listChatMetas(): ChatMeta[] {
-      return statements.selectChatMetas.all().map((row) => ({
-        id: row.id,
-        revision: row.revision,
-        metadata: parseMetadata(row.metadata),
-      }));
-    },
-
     getChat: readChat,
 
     createChat(input): Chat {
@@ -661,21 +620,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
     updateChatMeta(id, updates): ChatSaveAckResult {
       return saveMeta(id, updates);
-    },
-
-    migrateChatMeta(id, metadata): ChatMeta | null {
-      const existing = statements.selectChat.get(id);
-      if (!existing) return null;
-      const revision = existing.revision + 1;
-      statements.migrateChatMeta.run({
-        $id: id,
-        $metadata: JSON.stringify(metadata),
-        // Bumped so a stale client snapshot cannot overwrite migrated metadata, but a
-        // revision is not recency: the timestamp column is what orders the library, and
-        // this leaves it exactly as the user left it.
-        $revision: revision,
-      });
-      return { id, revision, metadata };
     },
 
     deleteChat(id): boolean {
@@ -763,9 +707,9 @@ let store: ChatStore | null = null;
 /** The application chat store. Tests build their own against an in-memory database. */
 export function chatStore(): ChatStore {
   if (!store) {
-    const next = createChatStore(getDb());
-    migrateNexusLibrary(getDb(), next, getSettings().memoryMode);
-    store = next;
+    // Before the store is handed out, so nothing reads a library still in its 2.3 form.
+    if (upgradeLibrary(getDb())) resetSettingsCache();
+    store = createChatStore(getDb());
   }
   return store;
 }

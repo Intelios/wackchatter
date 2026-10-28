@@ -772,7 +772,6 @@ export function ChatView({
                 isLast: message.id === lastId,
                 busy,
                 summaryRunning: chat.summaryStatus.running,
-                memoryRunning: chat.memoryStatus.running,
                 displayText: displayTexts.get(message.id)?.text,
                 displayReasoning: displayTexts.get(message.id)?.reasoning,
                 // Row 0 only: the notes explain which greeting you are looking at, and
@@ -905,13 +904,7 @@ export function ChatView({
           onImpersonate={impersonate}
           impersonating={impersonating}
           stream={stream}
-          onStop={
-            chat.summaryStatus.running
-              ? chat.cancelSummary
-              : chat.memoryStatus.running
-                ? chat.cancelMemoryRun
-                : chat.abort
-          }
+          onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
           busy={generationBlocked}
           disabled={!ready || loadBlocksChat}
           layout={composerLayout}

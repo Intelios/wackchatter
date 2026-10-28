@@ -2,9 +2,9 @@ import { NEXUS_MODEL_FINGERPRINT } from '../../shared/nexus/model.ts';
 
 /** Chat CRUD. Storage is ours, so there is no external format to honour here. */
 
-import { emptyNexus, migrateMemories } from '../../shared/nexus/state.ts';
+import { emptyNexus } from '../../shared/nexus/state.ts';
 import type { ChatMessage, ChatMetadata, StaleChatRevision } from '../../shared/types/chat.ts';
-import { parseChatExport } from '../lib/backups.ts';
+import { arrivingMetadata, parseChatExport } from '../lib/backups.ts';
 import { type ChatSaveAckResult, type ChatSaveInput, chatStore } from '../lib/chats.ts';
 import { getDb } from '../lib/db.ts';
 import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
@@ -108,16 +108,10 @@ export async function handleChatRoute(
       store.createChat({
         ...exported,
         characterId: characterId.trim(),
-        metadata: {
-          ...exported.metadata,
-          memoryMode:
-            exported.metadata?.memoryMode === 'memories'
-              ? 'nexus'
-              : (exported.metadata?.memoryMode ?? getSettings().memoryMode),
-          ...(exported.metadata?.memories?.length && !exported.metadata.nexus
-            ? { nexus: migrateMemories(exported.metadata.memories, exported.messages) }
-            : {}),
-        },
+        metadata: arrivingMetadata(exported.metadata, {
+          memoryMode: getSettings().memoryMode,
+          personaId: getSettings().personaId,
+        }),
       }),
       { status: 201 },
     );

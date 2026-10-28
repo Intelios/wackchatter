@@ -47,12 +47,10 @@ export async function handleBackupRoute(
         409,
       );
     }
-    const restored = restoreChatBackup(
-      backupId,
-      chatStore(),
-      PATHS.backups,
-      getSettings().memoryMode,
-    );
+    const restored = restoreChatBackup(backupId, chatStore(), PATHS.backups, {
+      memoryMode: getSettings().memoryMode,
+      personaId: getSettings().personaId,
+    });
     return restored ? json(restored, { status: 201 }) : notFound('Backup not found.');
   }
 

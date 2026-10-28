@@ -18,6 +18,7 @@
  *    `jailbreak` prompts unless the prompt sets `forbid_overrides`.
  */
 
+import { DEFAULT_NEXUS } from '../nexus/types.ts';
 import { regexDepths } from '../regex/depth.ts';
 import {
   applyRegexScripts,
@@ -48,11 +49,9 @@ import type { RegexScript } from '../types/regex.ts';
 import { REGEX_PLACEMENT } from '../types/regex.ts';
 import {
   DEFAULT_GUIDANCE,
-  DEFAULT_MEMORY,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
   type MemoryMode,
-  type MemorySettings,
   type StoryMemoryPlacement,
   type SummarySettings,
 } from '../types/settings.ts';
@@ -88,19 +87,17 @@ export interface AssembleOptions {
   /**
    * Which story-memory feature fills the slot. Defaults to `'classic'`.
    *
-   * There is one slot, not two: a chat can hold both a rolling summary and a list of
-   * memories, and sending both would tell the model the same events twice in two voices.
+   * There is one slot, not two: a chat can hold both a rolling summary and Nexus records,
+   * and sending both would tell the model the same events twice in two voices.
    */
   memoryMode?: MemoryMode;
   /**
-   * Memories already selected for this turn, rendered and ready.
-   *
-   * Selection — pinned plus whatever the keywords woke — happens in the world-info
-   * activation pass before assembly, so this is text by the time it arrives here.
+   * Nexus recall already selected for this turn, rendered and ready — recall runs before
+   * assembly, so this is text by the time it arrives here.
    */
   memoryText?: string;
-  /** App-wide memory template and insertion preferences. */
-  memorySettings?: Partial<MemorySettings>;
+  /** Where the Nexus text lands: its template and insertion preferences. */
+  memorySettings?: Partial<StoryMemoryPlacement>;
   /** Standing per-chat instructions, injected on every generation. */
   guides?: PersistentGuide[];
   /**
@@ -495,9 +492,9 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
    * at-depth injection — is identical whichever feature filled them. Only the source of
    * the text and the macro that carries it differ, and both are settled here.
    */
-  const memoryConfig: MemorySettings = { ...DEFAULT_MEMORY, ...memorySettings };
+  const memoryConfig: StoryMemoryPlacement = { ...DEFAULT_NEXUS, ...memorySettings };
   const summarySettingsResolved = { ...DEFAULT_SUMMARY, ...summarySettings };
-  const usingMemories = memoryMode === 'memories' || memoryMode === 'nexus';
+  const usingMemories = memoryMode === 'nexus';
   const summaryConfig: StoryMemoryPlacement = usingMemories
     ? memoryConfig
     : summarySettingsResolved;

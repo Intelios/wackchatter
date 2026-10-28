@@ -20,12 +20,10 @@ import {
   DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
-  DEFAULT_MEMORY,
   DEFAULT_SUMMARY,
   type GuidanceSettings,
   MAX_RECENT_PERSONAS,
   type MemoryMode,
-  type MemorySettings,
   type SummarySettings,
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
@@ -41,6 +39,7 @@ import { useChat } from './features/chat/useChat.ts';
 import { usePromptPreview } from './features/chat/usePromptPreview.ts';
 import { CoCreatorLanding } from './features/cocreator/CoCreatorLanding.tsx';
 import { CocreatorShell } from './features/cocreator/CocreatorShell.tsx';
+import { TokenTrailPanel } from './features/integrations/TokenTrailPanel.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
@@ -52,7 +51,6 @@ import { PresetCocreatorShell } from './features/preset-cocreator/PresetCocreato
 import { resolveBackgroundUrl } from './features/settings/backgrounds.ts';
 import { UserSettingsPanel } from './features/settings/UserSettingsPanel.tsx';
 import { StartScreen } from './features/start/StartScreen.tsx';
-import { TokenTrailPanel } from './features/integrations/TokenTrailPanel.tsx';
 import { StudioShell } from './features/studio/StudioShell.tsx';
 import { AppShell, Panel } from './layout/AppShell.tsx';
 import { LeftPanel } from './layout/LeftPanel.tsx';
@@ -361,61 +359,6 @@ export function App() {
       : null;
   const nexusCountTokens = useTokenizer(nexusSettings.model, settings?.tokenizerEncoding);
   const memoryMode: MemoryMode = settings?.memoryMode ?? 'classic';
-  const memorySettings: MemorySettings = settings?.memory ?? DEFAULT_MEMORY;
-  const memoryConnection = memorySettings.connectionId
-    ? (settings?.connections.find((entry) => entry.id === memorySettings.connectionId) ??
-      connection)
-    : connection;
-  const memoryCountTokens = useTokenizer(
-    memoryConnection?.model ?? '',
-    settings?.tokenizerEncoding,
-  );
-  const memoryPresetId =
-    memorySettings.presetId && presets.some((entry) => entry.id === memorySettings.presetId)
-      ? memorySettings.presetId
-      : null;
-
-  /*
-   * The memory extractor's preset, which is a different thing from the summariser's
-   * absence of one. Only its samplers are read — `buildRequestBody` never looks at
-   * `prompts` — so this is "the user's temperature without the user's jailbreak", and an
-   * RP preset's high temperature is exactly what makes an extractor drift off its output
-   * contract. Null, or the active id, means the already-loaded active preset.
-   */
-  const [memoryPresetFile, setMemoryPresetFile] = useState<{ id: string; value: Preset } | null>(
-    null,
-  );
-  // `presets` and `presetReload` are not read in here — they are the cache invalidation
-  // triggers. Without them an edit, rename or revert of the chosen preset would leave
-  // extraction running on the stale cached samplers.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: presets and presetReload are triggers, not reads
-  useEffect(() => {
-    const id = memoryPresetId;
-    if (!id || id === presetId) {
-      setMemoryPresetFile(null);
-      return;
-    }
-    let cancelled = false;
-    void presetApi
-      .get(id)
-      .then((value) => {
-        if (!cancelled) setMemoryPresetFile({ id, value });
-      })
-      .catch(() => {
-        if (!cancelled) setMemoryPresetFile(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [memoryPresetId, presetId, presets, presetReload]);
-
-  const memoryPreset =
-    !memoryPresetId || memoryPresetId === presetId
-      ? preset
-      : memoryPresetFile && memoryPresetFile.id === memoryPresetId
-        ? memoryPresetFile.value
-        : null;
-
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
   const arenaSettings: ArenaSettings = settings?.arena ?? DEFAULT_ARENA;
 
@@ -667,10 +610,6 @@ export function App() {
     summarySettings,
     summaryCountTokens,
     memoryMode,
-    memorySettings,
-    memoryConnection,
-    memoryPreset,
-    memoryCountTokens,
     nexusSettings,
     nexusConnection,
     nexusCountTokens,
@@ -701,7 +640,6 @@ export function App() {
           guidanceSettings,
           summarySettings,
           memoryMode: chat.memoryMode,
-          memorySettings,
           nexusSettings,
           prepareNexus: chat.nexus.preview,
           nexusVersion: chat.nexus.indexVersion,
@@ -720,7 +658,6 @@ export function App() {
       if (avatar !== selected || editing || options?.chatId !== undefined) {
         chat.abort();
         chat.cancelSummary();
-        chat.cancelMemoryRun();
         try {
           await chat.flushSaves();
         } catch {
@@ -807,7 +744,6 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
-      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch {
@@ -934,7 +870,6 @@ export function App() {
       try {
         chat.abort();
         chat.cancelSummary();
-        chat.cancelMemoryRun();
         await chat.flushSaves();
       } catch {
         // The rename already landed; a failed chat flush is surfaced by the app shell and
@@ -978,7 +913,6 @@ export function App() {
   const handleDeleted = useCallback(() => {
     chat.abort();
     chat.cancelSummary();
-    chat.cancelMemoryRun();
     const deleted = selected;
     if (deleted) {
       setSettings((current) => {
@@ -1011,7 +945,6 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
-      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -1042,7 +975,6 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
-      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -1130,7 +1062,6 @@ export function App() {
     try {
       chat.abort();
       chat.cancelSummary();
-      chat.cancelMemoryRun();
       await chat.flushSaves();
       await flushRightPanel();
     } catch (err) {
@@ -1436,7 +1367,6 @@ export function App() {
             // The last generation's result when there is one, else the live preview — so the
             // report answers "why didn't it fire?" before you send, too.
             worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
-            memoryRecall={chat.memoryRecall ?? preview?.memoryRecall ?? null}
             inspection={chat.inspection}
             nexusRecall={chat.inspection?.nexusRecall ?? chat.nexus.recall}
             nexusPreview={preview?.nexusRecall}

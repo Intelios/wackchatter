@@ -10,7 +10,7 @@ import {
   normalizeExamples,
   normalizeSessionSettings,
 } from './cocreator.ts';
-import { createSchema, SCHEMA_VERSION } from './db.ts';
+import { createSchema } from './db.ts';
 
 let store: CocreatorStore;
 let database: Database;
@@ -121,18 +121,6 @@ describe('side scratchpad persistence', () => {
     expect(store.replaceSession(created.id, { ...input, revision: 0 }).kind).toBe('stale');
     expect(store.deleteSession(created.id)).toBe(true);
     expect(store.getSession(created.id)).toBeNull();
-  });
-
-  test('migration adds a nullable scratchpad without changing existing sessions', () => {
-    database.exec(`ALTER TABLE cocreator_sessions DROP COLUMN side_chat`);
-    const created = database.query(`INSERT INTO cocreator_sessions
-      (id, title, created, modified, revision) VALUES ('legacy-side', 'Kept', 1, 2, 7)`);
-    created.run();
-    createSchema(database);
-    const migrated = createCocreatorStore(database).getSession('legacy-side')!;
-    expect(migrated.sideChat).toBeNull();
-    expect(migrated.modified).toBe(2);
-    expect(migrated.revision).toBe(7);
   });
 });
 
@@ -556,82 +544,13 @@ describe('repairing stored JSON', () => {
   });
 });
 
-describe('migration', () => {
-  test('a v3 database gains both tables and is stamped with the current version', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
-      CREATE TABLE chats (
-        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
-        created INTEGER NOT NULL, modified INTEGER NOT NULL,
-        revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE TABLE messages (
-        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
-        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, persona_id TEXT,
-        swipe_id INTEGER NOT NULL DEFAULT 0, swipes TEXT NOT NULL, swipe_info TEXT NOT NULL,
-        PRIMARY KEY (chat_id, id)
-      ) WITHOUT ROWID;
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '3');
-      INSERT INTO chats VALUES ('c1', 'a.png', 'Kept chat', 1, 2, 5, '{}');
-    `);
-
-    createSchema(legacy);
-
-    // The existing chat is untouched, and the new tables exist and work.
-    expect(legacy.query<{ title: string }, []>('SELECT title FROM chats').get()!.title).toBe(
-      'Kept chat',
-    );
-    const migrated = createCocreatorStore(legacy);
-    expect(migrated.listSessions()).toEqual([]);
-    expect(migrated.createSession({ title: 'First' }).title).toBe('First');
-    expect(
-      legacy
-        .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
-        .get('schema_version')?.value,
-    ).toBe(String(SCHEMA_VERSION));
-  });
-
+describe('schema', () => {
   test('createSchema is idempotent — running it twice keeps the sessions', () => {
     const created = store.createSession({ title: 'Survivor' });
 
     createSchema(database);
 
     expect(store.getSession(created.id)?.title).toBe('Survivor');
-  });
-
-  test('a v6 database gains the seed column, and its sessions read as unseeded', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
-      CREATE TABLE cocreator_sessions (
-        id TEXT PRIMARY KEY, title TEXT NOT NULL, created INTEGER NOT NULL,
-        modified INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
-        stash TEXT NOT NULL DEFAULT '{"alternate_greetings":[],"tags":[]}',
-        examples TEXT NOT NULL DEFAULT '{"cards":[],"fields":{}}',
-        settings TEXT NOT NULL DEFAULT '{}', avatar TEXT, finished_avatar TEXT
-      );
-      CREATE TABLE cocreator_messages (
-        session_id TEXT NOT NULL REFERENCES cocreator_sessions(id) ON DELETE CASCADE,
-        id TEXT NOT NULL, position INTEGER NOT NULL, is_user INTEGER NOT NULL,
-        swipe_id INTEGER NOT NULL DEFAULT 0, swipes TEXT NOT NULL, swipe_info TEXT NOT NULL,
-        PRIMARY KEY (session_id, id)
-      ) WITHOUT ROWID;
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '6');
-      INSERT INTO cocreator_sessions (id, title, created, modified, revision)
-        VALUES ('s1', 'Old session', 1, 2, 3);
-    `);
-
-    createSchema(legacy);
-
-    const migrated = createCocreatorStore(legacy);
-    const old = migrated.getSession('s1')!;
-    expect(old.title).toBe('Old session');
-    expect(old.seedAvatar).toBeNull();
-    // New writes know the column, and reassigning reaches the pre-existing rows.
-    const fresh = migrated.createSession({ seedAvatar: 'Mika.png' });
-    expect(migrated.reassignSeedCard('Mika.png', 'Mika2.png')).toBe(1);
-    expect(migrated.getSession(fresh.id)!.seedAvatar).toBe('Mika2.png');
   });
 });
 

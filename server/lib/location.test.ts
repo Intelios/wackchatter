@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -297,6 +298,20 @@ describe('inspectLocation classification', () => {
     const verdict = inspectLocation(target, current());
     expect(verdict).toMatchObject({ ok: true, kind: 'library' });
     if (verdict.ok) expect(verdict.library?.markerMissing).toBe(true);
+  });
+
+  test('a library older than 2.3 is refused rather than adopted', () => {
+    const target = join(dir, 'old-library');
+    mkdirSync(target);
+    const database = new Database(join(target, 'chats.db'), { create: true });
+    database.exec(`
+      CREATE TABLE chats (id TEXT PRIMARY KEY);
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta VALUES ('schema_version', '13');
+    `);
+    database.close();
+
+    expect(inspectLocation(target, current())).toMatchObject({ ok: false, code: 'too-old' });
   });
 
   test("a stranger's folder is refused, and the message names what is in it", () => {

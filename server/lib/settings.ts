@@ -33,7 +33,6 @@ import type {
   DialogueColorSettings,
   GuidanceSettings,
   MemoryMode,
-  MemorySettings,
   QuickCommand,
   SummarySettings,
 } from '../../shared/types/settings.ts';
@@ -43,16 +42,15 @@ import {
   DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
-  DEFAULT_MEMORY,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
+  isMemoryMode,
   MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { atomicWriteSync } from './fs.ts';
 import { PATHS } from './paths.ts';
-import { rekeyApiKey } from './secrets.ts';
 
 export type { AppSettings };
 
@@ -137,76 +135,6 @@ function normalizeConnectionId(value: unknown, connections: Connection[]): strin
     return value;
   }
   return connections[0]?.id ?? null;
-}
-
-export interface LegacyConnectionMigration {
-  settings: Record<string, unknown>;
-  /** The stored API key that must move with the migrated connection, if any. */
-  keyMove: { from: ProviderId; to: string } | null;
-}
-
-/**
- * The id the migrated connection gets. Deliberately fixed, not a uuid: the migration
- * writes two files, and a deterministic id is what makes a crash between the writes
- * converge on retry instead of stranding the key under the first attempt's id.
- */
-export const MIGRATION_CONNECTION_ID = 'legacy';
-
-/**
- * Rewrite the pre-connections shape into the current one, purely.
- *
- * The old format had a single `connection` object and keys stored per provider id. The
- * rewrite wraps that object in a one-entry list and reports the key move, so an upgrade
- * loses neither the connection nor its key. A key stored for a provider other than the
- * active one had no connection to follow and is left behind.
- */
-export function migrateLegacyConnection(
-  stored: Record<string, unknown>,
-  newId: string,
-): LegacyConnectionMigration | null {
-  if (stored.connections !== undefined || !isRecord(stored.connection)) return null;
-
-  const connection = normalizeConnectionEntry({ ...stored.connection, id: newId });
-  if (!connection) return null;
-
-  const settings: Record<string, unknown> = {
-    ...stored,
-    connections: [connection],
-    connectionId: connection.id,
-  };
-  delete settings.connection;
-
-  return { settings, keyMove: { from: connection.provider, to: connection.id } };
-}
-
-/**
- * Apply `migrateLegacyConnection` to the files on disk.
- *
- * Runs from `getSettings` rather than at startup only: the data directory can move, and
- * a library never opened by a new build must migrate on its first read too. The
- * `connection` check makes it idempotent — once rewritten, this is a no-op.
- *
- * The secret is re-keyed BEFORE the settings write, and the id is deterministic. A
- * crash between the two writes leaves the key already under its new id while settings
- * is still legacy — so the retry re-keys (a no-op, the old provider id is empty by
- * then) and writes the same settings. The opposite order, with a fresh uuid per
- * attempt, would leave the key under the first attempt's id and the settings pointing
- * at the second's, and the next settings save would prune the orphan.
- */
-function applyLegacyConnectionMigration(stored: Record<string, unknown>): Record<string, unknown> {
-  const migration = migrateLegacyConnection(stored, MIGRATION_CONNECTION_ID);
-  if (!migration) return stored;
-
-  // A failed write must not take every request down: the session continues on the
-  // in-memory migration and the files are retried on the next cache reset.
-  try {
-    if (migration.keyMove) rekeyApiKey(migration.keyMove.from, migration.keyMove.to);
-    atomicWriteSync(PATHS.settings, `${JSON.stringify(migration.settings, null, 2)}\n`);
-  } catch (error) {
-    console.error('[wackchatter] Could not persist the connections migration:', error);
-  }
-
-  return migration.settings;
 }
 
 /**
@@ -310,71 +238,9 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
   };
 }
 
-const MEMORY_MODES: MemoryMode[] = ['classic', 'memories', 'nexus', 'off'];
-
 /** Coerce the memory feature selector. Anything unrecognised falls back to the summary. */
 function normalizeMemoryMode(value: unknown): MemoryMode {
-  if (value === 'memories') return 'nexus';
-  return MEMORY_MODES.includes(value as MemoryMode) ? (value as MemoryMode) : 'classic';
-}
-
-/**
- * Coerce memory preferences and revalidate their optional connection reference.
- *
- * The numeric fields are clamped rather than merely type-checked. Every one of them costs
- * money or context when it is wrong: a `windowSize` of 5000 sends the whole chat in one
- * request, and a `budgetTokens` larger than the context makes assembly drop the transcript
- * to make room for memories about it.
- */
-function normalizeMemory(value: unknown, connections: Connection[]): MemorySettings {
-  const stored = isRecord(value) ? value : {};
-  const connectionId =
-    typeof stored.connectionId === 'string' &&
-    connections.some((connection) => connection.id === stored.connectionId)
-      ? stored.connectionId
-      : null;
-
-  const clamped = (
-    key: 'windowSize' | 'maxMemoryTokens' | 'verbatimTail' | 'budgetTokens' | 'depth',
-    min: number,
-    max: number,
-  ): number => {
-    const candidate = stored[key];
-    return typeof candidate === 'number' && Number.isFinite(candidate)
-      ? Math.min(max, Math.max(min, Math.floor(candidate)))
-      : DEFAULT_MEMORY[key];
-  };
-
-  // Unlike the others, 0 is a legal value — it is the off switch. Anything positive is
-  // clamped rather than defaulted, and the floor keeps a typo of 1 from starting a paid
-  // run after every single message.
-  const autoInterval = (() => {
-    const candidate = stored.autoInterval;
-    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return 0;
-    const floored = Math.floor(candidate);
-    return floored <= 0 ? 0 : Math.min(2000, Math.max(10, floored));
-  })();
-
-  return {
-    connectionId,
-    presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
-    extractPrompt:
-      typeof stored.extractPrompt === 'string' && stored.extractPrompt.trim()
-        ? stored.extractPrompt
-        : DEFAULT_MEMORY.extractPrompt,
-    windowSize: clamped('windowSize', 5, 200),
-    autoInterval,
-    maxMemoryTokens: clamped('maxMemoryTokens', 100, 4000),
-    autoHide: typeof stored.autoHide === 'boolean' ? stored.autoHide : DEFAULT_MEMORY.autoHide,
-    verbatimTail: clamped('verbatimTail', 0, 200),
-    budgetTokens: clamped('budgetTokens', 0, 32000),
-    template: typeof stored.template === 'string' ? stored.template : DEFAULT_MEMORY.template,
-    position: SUMMARY_POSITIONS.includes(stored.position as SummarySettings['position'])
-      ? (stored.position as SummarySettings['position'])
-      : DEFAULT_MEMORY.position,
-    depth: clamped('depth', 0, 999),
-    role: normalizeRole(stored.role, DEFAULT_MEMORY.role),
-  };
+  return isMemoryMode(value) ? value : 'classic';
 }
 
 /**
@@ -738,8 +604,6 @@ export function getSettings(): AppSettings {
     }
   }
 
-  stored = applyLegacyConnectionMigration(stored);
-
   // A missing list gets the seeded default connection; an explicitly empty list is the
   // user having deleted them all, and stays empty.
   const connections =
@@ -759,7 +623,6 @@ export function getSettings(): AppSettings {
     summary: normalizeSummary(stored.summary, connections),
     memoryMode: normalizeMemoryMode(stored.memoryMode),
     nexus: normalizeNexusSettings(stored.nexus),
-    memory: normalizeMemory(stored.memory, connections),
     coCreator: normalizeCoCreator(stored.coCreator, connections),
     arena: normalizeArena(stored.arena),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
@@ -827,9 +690,6 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     memoryMode:
       patch.memoryMode === undefined ? current.memoryMode : normalizeMemoryMode(patch.memoryMode),
     nexus: normalizeNexusSettings({ ...current.nexus, ...patch.nexus }),
-    memory: patch.memory
-      ? normalizeMemory({ ...current.memory, ...patch.memory }, current.connections)
-      : normalizeMemory(current.memory, current.connections),
     coCreator: patch.coCreator
       ? normalizeCoCreator(
           {
@@ -1092,7 +952,6 @@ export function deleteConnectionEntry(id: string): AppSettings | null {
     connections: dropped.connections,
     connectionId: dropped.connectionId,
     summary: normalizeSummary(current.summary, dropped.connections),
-    memory: normalizeMemory(current.memory, dropped.connections),
     coCreator: normalizeCoCreator(current.coCreator, dropped.connections),
   });
 }
@@ -1227,8 +1086,7 @@ export function reassignArenaCardPool(
 
 /**
  * Repoint or clear preset references when a preset is renamed or deleted.
- * Updates `AppSettings.presetId`, `AppSettings.memory.presetId`,
- * `AppSettings.coCreator.presetId`, and `AppSettings.arena.presetId` — on delete the
+ * Updates `AppSettings.presetId`, `AppSettings.coCreator.presetId` and `AppSettings.arena.presetId` — on delete the
  * arena's null means "follow the active preset", which is exactly the degradation wanted.
  */
 export function reassignPreset(
@@ -1240,11 +1098,6 @@ export function reassignPreset(
   let presetId = current.presetId;
   if (presetId === oldId) {
     presetId = newId;
-    changed = true;
-  }
-  let memoryPresetId = current.memory.presetId;
-  if (memoryPresetId === oldId) {
-    memoryPresetId = newId;
     changed = true;
   }
   let coCreatorPresetId = current.coCreator.presetId;
@@ -1261,7 +1114,6 @@ export function reassignPreset(
   return {
     ...current,
     presetId,
-    memory: { ...current.memory, presetId: memoryPresetId },
     coCreator: { ...current.coCreator, presetId: coCreatorPresetId },
     arena: { ...current.arena, presetId: arenaPresetId },
   };

@@ -79,14 +79,3 @@ export function pruneApiKeys(connectionIds: string[]): void {
 
   write(Object.fromEntries(entries.filter(([id]) => valid.has(id))));
 }
-
-/** One-time rename for the legacy provider-keyed format. No-op when `from` has no key. */
-export function rekeyApiKey(from: string, to: string): void {
-  const secrets = read();
-  const key = secrets[from];
-  if (key === undefined) return;
-
-  delete secrets[from];
-  secrets[to] = key;
-  write(secrets);
-}

@@ -6,7 +6,6 @@ import {
   emptyNexus,
   evidenceFor,
   liveRecords,
-  migrateMemories,
   reviseRecord,
 } from './state.ts';
 import type { NexusRecord, NexusRevision } from './types.ts';
@@ -77,54 +76,6 @@ describe('Nexus evidence and revisions', () => {
     expect(next.records).toHaveLength(1);
     expect(next.records[0]?.revisions).toHaveLength(1);
     expect(next.records[0]?.revisions[0]?.evidence[0]?.messageId).toBe('branch-a');
-  });
-  test('legacy events preserve flags and text; do not change transcript visibility', () => {
-    const before = JSON.stringify(messages);
-    const nexus = migrateMemories(
-      [
-        {
-          id: 'old',
-          title: 'Move',
-          text: 'Joe moved.',
-          keywords: ['Joe'],
-          source: 'generated',
-          edited: true,
-          enabled: false,
-          pinned: true,
-          generatedAt: 0,
-          range: { startId: 'a', endId: 'b' },
-        },
-      ],
-      messages,
-    );
-    expect(nexus.records[0]?.revisions[0]).toMatchObject({
-      text: 'Joe moved.',
-      manual: true,
-      pinned: true,
-      enabled: false,
-      legacy: true,
-    });
-    expect(JSON.stringify(messages)).toBe(before);
-  });
-  test('migrated legacy events carry a real created timestamp', () => {
-    const memory = (id: string, generatedAt: number) => ({
-      id,
-      title: id,
-      text: 'Joe moved.',
-      keywords: [],
-      source: 'generated' as const,
-      edited: false,
-      enabled: true,
-      pinned: false,
-      generatedAt,
-      range: { startId: 'a', endId: 'b' },
-    });
-    const nexus = migrateMemories(
-      [memory('stamped', 1787328363137), memory('untimed', 0)],
-      messages,
-    );
-    expect(nexus.records[0]?.revisions[0]?.created).toBe(1787328363137);
-    expect(nexus.records[1]?.revisions[0]?.created).toBeGreaterThan(0);
   });
 });
 

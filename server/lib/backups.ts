@@ -1,5 +1,4 @@
-import { migrateMemories } from '../../shared/nexus/state.ts';
-import type { MemoryMode } from '../../shared/types/settings.ts';
+import { isMemoryMode, type MemoryMode } from '../../shared/types/settings.ts';
 /**
  * Chat backups — the trash bin deleted chats land in.
  *
@@ -16,7 +15,7 @@ import type { MemoryMode } from '../../shared/types/settings.ts';
 
 import { existsSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Chat, ChatBackupSummary } from '../../shared/types/chat.ts';
+import type { Chat, ChatBackupSummary, ChatMetadata } from '../../shared/types/chat.ts';
 import type { ChatStore } from './chats.ts';
 import { atomicWriteSync } from './fs.ts';
 import { PATHS, safeJoin, sanitizeFilename } from './paths.ts';
@@ -153,27 +152,41 @@ export function restoreChatBackup(
   backupId: string,
   store: ChatStore,
   dir: string = PATHS.backups,
-  defaultMode: MemoryMode = 'classic',
+  defaults: ArrivalDefaults = { memoryMode: 'classic', personaId: null },
 ): Chat | null {
   const backup = readChatBackup(backupId, dir);
   if (!backup) return null;
   const chat = store.createChat({
     characterId: backup.characterId,
     title: backup.title,
-    metadata: {
-      ...backup.metadata,
-      memoryMode:
-        backup.metadata.memoryMode === 'memories'
-          ? 'nexus'
-          : (backup.metadata.memoryMode ?? defaultMode),
-      ...(backup.metadata.memories?.length && !backup.metadata.nexus
-        ? { nexus: migrateMemories(backup.metadata.memories, backup.messages) }
-        : {}),
-    },
+    metadata: arrivingMetadata(backup.metadata, defaults),
     messages: backup.messages,
   });
   deleteChatBackup(backupId, dir);
   return chat;
+}
+
+export interface ArrivalDefaults {
+  memoryMode: MemoryMode;
+  personaId: string | null;
+}
+
+/**
+ * The metadata a chat arriving from a file — an import, a restored backup — enters the
+ * library with. Every chat the app creates has its memory mode frozen and its persona
+ * recorded; a file without them (or with a mode this build no longer has) takes the app's
+ * current choices, so it behaves like any other chat from here on.
+ */
+export function arrivingMetadata(
+  metadata: ChatMetadata | undefined,
+  defaults: ArrivalDefaults,
+): ChatMetadata {
+  const stored = metadata ?? {};
+  return {
+    ...stored,
+    memoryMode: isMemoryMode(stored.memoryMode) ? stored.memoryMode : defaults.memoryMode,
+    persona: Object.hasOwn(stored, 'persona') ? stored.persona : defaults.personaId,
+  };
 }
 
 /**

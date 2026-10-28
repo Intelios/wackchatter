@@ -1,4 +1,3 @@
-import type { MemoryRecall } from '@shared/memory/source.ts';
 import type { NexusRecall } from '@shared/nexus/types.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { MacroWarning } from '@shared/types/chat.ts';
@@ -33,7 +32,6 @@ interface LeftPanelProps {
   connection: Connection | null;
   onConnectionPatch: (patch: Partial<Connection>) => void;
   worldInfo: ActivationResult | null;
-  memoryRecall: MemoryRecall | null;
   nexusRecall?: NexusRecall | null;
   nexusPreview?: NexusRecall;
   inspection: PromptInspection | null;
@@ -64,7 +62,6 @@ export function LeftPanel({
   connection,
   onConnectionPatch,
   worldInfo,
-  memoryRecall,
   nexusRecall,
   nexusPreview,
   inspection,
@@ -128,7 +125,6 @@ export function LeftPanel({
           nexusRecall={nexusRecall}
           nexusPreview={nexusPreview}
           worldInfo={worldInfo}
-          memoryRecall={memoryRecall}
           inspection={inspection}
         />
       ) : null}

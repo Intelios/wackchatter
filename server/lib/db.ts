@@ -7,13 +7,14 @@
 
 import { Database } from 'bun:sqlite';
 import { existsSync, unlinkSync } from 'node:fs';
+import { LibraryTooOldError, MIN_SCHEMA_VERSION, schemaVersionOf } from './libraryVersion.ts';
 import { detectCloudProvider } from './location.ts';
 import { PATHS } from './paths.ts';
 
 /**
- * Bumped whenever the schema below grows. Exported because the migration tests assert that
- * an upgraded database is stamped with the CURRENT version — a literal in each test would
- * only pin that someone remembered to edit three files.
+ * Bumped whenever the schema below grows. 3.0 opens 2.3's schema (14) unchanged; a bump
+ * needs a matching step in upgrade.ts, since `CREATE TABLE IF NOT EXISTS` never evolves an
+ * existing table.
  */
 export const SCHEMA_VERSION = 14;
 
@@ -49,6 +50,9 @@ CREATE TABLE IF NOT EXISTS messages (
   -- is_system; it is what lets deleting a memory reveal its own messages without also
   -- undoing an overlapping manual /hide.
   hidden_by  TEXT,
+  -- The persona a user message was sent as. NULL means "speaker not recorded"; an empty
+  -- string is the explicit "sent with no persona", so the two states cannot collapse.
+  persona_id TEXT,
   swipe_id   INTEGER NOT NULL DEFAULT 0,
   swipes     TEXT    NOT NULL,
   swipe_info TEXT    NOT NULL,
@@ -277,76 +281,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_arena_matches_slot
 `;
 
 export function createSchema(database: Database): void {
-  // CREATE TABLE IF NOT EXISTS deliberately does not evolve an existing table. Keep
-  // migrations here, where fresh and upgraded databases take the same path.
+  // Checked before anything is written: stamping the current version onto an older schema
+  // would claim columns that table does not have.
+  const existing = schemaVersionOf(database);
+  if (existing !== null && existing < MIN_SCHEMA_VERSION) throw new LibraryTooOldError();
+
   database.exec(SCHEMA);
-
-  const chatColumns = database.query<{ name: string }, []>('PRAGMA table_info(chats)').all();
-  if (!chatColumns.some((column) => column.name === 'revision')) {
-    database.exec('ALTER TABLE chats ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
-  }
-
-  if (!chatColumns.some((column) => column.name === 'kind')) {
-    // Rebuild only the parent, with FK enforcement off outside the transaction.
-    // Child rows and their indexes remain untouched.
-    database.exec('PRAGMA foreign_keys = OFF');
-    try {
-      database.transaction(() => {
-        database.exec(`CREATE TABLE chats_group_upgrade (
-          id TEXT PRIMARY KEY, character_id TEXT, kind TEXT NOT NULL DEFAULT 'direct',
-          title TEXT NOT NULL, created INTEGER NOT NULL, modified INTEGER NOT NULL,
-          revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}');
-          INSERT INTO chats_group_upgrade (id, character_id, title, created, modified, revision, metadata)
-            SELECT id, character_id, title, created, modified, revision, metadata FROM chats;
-          DROP TABLE chats;
-          ALTER TABLE chats_group_upgrade RENAME TO chats;
-          CREATE INDEX idx_chats_character ON chats(character_id, modified DESC);`);
-      })();
-    } finally {
-      database.exec('PRAGMA foreign_keys = ON');
-    }
-  }
-
-  // The incremental save's idempotency token, distinct from the revision: two different
-  // saves can claim the same revision number, and only the token says which of them a
-  // replay belongs to. Must run after the kind rebuild, whose replacement table inherits
-  // every pre-existing column.
-  if (!chatColumns.some((column) => column.name === 'save_token')) {
-    database.exec('ALTER TABLE chats ADD COLUMN save_token TEXT');
-  }
-
-  // The persona a user message was sent as. NULL means "speaker not recorded" — rows
-  // from before this column existed — while an empty string is the explicit "sent with
-  // no persona", so the two states cannot collapse into one.
-  const messageColumns = database.query<{ name: string }, []>('PRAGMA table_info(messages)').all();
-  if (!messageColumns.some((column) => column.name === 'persona_id')) {
-    database.exec('ALTER TABLE messages ADD COLUMN persona_id TEXT');
-  }
-
-  for (const name of ['member_id', 'character_id']) {
-    if (!messageColumns.some((column) => column.name === name))
-      database.exec(`ALTER TABLE messages ADD COLUMN ${name} TEXT`);
-  }
-
-  // The memory that hid a message. NULL covers both "hidden by a person" and every row
-  // written before memories existed, which are the same thing as far as ownership goes:
-  // no memory may reveal them.
-  if (!messageColumns.some((column) => column.name === 'hidden_by')) {
-    database.exec('ALTER TABLE messages ADD COLUMN hidden_by TEXT');
-  }
-
-  // The card a Co-Creator session was seeded from. NULL for every session that started
-  // blank, which is all of them before the Studio handoff existed.
-  const sessionColumns = database
-    .query<{ name: string }, []>('PRAGMA table_info(cocreator_sessions)')
-    .all();
-  if (!sessionColumns.some((column) => column.name === 'seed_avatar')) {
-    database.exec('ALTER TABLE cocreator_sessions ADD COLUMN seed_avatar TEXT');
-  }
-  if (!sessionColumns.some((column) => column.name === 'side_chat')) {
-    database.exec('ALTER TABLE cocreator_sessions ADD COLUMN side_chat TEXT');
-  }
-
   database
     .query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
     .run('schema_version', String(SCHEMA_VERSION));
@@ -372,7 +312,12 @@ export function openDatabase(path: string): Database {
   database.exec(`PRAGMA journal_mode = ${synced ? 'DELETE' : 'WAL'}`);
   database.exec('PRAGMA synchronous = NORMAL');
 
-  createSchema(database);
+  try {
+    createSchema(database);
+  } catch (error) {
+    database.close();
+    throw error;
+  }
   return database;
 }
 

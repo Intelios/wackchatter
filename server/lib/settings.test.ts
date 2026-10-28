@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '../../shared/composer/layout.ts';
@@ -10,21 +10,17 @@ import {
   DEFAULT_CONNECTION_ID,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
-  DEFAULT_MEMORY,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
   MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
-import { getApiKey } from './secrets.ts';
 import {
   applyConnectionPatch,
   dropConnection,
   getSettings,
-  MIGRATION_CONNECTION_ID,
   mergeSettings,
-  migrateLegacyConnection,
   nextConnectionName,
   reassignArenaCardPool,
   reassignCharacterDialogueColor,
@@ -262,89 +258,15 @@ describe('mergeSettings', () => {
     expect(mergeSettings(current, { streamingFps: 60 }).summary.connectionId).toBeNull();
   });
 
-  test('the memory mode defaults to the summary, so an upgrade changes nothing', () => {
+  test('the memory mode defaults to the summary, and an unknown mode falls back to it', () => {
     expect(base().memoryMode).toBe('classic');
     expect(mergeSettings(base(), { memoryMode: 'nonsense' as never }).memoryMode).toBe('classic');
-    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('nexus');
+    expect(mergeSettings(base(), { memoryMode: 'nexus' }).memoryMode).toBe('nexus');
   });
 
   test('omitting the memory mode leaves it untouched', () => {
-    const current = mergeSettings(base(), { memoryMode: 'memories' });
+    const current = mergeSettings(base(), { memoryMode: 'nexus' });
     expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('nexus');
-  });
-
-  test('memory preferences merge field-wise and clamp every numeric field', () => {
-    // Each of these costs money or context when wrong: a 5000-message window sends the
-    // whole chat in one request, and a budget larger than the context starves the
-    // transcript to make room for memories about it.
-    const selected = mergeSettings(base(), {
-      memory: {
-        windowSize: 5000,
-        maxMemoryTokens: 1,
-        verbatimTail: -10,
-        budgetTokens: 999_999,
-        depth: -4,
-        role: 'narrator',
-      } as never,
-    });
-
-    expect(selected.memory.windowSize).toBe(200);
-    expect(selected.memory.maxMemoryTokens).toBe(100);
-    expect(selected.memory.verbatimTail).toBe(0);
-    expect(selected.memory.budgetTokens).toBe(32000);
-    expect(selected.memory.depth).toBe(0);
-    expect(selected.memory.role).toBe(DEFAULT_MEMORY.role);
-    expect(selected.memory.extractPrompt).toBe(DEFAULT_MEMORY.extractPrompt);
-  });
-
-  test('the auto-extract interval is off by default and only off at exactly zero', () => {
-    // A missing or malformed value must never arm a feature that spends money on its own.
-    expect(base().memory.autoInterval).toBe(0);
-    expect(
-      mergeSettings(base(), { memory: { autoInterval: 'often' } as never }).memory.autoInterval,
-    ).toBe(0);
-    expect(
-      mergeSettings(base(), { memory: { autoInterval: 0 } as never }).memory.autoInterval,
-    ).toBe(0);
-  });
-
-  test('the auto-extract interval clamps to a sane positive range and floors', () => {
-    // A typo of 1 would run a paid extraction after every message; nobody wants thousands.
-    const selected = mergeSettings(base(), {
-      memory: { autoInterval: 75.9 } as never,
-    });
-    expect(selected.memory.autoInterval).toBe(75);
-    expect(
-      mergeSettings(selected, { memory: { autoInterval: 5 } as never }).memory.autoInterval,
-    ).toBe(10);
-    expect(
-      mergeSettings(selected, { memory: { autoInterval: 5000 } as never }).memory.autoInterval,
-    ).toBe(2000);
-  });
-
-  test('auto-hide stays off unless it is explicitly turned on', () => {
-    expect(base().memory.autoHide).toBe(false);
-    expect(mergeSettings(base(), { memory: { autoHide: 'yes' } as never }).memory.autoHide).toBe(
-      false,
-    );
-    expect(mergeSettings(base(), { memory: { autoHide: true } as never }).memory.autoHide).toBe(
-      true,
-    );
-  });
-
-  test('an emptied extraction prompt falls back rather than shipping a blank system turn', () => {
-    expect(
-      mergeSettings(base(), { memory: { extractPrompt: '   ' } as never }).memory.extractPrompt,
-    ).toBe(DEFAULT_MEMORY.extractPrompt);
-  });
-
-  test('a missing memory connection falls back to following the active chat connection', () => {
-    const current = {
-      ...base(),
-      connections: [connection('a', 'A')],
-      memory: { ...DEFAULT_MEMORY, connectionId: 'deleted' },
-    };
-    expect(mergeSettings(current, { streamingFps: 60 }).memory.connectionId).toBeNull();
   });
 
   test('dialogue colours default on and a partial patch keeps both override maps', () => {
@@ -1164,145 +1086,6 @@ describe('sameEndpoint', () => {
   });
 });
 
-describe('migrateLegacyConnection', () => {
-  function legacy() {
-    return {
-      connection: {
-        provider: 'openrouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'anthropic/claude',
-        showReasoning: false,
-        reportUsage: true,
-      },
-      streamingFps: 30,
-    };
-  }
-
-  test('wraps the legacy connection in a one-entry list and reports the key move', () => {
-    const migration = migrateLegacyConnection(legacy(), 'new-id');
-    expect(migration).not.toBeNull();
-    if (!migration) return;
-
-    const connections = migration.settings.connections as Connection[];
-    expect(connections).toHaveLength(1);
-    expect(connections[0]).toMatchObject({
-      id: 'new-id',
-      // No name existed in the old format; the provider label is the fallback.
-      name: 'OpenRouter',
-      provider: 'openrouter',
-      model: 'anthropic/claude',
-      showReasoning: false,
-      reportUsage: true,
-    });
-    expect(migration.settings.connectionId).toBe('new-id');
-    expect(migration.settings.connection).toBeUndefined();
-    // Unrelated keys ride along untouched.
-    expect(migration.settings.streamingFps).toBe(30);
-    expect(migration.keyMove).toEqual({ from: 'openrouter', to: 'new-id' });
-  });
-
-  test('a file that already has connections is left alone', () => {
-    expect(migrateLegacyConnection({ connections: [] }, 'new-id')).toBeNull();
-  });
-
-  test('a file without a legacy connection is left alone', () => {
-    expect(migrateLegacyConnection({ streamingFps: 30 }, 'new-id')).toBeNull();
-  });
-});
-
-/*
- * !! paths.ts and the settings cache are module state shared by every test file in the
- * process. !! These tests repoint both at a temp directory; the afterEach puts them
- * back, same rule as paths.test.ts.
- */
-describe('legacy migration on disk', () => {
-  afterEach(() => {
-    setDataDir(DEFAULT_DATA_DIR);
-    resetSettingsCache();
-  });
-
-  function seedLegacy(dir: string, secrets: Record<string, string>) {
-    writeFileSync(
-      join(dir, 'settings.json'),
-      JSON.stringify({
-        connection: {
-          provider: 'openrouter',
-          baseUrl: 'https://openrouter.ai/api/v1',
-          model: 'anthropic/claude',
-        },
-        streamingFps: 30,
-      }),
-    );
-    writeFileSync(join(dir, 'secrets.json'), JSON.stringify(secrets), { mode: 0o600 });
-  }
-
-  test('migrates on first read, and the key moves with the connection', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wc-migrate-'));
-    try {
-      setDataDir(dir);
-      resetSettingsCache();
-      seedLegacy(dir, { openrouter: 'sk-or-1234', custom: 'sk-leftover' });
-
-      const settings = getSettings();
-      expect(settings.connections.map((connection) => connection.id)).toEqual([
-        MIGRATION_CONNECTION_ID,
-      ]);
-      expect(settings.connectionId).toBe(MIGRATION_CONNECTION_ID);
-      expect(settings.streamingFps).toBe(30);
-
-      expect(getApiKey(MIGRATION_CONNECTION_ID)).toBe('sk-or-1234');
-      expect(getApiKey('openrouter')).toBeNull();
-      // A key for a provider with no connection has nowhere to move and is left alone.
-      expect(getApiKey('custom')).toBe('sk-leftover');
-
-      // The file on disk caught up, so the migration never runs again.
-      const stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
-      expect(stored.connectionId).toBe(MIGRATION_CONNECTION_ID);
-      expect(stored.connection).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('a crash between the re-key and the settings write converges on retry', () => {
-    // The deterministic id is what makes this safe: the retry computes the same id, so
-    // the key the first attempt already moved is exactly where the second looks. With a
-    // fresh uuid per attempt, the key would sit under the first attempt's id while
-    // settings pointed at the second's, and the next prune would delete it.
-    const dir = mkdtempSync(join(tmpdir(), 'wc-migrate-'));
-    try {
-      setDataDir(dir);
-      resetSettingsCache();
-      writeFileSync(
-        join(dir, 'settings.json'),
-        JSON.stringify({
-          connection: {
-            provider: 'openrouter',
-            baseUrl: 'https://openrouter.ai/api/v1',
-            model: 'x',
-          },
-        }),
-      );
-      // Secrets already re-keyed by the interrupted first attempt.
-      writeFileSync(
-        join(dir, 'secrets.json'),
-        JSON.stringify({ [MIGRATION_CONNECTION_ID]: 'sk-or-1234' }),
-        { mode: 0o600 },
-      );
-
-      const settings = getSettings();
-      expect(settings.connections[0]?.id).toBe(MIGRATION_CONNECTION_ID);
-      expect(getApiKey(MIGRATION_CONNECTION_ID)).toBe('sk-or-1234');
-
-      const stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
-      expect(stored.connectionId).toBe(MIGRATION_CONNECTION_ID);
-      expect(stored.connection).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('reassignGlobalLorebooks', () => {
   function withGlobals(ids: string[]): AppSettings {
     return { ...base(), globalLorebooks: ids };
@@ -1418,7 +1201,7 @@ describe('getSettings on disk', () => {
 });
 
 describe('TokenTrail recording defaults', () => {
-  test('absent defaults on and explicit false survives migration', () => {
+  test('absent defaults on and explicit false survives a read', () => {
     const original = PATHS.root;
     const dir = mkdtempSync(join(tmpdir(), 'wc-tokentrail-default-'));
     try {

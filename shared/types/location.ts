@@ -20,7 +20,9 @@ export type LocationCode =
   | 'not-a-directory'
   | 'parent-missing'
   | 'not-writable'
-  | 'occupied';
+  | 'occupied'
+  /** A library older than 2.3, which 3.0 does not open. */
+  | 'too-old';
 
 /** Something the user should know before committing, but not a reason to refuse. */
 export type WarningKind = 'cloud' | 'network-volume' | 'temp-dir' | 'secrets';

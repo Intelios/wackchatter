@@ -58,8 +58,6 @@ interface MessageBubbleProps {
   onStopStream?: () => void;
   /** A quiet summary blocks new provider generations but not transcript interaction. */
   summaryRunning: boolean;
-  /** A quiet memory extraction blocks new provider generations but not transcript interaction. */
-  memoryRunning?: boolean;
   /**
    * Render-only text, for greeting macros and regex scripts. Editing still receives the
    * stored text — you edit what is saved, not what you were shown.
@@ -129,7 +127,6 @@ export const MessageBubble = memo(function MessageBubble({
   streamNote,
   onStopStream,
   summaryRunning,
-  memoryRunning,
   displayText,
   displayReasoning,
   creatorNotes,
@@ -319,7 +316,6 @@ export const MessageBubble = memo(function MessageBubble({
                 state={{
                   busy,
                   summaryRunning,
-                  memoryRunning,
                   isLast,
                   isUser: message.is_user,
                   isHidden: message.is_system,
@@ -439,7 +435,7 @@ export const MessageBubble = memo(function MessageBubble({
                 type="button"
                 className="wc-button wc-button--ghost message__action message__action--retry"
                 onClick={onRetry}
-                disabled={busy || summaryRunning || memoryRunning}
+                disabled={busy || summaryRunning}
                 title="Generate a reply to this message"
                 aria-label="Retry"
               >
@@ -489,9 +485,7 @@ export const MessageBubble = memo(function MessageBubble({
                   type="button"
                   className="wc-button wc-button--ghost message__action"
                   onClick={() => onSwipe(1)}
-                  disabled={
-                    busy || ((summaryRunning || memoryRunning) && message.swipe_id === swipes - 1)
-                  }
+                  disabled={busy || (summaryRunning && message.swipe_id === swipes - 1)}
                   aria-label="Next alternative, or generate one"
                   title={
                     message.swipe_id === swipes - 1

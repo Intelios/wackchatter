@@ -246,10 +246,9 @@ describe('preset cascades', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('a rename updates presetId across settings, memory, coCreator, and arena', () => {
+  test('a rename updates presetId across settings, coCreator, and arena', () => {
     saveSettings({
       presetId: 'OldPreset',
-      memory: { ...getSettings().memory, presetId: 'OldPreset' },
       coCreator: { ...getSettings().coCreator, presetId: 'OldPreset' },
       arena: { ...getSettings().arena, presetId: 'OldPreset' },
     });
@@ -257,15 +256,13 @@ describe('preset cascades', () => {
     cascadePresetRename('OldPreset', 'NewPreset');
 
     expect(getSettings().presetId).toBe('NewPreset');
-    expect(getSettings().memory.presetId).toBe('NewPreset');
     expect(getSettings().coCreator.presetId).toBe('NewPreset');
     expect(getSettings().arena.presetId).toBe('NewPreset');
   });
 
-  test('a delete clears presetId across settings, memory, coCreator, and arena', () => {
+  test('a delete clears presetId across settings, coCreator, and arena', () => {
     saveSettings({
       presetId: 'DoomedPreset',
-      memory: { ...getSettings().memory, presetId: 'DoomedPreset' },
       coCreator: { ...getSettings().coCreator, presetId: 'DoomedPreset' },
       arena: { ...getSettings().arena, presetId: 'DoomedPreset' },
     });
@@ -273,7 +270,6 @@ describe('preset cascades', () => {
     cascadePresetDelete('DoomedPreset');
 
     expect(getSettings().presetId).toBeNull();
-    expect(getSettings().memory.presetId).toBeNull();
     expect(getSettings().coCreator.presetId).toBeNull();
     expect(getSettings().arena.presetId).toBeNull();
   });
@@ -281,18 +277,15 @@ describe('preset cascades', () => {
   test('a rename rollback restores original presetId references', async () => {
     saveSettings({
       presetId: 'OldPreset',
-      memory: { ...getSettings().memory, presetId: 'OldPreset' },
       arena: { ...getSettings().arena, presetId: 'OldPreset' },
     });
 
     const rollback = cascadePresetRename('OldPreset', 'NewPreset');
     expect(getSettings().presetId).toBe('NewPreset');
-    expect(getSettings().memory.presetId).toBe('NewPreset');
     expect(getSettings().arena.presetId).toBe('NewPreset');
 
     await rollback();
     expect(getSettings().presetId).toBe('OldPreset');
-    expect(getSettings().memory.presetId).toBe('OldPreset');
     expect(getSettings().arena.presetId).toBe('OldPreset');
   });
 });

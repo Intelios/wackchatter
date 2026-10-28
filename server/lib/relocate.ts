@@ -67,6 +67,11 @@ export function degradedReason(): string | null {
   return degraded;
 }
 
+/** Refuse every request with `reason`, for a library this build will not open at all. */
+export function refuseLibrary(reason: string): void {
+  degraded = reason;
+}
+
 /** Drop everything memoised from the old root, in the order their dependencies require. */
 export function quiesce(): void {
   // Stores first: they hold prepared statements bound to the connection the next call closes.

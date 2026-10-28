@@ -65,75 +65,14 @@ function last(state: ChatState): MessageState {
 }
 
 describe('chat snapshots', () => {
-  test('loading a legacy chat snapshots the supplied default and marks only that migration dirty', () => {
-    const legacy = { ...chat(), revision: 7, metadata: {} };
-    const state = run(initialChatState, {
-      type: 'chat/loaded',
-      chat: legacy,
-      personaId: 'ari',
-    });
-
-    expect(state.metadata.persona).toBe('ari');
-    expect(state.persistedRevision).toBe(7);
-    expect(state.revision).toBe(8);
-  });
-
-  test('an explicit no-persona snapshot is never migrated back to the default', () => {
-    const state = run(initialChatState, {
-      type: 'chat/loaded',
-      chat: { ...chat(), revision: 7, metadata: { persona: null } },
-      personaId: 'ari',
-    });
-
-    expect(state.metadata.persona).toBeNull();
-    expect(state.revision).toBe(7);
-    expect(state.persistedRevision).toBe(7);
-  });
-
-  test('loading stamps legacy user messages with the chat persona and marks the migration dirty', () => {
-    // Messages from before speakers were recorded were sent as whoever the chat's persona
-    // is. Freezing that at load keeps a later persona switch from re-facing the transcript.
+  test('loading takes the chat as stored, inventing no persona and moving no revision', () => {
+    // 2.3 libraries are stamped once by the 3.0 conversion (server/lib/upgrade.ts); a chat
+    // without a record keeps showing its speakers as not recorded.
     const state = run(initialChatState, {
       type: 'chat/loaded',
       chat: {
         ...chat([
-          {
-            id: 'm0',
-            name: 'Seraphina',
-            is_user: false,
-            is_system: false,
-            mes: 'Hello.',
-            send_date: 'a',
-          },
-          { id: 'u1', name: 'Jack', is_user: true, is_system: false, mes: 'Hi.', send_date: 'b' },
-        ]),
-        revision: 4,
-        metadata: { persona: 'ari' },
-      },
-    });
-
-    expect(state.messages[0]!.persona_id).toBeUndefined();
-    expect(state.messages[1]!.persona_id).toBe('ari');
-    expect(state.persistedRevision).toBe(4);
-    expect(state.revision).toBe(5);
-  });
-
-  test('a recorded speaker is never re-stamped by the migration', () => {
-    // A transcript that changed persona mid-conversation keeps both faces, and a message
-    // sent with no persona keeps its explicit null. Nothing to migrate, no dirty revision.
-    const state = run(initialChatState, {
-      type: 'chat/loaded',
-      chat: {
-        ...chat([
-          {
-            id: 'u1',
-            name: 'Jack',
-            is_user: true,
-            is_system: false,
-            persona_id: 'old-face',
-            mes: 'a',
-            send_date: 'a',
-          },
+          { id: 'u1', name: 'Jack', is_user: true, is_system: false, mes: 'Hi.', send_date: 'a' },
           {
             id: 'u2',
             name: 'Jack',
@@ -144,33 +83,15 @@ describe('chat snapshots', () => {
             send_date: 'b',
           },
         ]),
-        revision: 4,
-        metadata: { persona: 'ari' },
-      },
-    });
-
-    expect(state.messages[0]!.persona_id).toBe('old-face');
-    expect(state.messages[1]!.persona_id).toBeNull();
-    expect(state.revision).toBe(4);
-    expect(state.persistedRevision).toBe(4);
-  });
-
-  test('a legacy chat with no persona key migrates metadata and speakers in one revision bump', () => {
-    const state = run(initialChatState, {
-      type: 'chat/loaded',
-      chat: {
-        ...chat([
-          { id: 'u1', name: 'Jack', is_user: true, is_system: false, mes: 'Hi.', send_date: 'a' },
-        ]),
         revision: 7,
         metadata: {},
       },
-      personaId: 'ari',
     });
 
-    expect(state.metadata.persona).toBe('ari');
-    expect(state.messages[0]!.persona_id).toBe('ari');
-    expect(state.revision).toBe(8);
+    expect(state.metadata).toEqual({});
+    expect(state.messages[0]!.persona_id).toBeUndefined();
+    expect(state.messages[1]!.persona_id).toBeNull();
+    expect(state.revision).toBe(7);
     expect(state.persistedRevision).toBe(7);
   });
 
@@ -1154,210 +1075,40 @@ describe('the invariant holds across a long mixed session', () => {
   });
 });
 
-describe('memory hide provenance', () => {
-  function threeMessages(): ChatState {
+describe('messages a pre-Nexus memory hid', () => {
+  // 2.3 libraries still hold `hiddenBy` stamps from the old memory system. Nothing can stamp
+  // a message any more, but a person must still be able to take ownership of one.
+  function stamped(): ChatState {
     return run(initialChatState, {
       type: 'chat/loaded',
       chat: chat([
-        { id: 'm0', name: 'S', is_user: false, is_system: false, mes: 'a', send_date: '1' },
+        {
+          id: 'm0',
+          name: 'S',
+          is_user: false,
+          is_system: true,
+          hiddenBy: 'mem-1',
+          mes: 'a',
+          send_date: '1',
+        },
         { id: 'u1', name: 'J', is_user: true, is_system: false, mes: 'b', send_date: '2' },
-        { id: 'm2', name: 'S', is_user: false, is_system: false, mes: 'c', send_date: '3' },
       ]),
     });
   }
 
-  test('hiding on behalf of a memory stamps the messages it hid', () => {
-    const state = run(threeMessages(), {
-      type: 'message/setHidden',
-      ids: ['m0', 'u1'],
-      hidden: true,
-      memoryId: 'mem-1',
-    });
-    expect(state.messages.map((m) => m.hiddenBy)).toEqual(['mem-1', 'mem-1', undefined]);
-  });
-
-  test('a memory unhiding only reveals what it stamped', () => {
-    // The manual hide on m2 must survive the memory being deleted, which is the whole
-    // reason the stamp exists.
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0', 'u1'], hidden: true, memoryId: 'mem-1' },
-      { type: 'message/setHidden', ids: ['m2'], hidden: true },
-      { type: 'message/setHidden', ids: ['m0', 'u1', 'm2'], hidden: false, memoryId: 'mem-1' },
-    );
-    expect(state.messages.map((m) => m.is_system)).toEqual([false, false, true]);
-  });
-
-  test('one memory cannot reveal what another hid', () => {
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
-      { type: 'message/setHidden', ids: ['m0'], hidden: false, memoryId: 'mem-2' },
-    );
-    expect(state.messages[0]!.is_system).toBe(true);
-    expect(state.messages[0]!.hiddenBy).toBe('mem-1');
-  });
-
-  test('a person may unhide anything, memory-hidden or not', () => {
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
-      { type: 'message/setHidden', ids: ['m0'], hidden: false },
-    );
+  test('a person unhiding reveals the message and clears the stamp', () => {
+    const state = run(stamped(), { type: 'message/setHidden', ids: ['m0'], hidden: false });
     expect(state.messages[0]!.is_system).toBe(false);
     expect(state.messages[0]!.hiddenBy).toBeUndefined();
   });
 
-  test('toggling by hand takes ownership away from the memory', () => {
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
-      { type: 'message/toggleHidden', id: 'm0' },
-      { type: 'message/toggleHidden', id: 'm0' },
-    );
-    expect(state.messages[0]!.is_system).toBe(true);
-    expect(state.messages[0]!.hiddenBy).toBeUndefined();
-  });
-
-  test('re-hiding an already memory-hidden range stays a no-op', () => {
-    const once = run(threeMessages(), {
-      type: 'message/setHidden',
-      ids: ['m0'],
-      hidden: true,
-      memoryId: 'mem-1',
-    });
-    expect(
-      chatReducer(once, {
-        type: 'message/setHidden',
-        ids: ['m0'],
-        hidden: true,
-        memoryId: 'mem-1',
-      }),
-    ).toBe(once);
-  });
-
-  test('a memory hide cannot overwrite an existing manual hide', () => {
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0'], hidden: true },
-      { type: 'message/setHidden', ids: ['m0', 'u1'], hidden: true, memoryId: 'mem-1' },
-    );
-    expect(state.messages[0]!.is_system).toBe(true);
-    expect(state.messages[0]!.hiddenBy).toBeUndefined();
-    expect(state.messages[1]!.is_system).toBe(true);
-    expect(state.messages[1]!.hiddenBy).toBe('mem-1');
-
-    // Deleting or revealing mem-1 must not unhide m0
-    const afterUnhide = run(state, {
-      type: 'message/setHidden',
-      ids: ['m0', 'u1'],
-      hidden: false,
-      memoryId: 'mem-1',
-    });
-    expect(afterUnhide.messages[0]!.is_system).toBe(true);
-    expect(afterUnhide.messages[0]!.hiddenBy).toBeUndefined();
-    expect(afterUnhide.messages[1]!.is_system).toBe(false);
-  });
-
-  test('a memory hide cannot overwrite another memory stamp', () => {
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
-      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-2' },
-    );
-    expect(state.messages[0]!.hiddenBy).toBe('mem-1');
-
-    // mem-2 revealing m0 is refused
-    const afterMem2 = run(state, {
-      type: 'message/setHidden',
-      ids: ['m0'],
-      hidden: false,
-      memoryId: 'mem-2',
-    });
-    expect(afterMem2.messages[0]!.is_system).toBe(true);
-    expect(afterMem2.messages[0]!.hiddenBy).toBe('mem-1');
-
-    // mem-1 revealing m0 unhides it
-    const afterMem1 = run(afterMem2, {
-      type: 'message/setHidden',
-      ids: ['m0'],
-      hidden: false,
-      memoryId: 'mem-1',
-    });
-    expect(afterMem1.messages[0]!.is_system).toBe(false);
-    expect(afterMem1.messages[0]!.hiddenBy).toBeUndefined();
-  });
-
-  test('a person manually hiding a memory-hidden message takes ownership', () => {
-    const state = run(
-      threeMessages(),
-      { type: 'message/setHidden', ids: ['m0'], hidden: true, memoryId: 'mem-1' },
-      { type: 'message/setHidden', ids: ['m0'], hidden: true },
-    );
-    expect(state.messages[0]!.is_system).toBe(true);
-    expect(state.messages[0]!.hiddenBy).toBeUndefined();
-
-    // mem-1 unhiding m0 is now refused
-    const afterMem1 = run(state, {
-      type: 'message/setHidden',
-      ids: ['m0'],
-      hidden: false,
-      memoryId: 'mem-1',
-    });
-    expect(afterMem1.messages[0]!.is_system).toBe(true);
-  });
-});
-
-describe('memory staleness', () => {
-  function withMemory(): ChatState {
-    const state = run(initialChatState, {
-      type: 'chat/loaded',
-      chat: chat([
-        { id: 'm0', name: 'S', is_user: false, is_system: false, mes: 'a', send_date: '1' },
-        { id: 'u1', name: 'J', is_user: true, is_system: false, mes: 'b', send_date: '2' },
-        { id: 'm2', name: 'S', is_user: false, is_system: false, mes: 'c', send_date: '3' },
-      ]),
-    });
-    return chatReducer(state, {
-      type: 'chat/metadata',
-      patch: {
-        memories: [
-          {
-            id: 'mem-1',
-            title: 'First Meeting',
-            text: 'They met.',
-            keywords: [],
-            range: { startId: 'm0', endId: 'u1' },
-            pinned: false,
-            enabled: true,
-            source: 'generated',
-            edited: false,
-            generatedAt: 0,
-          },
-        ],
-      },
-    });
-  }
-
-  test('editing a covered message marks its memory stale', () => {
-    const state = chatReducer(withMemory(), { type: 'message/edited', id: 'u1', text: 'new' });
-    expect(state.metadata.memories?.[0]?.stale).toBe('edited');
-  });
-
-  test('deleting a covered message marks its memory stale', () => {
-    const state = chatReducer(withMemory(), { type: 'message/deleted', id: 'm0' });
-    expect(state.metadata.memories?.[0]?.stale).toBe('deleted');
-  });
-
-  test('editing a message outside every range leaves the metadata object identical', () => {
-    const before = withMemory();
-    const state = chatReducer(before, { type: 'message/edited', id: 'm2', text: 'new' });
-    expect(state.metadata).toBe(before.metadata);
-  });
-
-  test('a chat with no memories is untouched', () => {
-    const before = loaded();
-    const state = chatReducer(before, { type: 'message/edited', id: 'm0', text: 'new' });
-    expect(state.metadata).toBe(before.metadata);
+  test('toggling by hand takes ownership, and hiding by hand never stamps', () => {
+    const revealed = run(stamped(), { type: 'message/toggleHidden', id: 'm0' });
+    expect(revealed.messages[0]!.hiddenBy).toBeUndefined();
+    const hidden = run(revealed, { type: 'message/setHidden', ids: ['m0', 'u1'], hidden: true });
+    expect(hidden.messages.map((m) => [m.is_system, m.hiddenBy])).toEqual([
+      [true, undefined],
+      [true, undefined],
+    ]);
   });
 });

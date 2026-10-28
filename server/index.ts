@@ -12,11 +12,12 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { chatStore } from './lib/chats.ts';
 import { errorResponse, handle, notFound } from './lib/http.ts';
+import { LIBRARY_TOO_OLD_MESSAGE, libraryTooOld } from './lib/libraryVersion.ts';
 import { initDataLocation } from './lib/location.ts';
 import { ensureDataDirs, PATHS, PROJECT_ROOT } from './lib/paths.ts';
 import { ensureDefaultPreset } from './lib/presets.ts';
-import { degradedReason, isSwitching } from './lib/relocate.ts';
-import { publishLibraryPointer, configureRuntime } from './lib/usage.ts';
+import { degradedReason, isSwitching, refuseLibrary } from './lib/relocate.ts';
+import { configureRuntime, publishLibraryPointer } from './lib/usage.ts';
 import { handleArenaRoute } from './routes/arena.ts';
 import { handleBackgroundRoute } from './routes/backgrounds.ts';
 import { handleBackupRoute } from './routes/backups.ts';
@@ -24,6 +25,7 @@ import { handleCharacterRoute } from './routes/characters.ts';
 import { handleChatRoute } from './routes/chats.ts';
 import { handleCocreatorRoute } from './routes/cocreator.ts';
 import { handleGenerateRoute } from './routes/generate.ts';
+import { handleIntegrationRoute } from './routes/integration.ts';
 import { handleLibraryRoute } from './routes/library.ts';
 import { handleLocationRoute } from './routes/location.ts';
 import { handleLorebookRoute } from './routes/lorebooks.ts';
@@ -33,7 +35,6 @@ import { handlePresetRoute } from './routes/presets.ts';
 import { handleReferencePresetRoute } from './routes/referencePresets.ts';
 import { handleSettingsRoute } from './routes/settings.ts';
 import { handleShutdownRoute } from './routes/shutdown.ts';
-import { handleIntegrationRoute } from './routes/integration.ts';
 import { handleUsageRoute } from './routes/usage.ts';
 import { handleVersionRoute } from './routes/version.ts';
 
@@ -63,14 +64,21 @@ function forbiddenOrigin(request: Request): boolean {
 
 // Must come first: this decides which directory everything below reads and writes.
 const dataLocation = initDataLocation();
-ensureDataDirs();
-await ensureDefaultPreset();
-// Freeze legacy per-chat modes before the user can change the new app default.
-chatStore();
-// Says where the library is, for anything accounting for what it cost. Written whether or
-// not the usage log is on — but never under WC_DATA_DIR, which is an override for this
-// process, not the library's published location — see publishLibraryPointer.
-publishLibraryPointer();
+if (libraryTooOld(PATHS.root)) {
+  // Nothing is created, converted or published: the library stays exactly as it was, and
+  // every request answers with what to do about it.
+  console.error(`[wackchatter] ${LIBRARY_TOO_OLD_MESSAGE} (${PATHS.root})`);
+  refuseLibrary(LIBRARY_TOO_OLD_MESSAGE);
+} else {
+  ensureDataDirs();
+  await ensureDefaultPreset();
+  // Opens the database and converts a 2.3 library before the first request is served.
+  chatStore();
+  // Says where the library is, for anything accounting for what it cost. Written whether or
+  // not the usage log is on — but never under WC_DATA_DIR, which is an override for this
+  // process, not the library's published location — see publishLibraryPointer.
+  publishLibraryPointer();
+}
 
 type RouteHandler = (request: Request, segments: string[]) => Promise<Response | null>;
 

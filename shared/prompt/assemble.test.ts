@@ -2032,9 +2032,9 @@ describe('the story-memory slot', () => {
     );
   });
 
-  test('memories mode injects the memories and suppresses the summary', () => {
+  test('nexus mode injects the recalled records and suppresses the summary', () => {
     // Both live in metadata at once. Sending both would narrate the same events twice.
-    const result = assemble({ summary, memoryText, memoryMode: 'memories' });
+    const result = assemble({ summary, memoryText, memoryMode: 'nexus' });
     const contents = result.messages.map((message) => message.content).join('\n');
     expect(contents).toContain('The Cellar');
     expect(contents).not.toContain('The gate is open.');
@@ -2052,7 +2052,7 @@ describe('the story-memory slot', () => {
   test('the memory template wraps the text through its own macro', () => {
     const result = assemble({
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { template: 'RECALL: {{memories}}', position: 'afterMain' },
     });
     expect(result.messages.map((m) => m.content).join('\n')).toContain('RECALL: ## The Cellar');
@@ -2061,7 +2061,7 @@ describe('the story-memory slot', () => {
   test('memories honour their own position, independently of the summary settings', () => {
     const before = assemble({
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { position: 'beforeMain' },
       summarySettings: { position: 'atDepth' },
     });
@@ -2074,7 +2074,7 @@ describe('the story-memory slot', () => {
     const result = assemble({
       messages: makeMessages(4),
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { position: 'atDepth', depth: 0, role: 'system' },
     });
     expect(result.messages.at(-1)?.content).toContain('The Cellar');
@@ -2082,8 +2082,8 @@ describe('the story-memory slot', () => {
     expect(result.tokenCounts.summary).toBeUndefined();
   });
 
-  test('memories mode with nothing recalled injects nothing', () => {
-    const result = assemble({ summary, memoryText: '', memoryMode: 'memories' });
+  test('nexus mode with nothing recalled injects nothing', () => {
+    const result = assemble({ summary, memoryText: '', memoryMode: 'nexus' });
     const contents = result.messages.map((message) => message.content).join('\n');
     expect(contents).not.toContain('The gate is open.');
     expect(result.tokenCounts.memories).toBeUndefined();
@@ -2092,7 +2092,7 @@ describe('the story-memory slot', () => {
   test('position none suppresses memories the same way it suppresses the summary', () => {
     const result = assemble({
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { position: 'none' },
     });
     expect(result.messages.map((m) => m.content).join('\n')).not.toContain('The Cellar');

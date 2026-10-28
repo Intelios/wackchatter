@@ -127,85 +127,12 @@ export interface ChatMetadata {
   guides?: PersistentGuide[];
   /** Editable rolling story memory and the last transcript message it covers. */
   summary?: StorySummary;
-  /**
-   * Discrete recalled memories — the alternative to `summary`, never a companion to it.
-   * Which of the two reaches the model is `AppSettings.memoryMode`; assembly injects one
-   * or neither, so a chat can carry both without them ever being sent together.
-   */
-  memories?: Memory[];
-  /**
-   * Last transcript message covered by a memory. The Memory counterpart of
-   * `StorySummary.checkpointMessageId`, and absent for the same reason: nothing extracted
-   * yet, so the backlog starts at the top.
-   */
-  memoryWatermark?: string;
   /** Copied from the app default at chat creation; never follows later default changes. */
   memoryMode?: MemoryMode;
   nexus?: NexusState;
   /** Provenance recorded when this chat was created as a branch of another chat. */
   branchedFrom?: BranchOrigin;
   [key: string]: unknown;
-}
-
-/**
- * One recalled moment: a titled scene, a short narrative description, and the transcript
- * range it was written from.
- *
- * Lives in `ChatMetadata` rather than in `data/lorebooks`, which is what makes branching
- * safe against backwards leaks — a branch snapshots metadata, so a memory written after
- * the branch point cannot leak into the parent. The forward direction is not free,
- * though: `branchChat` copies messages with fresh ids, so `remapBranchMetadata`
- * (shared/chat/branch.ts) rewrites every range onto the branch's own ids, clamps ranges
- * that straddle the fork, and drops memories written from transcript past it.
- *
- * `range` is by message id, never by index. Indices shift under delete, branch and swipe;
- * the whole reason the extractor is never shown a global index is that it must not be able
- * to name a message that has since moved.
- */
-export interface Memory {
-  id: string;
-  /** Short scene name, e.g. "First Meeting". Shown as the card heading. */
-  title: string;
-  /** Two to four sentences, all-seeing narrator voice. */
-  text: string;
-  /**
-   * Recall triggers. Become `WorldInfoEntry.key`, so the activation engine matches them
-   * exactly as it matches a lorebook entry's keys — including `/pattern/flags` literals.
-   */
-  keywords: string[];
-  /**
-   * At most a couple of verbatim lines from the covered range.
-   *
-   * Memories that keep some real dialogue stop characters drifting into flat
-   * narrator-summary voice, which is the standard complaint about rolling summaries.
-   */
-  quotes?: string[];
-  /**
-   * The transcript span this was written from, inclusive at both ends.
-   *
-   * Absent on a hand-written memory, which need not describe any span at all — a fact
-   * somebody wants the model to hold is still a memory. Nothing derived from a range
-   * (hiding, staleness, the watermark) applies to one without it.
-   */
-  range?: { startId: string; endId: string };
-  /** Always in the prompt. Becomes `WorldInfoEntry.constant`. */
-  pinned: boolean;
-  /** Excluded from injection entirely, without being deleted. */
-  enabled: boolean;
-  source: 'generated' | 'manual';
-  /** Set on any user edit. Extraction never overwrites an edited memory. */
-  edited: boolean;
-  generatedAt: number;
-  /** Model that wrote it, for the same reason `MessageExtra.model` exists. */
-  model?: string;
-  /**
-   * Set when a covered message was edited or deleted after `generatedAt`.
-   *
-   * Surfaced as a badge and never auto-corrected: a memory quietly describing text that no
-   * longer exists is the failure every comparable extension documents, and silently
-   * rewriting someone's edited memory would be a worse one.
-   */
-  stale?: 'edited' | 'deleted';
 }
 
 export interface BranchOrigin {

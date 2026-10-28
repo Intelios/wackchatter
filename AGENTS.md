@@ -66,6 +66,19 @@ synthesised, not walked — **both must stay excluded at the root** (restore is 
 The archive streams through a `FileSink` because `Bun.serve` buffers a returned `ReadableStream` in
 full.
 
+## Which libraries open
+
+3.0 carries **no migrations**. It opens what 2.3 left (schema 14, `libraryVersion.ts`) and refuses
+anything older with one message, checked in `createSchema` before any write, at boot (every route
+answers 503 with it) and in `inspectLocation` (`too-old`). SillyTavern import compatibility — card
+V1/V2 mirrors, preset key renames, the 100000 order — is not migration and stays.
+
+**`upgrade.ts` is the one conversion**, 2.3 → 3.0, run once per library when its chat store is
+built (marker `library_version`). It rewrites only what 2.3 repaired lazily, in one transaction,
+**never touching `modified`** (recents and Stats key on it) while bumping `revision`. `SCHEMA` must
+hold every column the stores write — `CREATE TABLE IF NOT EXISTS` never evolves a table — so any
+schema change is a new step there plus a `SCHEMA_VERSION` bump.
+
 ## Rules that must not be broken
 
 Verified against SillyTavern where it applies, and pinned by tests. Breaking one corrupts
@@ -144,9 +157,6 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
   Missing configuration pauses paid work; errors stop, never retry automatically, and extraction
   never changes transcript visibility. Embeddings are a disposable local cache
   (`nexus_embeddings`) sharing the library lifecycle; the worker never fetches models remotely.
-- 2.0 boot migrates with **`migrateChatMeta`, never `updateChatMeta`** — the latter stamps
-  `modified`, scrambling recents and Stats. It runs before `Bun.serve`, one savepoint per chat;
-  failures are reported and retried next start, and the marker is written only when all succeed.
 
 **Messages and generation**
 - **Group chats were removed in 3.0.** Every chat-store read filters `kind = 'direct'`, so a
@@ -154,8 +164,11 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
 - **`mes` is derived, never stored** — text from `swipes[swipe_id]`, metadata from
   `swipe_info[swipe_id]`; `swipe_info` is always `swipes.length`. `fromChatMessage` is the only
   repair point; on disagreement `mes` wins.
-- A user message's `persona_id` records its persona — `null` none, missing legacy. NULL and `''`
-  must not collapse.
+- A user message's `persona_id` records its persona — `null` none, missing not recorded (an
+  import from an old export; the 3.0 conversion stamped the library). NULL and `''` must not
+  collapse. Chats arriving from a file get their missing mode and persona in `arrivingMetadata`.
+- `hiddenBy` is a stamp the pre-Nexus memory system left; nothing writes one now, and a person
+  hiding or revealing a message clears it.
 - A placeholder starts **empty**, excluding the generating message from its own prompt.
 - **Regenerate ≠ swipe:** regenerate replaces and drops alternates; overswipe appends and keeps
   them; in-array swiping is cached. A failed generation undoes exactly what starting it did.
