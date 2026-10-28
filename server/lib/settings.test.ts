@@ -51,6 +51,31 @@ function connection(id: string, name: string, overrides?: Partial<Connection>): 
   };
 }
 
+test('side-chat defaults merge independently and retain missing endpoint choices without fallback', () => {
+  const current = mergeSettings(base(), {
+    coCreator: {
+      sideChat: {
+        connectionId: 'missing-side',
+        modelOverride: { connectionId: 'missing-side', model: 'cheap' },
+        outputTokens: 1024,
+      },
+    } as never,
+  });
+  const next = mergeSettings(current, {
+    coCreator: { sideChat: { contextTokens: 32768 } } as never,
+  });
+  expect(next.coCreator.sideChat).toEqual({
+    connectionId: 'missing-side',
+    modelOverride: { connectionId: 'missing-side', model: 'cheap' },
+    outputTokens: 1024,
+    contextTokens: 32768,
+  });
+  expect(next.coCreator.systemPrompt).toBe(current.coCreator.systemPrompt);
+  expect(mergeSettings(next, { streamingFps: 20 }).coCreator.sideChat).toEqual(
+    next.coCreator.sideChat,
+  );
+});
+
 function base(): AppSettings {
   return structuredClone(DEFAULT_SETTINGS);
 }

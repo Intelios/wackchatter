@@ -25,6 +25,7 @@ export interface UseAsMenuState {
   text: string;
   /** A generation is running: filing now would race the text it is writing. */
   busy: boolean;
+  busyReason?: string;
   /** Which single-value slots already hold something — those arm a confirm. */
   filled: (slot: CardSlot) => boolean;
   /** The slot whose replace is currently armed, if any. */
@@ -54,7 +55,7 @@ function slotOrder(slot: CardSlot | null): CardSlot[] {
 export function buildUseAsMenu(state: UseAsMenuState, actions: UseAsMenuActions): MenuEntry[] {
   const blank = !state.text.trim();
   const blockedReason = state.busy
-    ? BUSY_REASON
+    ? (state.busyReason ?? BUSY_REASON)
     : blank
       ? state.requiresSelection
         ? NO_SELECTION_REASON

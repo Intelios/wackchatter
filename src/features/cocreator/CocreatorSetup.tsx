@@ -1,3 +1,4 @@
+import { COCREATOR_CONTEXT_TOKENS, COCREATOR_OUTPUT_TOKENS } from '@shared/cocreator/generation.ts';
 import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import {
@@ -6,7 +7,7 @@ import {
   DEFAULT_COCREATOR_PROMPT,
 } from '@shared/types/settings.ts';
 import { useEffect, useMemo, useState } from 'react';
-import { CheckField, SelectField, TextField } from '../../components/Field.tsx';
+import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Popover } from '../../components/Popover.tsx';
 import { GearIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
@@ -348,6 +349,35 @@ export function CocreatorSetup({
                 })
               }
               disabled={disabled}
+            />
+
+            <NumberField
+              label="Output token limit"
+              value={settings.outputTokens ?? COCREATOR_OUTPUT_TOKENS}
+              min={1}
+              max={131072}
+              disabled={disabled}
+              hint="Co-Creator only. Reasoning receives additional room; this replaces the chat preset’s reply limit."
+              onChange={(value) =>
+                design.dispatch({
+                  type: 'settings/patch',
+                  patch: { outputTokens: Math.round(value) },
+                })
+              }
+            />
+            <NumberField
+              label="Context size"
+              value={settings.contextTokens ?? COCREATOR_CONTEXT_TOKENS}
+              min={1024}
+              max={2097152}
+              disabled={disabled}
+              hint="Set this to the selected model’s context size. Includes the conversation, examples, reasoning and reply."
+              onChange={(value) =>
+                design.dispatch({
+                  type: 'settings/patch',
+                  patch: { contextTokens: Math.round(value) },
+                })
+              }
             />
 
             <label className="cocreator-setup__inherit">

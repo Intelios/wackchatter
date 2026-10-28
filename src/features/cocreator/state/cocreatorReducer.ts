@@ -45,11 +45,14 @@ import {
   type CardSlot,
   type CardStash,
   type CocreatorSession,
+  type CocreatorSideChat,
   DEFAULT_EXAMPLE_FIELDS,
   type ExampleField,
   type ExampleFields,
   type ExampleSelection,
   type SessionModelSettings,
+  type SideChatModelSettings,
+  type SideChatSnapshot,
   type SingleCardSlot,
   type StashProvenance,
 } from '@shared/types/cocreator.ts';
@@ -72,16 +75,23 @@ export const ASSISTANT_NAME = 'Design assistant';
  * failed regenerate has to splice the original back). Do not "restore parity" by adding a
  * destructive regenerate here; that would reintroduce the bug that fix exists to prevent.
  *
- * There is no `continue` either: the design assistant is answering questions, not writing
- * prose that trails off.
+ * Continuation also uses an overswipe: the controller builds from the selected partial
+ * reply and joins its remainder into a new take, preserving the original on every path.
  */
 export type CoGenMode = 'send' | 'swipe';
 export type CoStatus = 'idle' | 'connecting' | 'streaming';
+export type ConversationTarget = 'main' | 'side';
+export interface SideChatState extends Omit<CocreatorSideChat, 'messages'> {
+  messages: MessageState[];
+  error: string | null;
+}
 
 export interface CocreatorState {
   sessionId: string | null;
   title: string;
   messages: MessageState[];
+  sideChat: SideChatState | null;
+  activeConversation: ConversationTarget | null;
   stash: CardStash;
   examples: ExampleSelection;
   settings: SessionModelSettings;
@@ -112,6 +122,8 @@ export const initialCocreatorState: CocreatorState = {
   sessionId: null,
   title: '',
   messages: [],
+  sideChat: null,
+  activeConversation: null,
   stash: emptyStash(),
   examples: { cards: [], fields: { ...DEFAULT_EXAMPLE_FIELDS } },
   settings: {},
@@ -126,7 +138,9 @@ export const initialCocreatorState: CocreatorState = {
   persistedRevision: 0,
 };
 
-export type CocreatorAction =
+type BaseCocreatorAction =
+  | { type: 'side/opened' | 'side/reset'; snapshot: SideChatSnapshot }
+  | { type: 'side/settings'; patch: SideChatModelSettings }
   | { type: 'session/loaded'; session: CocreatorSession }
   | { type: 'session/closed' }
   | { type: 'session/saved'; sessionId: string; revision: number }
@@ -148,13 +162,20 @@ export type CocreatorAction =
        */
       finishReason?: string | null;
     }
-  | { type: 'gen/aborted'; text: string; reasoning?: string; generationId?: string }
+  | {
+      type: 'gen/aborted';
+      text: string;
+      reasoning?: string;
+      generationId?: string;
+      extra?: MessageExtra;
+    }
   | {
       type: 'gen/failed';
       message: string;
       text?: string;
       reasoning?: string;
       generationId?: string;
+      extra?: MessageExtra;
     }
   | { type: 'stash/set'; slot: CardSlot; text: string; provenance: StashProvenance }
   | { type: 'stash/editSlot'; slot: SingleCardSlot; text: string }
@@ -174,6 +195,8 @@ export type CocreatorAction =
   | { type: 'avatar/cleared' }
   | { type: 'finished/recorded'; avatar: string }
   | { type: 'error/cleared' };
+
+export type CocreatorAction = BaseCocreatorAction & { target?: ConversationTarget };
 
 function replaceMessage(
   messages: MessageState[],
@@ -248,7 +271,67 @@ function settle(state: CocreatorState, text: string, extra?: MessageExtra): Cocr
   }
 }
 
+/** One transcript reducer, projected onto either conversation under the session's gate. */
 export function cocreatorReducer(state: CocreatorState, action: CocreatorAction): CocreatorState {
+  if (action.type === 'side/opened' || action.type === 'side/reset') {
+    if (action.type === 'side/opened' && state.sideChat) return state;
+    if (action.type === 'side/reset' && state.status !== 'idle') return state;
+    return {
+      ...state,
+      revision: state.revision + 1,
+      sideChat: {
+        snapshot: structuredClone(action.snapshot),
+        settings: state.sideChat?.settings ?? {},
+        messages: [],
+        error: null,
+      },
+    };
+  }
+  if (action.type === 'side/settings') {
+    if (!state.sideChat || state.status !== 'idle') return state;
+    return {
+      ...state,
+      revision: state.revision + 1,
+      sideChat: {
+        ...state.sideChat,
+        settings: { ...state.sideChat.settings, ...action.patch },
+      },
+    };
+  }
+  const target = action.target ?? 'main';
+  if (
+    action.type.startsWith('gen/') &&
+    action.type !== 'gen/started' &&
+    state.activeConversation !== target
+  )
+    return state;
+  if (
+    state.status !== 'idle' &&
+    (action.type.startsWith('message/') || action.type === 'swipe/select')
+  )
+    return state;
+  if (target === 'side') {
+    if (!state.sideChat) return state;
+    const projected = { ...state, messages: state.sideChat.messages, error: state.sideChat.error };
+    const next = reduceConversation(projected, action);
+    if (next === projected) return state;
+    return {
+      ...next,
+      messages: state.messages,
+      error: state.error,
+      activeConversation: next.status === 'idle' ? null : 'side',
+      sideChat: { ...state.sideChat, messages: next.messages, error: next.error },
+    };
+  }
+  const next = reduceConversation(state, action);
+  if (next === state) return state;
+  return {
+    ...next,
+    activeConversation: next.status === 'idle' ? null : (next.activeConversation ?? 'main'),
+  };
+}
+
+function reduceConversation(state: CocreatorState, action: CocreatorAction): CocreatorState {
   switch (action.type) {
     case 'session/loaded':
       return {
@@ -256,6 +339,13 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         sessionId: action.session.id,
         title: action.session.title,
         messages: action.session.messages.map(fromChatMessage),
+        sideChat: action.session.sideChat
+          ? {
+              ...action.session.sideChat,
+              messages: action.session.sideChat.messages.map(fromChatMessage),
+              error: null,
+            }
+          : null,
         stash: action.session.stash,
         examples: action.session.examples,
         settings: action.session.settings,
@@ -385,6 +475,7 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
         action.text,
         action.text || action.reasoning
           ? {
+              ...action.extra,
               truncated: true,
               ...(action.reasoning ? { reasoning: action.reasoning } : {}),
               // An interrupted reply was still generated, and still billed. Recording the
@@ -404,6 +495,7 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
           text,
           text || action.reasoning
             ? {
+                ...action.extra,
                 truncated: true,
                 ...(action.reasoning ? { reasoning: action.reasoning } : {}),
                 ...(action.generationId ? { generation_id: action.generationId } : {}),
@@ -539,10 +631,13 @@ export function toChatMessages(state: CocreatorState): ChatMessage[] {
  * user message — which *did* bump the revision — must therefore project the pre-generation
  * transcript rather than accidentally make that transient state durable under it.
  */
-export function toPersistedMessages(state: CocreatorState): ChatMessage[] {
-  let messages = state.messages;
+export function toPersistedMessages(
+  state: CocreatorState,
+  target: ConversationTarget = 'main',
+): ChatMessage[] {
+  let messages = target === 'side' ? (state.sideChat?.messages ?? []) : state.messages;
 
-  if (state.status !== 'idle' && state.streamingId) {
+  if (state.status !== 'idle' && state.streamingId && state.activeConversation === target) {
     const streamingId = state.streamingId;
     switch (state.mode) {
       case 'send':
@@ -559,6 +654,15 @@ export function toPersistedMessages(state: CocreatorState): ChatMessage[] {
   }
 
   return messages.map(toChatMessage);
+}
+
+export function toPersistedSideChat(state: CocreatorState): CocreatorSideChat | null {
+  if (!state.sideChat) return null;
+  return {
+    snapshot: state.sideChat.snapshot,
+    settings: state.sideChat.settings,
+    messages: toPersistedMessages(state, 'side'),
+  };
 }
 
 /** Whether there is unsaved work — what a flush has to drain before a transition. */

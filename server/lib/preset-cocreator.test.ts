@@ -331,3 +331,31 @@ describe('Preset Co-Creator session store', () => {
     ).toBe(0);
   });
 });
+
+test('incomplete assistant output and context limits survive save and reload', () => {
+  const session = create();
+  const document = defaultPresetCocreatorDocument();
+  document.settings.assistant.contextTokens = 65536;
+  document.messages = [
+    {
+      id: 'partial',
+      role: 'assistant',
+      content: 'Already paid for',
+      created: 1,
+      incomplete: 'length',
+      analysisOnly: true,
+      incompleteToolCalls: [
+        { id: 'cut', type: 'function', function: { name: 'patch_preset', arguments: '{' } },
+      ],
+    },
+  ];
+  const saved = store.saveDocument(session.id, {
+    expectedRevision: 0,
+    operationId: 'partial',
+    document,
+  });
+  expect(saved.kind).toBe('saved');
+  const read = store.getSession(session.id)!;
+  expect(read.document.messages).toEqual(document.messages);
+  expect(read.document.settings.assistant.contextTokens).toBe(65536);
+});

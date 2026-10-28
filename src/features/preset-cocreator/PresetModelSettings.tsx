@@ -1,3 +1,4 @@
+import { COCREATOR_CONTEXT_TOKENS } from '@shared/cocreator/generation.ts';
 import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import type { PresetCocreatorModelSettings } from '@shared/types/preset-cocreator.ts';
 import { useEffect, useId, useMemo, useState } from 'react';
@@ -116,11 +117,22 @@ export function PresetModelSettings({
       {requireTools ? (
         <div className="preset-cc-model__generation">
           <NumberField
-            label="Max tokens"
+            label="Output token limit"
+            hint="Reasoning receives additional room within the context budget."
             value={value.maxTokens}
             min={1}
             max={131072}
             onChange={(maxTokens) => onChange({ ...value, maxTokens: Math.round(maxTokens) })}
+          />
+          <NumberField
+            label="Context size"
+            value={value.contextTokens ?? COCREATOR_CONTEXT_TOKENS}
+            min={1024}
+            max={2097152}
+            hint="Set this to the model’s context size. Includes conversation, tools, reasoning and reply."
+            onChange={(contextTokens) =>
+              onChange({ ...value, contextTokens: Math.round(contextTokens) })
+            }
           />
           <NumberField
             label="Temperature"

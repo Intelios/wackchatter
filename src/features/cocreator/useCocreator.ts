@@ -10,8 +10,10 @@
  * that has anything to act on.
  */
 
+import { currentText, fromChatMessage } from '@shared/chat/message.ts';
+import { cocreatorBudget } from '@shared/cocreator/generation.ts';
+import { captureSideSnapshot, resolveSideSettings } from '@shared/cocreator/sideChat.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterDetail } from '@shared/types/card.ts';
 import type { MessageExtra } from '@shared/types/chat.ts';
@@ -33,27 +35,21 @@ import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
-import { buildDesignPrompt } from './prompt.ts';
+import { buildDesignGeneration } from './generation.ts';
 import { renderSeedTurn, seedStash } from './seed.ts';
 import { resolveCocreatorSettings } from './settings.ts';
+import { buildSidePrompt } from './sidePrompt.ts';
 import {
   type CocreatorAction,
   type CocreatorState,
+  type ConversationTarget,
   cocreatorReducer,
   initialCocreatorState,
   toPersistedMessages,
+  toPersistedSideChat,
 } from './state/cocreatorReducer.ts';
 
 const SAVE_DELAY_MS = 400;
-
-/**
- * The reply budget when the chosen preset does not name one.
- *
- * Passed explicitly rather than left to `buildRequestBody`'s own `?? 300` fallback: 300
- * tokens truncates a description mid-sentence, and a later change to that default must not
- * silently start cutting design replies in half.
- */
-const DEFAULT_MAX_TOKENS = 1024;
 
 export interface UseCocreatorOptions {
   session: CocreatorSession;
@@ -73,6 +69,7 @@ export interface UseCocreatorOptions {
    * "snapshot everything when the request starts" discipline the connection follows.
    */
   exampleBlockRef: RefObject<string>;
+  examplesReadyRef: RefObject<boolean>;
   streamingFps: number;
   /**
    * The card the Studio handed off, when this desk is the arrival side of that handoff.
@@ -102,6 +99,7 @@ export interface UseCocreator {
    * generation failed, was aborted empty, or was deleted afterwards.
    */
   retry: () => Promise<void>;
+  continueReply: () => Promise<void>;
   abort: () => void;
   /** `base` flushes a state the reducer has produced but React has not yet committed. */
   flushSaves: (base?: CocreatorState) => Promise<void>;
@@ -112,6 +110,20 @@ export interface UseCocreator {
   systemPrompt: string;
   analysisPrompt: string;
   countTokens: TokenCounter;
+  sideCountTokens: TokenCounter;
+  sideConnection: Connection | null;
+  sideBlockedReason: string | null;
+  sideContext: {
+    totalTokens: number;
+    droppedMainMessages: number;
+    droppedSideMessages: number;
+    error: string | null;
+  } | null;
+  openSideChat: (reset?: boolean) => boolean;
+  sendSide: (text: string) => boolean;
+  rerollSide: () => Promise<void>;
+  retrySide: () => Promise<void>;
+  continueSide: () => Promise<void>;
 }
 
 export function useCocreator(options: UseCocreatorOptions): UseCocreator {
@@ -125,6 +137,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     activePreset,
     tokenizerEncoding,
     exampleBlockRef,
+    examplesReadyRef,
     streamingFps,
     seed,
   } = options;
@@ -149,6 +162,11 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   const systemPrompt = resolved.systemPrompt;
   const streaming = resolved.streaming;
   const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
+  const sideSettings = useMemo(
+    () => resolveSideSettings(defaults.sideChat, state.sideChat?.settings ?? {}, connections),
+    [defaults.sideChat, state.sideChat?.settings, connections],
+  );
+  const sideCountTokens = useTokenizer(sideSettings.connection?.model ?? '', tokenizerEncoding);
   const [loadedPreset, setLoadedPreset] = useState<{ id: string; value: Preset } | null>(null);
 
   useEffect(() => {
@@ -178,6 +196,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   const stateRef = useRef(state);
   stateRef.current = state;
   const abortRef = useRef<AbortController | null>(null);
+  const settleForNavigationRef = useRef<(() => CocreatorState) | null>(null);
 
   // Recreated only when the rate changes, so a running stream keeps its store.
   const stream = useMemo(() => createStreamStore(streamingFps), [streamingFps]);
@@ -234,6 +253,18 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     }
   }, [state.settings.modelOverride, connection?.id]);
 
+  useEffect(() => {
+    const override = state.sideChat?.settings.modelOverride;
+    if (
+      override &&
+      sideSettings.connection &&
+      override.connectionId !== sideSettings.connection.id &&
+      state.status === 'idle'
+    ) {
+      dispatch({ type: 'side/settings', patch: { modelOverride: undefined } });
+    }
+  }, [state.sideChat?.settings.modelOverride, sideSettings.connection, state.status]);
+
   const captureSnapshot = useCallback((current: CocreatorState): CocreatorSaveSnapshot | null => {
     if (!current.sessionId) return null;
     return {
@@ -247,6 +278,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       // The pre-generation projection: a blank placeholder or a tentative swipe is UI state
       // until the request settles, and must not become durable under the earlier revision.
       messages: toPersistedMessages(current),
+      sideChat: toPersistedSideChat(current),
     };
   }, []);
 
@@ -268,7 +300,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
    */
   const flushSaves = useCallback(
     async (base?: CocreatorState) => {
-      const current = base ?? stateRef.current;
+      const current = base ?? settleForNavigationRef.current?.() ?? stateRef.current;
       const snapshot = captureSnapshot(current);
       if (!snapshot || snapshot.revision <= current.persistedRevision) return;
 
@@ -304,19 +336,93 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     return null;
   }, [connection, preset]);
 
+  const sideContext = useMemo(() => {
+    if (!state.sideChat || !preset || !sideSettings.connection) return null;
+    try {
+      const budget = cocreatorBudget({
+        preset,
+        ...sideSettings,
+        connection: sideSettings.connection,
+        stream: streaming,
+      });
+      const prompt = buildSidePrompt({
+        snapshot: state.sideChat.snapshot,
+        messages: state.sideChat.messages,
+        countTokens: sideCountTokens,
+        maxPromptTokens: budget.promptTokens,
+      });
+      return {
+        ...prompt,
+        error: prompt.fixedOverflow
+          ? 'The frozen instructions and examples exceed the side context budget. Raise it or start fresh with fewer examples.'
+          : null,
+      };
+    } catch (error) {
+      return {
+        totalTokens: 0,
+        droppedMainMessages: 0,
+        droppedSideMessages: 0,
+        error: (error as Error).message,
+      };
+    }
+  }, [state.sideChat, preset, sideSettings, sideCountTokens, streaming]);
+  const sideBlockedReason =
+    !sideSettings.connection?.baseUrl || !sideSettings.connection.model
+      ? 'Choose a side-chat connection and model in Side chat settings'
+      : !preset
+        ? 'No sampler preset is loaded'
+        : (sideContext?.error ?? null);
+
+  const prepareSideChat = useCallback(
+    (reset = false): CocreatorState | null => {
+      const current = stateRef.current;
+      if (current.sideChat && !reset) return current;
+      if (!examplesReadyRef.current || !current.sessionId || (reset && current.status !== 'idle'))
+        return null;
+      const snapshot = captureSideSnapshot({
+        systemPrompt,
+        exampleBlock: exampleBlockRef.current,
+        messages: toPersistedMessages(current).map(fromChatMessage),
+      });
+      const action: CocreatorAction = { type: reset ? 'side/reset' : 'side/opened', snapshot };
+      const next = cocreatorReducer(current, action);
+      dispatch(action);
+      return next;
+    },
+    [systemPrompt, exampleBlockRef, examplesReadyRef],
+  );
+
   const generate = useCallback(
-    async (mode: 'send' | 'swipe', base?: CocreatorState) => {
+    async (
+      mode: 'send' | 'swipe' | 'continue',
+      base?: CocreatorState,
+      target: ConversationTarget = 'main',
+    ) => {
       const current = base ?? stateRef.current;
-      if (current.status !== 'idle') return;
-      if (!connection || !preset) return;
+      if (current.status !== 'idle' || abortRef.current) return;
+      const selectedConnection = target === 'side' ? sideSettings.connection : connection;
+      const counter = target === 'side' ? sideCountTokens : countTokens;
+      if (!selectedConnection || !preset || (target === 'side' && !current.sideChat)) return;
 
       // Settings can change mid-generation. Keep the request body, the reply's recorded
       // metadata and the server-side connection lookup on one snapshot for the whole call.
-      const requestConnection: Connection = { ...connection };
+      const requestConnection: Connection = { ...selectedConnection };
+      const requestExtra: MessageExtra = {
+        api: requestConnection.provider,
+        model: requestConnection.model,
+      };
+
+      const conversationMessages =
+        target === 'side' ? current.sideChat!.messages : current.messages;
+      const previousReply = conversationMessages.at(-1);
+      if (mode === 'continue' && (!previousReply || previousReply.is_user)) return;
+      const prefix = mode === 'continue' && previousReply ? currentText(previousReply) : '';
+      const combine = (content: string) => (content ? prefix + content : '');
 
       const startAction: CocreatorAction = {
         type: 'gen/started',
-        mode,
+        target,
+        mode: mode === 'continue' ? 'swipe' : mode,
         newId: crypto.randomUUID(),
       };
       const started = cocreatorReducer(current, startAction);
@@ -357,37 +463,55 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       let text = '';
       let reasoning = '';
 
+      // Navigation owns a synchronous final projection, so its flush includes partial text
+      // before React commits the settlement. Late network callbacks lose ownership.
+      const settleForNavigation = () => {
+        const action: CocreatorAction = {
+          type: 'gen/aborted',
+          target,
+          text,
+          reasoning,
+          generationId,
+          extra: requestExtra,
+        };
+        controller.abort();
+        endStream();
+        abortRef.current = null;
+        settleForNavigationRef.current = null;
+        const next = cocreatorReducer(stateRef.current, action);
+        dispatch(action);
+        return next;
+      };
+      settleForNavigationRef.current = settleForNavigation;
+
       try {
-        const maxTokens = preset.openai_max_tokens ?? DEFAULT_MAX_TOKENS;
-        const prompt = buildDesignPrompt({
-          systemPrompt,
-          exampleBlock: exampleBlockRef.current,
-          messages: started.messages,
-          countTokens,
-          maxPromptTokens: (preset.openai_max_context ?? 4095) - maxTokens,
-        });
-
-        if (prompt.fixedOverflow) {
-          dispatch({
-            type: 'gen/failed',
-            message:
-              'The system prompt and attached examples alone exceed the context budget. ' +
-              'Detach an example, turn off some example fields, or raise the context size.',
-          });
-          return;
-        }
-
-        const body = buildRequestBody({
-          messages: prompt.messages,
+        const { body } = buildDesignGeneration({
+          mode,
+          messages:
+            mode === 'continue'
+              ? conversationMessages
+              : target === 'side'
+                ? started.sideChat!.messages
+                : started.messages,
           preset,
           connection: requestConnection,
-          stream: streaming,
-          maxTokens,
+          settings:
+            target === 'side'
+              ? {
+                  outputTokens: sideSettings.outputTokens,
+                  contextTokens: sideSettings.contextTokens,
+                }
+              : current.settings,
+          systemPrompt,
+          exampleBlock: exampleBlockRef.current,
+          countTokens: counter,
+          streaming,
+          ...(target === 'side' ? { sideSnapshot: current.sideChat!.snapshot } : {}),
         });
 
         if (!ensureActive()) return;
 
-        stream.begin('', streaming);
+        stream.begin(prefix, streaming);
         streamStarted = true;
 
         const final = await streamGenerate(
@@ -396,23 +520,23 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
           {
             onFirstToken: () => {
               if (ownsGeneration() && !controller.signal.aborted) {
-                dispatch({ type: 'gen/streaming' });
+                dispatch({ type: 'gen/streaming', target });
               }
             },
             onTick: (streamState) => {
               if (!ownsGeneration() || controller.signal.aborted) return;
-              text = streamState.content;
+              text = combine(streamState.content);
               reasoning = streamState.reasoning;
-              stream.set(streamState.content, streamState.reasoning);
+              stream.set(prefix + streamState.content, streamState.reasoning);
             },
           },
           '',
           requestConnection.id,
           {
-            feature: 'cocreator',
+            feature: target === 'side' ? 'cocreatorSideChat' : 'cocreator',
             generationId,
             ...(started.sessionId ? { sessionId: started.sessionId } : {}),
-            countText: countTokens.countText,
+            countText: counter.countText,
           },
         );
 
@@ -423,7 +547,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
 
         dispatch({
           type: 'gen/finished',
-          text: final.content,
+          target,
+          text: combine(final.content),
           // 'length' becomes the truncated badge in the reducer; a Stop click or a
           // failure marks its own.
           finishReason: final.finishReason,
@@ -433,7 +558,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
             // say which one wrote each line.
             model: final.model ?? requestConnection.model,
             ...(final.reasoning ? { reasoning: final.reasoning } : {}),
-            token_count: final.usage?.completion_tokens ?? countTokens.countText(final.content),
+            token_count: final.usage?.completion_tokens ?? counter.countText(final.content),
             generation_id: generationId,
             ...(typeof final.usage?.completion_tokens === 'number' ? { usage_reported: true } : {}),
           },
@@ -442,14 +567,23 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         if (ownsGeneration()) endStream();
         // Whatever arrived before the failure is kept.
         if (ownsGeneration() && controller.signal.aborted) {
-          dispatch({ type: 'gen/aborted', text, reasoning, generationId });
+          dispatch({
+            type: 'gen/aborted',
+            target,
+            text,
+            reasoning,
+            generationId,
+            extra: requestExtra,
+          });
         } else if (ownsGeneration()) {
           dispatch({
             type: 'gen/failed',
+            target,
             message: (error as Error).message,
             text,
             reasoning,
             generationId,
+            extra: requestExtra,
           });
         }
       } finally {
@@ -459,15 +593,28 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
           endStream();
           abortRef.current = null;
         }
+        if (settleForNavigationRef.current === settleForNavigation)
+          settleForNavigationRef.current = null;
       }
     },
-    [connection, preset, systemPrompt, exampleBlockRef, countTokens, stream, streaming],
+    [
+      connection,
+      preset,
+      systemPrompt,
+      exampleBlockRef,
+      countTokens,
+      sideSettings,
+      sideCountTokens,
+      stream,
+      streaming,
+    ],
   );
 
   const send = useCallback(
     async (text: string, extra?: MessageExtra) => {
       const trimmed = text.trim();
-      if (!trimmed || stateRef.current.status !== 'idle') return;
+      if (!trimmed || blockedReason || abortRef.current || stateRef.current.status !== 'idle')
+        return;
 
       const action: CocreatorAction = {
         type: 'message/appendUser',
@@ -481,12 +628,37 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       dispatch(action);
       await generate('send', next);
     },
-    [generate],
+    [generate, blockedReason],
   );
 
   const reroll = useCallback(async () => {
     await generate('swipe');
   }, [generate]);
+
+  const sendSide = useCallback(
+    (text: string) => {
+      if (
+        !text.trim() ||
+        sideBlockedReason ||
+        abortRef.current ||
+        stateRef.current.status !== 'idle'
+      )
+        return false;
+      const base = prepareSideChat();
+      if (!base) return false;
+      const action: CocreatorAction = {
+        type: 'message/appendUser',
+        target: 'side',
+        id: crypto.randomUUID(),
+        text: text.trim(),
+      };
+      const next = cocreatorReducer(base, action);
+      dispatch(action);
+      void generate('send', next, 'side');
+      return true;
+    },
+    [sideBlockedReason, prepareSideChat, generate],
+  );
 
   /*
    * A retry is `send` without appending a turn: the reducer's send arm already generates
@@ -498,10 +670,14 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     await generate('send');
   }, [generate]);
 
+  const continueReply = useCallback(async () => {
+    await generate('continue');
+  }, [generate]);
+
   // A design session is worth more than a chat turn, so an unload attempts the save too.
   useEffect(() => {
     const onPagehide = () => {
-      const snapshot = captureSnapshot(stateRef.current);
+      const snapshot = captureSnapshot(settleForNavigationRef.current?.() ?? stateRef.current);
       if (snapshot && snapshot.revision > stateRef.current.persistedRevision) {
         persistence.schedule(snapshot);
       }
@@ -527,6 +703,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     send,
     reroll,
     retry,
+    continueReply,
     abort,
     flushSaves,
     persistence: persistenceControls,
@@ -536,5 +713,14 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     systemPrompt,
     analysisPrompt: resolved.analysisPrompt,
     countTokens,
+    sideCountTokens,
+    sideConnection: sideSettings.connection,
+    sideBlockedReason,
+    sideContext,
+    openSideChat: (reset = false) => prepareSideChat(reset) !== null,
+    sendSide,
+    rerollSide: () => generate('swipe', undefined, 'side'),
+    retrySide: () => generate('send', undefined, 'side'),
+    continueSide: () => generate('continue', undefined, 'side'),
   };
 }

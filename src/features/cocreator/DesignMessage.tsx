@@ -28,6 +28,9 @@ export interface DesignMessageProps {
   streaming: boolean;
   stream: StreamStore;
   busy: boolean;
+  busyReason?: string;
+  onAskSide?: (text: string) => void;
+  onInsert?: (text: string) => void;
   countTokens: TokenCounter;
   isFilled: (slot: CardSlot) => boolean;
   onUse: (
@@ -39,6 +42,7 @@ export interface DesignMessageProps {
   onSelectSwipe: (id: string, index: number) => void;
   onReroll: () => void;
   onRetry: () => void;
+  onContinue: () => void;
   onEdit: (id: string, text: string) => void;
   onDelete: (id: string) => void;
 }
@@ -73,12 +77,16 @@ export const DesignMessage = memo(function DesignMessage({
   streaming,
   stream,
   busy,
+  busyReason = 'Generating a reply',
+  onAskSide,
+  onInsert,
   countTokens,
   isFilled,
   onUse,
   onSelectSwipe,
   onReroll,
   onRetry,
+  onContinue,
   onEdit,
   onDelete,
 }: DesignMessageProps) {
@@ -86,6 +94,7 @@ export const DesignMessage = memo(function DesignMessage({
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+  const [selectedText, setSelectedText] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
   const swipes = swipeCount(message);
   const info = currentInfo(message);
@@ -95,6 +104,12 @@ export const DesignMessage = memo(function DesignMessage({
   useEffect(() => {
     if (editing) textarea.current?.focus({ preventScroll: true });
   }, [editing]);
+
+  useEffect(() => {
+    const update = () => setSelectedText(selectionWithin(bodyEl));
+    document.addEventListener('selectionchange', update);
+    return () => document.removeEventListener('selectionchange', update);
+  }, [bodyEl]);
 
   function startEditing() {
     setDraft(text);
@@ -127,8 +142,29 @@ export const DesignMessage = memo(function DesignMessage({
         {info.extra?.model ? (
           <span className="design-message__model">{String(info.extra.model)}</span>
         ) : null}
-        {info.extra?.truncated ? <span className="design-message__badge">truncated</span> : null}
+        {info.extra?.truncated ? (
+          <span
+            className="design-message__badge"
+            title="The reply ended early. Its received text has been saved."
+          >
+            incomplete
+          </span>
+        ) : null}
         <span className="design-message__spacer" />
+        {onAskSide && !streaming && !editing ? (
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            disabled={!selectedText}
+            title={
+              selectedText ? 'Quote selection in side chat' : 'Select text in this message first'
+            }
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => onAskSide(selectedText)}
+          >
+            Ask in side chat
+          </button>
+        ) : null}
         {!editing ? (
           <>
             <button
@@ -136,7 +172,7 @@ export const DesignMessage = memo(function DesignMessage({
               className="wc-button wc-button--ghost design-message__action"
               onClick={startEditing}
               disabled={busy}
-              title={busy ? 'Generating a reply' : 'Edit this turn'}
+              title={busy ? busyReason : 'Edit this turn'}
               aria-label="Edit"
             >
               <EditIcon />
@@ -158,11 +194,7 @@ export const DesignMessage = memo(function DesignMessage({
               onClick={() => (confirmDelete ? onDelete(message.id) : setConfirmDelete(true))}
               onBlur={() => setConfirmDelete(false)}
               title={
-                busy
-                  ? 'Generating a reply'
-                  : confirmDelete
-                    ? 'Click again to delete'
-                    : 'Delete this turn'
+                busy ? busyReason : confirmDelete ? 'Click again to delete' : 'Delete this turn'
               }
               aria-label={confirmDelete ? 'Click again to delete' : 'Delete this turn'}
             >
@@ -217,6 +249,7 @@ export const DesignMessage = memo(function DesignMessage({
                       key={`block-${index}`}
                       block={part.block}
                       busy={busy}
+                      busyReason={busyReason}
                       countTokens={countTokens}
                       isFilled={isFilled}
                       onUse={(slot, blockText) =>
@@ -227,6 +260,7 @@ export const DesignMessage = memo(function DesignMessage({
                           part.block.slot ? undefined : part.block.label,
                         )
                       }
+                      onInsert={onInsert}
                     />
                   ),
                 )
@@ -255,7 +289,7 @@ export const DesignMessage = memo(function DesignMessage({
             className="wc-button wc-button--ghost design-message__retry"
             onClick={onRetry}
             disabled={busy}
-            title={busy ? 'Generating a reply' : 'Generate a reply to this message'}
+            title={busy ? busyReason : 'Generate a reply to this message'}
             aria-label="Retry"
           >
             <RefreshIcon />
@@ -305,13 +339,24 @@ export const DesignMessage = memo(function DesignMessage({
            * tool "give me another one of these" is the primary move, not a discovery. It
            * works from any take — the reducer records which one to return to if it fails.
            */}
+          {canReroll && info.extra?.truncated ? (
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={onContinue}
+              disabled={busy}
+              title="Request the remaining text. Keeps this take and saves the continued answer as another take."
+            >
+              Continue reply
+            </button>
+          ) : null}
           {canReroll ? (
             <button
               type="button"
               className="wc-button wc-button--ghost design-message__reroll"
               onClick={onReroll}
               disabled={busy}
-              title={busy ? 'Generating a reply' : 'Generate another take on this reply'}
+              title={busy ? busyReason : 'Generate another take on this reply'}
             >
               <RefreshIcon />
               Another take
@@ -319,6 +364,31 @@ export const DesignMessage = memo(function DesignMessage({
           ) : null}
 
           <span className="design-message__spacer" />
+          {onInsert ? (
+            <>
+              <button
+                type="button"
+                className="wc-button wc-button--ghost"
+                onClick={() => onInsert(text)}
+              >
+                Insert into main draft
+              </button>
+              <button
+                type="button"
+                className="wc-button wc-button--ghost"
+                disabled={!selectedText}
+                title={
+                  selectedText
+                    ? 'Append selection to main draft'
+                    : 'Select text in this message first'
+                }
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => onInsert(selectedText)}
+              >
+                Insert selection
+              </button>
+            </>
+          ) : null}
 
           {/*
            * The fallbacks, for when the model ignored the block contract or you want one
@@ -332,6 +402,7 @@ export const DesignMessage = memo(function DesignMessage({
               getText={() => text}
               label="Use message as"
               busy={busy}
+              busyReason={busyReason}
               isFilled={isFilled}
               onUse={(slot, value) => onUse(slot, value, 'message')}
             />
@@ -341,6 +412,7 @@ export const DesignMessage = memo(function DesignMessage({
             getText={() => selectionWithin(bodyEl)}
             label="Use selection as"
             busy={busy}
+            busyReason={busyReason}
             isFilled={isFilled}
             requiresSelection
             onUse={(slot, value) => onUse(slot, value, 'selection')}

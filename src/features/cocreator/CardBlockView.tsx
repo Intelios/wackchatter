@@ -8,9 +8,11 @@ import { UseAsMenu } from './UseAsMenu.tsx';
 interface CardBlockViewProps {
   block: CardBlock;
   busy: boolean;
+  busyReason?: string;
   countTokens: TokenCounter;
   isFilled: (slot: CardSlot) => boolean;
   onUse: (slot: CardSlot, text: string) => void;
+  onInsert?: (text: string) => void;
 }
 
 /**
@@ -21,7 +23,15 @@ interface CardBlockViewProps {
  * see a `card:` fence: this is prose the user is about to put in a card, and it should read
  * like it. The fence lines were consumed by the parser and appear nowhere.
  */
-export function CardBlockView({ block, busy, countTokens, isFilled, onUse }: CardBlockViewProps) {
+export function CardBlockView({
+  block,
+  busy,
+  busyReason,
+  countTokens,
+  isFilled,
+  onUse,
+  onInsert,
+}: CardBlockViewProps) {
   const known = block.slot !== null;
   const label = known ? SLOT_LABELS[block.slot as CardSlot] : block.label;
 
@@ -47,11 +57,21 @@ export function CardBlockView({ block, busy, countTokens, isFilled, onUse }: Car
           </span>
         ) : null}
         <span className="card-block__tokens">{countTokens.countText(block.text)} tok</span>
+        {onInsert ? (
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            onClick={() => onInsert(block.text)}
+          >
+            Insert into main draft
+          </button>
+        ) : null}
         <UseAsMenu
           slot={block.slot}
           getText={() => block.text}
           label="Use as"
           busy={busy}
+          busyReason={busyReason}
           isFilled={isFilled}
           onUse={onUse}
         />

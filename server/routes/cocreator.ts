@@ -11,6 +11,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import type { ChatMessage, StaleChatRevision } from '../../shared/types/chat.ts';
 import type {
   CardStash,
+  CocreatorSideChat,
   ExampleSelection,
   SessionModelSettings,
 } from '../../shared/types/cocreator.ts';
@@ -20,6 +21,7 @@ import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import { PATHS, safeJoin } from '../lib/paths.ts';
 
 interface ReplaceBody {
+  sideChat?: CocreatorSideChat | null;
   revision?: number;
   title?: string;
   stash?: CardStash;
@@ -160,6 +162,7 @@ export async function handleCocreatorRoute(
           settings: body.settings,
           ...(Object.hasOwn(body, 'finishedAvatar') ? { finishedAvatar: body.finishedAvatar } : {}),
           messages: body.messages,
+          ...(Object.hasOwn(body, 'sideChat') ? { sideChat: body.sideChat } : {}),
         }),
       );
     }

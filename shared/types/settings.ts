@@ -13,8 +13,8 @@ import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
 import type { ArenaSettings } from './arena.ts';
 import { DEFAULT_ARENA } from './arena.ts';
 import type { MacroVariableMap } from './chat.ts';
-import type { ExampleFields, ExampleSet } from './cocreator.ts';
-import { DEFAULT_EXAMPLE_FIELDS } from './cocreator.ts';
+import type { ExampleFields, ExampleSet, SideChatDefaults } from './cocreator.ts';
+import { DEFAULT_EXAMPLE_FIELDS, DEFAULT_SIDE_CHAT } from './cocreator.ts';
 import type { RegexScript } from './regex.ts';
 import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
@@ -377,6 +377,7 @@ export const DEFAULT_MEMORY: Readonly<MemorySettings> = {
  * block contract less reliable, so the two need to be separable.
  */
 export interface CoCreatorSettings {
+  sideChat: SideChatDefaults;
   /** Null follows the active chat connection; otherwise names a saved connection. */
   connectionId: string | null;
   /**
@@ -456,6 +457,7 @@ export const DEFAULT_COCREATOR_ANALYSIS_PROMPT =
   'Do not write any card fields yet.';
 
 export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
+  sideChat: { ...DEFAULT_SIDE_CHAT },
   connectionId: null,
   presetId: null,
   systemPrompt: DEFAULT_COCREATOR_PROMPT,

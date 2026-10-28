@@ -11,7 +11,106 @@ import {
   hasUnsavedWork,
   initialCocreatorState,
   toPersistedMessages,
+  toPersistedSideChat,
 } from './cocreatorReducer.ts';
+
+describe('side-chat isolation and recovery', () => {
+  const snapshot = { capturedAt: 123, systemPrompt: 'Design.', exampleBlock: '', messages: [] };
+  const sideExchange = () =>
+    run(
+      withExchange(),
+      { type: 'side/opened', snapshot },
+      { type: 'message/appendUser', target: 'side', id: 'su', text: 'Names?' },
+      { type: 'gen/started', target: 'side', mode: 'send', newId: 'sa' },
+      { type: 'gen/finished', target: 'side', text: 'Elowen.' },
+    );
+
+  test('side exchanges never change main messages or errors', () => {
+    const state = sideExchange();
+    expect(state.messages.map(currentText)).toEqual([
+      'Give me a greeting.',
+      'The lamp room is cold.',
+    ]);
+    expect(state.sideChat?.messages.map(currentText)).toEqual(['Names?', 'Elowen.']);
+    expect(state.error).toBeNull();
+    expect(state.status).toBe('idle');
+  });
+
+  test('one shared generation gate refuses other starts and ignores wrong-target completion', () => {
+    const started = run(sideExchange(), {
+      type: 'gen/started',
+      target: 'side',
+      mode: 'swipe',
+      newId: 'next',
+    });
+    expect(cocreatorReducer(started, { type: 'gen/started', mode: 'send', newId: 'bad' })).toBe(
+      started,
+    );
+    expect(cocreatorReducer(started, { type: 'gen/finished', text: 'Wrong target.' })).toBe(
+      started,
+    );
+    expect(toPersistedMessages(started).map((m) => m.mes)).toEqual([
+      'Give me a greeting.',
+      'The lamp room is cold.',
+    ]);
+    expect(toPersistedSideChat(started)?.messages.at(-1)?.swipes).toEqual(['Elowen.']);
+  });
+
+  test('failed side reroll restores the selected take and leaves its error in side chat', () => {
+    const state = run(
+      sideExchange(),
+      { type: 'gen/started', target: 'side', mode: 'swipe', newId: 's2' },
+      { type: 'gen/finished', target: 'side', text: 'Maren.' },
+      { type: 'swipe/select', target: 'side', id: 'sa', index: 0 },
+      { type: 'gen/started', target: 'side', mode: 'swipe', newId: 's3' },
+      { type: 'gen/failed', target: 'side', message: 'Endpoint unavailable.' },
+    );
+    expect(state.sideChat?.messages.at(-1)?.swipes).toEqual(['Elowen.', 'Maren.']);
+    expect(state.sideChat?.messages.at(-1)?.swipe_id).toBe(0);
+    expect(state.sideChat?.error).toBe('Endpoint unavailable.');
+    expect(state.error).toBeNull();
+  });
+
+  test('reset replaces frozen context but preserves side settings and filed content', () => {
+    const state = run(
+      sideExchange(),
+      { type: 'side/settings', patch: { connectionId: 'cheap' } },
+      {
+        type: 'stash/set',
+        slot: 'name',
+        text: 'Elowen.',
+        provenance: { ...provenance, conversation: 'side' },
+      },
+      { type: 'side/reset', snapshot: { ...snapshot, capturedAt: 456 } },
+    );
+    expect(state.sideChat?.messages).toEqual([]);
+    expect(state.sideChat?.snapshot.capturedAt).toBe(456);
+    expect(state.sideChat?.settings.connectionId).toBe('cheap');
+    expect(state.stash.name?.text).toBe('Elowen.');
+    expect(state.stash.name?.provenance.conversation).toBe('side');
+  });
+
+  test('a partial side abort preserves its text, model and generation identity without touching main', () => {
+    const state = run(
+      sideExchange(),
+      { type: 'gen/started', target: 'side', mode: 'swipe', newId: 'partial' },
+      {
+        type: 'gen/aborted',
+        target: 'side',
+        text: 'Lu',
+        generationId: 'attempt',
+        extra: { model: 'cheap-model' },
+      },
+    );
+    expect(state.sideChat?.messages.at(-1)?.swipes).toEqual(['Elowen.', 'Lu']);
+    expect(currentInfo(state.sideChat!.messages.at(-1)!).extra).toMatchObject({
+      model: 'cheap-model',
+      generation_id: 'attempt',
+      truncated: true,
+    });
+    expect(state.messages.at(-1)?.swipes).toEqual(['The lamp room is cold.']);
+  });
+});
 
 const provenance: StashProvenance = {
   messageId: 'a1',
@@ -34,6 +133,7 @@ function session(overrides: Partial<CocreatorSession> = {}): CocreatorSession {
     finishedAvatar: null,
     seedAvatar: null,
     messages: [],
+    sideChat: null,
     ...overrides,
   };
 }

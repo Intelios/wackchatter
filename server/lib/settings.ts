@@ -11,6 +11,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { normalizeSideDefaults } from '../../shared/cocreator/sideChat.ts';
 import {
   DEFAULT_GROUP_COMPOSER_LAYOUT,
   DEFAULT_SINGLE_COMPOSER_LAYOUT,
@@ -434,6 +435,7 @@ function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreato
   const exampleSets = normalizeExampleSets(stored.exampleSets);
 
   return {
+    sideChat: normalizeSideDefaults(stored.sideChat),
     connectionId,
     presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
     systemPrompt:
@@ -841,6 +843,7 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
           {
             ...current.coCreator,
             ...patch.coCreator,
+            sideChat: { ...current.coCreator.sideChat, ...patch.coCreator.sideChat },
             // Nested one level deeper than the rest, so it needs its own spread or toggling
             // one field would reset the other seven.
             exampleFields: {

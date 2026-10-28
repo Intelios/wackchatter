@@ -481,6 +481,21 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
                     </div>
                   ) : null}
                 </header>
+                {message.incomplete ? (
+                  <p className="wc-hint" role="status">
+                    {message.incomplete === 'length'
+                      ? 'Output limit reached.'
+                      : message.incomplete === 'stopped'
+                        ? 'Reply stopped.'
+                        : 'Connection interrupted.'}{' '}
+                    Received output has been saved.
+                  </p>
+                ) : null}
+                {message.incompleteToolCalls?.length ? (
+                  <JsonDetails summary="Incomplete tool calls (saved, not executed)">
+                    <JsonPre value={message.incompleteToolCalls} />
+                  </JsonDetails>
+                ) : null}
                 {message.reasoning ? <Reasoning text={message.reasoning} /> : null}
                 {editingId === message.id ? (
                   <div className="message__editor">
@@ -515,6 +530,17 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
                 ) : (
                   <Markdown text={message.content} className="message__text" />
                 )}
+                {message.incomplete && message.id === messages.at(-1)?.id && !controller.busy ? (
+                  <button
+                    type="button"
+                    className="wc-button wc-button--ghost"
+                    onClick={() => void controller.continueReply()}
+                    disabled={!controller.assistantConnection}
+                    title="Request the remaining answer using the saved output as context."
+                  >
+                    Continue reply
+                  </button>
+                ) : null}
               </div>
             </article>
           );

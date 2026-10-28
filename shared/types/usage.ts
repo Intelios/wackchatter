@@ -20,6 +20,7 @@ export type UsageFeature =
   | 'summary'
   | 'memory'
   | 'cocreator'
+  | 'cocreatorSideChat'
   | 'presetCocreator'
   | 'presetTest'
   | 'arena'
@@ -36,6 +37,7 @@ export const USAGE_FEATURES: readonly UsageFeature[] = [
   'summary',
   'memory',
   'cocreator',
+  'cocreatorSideChat',
   'presetCocreator',
   'presetTest',
   'arena',

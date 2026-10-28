@@ -179,6 +179,7 @@ function normalizeProvenance(raw: unknown): StashProvenance {
     source: source === 'block' || source === 'selection' || source === 'seed' ? source : 'message',
   };
   if (typeof value.model === 'string') provenance.model = value.model;
+  if (value.conversation === 'side') provenance.conversation = 'side';
   if (typeof value.label === 'string') provenance.label = value.label;
   return provenance;
 }
