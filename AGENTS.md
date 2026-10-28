@@ -9,6 +9,12 @@ Bun server + React 19 + TypeScript + Vite client, desktop only. The server is th
 streaming proxy — and never builds a prompt: **assembly runs client-side**, like SillyTavern.
 `shared/` is pure and imported by both sides.
 
+## Roles
+
+- **The user is the designer.** They own the design, what's in the app, and its interface. Take every design question to them with a recommendation, and never settle one yourself.
+- **The Agent is the developer.** The Agent owns the tech stack, architecture, code, docs, commits and branches, and can change or replace any of them without asking.
+- **`docs/todo.md` is the designer's.** Read it for context. Never edit it.
+
 ## Commands
 
 - `bun run dev:server` — API on **8787**, hot-reloaded.
