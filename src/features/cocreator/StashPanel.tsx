@@ -43,6 +43,7 @@ function totalTokens(stash: CardStash, count: TokenCounter): number {
 function provenanceLabel(entry: StashEntry): string {
   const parts: string[] = [];
   if (entry.edited) parts.push('edited');
+  if (entry.provenance.conversation === 'side') parts.push('side chat');
   if (entry.provenance.messageId) parts.push(`take ${entry.provenance.swipeIndex + 1}`);
   if (entry.provenance.source === 'selection') parts.push('selection');
   if (entry.provenance.model) parts.push(entry.provenance.model);

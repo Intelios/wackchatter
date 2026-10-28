@@ -74,6 +74,14 @@ data/            Gitignored. characters/**/*.png, presets/*.json, reference-pres
 
 **Prompt assembly runs client-side**, like SillyTavern; the server only proxies.
 
+**Character Co-Creator side chat** is one saved scratchpad within the session's whole-document
+revision/save queue. Its main-context snapshot contains frozen text, never live message or
+example references. Its messages never enter the main prompt or session-list turn counts.
+Both conversations share one generation gate and Stop control. Side connection/model choices
+are explicit and endpoint-bound: missing configuration blocks sends without borrowing another
+connection. Opening/reopening/resetting never generates; reset preserves side settings and
+filed card content, including its side-chat provenance.
+
 **Connection settings are ours, not the preset's.** Connections live in `data/settings.json`,
 keys in `data/secrets.json` keyed by connection id, never reaching the browser. The key
 belongs to the endpoint (provider + baseUrl): a PATCH changing either drops the key. A

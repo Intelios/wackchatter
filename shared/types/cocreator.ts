@@ -9,7 +9,7 @@
  * an alternate take on one turn. That is what lets `shared/chat/message.ts` serve both.
  */
 
-import type { ChatMessage } from './chat.ts';
+import type { ApiMessage, ChatMessage } from './chat.ts';
 
 /** The card fields a piece of generated content may be filed into. */
 export type CardSlot =
@@ -56,6 +56,8 @@ export const SINGLE_SLOTS: readonly SingleCardSlot[] = [
 ];
 
 export interface StashProvenance {
+  /** Absent on existing entries, which originated in the main conversation. */
+  conversation?: 'side';
   /** Empty means the origin was not recorded — a repaired entry from an older shape. */
   messageId: string;
   swipeIndex: number;
@@ -185,6 +187,39 @@ export interface SessionModelSettings {
   };
 }
 
+export type SideChatModelSettings = Pick<
+  SessionModelSettings,
+  'connectionId' | 'modelOverride' | 'outputTokens' | 'contextTokens'
+>;
+
+export interface SideChatDefaults {
+  /** Null is unconfigured. Side chat never borrows another connection. */
+  connectionId: string | null;
+  modelOverride?: SessionModelSettings['modelOverride'];
+  outputTokens: number;
+  contextTokens: number;
+}
+
+export const DEFAULT_SIDE_CHAT: Readonly<SideChatDefaults> = {
+  connectionId: null,
+  outputTokens: 2048,
+  contextTokens: 131072,
+};
+
+export interface SideChatSnapshot {
+  capturedAt: number;
+  systemPrompt: string;
+  exampleBlock: string;
+  /** Frozen selected text, not references to editable main messages. */
+  messages: ApiMessage[];
+}
+
+export interface CocreatorSideChat {
+  snapshot: SideChatSnapshot;
+  settings: SideChatModelSettings;
+  messages: ChatMessage[];
+}
+
 export interface CocreatorSession {
   id: string;
   title: string;
@@ -208,6 +243,7 @@ export interface CocreatorSession {
    */
   seedAvatar: string | null;
   messages: ChatMessage[];
+  sideChat: CocreatorSideChat | null;
 }
 
 export interface CocreatorSessionSummary {
@@ -239,4 +275,5 @@ export interface CocreatorSaveSnapshot {
    */
   finishedAvatar: string | null;
   messages: ChatMessage[];
+  sideChat: CocreatorSideChat | null;
 }

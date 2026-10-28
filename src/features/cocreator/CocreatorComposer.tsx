@@ -1,20 +1,42 @@
+import { appendDraft } from '@shared/cocreator/sideChat.ts';
 import type { QuickCommand } from '@shared/types/settings.ts';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type Ref,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { SendIcon, StopIcon } from '../../layout/icons.tsx';
 import { composerMaxHeight, rowCap } from '../chat/composerGrowth.ts';
 import { CocreatorQuickCommands } from './CocreatorQuickCommands.tsx';
 
 interface CocreatorComposerProps {
+  ref?: Ref<CocreatorComposerHandle>;
+  autoFocus?: boolean;
+  label?: string;
+  placeholder?: string;
+  busyReason?: string;
+  onOpenSideChat?: () => void;
+  onAskSelection?: (text: string) => void;
   busy: boolean;
   blockedReason: string | null;
   /**
    * Send the draft. The composer keeps owning it, the same bargain the chat composer makes
    * with its `onSend` — the desk never learns there is a textarea.
    */
-  onSend: (text: string) => void;
+  onSend: (text: string) => boolean;
   onStop: () => void;
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
+}
+
+export interface CocreatorComposerHandle {
+  append: (text: string) => void;
+  focus: () => void;
+  clear: () => void;
 }
 
 /**
@@ -25,6 +47,13 @@ interface CocreatorComposerProps {
  * (`rowCap` rows, or the viewport share) and scrolls internally past whichever is lower.
  */
 export function CocreatorComposer({
+  ref,
+  autoFocus = true,
+  label = 'Co-Creator message',
+  placeholder = 'Describe the character, or ask for a first message…',
+  busyReason = 'Generating a reply',
+  onOpenSideChat,
+  onAskSelection,
   busy,
   blockedReason,
   onSend,
@@ -35,11 +64,30 @@ export function CocreatorComposer({
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = useState('');
+  const focus = useCallback(() => {
+    setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
+  }, []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      append: (text) => {
+        setDraft((current) => appendDraft(current, text));
+        focus();
+      },
+      focus,
+      clear: () => {
+        setDraft('');
+        setSelection('');
+      },
+    }),
+    [focus],
+  );
 
   // The box is the only thing on this screen you can do anything with on arrival.
   useEffect(() => {
-    textareaRef.current?.focus({ preventScroll: true });
-  }, []);
+    if (autoFocus) textareaRef.current?.focus({ preventScroll: true });
+  }, [autoFocus]);
 
   /** A quick-command pick appends to the draft and hands the box back, ready to send. */
   const insertQuickCommand = useCallback((text: string) => {
@@ -54,10 +102,15 @@ export function CocreatorComposer({
 
   function submit() {
     const text = draft.trim();
-    if (!text || busy || blockedReason) return;
-    setDraft('');
-    onSend(text);
+    if (!text || busy || sendBlockedReason) return;
+    if (onSend(text) !== false) {
+      setDraft('');
+      setSelection('');
+    }
   }
+  // Commands route before main-model validation: opening side chat needs no main model.
+  const sendBlockedReason =
+    onOpenSideChat && draft.trimStart().startsWith('/') ? null : blockedReason;
 
   /**
    * Grow with the content, up to a cap, then scroll internally.
@@ -170,6 +223,32 @@ export function CocreatorComposer({
 
   return (
     <div className="cocreator-composer" ref={rootRef}>
+      {onOpenSideChat ? (
+        <div className="cocreator-composer__tools">
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            onClick={onOpenSideChat}
+            title="Open side chat · /side <question>"
+          >
+            Side chat
+          </button>
+          <button
+            type="button"
+            className="wc-button wc-button--ghost"
+            disabled={!selection}
+            title={
+              selection
+                ? 'Quote the selected draft text in side chat'
+                : 'Select some text in this draft first'
+            }
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => onAskSelection?.(selection)}
+          >
+            Ask in side chat
+          </button>
+        </div>
+      ) : null}
       <CocreatorQuickCommands
         quickCommands={quickCommands}
         onInsertCommand={insertQuickCommand}
@@ -180,12 +259,15 @@ export function CocreatorComposer({
         className="wc-textarea cocreator-composer__input"
         value={draft}
         rows={3}
+        aria-label={label}
         placeholder={
-          blockedReason
-            ? `${blockedReason}. Open Connections from the chat screen to set one up.`
-            : 'Describe the character, or ask for a first message…'
+          busy ? `${busyReason}. You can keep drafting…` : (blockedReason ?? placeholder)
         }
         onChange={(event) => setDraft(event.target.value)}
+        onSelect={(event) => {
+          const el = event.currentTarget;
+          setSelection(el.value.slice(el.selectionStart, el.selectionEnd).trim());
+        }}
         onKeyDown={(event) => {
           // Enter sends, Shift+Enter is a newline — the composer's convention app-wide.
           if (event.key === 'Enter' && !event.shiftKey) {
@@ -199,7 +281,7 @@ export function CocreatorComposer({
           type="button"
           className="wc-button wc-button--danger cocreator-composer__send"
           onClick={onStop}
-          title="Stop generating"
+          title={`Stop · ${busyReason}`}
         >
           <StopIcon />
           Stop
@@ -209,8 +291,8 @@ export function CocreatorComposer({
           type="button"
           className="wc-button wc-button--primary cocreator-composer__send"
           onClick={submit}
-          disabled={!draft.trim() || Boolean(blockedReason)}
-          title={blockedReason ?? 'Send'}
+          disabled={!draft.trim() || Boolean(sendBlockedReason)}
+          title={sendBlockedReason ?? 'Send'}
         >
           <SendIcon />
           Send

@@ -1,4 +1,5 @@
 import { currentInfo, currentText, timestamp } from '@shared/chat/message.ts';
+import { quoteForSideChat } from '@shared/cocreator/sideChat.ts';
 import { isSlotFilled } from '@shared/cocreator/stash.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
@@ -17,13 +18,15 @@ import { useStickToBottom } from '../chat/useStickToBottom.ts';
 import { useTranscriptWindow } from '../chat/useTranscriptWindow.ts';
 import { AvatarDrop } from './AvatarDrop.tsx';
 import { SLOT_LABELS } from './blocks.ts';
-import { CocreatorComposer } from './CocreatorComposer.tsx';
+import { CocreatorComposer, type CocreatorComposerHandle } from './CocreatorComposer.tsx';
 import { CocreatorSetup } from './CocreatorSetup.tsx';
 import { DesignMessage } from './DesignMessage.tsx';
 import { ExamplesPanel } from './ExamplesPanel.tsx';
 import { finishSession } from './finish.ts';
 import { isAnalyseRequest, renderStashRequest } from './prompt.ts';
+import { SideChatPanel } from './SideChatPanel.tsx';
 import { StashPanel } from './StashPanel.tsx';
+import { parseCocreatorInput } from './slashCommands.ts';
 import { type CocreatorAction, cocreatorReducer } from './state/cocreatorReducer.ts';
 import { useCocreator } from './useCocreator.ts';
 import { useExampleCards } from './useExampleCards.ts';
@@ -73,6 +76,11 @@ export function CocreatorDesk({
   onError,
 }: CocreatorDeskProps) {
   const exampleBlockRef = useRef('');
+  const examplesReadyRef = useRef(false);
+  const mainComposerRef = useRef<CocreatorComposerHandle>(null);
+  const sideComposerRef = useRef<CocreatorComposerHandle>(null);
+  const [rightPanelId, setRightPanelId] = useState<'card' | 'side'>('card');
+  const [inputError, setInputError] = useState<string | null>(null);
   const design = useCocreator({
     session,
     seed,
@@ -84,6 +92,7 @@ export function CocreatorDesk({
     activePreset,
     tokenizerEncoding,
     exampleBlockRef,
+    examplesReadyRef,
     streamingFps,
   });
 
@@ -93,6 +102,7 @@ export function CocreatorDesk({
   // The latest-value ref pattern the rest of this codebase uses: assigning during render
   // keeps the next generation on the block the panel is currently showing.
   exampleBlockRef.current = loadedExamples.text;
+  examplesReadyRef.current = !loadedExamples.loading;
 
   const stateRef = useRef(design.state);
   stateRef.current = design.state;
@@ -102,6 +112,25 @@ export function CocreatorDesk({
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { persistence, saving, saveError, state, busy, blockedReason } = design;
+  const busyReason =
+    state.activeConversation === 'side' ? 'Side chat is generating' : 'Main chat is generating';
+
+  const openSide = () => {
+    setRightPanelId('side');
+    design.openSideChat();
+    sideComposerRef.current?.focus();
+  };
+  const quoteInSide = (text: string) => {
+    if (!text.trim()) return;
+    openSide();
+    sideComposerRef.current?.append(quoteForSideChat(text));
+  };
+
+  // Opening the panel never snapshots a partially loaded example exhibit.
+  useEffect(() => {
+    if (rightPanelId === 'side' && !state.sideChat && !loadedExamples.loading)
+      design.openSideChat();
+  }, [rightPanelId, state.sideChat, loadedExamples.loading, design.openSideChat]);
 
   /*
    * Follow the tail, and window the transcript.
@@ -159,6 +188,7 @@ export function CocreatorDesk({
       text: string,
       source: 'block' | 'message' | 'selection',
       label?: string,
+      conversation?: 'side',
     ) => {
       design.dispatch({
         type: 'stash/set',
@@ -171,6 +201,7 @@ export function CocreatorDesk({
           source,
           ...(model ? { model } : {}),
           ...(label ? { label } : {}),
+          ...(conversation ? { conversation } : {}),
         },
       });
     },
@@ -190,6 +221,32 @@ export function CocreatorDesk({
     },
     [design, snapToEnd],
   );
+
+  const submitMain = (text: string): boolean => {
+    const input = parseCocreatorInput(text);
+    setInputError(null);
+    if (input.type === 'error') {
+      setInputError(input.message);
+      return false;
+    }
+    if (input.type === 'openSide') {
+      openSide();
+      return true;
+    }
+    if (input.type === 'sendSide') {
+      openSide();
+      if (design.sendSide(input.text)) return true;
+      setInputError(
+        loadedExamples.loading
+          ? 'Wait for attached examples to load before sending to side chat.'
+          : (design.sideBlockedReason ?? 'Side chat is busy. Your command is still in the draft.'),
+      );
+      return false;
+    }
+    if (busy || blockedReason) return false;
+    send(input.text);
+    return true;
+  };
 
   /** Show the assistant the stash — as a visible turn, never as a hidden prompt addition. */
   const showStashToModel = useCallback(() => {
@@ -312,9 +369,15 @@ export function CocreatorDesk({
                       message={message}
                       canReroll={visibleStart + index === lastIndex && !message.is_user}
                       canRetry={visibleStart + index === lastIndex && message.is_user}
-                      streaming={state.streamingId === message.id && state.status !== 'idle'}
+                      streaming={
+                        state.activeConversation === 'main' &&
+                        state.streamingId === message.id &&
+                        state.status !== 'idle'
+                      }
                       stream={design.stream}
                       busy={busy}
+                      busyReason={busyReason}
+                      onAskSide={quoteInSide}
                       countTokens={countTokens}
                       isFilled={isFilled}
                       onUse={(slot, text, source, label) =>
@@ -340,58 +403,131 @@ export function CocreatorDesk({
                   ))
               )}
 
-              {state.error ? (
+              {inputError || state.error ? (
                 <p className="cocreator-transcript__error" role="alert">
-                  {state.error}
+                  {inputError || state.error}
                 </p>
               ) : null}
             </div>
           </div>
 
           <CocreatorComposer
+            ref={mainComposerRef}
             busy={busy}
+            busyReason={busyReason}
             blockedReason={blockedReason}
-            onSend={send}
+            onSend={submitMain}
+            onOpenSideChat={openSide}
+            onAskSelection={quoteInSide}
             onStop={design.abort}
             quickCommands={defaults.quickCommands ?? []}
             onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}
           />
         </div>
 
-        <StashPanel
-          stash={state.stash}
-          countTokens={countTokens}
-          busy={busy}
-          onEditSlot={(slot: SingleCardSlot, text) =>
-            design.dispatch({ type: 'stash/editSlot', slot, text })
-          }
-          onEditGreeting={(index, text) =>
-            design.dispatch({ type: 'stash/editGreeting', index, text })
-          }
-          onMoveGreeting={(from, to) =>
-            design.dispatch({ type: 'stash/reorderGreetings', from, to })
-          }
-          onRemoveGreeting={(index) => design.dispatch({ type: 'stash/removeGreeting', index })}
-          onRemoveTag={(index) => design.dispatch({ type: 'stash/removeTag', index })}
-          onClearSlot={(slot) => design.dispatch({ type: 'stash/clear', slot })}
-          onShowModel={showStashToModel}
-          onFinish={() => void finish()}
-          finishing={finishing}
-          avatarSlot={
-            <AvatarDrop
-              sessionId={session.id}
-              avatar={state.avatar}
-              cacheKey={session.modified}
-              busy={busy || finishing}
-              onChanged={(avatar) =>
-                design.dispatch(
-                  avatar ? { type: 'avatar/set', filename: avatar } : { type: 'avatar/cleared' },
+        <aside className="cocreator-dock" aria-label="Co-Creator tools">
+          <div className="cocreator-dock__tabs" role="tablist" aria-label="Co-Creator right panel">
+            <button
+              type="button"
+              role="tab"
+              id="cocreator-card-tab"
+              aria-controls="cocreator-card-panel"
+              aria-selected={rightPanelId === 'card'}
+              onClick={() => setRightPanelId('card')}
+            >
+              Card
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="cocreator-side-tab"
+              aria-controls="cocreator-side-panel"
+              aria-selected={rightPanelId === 'side'}
+              onClick={openSide}
+            >
+              Side chat{state.activeConversation === 'side' ? ' · generating' : ''}
+            </button>
+          </div>
+          <div
+            role="tabpanel"
+            id="cocreator-card-panel"
+            aria-labelledby="cocreator-card-tab"
+            className="cocreator-dock__panel"
+            hidden={rightPanelId !== 'card'}
+          >
+            <StashPanel
+              stash={state.stash}
+              countTokens={countTokens}
+              busy={busy}
+              onEditSlot={(slot: SingleCardSlot, text) =>
+                design.dispatch({ type: 'stash/editSlot', slot, text })
+              }
+              onEditGreeting={(index, text) =>
+                design.dispatch({ type: 'stash/editGreeting', index, text })
+              }
+              onMoveGreeting={(from, to) =>
+                design.dispatch({ type: 'stash/reorderGreetings', from, to })
+              }
+              onRemoveGreeting={(index) => design.dispatch({ type: 'stash/removeGreeting', index })}
+              onRemoveTag={(index) => design.dispatch({ type: 'stash/removeTag', index })}
+              onClearSlot={(slot) => design.dispatch({ type: 'stash/clear', slot })}
+              onShowModel={showStashToModel}
+              onFinish={() => void finish()}
+              finishing={finishing}
+              avatarSlot={
+                <AvatarDrop
+                  sessionId={session.id}
+                  avatar={state.avatar}
+                  cacheKey={session.modified}
+                  busy={busy || finishing}
+                  onChanged={(avatar) =>
+                    design.dispatch(
+                      avatar
+                        ? { type: 'avatar/set', filename: avatar }
+                        : { type: 'avatar/cleared' },
+                    )
+                  }
+                  onError={onError}
+                />
+              }
+            />
+          </div>
+          <div
+            role="tabpanel"
+            id="cocreator-side-panel"
+            aria-labelledby="cocreator-side-tab"
+            className="cocreator-dock__panel"
+            hidden={rightPanelId !== 'side'}
+          >
+            <SideChatPanel
+              design={design}
+              defaults={defaults}
+              connections={connections}
+              active={rightPanelId === 'side'}
+              examplesReady={!loadedExamples.loading}
+              composerRef={sideComposerRef}
+              onDefaultsChange={onDefaultsChange}
+              onClose={() => setRightPanelId('card')}
+              onReset={() => {
+                if (design.openSideChat(true)) sideComposerRef.current?.clear();
+              }}
+              onInsert={(text) => mainComposerRef.current?.append(text)}
+              isFilled={isFilled}
+              onUse={(message, slot, text, source, label) =>
+                handleUse(
+                  message.id,
+                  message.swipe_id,
+                  currentInfo(message).extra?.model as string | undefined,
+                  slot,
+                  text,
+                  source,
+                  label,
+                  'side',
                 )
               }
-              onError={onError}
             />
-          }
-        />
+          </div>
+        </aside>
       </div>
     </>
   );

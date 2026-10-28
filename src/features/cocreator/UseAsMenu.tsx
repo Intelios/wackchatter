@@ -11,6 +11,7 @@ interface UseAsMenuProps {
   getText: () => string;
   label: string;
   busy: boolean;
+  busyReason?: string;
   isFilled: (slot: CardSlot) => boolean;
   requiresSelection?: boolean;
   onUse: (slot: CardSlot, text: string) => void;
@@ -28,6 +29,7 @@ export function UseAsMenu({
   getText,
   label,
   busy,
+  busyReason,
   isFilled,
   requiresSelection,
   onUse,
@@ -50,6 +52,7 @@ export function UseAsMenu({
       slot,
       text,
       busy,
+      busyReason,
       filled: isFilled,
       confirming,
       ...(requiresSelection ? { requiresSelection } : {}),

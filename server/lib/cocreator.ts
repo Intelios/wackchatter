@@ -18,12 +18,14 @@
 
 import type { Database } from 'bun:sqlite';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
+import { normalizeSideSettings } from '../../shared/cocreator/sideChat.ts';
 import { emptyStash, normalizeStash, stashedSlotCount } from '../../shared/cocreator/stash.ts';
 import type { ChatMessage, StaleChatRevision } from '../../shared/types/chat.ts';
 import {
   type CardStash,
   type CocreatorSession,
   type CocreatorSessionSummary,
+  type CocreatorSideChat,
   DEFAULT_EXAMPLE_FIELDS,
   type ExampleFields,
   type ExampleSelection,
@@ -52,6 +54,7 @@ interface SessionRow {
   avatar: string | null;
   finished_avatar: string | null;
   seed_avatar: string | null;
+  side_chat: string | null;
 }
 
 interface MessageRow {
@@ -101,6 +104,7 @@ export interface CocreatorStore {
       settings?: SessionModelSettings;
       finishedAvatar?: string | null;
       messages: ChatMessage[];
+      sideChat?: CocreatorSideChat | null;
     },
   ): CocreatorSaveResult;
   /** Metadata-only write. Never touches the transcript. */
@@ -143,6 +147,48 @@ function parseJson<T>(raw: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/** Wire messages repair through fromChatMessage; stored swipes never duplicate `mes`. */
+function normalizeSideChat(raw: unknown): CocreatorSideChat | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as CocreatorSideChat;
+  const snapshot = value.snapshot;
+  if (
+    !snapshot ||
+    typeof snapshot.systemPrompt !== 'string' ||
+    typeof snapshot.exampleBlock !== 'string' ||
+    !Number.isFinite(snapshot.capturedAt) ||
+    !Array.isArray(snapshot.messages)
+  )
+    return null;
+  return {
+    snapshot: {
+      capturedAt: snapshot.capturedAt,
+      systemPrompt: snapshot.systemPrompt,
+      exampleBlock: snapshot.exampleBlock,
+      messages: snapshot.messages
+        .filter(
+          (m) =>
+            m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string',
+        )
+        .map(({ role, content }) => ({ role, content })),
+    },
+    settings: normalizeSideSettings(value.settings),
+    messages: (Array.isArray(value.messages) ? value.messages : [])
+      .filter((m) => m && typeof m.id === 'string')
+      .map((m) =>
+        toChatMessage(
+          typeof m.mes === 'string'
+            ? fromChatMessage(m)
+            : normalizeState({ ...m, name: m.name || ROW_NAME }),
+        ),
+      ),
+  };
+}
+
+function encodeSideChat(value: CocreatorSideChat | null): string | null {
+  return value ? JSON.stringify({ ...value, messages: value.messages.map(fromChatMessage) }) : null;
 }
 
 /** Repair an examples selection: unknown keys dropped, missing toggles defaulted. */
@@ -238,7 +284,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       `UPDATE cocreator_sessions
           SET title = $title, stash = $stash, examples = $examples, settings = $settings,
               avatar = $avatar, finished_avatar = $finishedAvatar,
-              modified = $modified, revision = $revision
+              modified = $modified, revision = $revision, side_chat = $sideChat
         WHERE id = $id`,
     ),
     deleteSession: database.query('DELETE FROM cocreator_sessions WHERE id = ?'),
@@ -316,6 +362,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       finishedAvatar: row.finished_avatar,
       seedAvatar: row.seed_avatar,
       messages: statements.selectMessages.all(id).map(rowToMessage),
+      sideChat: normalizeSideChat(parseJson<unknown>(row.side_chat ?? 'null', null)),
     };
   }
 
@@ -340,6 +387,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       $finishedAvatar: next.finishedAvatar,
       $modified: Date.now(),
       $revision: next.revision,
+      $sideChat: encodeSideChat(next.sideChat),
     });
   }
 
@@ -382,6 +430,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         settings?: SessionModelSettings;
         finishedAvatar?: string | null;
         messages: ChatMessage[];
+        sideChat?: CocreatorSideChat | null;
       },
     ): CocreatorSaveResult => {
       const existing = readSession(id);
@@ -394,6 +443,8 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         ? normalizeSessionSettings(input.settings)
         : existing.settings;
       const messages = normalizeMessages(input.messages);
+      const sideChat =
+        input.sideChat === undefined ? existing.sideChat : normalizeSideChat(input.sideChat);
       // Absent means "keep what is there" — a whole-session save that predates the field, or
       // one the client has no reason to change, must not clear the recording.
       const finishedAvatar =
@@ -408,6 +459,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
           JSON.stringify(stash) === JSON.stringify(existing.stash) &&
           JSON.stringify(examples) === JSON.stringify(existing.examples) &&
           JSON.stringify(settings) === JSON.stringify(existing.settings) &&
+          JSON.stringify(sideChat) === JSON.stringify(existing.sideChat) &&
           JSON.stringify(messages) === JSON.stringify(existing.messages),
       );
       if (conflict) return conflict;
@@ -421,6 +473,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         settings,
         avatar: existing.avatar,
         finishedAvatar,
+        sideChat,
       });
       writeMessages(id, messages);
       return { kind: 'saved', session: readSession(id)! };
@@ -461,6 +514,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         id,
         title,
         revision: patch.revision,
+        sideChat: existing.sideChat,
         stash,
         examples,
         settings,

@@ -31,6 +31,47 @@ const cutoff = setText(
 );
 
 describe('design generation requests and recovery', () => {
+  test('side generation includes frozen background while an ordinary main request never includes side history', () => {
+    const sideSnapshot = {
+      capturedAt: 1,
+      systemPrompt: 'Frozen instructions.',
+      exampleBlock: '',
+      messages: [{ role: 'user' as const, content: 'Her favourite bird is a puffin.' }],
+    };
+    const messages = [
+      userMessage('side-user', 'You', 'Side-only question.', null),
+      assistantPlaceholder('side-reply', 'Assistant'),
+    ];
+    const side = buildDesignGeneration({ ...request, mode: 'send', messages, sideSnapshot });
+    expect(side.body.messages.some((m) => m.content.includes('puffin'))).toBe(true);
+    expect(side.body.messages.at(-1)?.content).toBe('Side-only question.');
+    const main = buildDesignGeneration({ ...request, mode: 'send', messages: [user] });
+    expect(JSON.stringify(main.body.messages)).not.toContain('Side-only');
+    expect(JSON.stringify(main.body.messages)).not.toContain('Frozen instructions');
+  });
+
+  test('side overflow rejects both an oversized latest question and a continuation that drops its source', () => {
+    const sideSnapshot = { capturedAt: 1, systemPrompt: 'Frozen.', exampleBlock: '', messages: [] };
+    const huge = userMessage('huge-side', 'You', 'x'.repeat(20000), null);
+    expect(() =>
+      buildDesignGeneration({
+        ...request,
+        mode: 'send',
+        messages: [huge],
+        sideSnapshot,
+        settings: { outputTokens: 1, contextTokens: 16384 },
+      }),
+    ).toThrow('latest side message');
+    expect(() =>
+      buildDesignGeneration({
+        ...request,
+        mode: 'continue',
+        messages: [user, setText(cutoff, 'x'.repeat(20000))],
+        sideSnapshot,
+        settings: { outputTokens: 1, contextTokens: 16384 },
+      }),
+    ).toThrow('latest side message');
+  });
   test('a send reserves reasoning room and replaces the chat preset’s tiny reply limit', () => {
     const result = buildDesignGeneration({
       ...request,

@@ -227,6 +227,8 @@
   --wc-cocreator-examples-width: 280px;
   --wc-cocreator-stash-width: 340px;
   --wc-cocreator-session-width: 720px;
+  --wc-cocreator-side-context-height: 30vh;
+  --wc-cocreator-side-settings-width: 380px;
   /* The rule marking a card block inside a design reply. */
   --wc-cocreator-block-mark: 3px;
   --wc-stats-canvas-width: 1080px;

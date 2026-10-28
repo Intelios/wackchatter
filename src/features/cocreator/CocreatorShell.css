@@ -278,6 +278,137 @@
   min-height: 0;
 }
 
+/* Card and Side chat share one routed dock; hidden panels stay mounted for drafts/streams. */
+.cocreator-dock {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  border-left: var(--wc-border-width) solid var(--wc-border);
+  background: var(--wc-surface);
+}
+
+.cocreator-dock__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+}
+
+.cocreator-dock__tabs button {
+  padding: var(--wc-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--wc-text-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.cocreator-dock__tabs button[aria-selected="true"] {
+  background: var(--wc-accent-subtle);
+  color: var(--wc-accent);
+}
+
+.cocreator-dock__panel {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+.cocreator-dock__panel[hidden] {
+  display: none;
+}
+
+.cocreator-composer__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wc-space-2);
+  grid-column: 1 / -1;
+}
+
+.cocreator-composer__tools .wc-button {
+  font-size: var(--wc-text-xs);
+}
+
+.cocreator-side {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.cocreator-side__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  padding: var(--wc-space-2) var(--wc-space-3);
+}
+
+.cocreator-side__model {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+}
+
+.cocreator-side__context {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border-bottom: var(--wc-border-width) solid var(--wc-border);
+  font-size: var(--wc-text-xs);
+  min-height: 0;
+  max-height: var(--wc-cocreator-side-context-height);
+  overflow-y: auto;
+}
+
+.cocreator-side__context summary {
+  color: var(--wc-text-muted);
+  cursor: pointer;
+}
+
+.cocreator-side__context p {
+  margin-block: var(--wc-space-2);
+}
+
+.cocreator-side__snapshot pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: var(--wc-text-xs);
+  margin-block: var(--wc-space-2) var(--wc-space-3);
+}
+
+.cocreator-side__snapshot h3 {
+  font-size: var(--wc-text-xs);
+  margin-top: var(--wc-space-3);
+}
+
+.cocreator-side__scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.cocreator-side__messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-3);
+  padding: var(--wc-space-3);
+  min-width: 0;
+}
+
+.cocreator-side .wc-button {
+  font-size: var(--wc-text-xs);
+}
+
+.cocreator-side-setup {
+  width: var(--wc-cocreator-side-settings-width);
+  padding: var(--wc-space-3);
+  overflow: visible;
+}
+
 .cocreator-transcript__scroll {
   min-height: 0;
   overflow-y: auto;
@@ -1124,4 +1255,24 @@
   .cocreator-shell__body {
     animation: none;
   }
+}
+
+.cocreator-dock .stash-panel {
+  height: 100%;
+  border-left: 0;
+}
+
+.cocreator-side .design-message__header,
+.cocreator-side .card-block__header,
+.cocreator-side .design-message__footer {
+  flex-wrap: wrap;
+}
+
+.cocreator-side .design-message__footer .design-message__spacer {
+  display: none;
+}
+
+.cocreator-side .design-message__model {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }

@@ -56,6 +56,86 @@ function filledStash(): CardStash {
   return stash;
 }
 
+const sideChat = () => ({
+  snapshot: {
+    capturedAt: 123,
+    systemPrompt: 'Design a lighthouse keeper.',
+    exampleBlock: 'An example frozen in time.',
+    messages: [{ role: 'assistant' as const, content: 'What is her name?' }],
+  },
+  settings: { connectionId: 'side', outputTokens: 2048 },
+  messages: [message({ id: 'side-answer', mes: 'Elowen.', extra: { model: 'side-model' } })],
+});
+
+describe('side scratchpad persistence', () => {
+  test('existing and new sessions have no scratchpad until one is opened', () => {
+    expect(store.createSession({}).sideChat).toBeNull();
+  });
+
+  test('snapshot, settings and repaired side swipes round-trip without entering the main transcript', () => {
+    const created = store.createSession({});
+    const side = sideChat();
+    side.messages[0]!.swipes = ['Stale text.', 'Another name.'];
+    side.messages[0]!.swipe_id = 0;
+    const result = saved(
+      store.replaceSession(created.id, {
+        revision: 1,
+        messages: [message({ id: 'main', mes: 'Main only.' })],
+        sideChat: side,
+        stash: setSlot(emptyStash(), 'name', 'Elowen.', { ...provenance, conversation: 'side' }),
+      }),
+    );
+    expect(result.sideChat?.snapshot).toEqual(side.snapshot);
+    expect(result.sideChat?.settings).toEqual(side.settings);
+    expect(result.stash.name?.provenance.conversation).toBe('side');
+    expect(result.sideChat?.messages[0]?.swipes).toEqual(['Elowen.', 'Another name.']);
+    expect(result.sideChat?.messages[0]?.swipe_info).toHaveLength(2);
+    expect(result.messages.map((m) => m.mes)).toEqual(['Main only.']);
+    expect(store.listSessions()[0]?.messageCount).toBe(1);
+    const raw = database
+      .query<{ side_chat: string }, [string]>(
+        'SELECT side_chat FROM cocreator_sessions WHERE id = ?',
+      )
+      .get(created.id)!;
+    expect(JSON.parse(raw.side_chat).messages[0]).not.toHaveProperty('mes');
+  });
+
+  test('omitted scratchpad survives main saves and metadata patches; null explicitly clears it', () => {
+    const created = store.createSession({});
+    saved(store.replaceSession(created.id, { revision: 1, messages: [], sideChat: sideChat() }));
+    saved(store.replaceSession(created.id, { revision: 2, messages: [message()] }));
+    saved(store.patchSession(created.id, { revision: 3, title: 'Renamed' }));
+    expect(store.getSession(created.id)?.sideChat?.messages[0]?.mes).toBe('Elowen.');
+    saved(store.replaceSession(created.id, { revision: 4, messages: [], sideChat: null }));
+    expect(store.getSession(created.id)?.sideChat).toBeNull();
+  });
+
+  test('same-revision retries are idempotent and conflicting side changes are rejected', () => {
+    const created = store.createSession({});
+    const input = { revision: 1, messages: [], sideChat: sideChat() };
+    const first = saved(store.replaceSession(created.id, input));
+    expect(store.replaceSession(created.id, { ...input, sideChat: first.sideChat }).kind).toBe(
+      'saved',
+    );
+    expect(store.replaceSession(created.id, { ...input, sideChat: null }).kind).toBe('stale');
+    expect(store.replaceSession(created.id, { ...input, revision: 0 }).kind).toBe('stale');
+    expect(store.deleteSession(created.id)).toBe(true);
+    expect(store.getSession(created.id)).toBeNull();
+  });
+
+  test('migration adds a nullable scratchpad without changing existing sessions', () => {
+    database.exec(`ALTER TABLE cocreator_sessions DROP COLUMN side_chat`);
+    const created = database.query(`INSERT INTO cocreator_sessions
+      (id, title, created, modified, revision) VALUES ('legacy-side', 'Kept', 1, 2, 7)`);
+    created.run();
+    createSchema(database);
+    const migrated = createCocreatorStore(database).getSession('legacy-side')!;
+    expect(migrated.sideChat).toBeNull();
+    expect(migrated.modified).toBe(2);
+    expect(migrated.revision).toBe(7);
+  });
+});
+
 describe('creating and reading', () => {
   test('a new session starts empty at revision 0', () => {
     const session = store.createSession({});
