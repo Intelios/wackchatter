@@ -5,6 +5,7 @@ import type { PresetCocreatorMessage } from '@shared/types/preset-cocreator.ts';
 import { ApiError } from '../../lib/api.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
+  assistantResponseMessage,
   assistantWireMessages,
   configureAssistantMode,
   correlateToolMessages,
@@ -455,5 +456,49 @@ describe('tool activity correlation', () => {
     expect(toolCallArguments(exchanges[0]!.call)).toMatchObject({ summary: 'Cooler sampling' });
     // A result whose call is gone still renders — with a null call, not a hole.
     expect(exchanges[1]).toMatchObject({ call: null, result: 'not json' });
+  });
+});
+
+describe('incomplete paid assistant output', () => {
+  test('a token cutoff retains text, reasoning and raw tool arguments without an executable call', () => {
+    const tool = call('patch_preset', '{"operations":[');
+    const message = assistantResponseMessage({
+      content: 'Draft so far',
+      reasoning: 'Thinking',
+      finishReason: 'length',
+      done: true,
+      toolCalls: [tool],
+    });
+    expect(message.content).toBe('Draft so far');
+    expect(message.reasoning).toBe('Thinking');
+    expect(message.incomplete).toBe('length');
+    expect(message.incompleteToolCalls).toEqual([tool]);
+    expect(message.toolCalls).toBeUndefined();
+    expect(assistantWireMessages([message])[0]).not.toHaveProperty('tool_calls');
+  });
+
+  test('Stop and network failures keep the latest streamed content and reasoning', () => {
+    for (const reason of ['stopped', 'error'] as const) {
+      const message = assistantResponseMessage(
+        { content: 'Paid text', reasoning: 'Paid thinking', done: false, finishReason: null },
+        reason,
+      );
+      expect(message.content).toBe('Paid text');
+      expect(message.reasoning).toBe('Paid thinking');
+      expect(message.incomplete).toBe(reason);
+    }
+  });
+
+  test('a complete tool response stays executable', () => {
+    const tool = call('read_preset', {});
+    const message = assistantResponseMessage({
+      content: '',
+      reasoning: '',
+      finishReason: 'tool_calls',
+      done: true,
+      toolCalls: [tool],
+    });
+    expect(message.toolCalls).toEqual([tool]);
+    expect(message.incomplete).toBeUndefined();
   });
 });

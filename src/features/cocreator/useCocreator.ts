@@ -10,8 +10,8 @@
  * that has anything to act on.
  */
 
+import { currentText } from '@shared/chat/message.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import { buildRequestBody } from '@shared/providers/request.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterDetail } from '@shared/types/card.ts';
 import type { MessageExtra } from '@shared/types/chat.ts';
@@ -33,7 +33,7 @@ import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
-import { buildDesignPrompt } from './prompt.ts';
+import { buildDesignGeneration } from './generation.ts';
 import { renderSeedTurn, seedStash } from './seed.ts';
 import { resolveCocreatorSettings } from './settings.ts';
 import {
@@ -45,15 +45,6 @@ import {
 } from './state/cocreatorReducer.ts';
 
 const SAVE_DELAY_MS = 400;
-
-/**
- * The reply budget when the chosen preset does not name one.
- *
- * Passed explicitly rather than left to `buildRequestBody`'s own `?? 300` fallback: 300
- * tokens truncates a description mid-sentence, and a later change to that default must not
- * silently start cutting design replies in half.
- */
-const DEFAULT_MAX_TOKENS = 1024;
 
 export interface UseCocreatorOptions {
   session: CocreatorSession;
@@ -102,6 +93,7 @@ export interface UseCocreator {
    * generation failed, was aborted empty, or was deleted afterwards.
    */
   retry: () => Promise<void>;
+  continueReply: () => Promise<void>;
   abort: () => void;
   /** `base` flushes a state the reducer has produced but React has not yet committed. */
   flushSaves: (base?: CocreatorState) => Promise<void>;
@@ -305,18 +297,23 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   }, [connection, preset]);
 
   const generate = useCallback(
-    async (mode: 'send' | 'swipe', base?: CocreatorState) => {
+    async (mode: 'send' | 'swipe' | 'continue', base?: CocreatorState) => {
       const current = base ?? stateRef.current;
-      if (current.status !== 'idle') return;
+      if (current.status !== 'idle' || abortRef.current) return;
       if (!connection || !preset) return;
 
       // Settings can change mid-generation. Keep the request body, the reply's recorded
       // metadata and the server-side connection lookup on one snapshot for the whole call.
       const requestConnection: Connection = { ...connection };
 
+      const previousReply = current.messages.at(-1);
+      if (mode === 'continue' && (!previousReply || previousReply.is_user)) return;
+      const prefix = mode === 'continue' && previousReply ? currentText(previousReply) : '';
+      const combine = (content: string) => (content ? prefix + content : '');
+
       const startAction: CocreatorAction = {
         type: 'gen/started',
-        mode,
+        mode: mode === 'continue' ? 'swipe' : mode,
         newId: crypto.randomUUID(),
       };
       const started = cocreatorReducer(current, startAction);
@@ -358,36 +355,21 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       let reasoning = '';
 
       try {
-        const maxTokens = preset.openai_max_tokens ?? DEFAULT_MAX_TOKENS;
-        const prompt = buildDesignPrompt({
-          systemPrompt,
-          exampleBlock: exampleBlockRef.current,
-          messages: started.messages,
-          countTokens,
-          maxPromptTokens: (preset.openai_max_context ?? 4095) - maxTokens,
-        });
-
-        if (prompt.fixedOverflow) {
-          dispatch({
-            type: 'gen/failed',
-            message:
-              'The system prompt and attached examples alone exceed the context budget. ' +
-              'Detach an example, turn off some example fields, or raise the context size.',
-          });
-          return;
-        }
-
-        const body = buildRequestBody({
-          messages: prompt.messages,
+        const { body } = buildDesignGeneration({
+          mode,
+          messages: mode === 'continue' ? current.messages : started.messages,
           preset,
           connection: requestConnection,
-          stream: streaming,
-          maxTokens,
+          settings: current.settings,
+          systemPrompt,
+          exampleBlock: exampleBlockRef.current,
+          countTokens,
+          streaming,
         });
 
         if (!ensureActive()) return;
 
-        stream.begin('', streaming);
+        stream.begin(prefix, streaming);
         streamStarted = true;
 
         const final = await streamGenerate(
@@ -401,9 +383,9 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
             },
             onTick: (streamState) => {
               if (!ownsGeneration() || controller.signal.aborted) return;
-              text = streamState.content;
+              text = combine(streamState.content);
               reasoning = streamState.reasoning;
-              stream.set(streamState.content, streamState.reasoning);
+              stream.set(prefix + streamState.content, streamState.reasoning);
             },
           },
           '',
@@ -423,7 +405,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
 
         dispatch({
           type: 'gen/finished',
-          text: final.content,
+          text: combine(final.content),
           // 'length' becomes the truncated badge in the reducer; a Stop click or a
           // failure marks its own.
           finishReason: final.finishReason,
@@ -498,6 +480,10 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     await generate('send');
   }, [generate]);
 
+  const continueReply = useCallback(async () => {
+    await generate('continue');
+  }, [generate]);
+
   // A design session is worth more than a chat turn, so an unload attempts the save too.
   useEffect(() => {
     const onPagehide = () => {
@@ -527,6 +513,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     send,
     reroll,
     retry,
+    continueReply,
     abort,
     flushSaves,
     persistence: persistenceControls,

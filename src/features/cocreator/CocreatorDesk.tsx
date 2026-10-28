@@ -333,6 +333,7 @@ export function CocreatorDesk({
                       }
                       onReroll={() => void design.reroll()}
                       onRetry={() => void design.retry()}
+                      onContinue={() => void design.continueReply()}
                       onEdit={(id, text) => design.dispatch({ type: 'message/edited', id, text })}
                       onDelete={(id) => design.dispatch({ type: 'message/deleted', id })}
                     />

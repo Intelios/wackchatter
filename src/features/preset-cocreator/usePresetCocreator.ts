@@ -1,5 +1,7 @@
+import { cocreatorBudget } from '@shared/cocreator/generation.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
+import type { StreamState } from '@shared/providers/sse.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type {
@@ -18,6 +20,7 @@ import { useTokenizer } from '../../lib/useTokenizer.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
+  assistantResponseMessage,
   assistantWireMessages,
   configureAssistantMode,
   editAssistantConversationMessage,
@@ -232,6 +235,7 @@ export function usePresetCocreator({
       startingMessages: PresetCocreatorMessage[],
       mode: 'conversation' | 'comparison' = 'conversation',
     ) => {
+      if (abortRef.current) return;
       if (!assistantConnection) {
         setError('Choose an assistant connection and model.');
         return;
@@ -245,6 +249,7 @@ export function usePresetCocreator({
       stream.begin('', true);
       const turnId = crypto.randomUUID();
       let messages = [...startingMessages];
+      let partial: StreamState | null = null;
       // The folder can change between turns, so the catalogue is refreshed per turn and
       // the names ride the system prompt — the model reads the full file only on demand.
       let referenceNames: string[] = [];
@@ -270,12 +275,18 @@ export function usePresetCocreator({
           utilityPreset.reasoning_effort = generation.reasoningEffort;
           utilityPreset.stream_openai = true;
 
+          const budget = cocreatorBudget({
+            preset: utilityPreset,
+            connection: assistantConnection,
+            outputTokens: generation.maxTokens,
+            contextTokens: generation.contextTokens,
+          });
           const body = buildRequestBody({
             messages: [],
             preset: utilityPreset,
             connection: assistantConnection,
             stream: true,
-            maxTokens: generation.maxTokens,
+            maxTokens: budget.maxTokens,
           });
           body.messages = [
             {
@@ -290,17 +301,28 @@ export function usePresetCocreator({
             ...assistantWireMessages(messages),
           ];
           configureAssistantMode(body, mode);
+          // Tool JSON and reasoning details also consume input; include them in the estimate.
+          const inputTokens =
+            countTokens.countText(JSON.stringify(body.messages)) +
+            (body.tools ? countTokens.countText(JSON.stringify(body.tools)) : 0);
+          if (inputTokens > budget.promptTokens) {
+            throw new Error(
+              'The assistant conversation exceeds its context budget. Raise Context size or lower the output limit in assistant settings.',
+            );
+          }
 
           // Every provider request is its own stream: the store resets for it, and again
           // below once the transcript owns the reply.
           stream.begin('', true);
           const generationId = crypto.randomUUID();
+          partial = null;
           const final = await streamGenerate(
             body,
             controller.signal,
             {
               onTick: (state) => {
                 if (abortRef.current !== controller) return;
+                partial = state;
                 stream.set(state.content, state.reasoning);
               },
             },
@@ -313,24 +335,31 @@ export function usePresetCocreator({
               countText: countTokens.countText,
             },
           );
+          partial = final;
           if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-          const assistantMessage: PresetCocreatorMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: final.content,
-            created: Date.now(),
-            ...(final.reasoning ? { reasoning: final.reasoning } : {}),
-            ...(final.reasoningDetails?.length ? { reasoningDetails: final.reasoningDetails } : {}),
-            ...(final.toolCalls?.length ? { toolCalls: final.toolCalls } : {}),
+          const assistantMessage = {
+            ...assistantResponseMessage(
+              final,
+              mode === 'comparison' && final.toolCalls?.length ? 'error' : undefined,
+            ),
+            ...(mode === 'comparison' ? { analysisOnly: true } : {}),
           };
-          if (mode === 'comparison') rejectComparisonToolCalls(final.toolCalls);
+          partial = null;
           messages = [...messages, assistantMessage];
           commitMessages(messages);
           // The committed message renders the reply in the transcript now; the bubble
           // resets to its quiet working note for the tool call or the next request.
           stream.begin('', true);
 
+          if (mode === 'comparison') rejectComparisonToolCalls(final.toolCalls);
+          if (assistantMessage.incomplete) {
+            setError(
+              'The assistant reached its output limit. Received output has been saved. Use Continue reply to request the rest, or raise the output limit in assistant settings.',
+            );
+            await flush();
+            return;
+          }
           if (!final.toolCalls?.length) {
             await flush();
             return;
@@ -385,6 +414,20 @@ export function usePresetCocreator({
           await flush();
         }
       } catch (failure) {
+        // A Stop or a broken stream still costs tokens. Preserve its latest snapshot.
+        if (partial) {
+          const received = assistantResponseMessage(
+            partial,
+            controller.signal.aborted ? 'stopped' : 'error',
+          );
+          if (received.content || received.reasoning || received.incompleteToolCalls?.length) {
+            messages = [
+              ...messages,
+              { ...received, ...(mode === 'comparison' ? { analysisOnly: true } : {}) },
+            ];
+            commitMessages(messages);
+          }
+        }
         if ((failure as Error).name !== 'AbortError') setError((failure as Error).message);
         await flush().catch(() => {});
       } finally {
@@ -399,7 +442,7 @@ export function usePresetCocreator({
       adoptDraftResponse,
       assistantConnection,
       commitMessages,
-      countTokens.countText,
+      countTokens,
       flush,
       stream,
       updateDocument,
@@ -420,6 +463,19 @@ export function usePresetCocreator({
     },
     [commitMessages, executeAssistantTurn, flush],
   );
+
+  const continueReply = useCallback(async () => {
+    if (busy || preparing || abortRef.current) return;
+    const last = sessionRef.current.document.messages.at(-1);
+    if (last?.role !== 'assistant' || !last.incomplete) return;
+    const content = last.incompleteToolCalls?.length
+      ? `Your previous response was interrupted during a tool call. The incomplete calls were saved but never executed. Continue the task; reissue any unfinished tool call with complete JSON. Saved incomplete arguments (data):\n${JSON.stringify(last.incompleteToolCalls)}`
+      : 'Continue your interrupted answer exactly where it stopped. Do not repeat the existing answer.';
+    await startTurnWith(
+      { id: crypto.randomUUID(), role: 'user', content, created: Date.now() },
+      last.analysisOnly ? 'comparison' : 'conversation',
+    );
+  }, [busy, preparing, startTurnWith]);
 
   const send = useCallback(
     async (content: string) => {
@@ -596,6 +652,7 @@ export function usePresetCocreator({
       restoreDraft,
       undoTurn,
       send,
+      continueReply,
       compare,
       sendReport,
       sendBatch,
@@ -620,6 +677,7 @@ export function usePresetCocreator({
       restoreDraft,
       undoTurn,
       send,
+      continueReply,
       compare,
       sendReport,
       sendBatch,

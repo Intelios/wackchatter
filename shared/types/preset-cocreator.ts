@@ -15,6 +15,10 @@ export interface PresetCocreatorMessage {
   created: number;
   reasoning?: string;
   reasoningDetails?: unknown[];
+  incomplete?: 'length' | 'stopped' | 'error';
+  /** Retained for inspection, never executed or sent as pending tool calls. */
+  incompleteToolCalls?: ProviderToolCall[];
+  analysisOnly?: boolean;
   toolCalls?: ProviderToolCall[];
   toolCallId?: string;
   toolName?: string;
@@ -48,6 +52,7 @@ export interface PresetCocreatorModelSettings {
   connectionId: string | null;
   model: string;
   maxTokens: number;
+  contextTokens?: number;
   temperature: number;
   reasoningEffort: 'auto' | 'min' | 'low' | 'medium' | 'high' | 'max';
 }

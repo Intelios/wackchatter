@@ -72,8 +72,8 @@ export const ASSISTANT_NAME = 'Design assistant';
  * failed regenerate has to splice the original back). Do not "restore parity" by adding a
  * destructive regenerate here; that would reintroduce the bug that fix exists to prevent.
  *
- * There is no `continue` either: the design assistant is answering questions, not writing
- * prose that trails off.
+ * Continuation also uses an overswipe: the controller builds from the selected partial
+ * reply and joins its remainder into a new take, preserving the original on every path.
  */
 export type CoGenMode = 'send' | 'swipe';
 export type CoStatus = 'idle' | 'connecting' | 'streaming';

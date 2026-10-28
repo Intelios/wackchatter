@@ -1,5 +1,6 @@
 import type { JsonPatchOperation } from '@shared/preset-cocreator/patch.ts';
 import { getPromptOrder } from '@shared/prompt/preset-io.ts';
+import { isLengthCutoff, type StreamState } from '@shared/providers/sse.ts';
 import type { ProviderToolCall } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { PROMPT_ORDER_LIVE_ID } from '@shared/types/preset.ts';
@@ -14,6 +15,30 @@ import type {
 import { ApiError } from '../../lib/api.ts';
 
 export const ASSISTANT_REQUEST_LIMIT = 6;
+
+/** Keep every received byte, including unexecutable partial tool arguments. */
+export function assistantResponseMessage(
+  response: StreamState,
+  interrupted?: 'stopped' | 'error',
+): PresetCocreatorMessage {
+  const incomplete = interrupted ?? (isLengthCutoff(response.finishReason) ? 'length' : undefined);
+  return {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    created: Date.now(),
+    content: response.content,
+    ...(response.reasoning ? { reasoning: response.reasoning } : {}),
+    ...(response.reasoningDetails?.length
+      ? { reasoningDetails: structuredClone(response.reasoningDetails) }
+      : {}),
+    ...(incomplete ? { incomplete } : {}),
+    ...(response.toolCalls?.length
+      ? incomplete
+        ? { incompleteToolCalls: structuredClone(response.toolCalls) }
+        : { toolCalls: structuredClone(response.toolCalls) }
+      : {}),
+  };
+}
 
 export const COMPARISON_INSTRUCTION = `Compare the frozen current draft with the selected preset. Give an overall verdict, meaningful strengths and weaknesses, likely behavioural differences, and concrete improvements worth considering. Cite relevant prompt blocks or settings. Separate predictions from outcomes supported by tests. This turn is analysis only: do not edit a preset or propose or run tests.`;
 

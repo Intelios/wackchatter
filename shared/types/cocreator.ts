@@ -171,6 +171,9 @@ export interface ExampleSet {
  * later change to the app default.
  */
 export interface SessionModelSettings {
+  /** Design-specific allowances; independent of the chat sampler preset. */
+  outputTokens?: number;
+  contextTokens?: number;
   connectionId?: string | null;
   presetId?: string | null;
   systemPrompt?: string;

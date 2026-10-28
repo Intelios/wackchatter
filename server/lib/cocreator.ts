@@ -171,6 +171,12 @@ export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
   if (!raw || typeof raw !== 'object') return {};
   const value = raw as Record<string, unknown>;
   const settings: SessionModelSettings = {};
+  for (const key of ['outputTokens', 'contextTokens'] as const) {
+    const limit = value[key];
+    if (typeof limit === 'number' && Number.isSafeInteger(limit) && limit > 0 && limit <= 2097152) {
+      settings[key] = limit;
+    }
+  }
   if (typeof value.connectionId === 'string' || value.connectionId === null) {
     settings.connectionId = value.connectionId as string | null;
   }

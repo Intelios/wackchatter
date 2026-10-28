@@ -1,3 +1,4 @@
+import { COCREATOR_OUTPUT_TOKENS } from '@shared/cocreator/generation.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
@@ -54,7 +55,7 @@ function modelDefaults(connection: Connection | null): PresetCocreatorModelSetti
   return {
     connectionId: connection?.id ?? null,
     model: connection?.model ?? '',
-    maxTokens: 4096,
+    maxTokens: COCREATOR_OUTPUT_TOKENS,
     temperature: 0.2,
     reasoningEffort: 'medium',
   };

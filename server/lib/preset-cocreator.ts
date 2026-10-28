@@ -1,6 +1,7 @@
 /** Durable Preset Co-Creator sessions, immutable draft revisions, and publication records. */
 
 import type { Database } from 'bun:sqlite';
+import { COCREATOR_OUTPUT_TOKENS } from '../../shared/cocreator/generation.ts';
 import {
   applyPresetPatch,
   diffPreset,
@@ -73,7 +74,7 @@ export type PresetDraftSaveResult =
 const DEFAULT_MODEL_SETTINGS: PresetCocreatorModelSettings = {
   connectionId: null,
   model: '',
-  maxTokens: 4096,
+  maxTokens: COCREATOR_OUTPUT_TOKENS,
   temperature: 0.2,
   reasoningEffort: 'medium',
 };
@@ -154,6 +155,12 @@ function normalizeModelSettings(
         ? record.temperature
         : fallback.temperature,
     reasoningEffort: effort,
+    ...(typeof record.contextTokens === 'number' &&
+    Number.isSafeInteger(record.contextTokens) &&
+    record.contextTokens > 0 &&
+    record.contextTokens <= 2097152
+      ? { contextTokens: record.contextTokens }
+      : {}),
   };
 }
 

@@ -108,6 +108,8 @@ describe('creating and reading', () => {
           systemPrompt: 'Custom.',
           analysisPrompt: 'Inspect these.',
           modelOverride: { connectionId: 'c1', model: 'design-model' },
+          outputTokens: 16384,
+          contextTokens: 65536,
         },
         messages: [message({ mes: 'Hi.' })],
       }),
@@ -126,6 +128,8 @@ describe('creating and reading', () => {
       systemPrompt: 'Custom.',
       analysisPrompt: 'Inspect these.',
       modelOverride: { connectionId: 'c1', model: 'design-model' },
+      outputTokens: 16384,
+      contextTokens: 65536,
     });
     expect(read.messages.map((entry) => entry.mes)).toEqual(['Hi.']);
   });

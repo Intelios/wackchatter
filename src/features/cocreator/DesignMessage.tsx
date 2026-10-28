@@ -39,6 +39,7 @@ export interface DesignMessageProps {
   onSelectSwipe: (id: string, index: number) => void;
   onReroll: () => void;
   onRetry: () => void;
+  onContinue: () => void;
   onEdit: (id: string, text: string) => void;
   onDelete: (id: string) => void;
 }
@@ -79,6 +80,7 @@ export const DesignMessage = memo(function DesignMessage({
   onSelectSwipe,
   onReroll,
   onRetry,
+  onContinue,
   onEdit,
   onDelete,
 }: DesignMessageProps) {
@@ -127,7 +129,14 @@ export const DesignMessage = memo(function DesignMessage({
         {info.extra?.model ? (
           <span className="design-message__model">{String(info.extra.model)}</span>
         ) : null}
-        {info.extra?.truncated ? <span className="design-message__badge">truncated</span> : null}
+        {info.extra?.truncated ? (
+          <span
+            className="design-message__badge"
+            title="The reply ended early. Its received text has been saved."
+          >
+            incomplete
+          </span>
+        ) : null}
         <span className="design-message__spacer" />
         {!editing ? (
           <>
@@ -305,6 +314,17 @@ export const DesignMessage = memo(function DesignMessage({
            * tool "give me another one of these" is the primary move, not a discovery. It
            * works from any take — the reducer records which one to return to if it fails.
            */}
+          {canReroll && info.extra?.truncated ? (
+            <button
+              type="button"
+              className="wc-button wc-button--ghost"
+              onClick={onContinue}
+              disabled={busy}
+              title="Request the remaining text. Keeps this take and saves the continued answer as another take."
+            >
+              Continue reply
+            </button>
+          ) : null}
           {canReroll ? (
             <button
               type="button"
