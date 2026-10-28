@@ -247,10 +247,11 @@ and `bad` re-roll once, then the judge must pick a winner.
 ## Testing
 
 Every rule above is pinned by a test next to its code; add the test **before** the code when
-touching a format. The heaviest gates round-trip real artefacts — the Seraphina PNG byte-for-byte,
-ST's shipped `Default.json`, Seraphina's embedded book — and the `location` / `transfer` / `paths`
-tests gate the data-directory rules. No DOM harness: keep logic in pure functions and React
-wrappers thin.
+touching a format. The format gates round-trip fixtures built inline in the shape ST writes — a
+dual-chunk card with an embedded book (`card.test.ts`), an ST-style preset with both prompt orders
+(`preset-io.test.ts`), a book carrying every World Info key (`convert.test.ts`) — so no external
+SillyTavern checkout is needed. The `location` / `transfer` / `paths` tests gate the
+data-directory rules. No DOM harness: keep logic in pure functions and React wrappers thin.
 
 `paths.ts` is shared module state across `bun test`; any test that repoints it must put it back.
 An editor must never own its revision counter — ask the queue (`nextRevision`).
