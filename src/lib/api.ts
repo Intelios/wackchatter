@@ -45,7 +45,6 @@ import type {
   ExampleSelection,
   SessionModelSettings,
 } from '@shared/types/cocreator.ts';
-import type { GroupConfig, GroupTemplate } from '@shared/types/group.ts';
 import type {
   BrowseResult,
   LocationInfo,
@@ -431,8 +430,7 @@ export const chatApi = {
   get: (id: string) => request<Chat>(`/chats/${encodeURIComponent(id)}`),
 
   create: (input: {
-    characterId?: string | null;
-    kind?: 'direct' | 'group';
+    characterId: string;
     title?: string;
     metadata?: ChatMetadata;
     messages?: ChatMessage[];
@@ -1134,22 +1132,4 @@ export const tournamentApi = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(match),
     }),
-};
-
-export const groupApi = {
-  list: () => request<GroupTemplate[]>('/groups'),
-  create: (config: GroupConfig) =>
-    request<GroupTemplate>('/groups', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(config),
-    }),
-  save: (id: string, revision: number, config: GroupConfig) =>
-    request<GroupTemplate>(`/groups/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ revision, config }),
-    }),
-  remove: (id: string) =>
-    request<{ ok: true }>(`/groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

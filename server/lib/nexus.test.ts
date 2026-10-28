@@ -183,45 +183,20 @@ test('the legacy memories value resolves to nexus, matching how a new chat is cr
 });
 
 test('a chat that cannot be migrated does not stop the sweep or the boot', () => {
-  // Two rows that used to kill the first 2.0 boot outright: metadata holding the JSON
-  // literal `null` (valid JSON, so the parser's fallback never fires) and a group scene
-  // that predates the director block. The first is repaired on read, the second is
-  // deliberately unvalidated, so neither reaches the failure path — which is the point.
+  // A row that used to kill the first 2.0 boot outright: metadata holding the JSON
+  // literal `null` (valid JSON, so the parser's fallback never fires). It is repaired on
+  // read, so it never reaches the failure path — which is the point.
   const { db, store } = library();
   const healthy = agedChat(store, db, 'healthy', 3);
   db.query(
     `INSERT INTO chats (id,character_id,kind,title,created,modified,revision,metadata)
      VALUES (?,?,?,?,?,?,?,?)`,
   ).run('null-meta', 'a.png', 'direct', 'null metadata', 1, 1, 0, 'null');
-  db.query(
-    `INSERT INTO chats (id,character_id,kind,title,created,modified,revision,metadata)
-     VALUES (?,?,?,?,?,?,?,?)`,
-  ).run(
-    'old-group',
-    null,
-    'group',
-    'old group',
-    1,
-    2,
-    0,
-    JSON.stringify({
-      group: {
-        name: 'Old',
-        members: [],
-        scenario: '',
-        generation: { connectionId: '', model: '', presetId: '' },
-        concurrency: 2,
-        replyLimit: 4,
-        lorebookIds: [],
-      },
-    }),
-  );
-
   expect(() => migrateNexusLibrary(db, store, 'classic')).not.toThrow();
 
-  // Every chat was migrated, including the two malformed ones — they are not skipped and
-  // then sealed, they are made whole and frozen like any other.
-  for (const id of ['null-meta', 'old-group']) {
+  // The malformed chat was migrated — not skipped and then sealed, but made whole and
+  // frozen like any other.
+  for (const id of ['null-meta']) {
     const row = db
       .query<{ modified: number; revision: number; memoryMode: string | null }, [string]>(
         "SELECT modified, revision, json_extract(metadata,'$.memoryMode') AS memoryMode FROM chats WHERE id = ?",
@@ -232,7 +207,6 @@ test('a chat that cannot be migrated does not stop the sweep or the boot', () =>
   }
   // Their timestamps still did not move.
   expect(store.getChat('null-meta')?.modified).toBe(1);
-  expect(store.getChat('old-group')?.modified).toBe(2);
   expect(store.getChat(healthy.id)?.metadata.memoryMode).toBe('classic');
   expect(
     db

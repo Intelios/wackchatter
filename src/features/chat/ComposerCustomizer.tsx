@@ -39,7 +39,6 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   COMPOSER_AREAS,
   type ComposerArea,
-  type ComposerKind,
   type ComposerLabelMode,
   type ComposerLayout,
   type ComposerLayoutItem,
@@ -63,7 +62,6 @@ export interface ComposerControlSpec {
 }
 
 interface Props {
-  kind: ComposerKind;
   layout: ComposerLayout;
   /** Every control the composer can offer, placed or not. */
   controls: ComposerControlSpec[];
@@ -263,7 +261,6 @@ function PaletteItem({
 }
 
 export function ComposerCustomizer({
-  kind,
   layout,
   controls,
   renderControl,
@@ -468,10 +465,7 @@ export function ComposerCustomizer({
     : `${layout.rows.length} ${layout.rows.length === 1 ? 'row' : 'rows'}, ${placed.size} controls`;
 
   return (
-    <section
-      className="composer-editor"
-      aria-label={`Customise ${kind === 'single' ? 'chat' : 'group'} composer`}
-    >
+    <section className="composer-editor" aria-label="Customise composer">
       <div className="composer-editor__head">
         <strong>Customise composer</strong>
         <span className="composer-editor__hint">

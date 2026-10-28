@@ -149,6 +149,8 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
   failures are reported and retried next start, and the marker is written only when all succeed.
 
 **Messages and generation**
+- **Group chats were removed in 3.0.** Every chat-store read filters `kind = 'direct'`, so a
+  2.x library's group rows (and their backups) stay on disk, never listed, opened or deleted.
 - **`mes` is derived, never stored** — text from `swipes[swipe_id]`, metadata from
   `swipe_info[swipe_id]`; `swipe_info` is always `swipes.length`. `fromChatMessage` is the only
   repair point; on disagreement `mes` wins.

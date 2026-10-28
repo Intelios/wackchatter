@@ -914,7 +914,6 @@ export function ChatView({
           }
           busy={generationBlocked}
           disabled={!ready || loadBlocksChat}
-          kind="single"
           layout={composerLayout}
           onLayoutSave={onComposerLayoutSave}
           controls={[

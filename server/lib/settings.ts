@@ -13,7 +13,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { normalizeSideDefaults } from '../../shared/cocreator/sideChat.ts';
 import {
-  DEFAULT_GROUP_COMPOSER_LAYOUT,
   DEFAULT_SINGLE_COMPOSER_LAYOUT,
   normalizeComposerLayout,
 } from '../../shared/composer/layout.ts';
@@ -695,14 +694,7 @@ function normalizeComposerLayouts(
   return {
     single: normalizeComposerLayout(
       stored.single,
-      'single',
       current?.single ?? DEFAULT_SINGLE_COMPOSER_LAYOUT,
-      quickIds,
-    ),
-    group: normalizeComposerLayout(
-      stored.group,
-      'group',
-      current?.group ?? DEFAULT_GROUP_COMPOSER_LAYOUT,
       quickIds,
     ),
   };
@@ -906,7 +898,6 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       ? normalizeComposerLayouts(
           {
             single: patch.composerLayouts.single ?? current.composerLayouts.single,
-            group: patch.composerLayouts.group ?? current.composerLayouts.group,
           },
           current.composerLayouts,
           quickCommands,

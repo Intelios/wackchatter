@@ -14,8 +14,6 @@
 
 /** Which part of the app made the request. */
 export type UsageFeature =
-  | 'groupDirector'
-  | 'groupProfiles'
   | 'chat'
   | 'summary'
   | 'memory'
@@ -31,8 +29,6 @@ export type UsageFeature =
   | 'recap';
 
 export const USAGE_FEATURES: readonly UsageFeature[] = [
-  'groupDirector',
-  'groupProfiles',
   'chat',
   'summary',
   'memory',

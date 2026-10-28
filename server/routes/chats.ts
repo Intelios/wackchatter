@@ -1,5 +1,4 @@
 import { NEXUS_MODEL_FINGERPRINT } from '../../shared/nexus/model.ts';
-import { validateGroup } from '../../shared/types/group.ts';
 
 /** Chat CRUD. Storage is ours, so there is no external format to honour here. */
 
@@ -14,7 +13,6 @@ import { getSettings } from '../lib/settings.ts';
 
 interface CreateBody {
   characterId?: string | null;
-  kind?: 'direct' | 'group';
   title?: string;
   metadata?: ChatMetadata;
   messages?: ChatMessage[];
@@ -67,14 +65,11 @@ export async function handleChatRoute(
   if (segments.length === 0 && method === 'POST') {
     const body = await readJson<CreateBody>(request);
     if (!body) return errorResponse('Request body is not valid JSON.');
-    if (body.kind === 'group') {
-      if (!validateGroup(body.metadata?.group)) return errorResponse('Invalid group scene.');
-    } else if (!body.characterId) return errorResponse('A characterId is required.');
+    if (!body.characterId) return errorResponse('A characterId is required.');
 
     return json(
       store.createChat({
         characterId: body.characterId,
-        kind: body.kind,
         title: body.title,
         metadata: {
           memoryMode: getSettings().memoryMode,
@@ -106,13 +101,13 @@ export async function handleChatRoute(
 
     const exported = parseChatExport(raw);
     if (!exported) return errorResponse('The file is not a WackChatter chat export.');
-    if (exported.kind !== 'group' && (typeof characterId !== 'string' || !characterId.trim()))
+    if (typeof characterId !== 'string' || !characterId.trim())
       return errorResponse('A characterId is required.');
 
     return json(
       store.createChat({
-        characterId: exported.kind === 'group' ? null : String(characterId).trim(),
         ...exported,
+        characterId: characterId.trim(),
         metadata: {
           ...exported.metadata,
           memoryMode:

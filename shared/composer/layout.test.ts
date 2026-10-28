@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  DEFAULT_GROUP_COMPOSER_LAYOUT,
   DEFAULT_SINGLE_COMPOSER_LAYOUT,
   findComposerItem,
   insertComposerItem,
@@ -15,19 +14,19 @@ import {
 } from './layout.ts';
 
 describe('composer layouts', () => {
-  test('a missing or malformed layout restores the chat-type default', () => {
-    expect(normalizeComposerLayout(null, 'single', DEFAULT_SINGLE_COMPOSER_LAYOUT)).toEqual(
+  test('a missing or malformed layout restores the default', () => {
+    expect(normalizeComposerLayout(null, DEFAULT_SINGLE_COMPOSER_LAYOUT)).toEqual(
       DEFAULT_SINGLE_COMPOSER_LAYOUT,
     );
-    expect(normalizeComposerLayout({ rows: [] }, 'group', DEFAULT_GROUP_COMPOSER_LAYOUT)).toEqual(
-      DEFAULT_GROUP_COMPOSER_LAYOUT,
+    expect(normalizeComposerLayout({ rows: [] }, DEFAULT_SINGLE_COMPOSER_LAYOUT)).toEqual(
+      DEFAULT_SINGLE_COMPOSER_LAYOUT,
     );
   });
 
   test('requires one menu and one send control', () => {
     const missingSend = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
     missingSend.rows[0]!.right = missingSend.rows[0]!.right.filter((item) => item.id !== 'send');
-    expect(normalizeComposerLayout(missingSend, 'single', DEFAULT_SINGLE_COMPOSER_LAYOUT)).toEqual(
+    expect(normalizeComposerLayout(missingSend, DEFAULT_SINGLE_COMPOSER_LAYOUT)).toEqual(
       DEFAULT_SINGLE_COMPOSER_LAYOUT,
     );
   });
@@ -35,7 +34,7 @@ describe('composer layouts', () => {
   test('drops duplicates and unsupported controls without changing order', () => {
     const value = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
     value.rows[0]!.left.push({ id: 'send', display: 'icon' }, { id: 'unknown', display: 'label' });
-    const next = normalizeComposerLayout(value, 'single', DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const next = normalizeComposerLayout(value, DEFAULT_SINGLE_COMPOSER_LAYOUT);
     expect(next.rows[0]!.left.map((item) => item.id)).toEqual([
       'persona',
       'menu',
@@ -54,30 +53,16 @@ describe('composer layouts', () => {
     expect(next.rows[0]!.right.some((item) => item.id === 'impersonate')).toBe(false);
   });
 
-  /*
-   * `recap` is a single-chat control only — the group tray has its own memory tooling and
-   * groups deliberately do not get a transcript recap. The id being accepted for one kind
-   * and rejected for the other is the whole contract, since the same shared registry is
-   * what the server's settings normalisation reads.
-   */
-  test('recap is a valid single control, not a group one, and survives a save', () => {
+  test('recap is a valid control and survives a save', () => {
     const withRecap = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
     withRecap.rows[0]!.left.push({ id: 'recap', display: 'label' });
-    const normalized = normalizeComposerLayout(withRecap, 'single', DEFAULT_SINGLE_COMPOSER_LAYOUT);
+    const normalized = normalizeComposerLayout(withRecap, DEFAULT_SINGLE_COMPOSER_LAYOUT);
     expect(findComposerItem(normalized, 'recap')).toEqual({
       rowId: 'single-main',
       area: 'left',
       index: 4,
       item: { id: 'recap', display: 'label' },
     });
-
-    const group = structuredClone(DEFAULT_GROUP_COMPOSER_LAYOUT);
-    group.rows[0]!.left.push({ id: 'recap', display: 'icon' });
-    expect(
-      normalizeComposerLayout(group, 'group', DEFAULT_GROUP_COMPOSER_LAYOUT).rows[0]!.left.map(
-        (item) => item.id,
-      ),
-    ).toEqual(['persona', 'menu', 'quickCommands', 'nexus']);
   });
 
   test('required controls cannot be removed', () => {

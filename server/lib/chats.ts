@@ -1,5 +1,3 @@
-import { type GroupMember, validateGroup } from '../../shared/types/group.ts';
-import { createGroupStore } from './groups.ts';
 /**
  * Chat storage.
  *
@@ -35,7 +33,6 @@ import { getSettings } from './settings.ts';
 interface ChatRow {
   id: string;
   character_id: string | null;
-  kind: 'direct' | 'group';
   title: string;
   created: number;
   modified: number;
@@ -46,8 +43,6 @@ interface ChatRow {
 }
 
 interface MessageRow {
-  member_id: string | null;
-  character_id: string | null;
   id: string;
   position: number;
   name: string;
@@ -78,8 +73,7 @@ export interface ChatStore {
   listChatMetas(): ChatMeta[];
   getChat(id: string): Chat | null;
   createChat(input: {
-    characterId?: string | null;
-    kind?: 'direct' | 'group';
+    characterId: string;
     title?: string;
     metadata?: ChatMetadata;
     messages?: ChatMessage[];
@@ -117,10 +111,6 @@ export interface ChatStore {
    * touching every chat, so recency — and with it the recents list, the character picker
    * and every "last spoke" figure — has to survive the pass untouched. The revision does
    * move, so a client holding a pre-migration snapshot cannot write it back.
-   *
-   * Also deliberately unvalidated: a scene that stopped satisfying `validateGroup` after
-   * the fact must not be able to strand a library-wide migration, so the check stays where
-   * scenes are edited.
    */
   migrateChatMeta(id: string, metadata: ChatMetadata): ChatMeta | null;
   /**
@@ -220,8 +210,6 @@ function rowToMessage(row: MessageRow): ChatMessage {
   return toChatMessage(
     normalizeState({
       id: row.id,
-      memberId: row.member_id ?? undefined,
-      characterId: row.character_id ?? undefined,
       name: row.name,
       is_user: row.is_user === 1,
       is_system: row.is_system === 1,
@@ -242,14 +230,18 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
   const statements = {
     insertChat: database.query(
-      `INSERT INTO chats (id, character_id, kind, title, created, modified, revision, metadata)
-       VALUES ($id, $characterId, $kind, $title, $created, $modified, $revision, $metadata)`,
+      `INSERT INTO chats (id, character_id, title, created, modified, revision, metadata)
+       VALUES ($id, $characterId, $title, $created, $modified, $revision, $metadata)`,
     ),
-    selectChat: database.query<ChatRow, [string]>('SELECT * FROM chats WHERE id = ?'),
+    // `kind = 'direct'` is on every read: group scenes were removed in 3.0, and the rows a
+    // 2.x library still holds stay on disk untouched but invisible.
+    selectChat: database.query<ChatRow, [string]>(
+      "SELECT * FROM chats WHERE id = ? AND kind = 'direct'",
+    ),
     // Metadata and revision only. A library-wide pass must not pay for transcripts it will
     // not read, and must not be slowed by the newest chat being the largest.
     selectChatMetas: database.query<{ id: string; revision: number; metadata: string }, []>(
-      'SELECT id, revision, metadata FROM chats',
+      "SELECT id, revision, metadata FROM chats WHERE kind = 'direct'",
     ),
     replaceChat: database.query(
       `UPDATE chats
@@ -297,13 +289,13 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     ),
     insertMessage: database.query(
       `INSERT INTO messages
-         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, member_id, character_id, swipe_id, swipes, swipe_info)
-       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $memberId, $speakerCharacterId, $swipeId, $swipes, $swipeInfo)`,
+         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, swipe_id, swipes, swipe_info)
+       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $swipeId, $swipes, $swipeInfo)`,
     ),
     upsertMessage: database.query(
       `INSERT INTO messages
-         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, member_id, character_id, swipe_id, swipes, swipe_info)
-       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $memberId, $speakerCharacterId, $swipeId, $swipes, $swipeInfo)
+         (chat_id, id, position, name, is_user, is_system, hidden_by, persona_id, swipe_id, swipes, swipe_info)
+       VALUES ($chatId, $id, $position, $name, $isUser, $isSystem, $hiddenBy, $personaId, $swipeId, $swipes, $swipeInfo)
        ON CONFLICT(chat_id, id) DO UPDATE SET
          position = excluded.position,
          name = excluded.name,
@@ -311,8 +303,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
          is_system = excluded.is_system,
          hidden_by = excluded.hidden_by,
          persona_id = excluded.persona_id,
-         member_id = excluded.member_id,
-         character_id = excluded.character_id,
          swipe_id = excluded.swipe_id,
          swipes = excluded.swipes,
          swipe_info = excluded.swipe_info`,
@@ -339,22 +329,19 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
   // The current swipe's text as the preview, taken live rather than denormalised into a
   // column that could disagree with the message it summarises. `branchedFrom` arrives as
-  // JSON text (json_extract of an object), parsed on the way out below; `groupMembers` is
-  // the group cast array, projected down to its character filenames there.
+  // JSON text (json_extract of an object), parsed on the way out below.
   const summarySelect = `
-    SELECT c.id, c.kind, c.character_id AS characterId, c.title, c.created, c.modified,
+    SELECT c.id, c.character_id AS characterId, c.title, c.created, c.modified,
       (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id) AS messageCount,
       (SELECT substr(json_extract(m.swipes, '$[' || m.swipe_id || ']'), 1, 200)
          FROM messages m WHERE m.chat_id = c.id
         ORDER BY m.position DESC LIMIT 1) AS lastMessage,
-      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom,
-      json_extract(c.metadata, '$.group.members') AS groupMembers
-    FROM chats c`;
+      json_extract(c.metadata, '$.branchedFrom') AS branchedFrom
+    FROM chats c
+    WHERE c.kind = 'direct'`;
 
-  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom' | 'groupMembers'> {
+  interface SummaryRow extends Omit<ChatSummary, 'branchedFrom'> {
     branchedFrom: string | null;
-    /** The group cast as JSON text, or NULL for a direct chat. */
-    groupMembers: string | null;
   }
 
   function rowToSummary(row: SummaryRow): ChatSummary {
@@ -362,22 +349,11 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       row.branchedFrom === null
         ? undefined
         : parseJson<BranchOrigin | null>(row.branchedFrom, null);
-    /*
-     * The cast's filenames only, in cast order. The rows on the other side of this call
-     * carry public profiles and per-member overrides; none of that is a summary's business,
-     * and shipping it would bloat every recents fetch with prose nobody reads there.
-     */
-    const cast =
-      row.groupMembers === null ? null : parseJson<GroupMember[] | null>(row.groupMembers, null);
-    const groupMembers = cast
-      ?.map((member) => member?.characterId)
-      .filter((id): id is string => typeof id === 'string');
     // A malformed blob is not a summary-killer; the chat lists without its provenance.
     return {
       ...row,
       lastMessage: row.lastMessage ?? '',
       branchedFrom: origin ?? undefined,
-      groupMembers: groupMembers?.length ? groupMembers : undefined,
     };
   }
 
@@ -386,7 +362,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     `${summarySelect} ORDER BY c.modified DESC LIMIT ?`,
   );
   const listForCharacter = database.query<SummaryRow, [string]>(
-    `${summarySelect} WHERE c.character_id = ? ORDER BY c.modified DESC`,
+    `${summarySelect} AND c.character_id = ? ORDER BY c.modified DESC`,
   );
 
   function messageInsertParams(chatId: string, state: MessageState, position: number) {
@@ -395,8 +371,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       $id: state.id,
       $position: position,
       $name: state.name,
-      $memberId: state.memberId ?? null,
-      $speakerCharacterId: state.characterId ?? null,
       $isUser: state.is_user ? 1 : 0,
       $isSystem: state.is_system ? 1 : 0,
       $hiddenBy: state.hiddenBy ?? null,
@@ -424,8 +398,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
     return {
       id: row.id,
-      characterId: row.character_id,
-      kind: row.kind,
+      // Never null on a direct chat; the column is nullable only for the removed scenes.
+      characterId: row.character_id ?? '',
       title: row.title,
       created: row.created,
       modified: row.modified,
@@ -439,7 +413,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     statements.insertChat.run({
       $id: row.id,
       $characterId: row.character_id,
-      $kind: row.kind,
       $title: row.title,
       $created: row.created,
       $modified: row.modified,
@@ -467,8 +440,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
       const title = input.title?.trim() || existing.title;
       const metadata = input.metadata ?? existing.metadata;
-      if (existing.kind === 'group' && !validateGroup(metadata.group, 0))
-        throw new Error('Invalid group scene.');
       const messages = normalizeMessages(input.messages);
 
       if (input.revision < existing.revision) {
@@ -536,8 +507,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
     const title = input.title?.trim() || row.title;
     const metadata = input.metadata ?? parseMetadata(row.metadata);
-    if (row.kind === 'group' && !validateGroup(metadata.group, 0))
-      throw new Error('Invalid group scene.');
 
     if (input.order) {
       const existing = statements.selectMessageIds.all(id).map((r) => r.id);
@@ -597,8 +566,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
       const title = input.title?.trim() || row.title;
       const metadata = input.metadata ?? parseMetadata(row.metadata);
-      if (row.kind === 'group' && !validateGroup(metadata.group, 0))
-        throw new Error('Invalid group scene.');
       if (input.revision < row.revision) {
         return {
           kind: 'stale',
@@ -653,16 +620,14 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     getChat: readChat,
 
     createChat(input): Chat {
-      if (input.kind === 'group' ? !validateGroup(input.metadata?.group, 0) : !input.characterId)
-        throw new Error('Invalid chat identity or group configuration.');
+      if (!input.characterId) throw new Error('A chat needs a character.');
       const now = Date.now();
       const id = crypto.randomUUID();
 
       insertWithMessages(
         {
           id,
-          character_id: input.kind === 'group' ? null : (input.characterId ?? null),
-          kind: input.kind ?? 'direct',
+          character_id: input.characterId,
           title: input.title?.trim() || 'New chat',
           created: now,
           modified: now,
@@ -749,7 +714,6 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
         {
           id: branchId,
           character_id: source.characterId,
-          kind: source.kind ?? 'direct',
           title: title?.trim() || `${source.title} (branch)`,
           created: now,
           modified: now,
@@ -771,43 +735,8 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
 
     reassignCharacter(oldCharacterId, newCharacterId): number {
       if (oldCharacterId === newCharacterId) return 0;
-      return database.transaction(() => {
-        const changed = statements.reassignCharacter.run({
-          $old: oldCharacterId,
-          $new: newCharacterId,
-        }).changes;
-        database
-          .query('UPDATE messages SET character_id = ? WHERE character_id = ?')
-          .run(newCharacterId, oldCharacterId);
-        const rename = <T extends { members: { characterId: string }[] }>(g: T): T => ({
-          ...g,
-          members: g.members.map((m) =>
-            m.characterId === oldCharacterId ? { ...m, characterId: newCharacterId } : m,
-          ),
-        });
-        for (const row of database
-          .query<ChatRow, []>("SELECT * FROM chats WHERE kind = 'group'")
-          .all()) {
-          const metadata = parseMetadata(row.metadata);
-          if (metadata.group?.members.some((m) => m.characterId === oldCharacterId)) {
-            metadata.group = rename(metadata.group);
-            // Written outside the save protocol, so any token claiming this revision
-            // is no longer describing this row's content.
-            database
-              .query('UPDATE chats SET metadata = ?, save_token = NULL WHERE id = ?')
-              .run(JSON.stringify(metadata), row.id);
-          }
-        }
-        const groups = createGroupStore(database);
-        for (const g of groups.list())
-          if (g.members.some((m) => m.characterId === oldCharacterId)) {
-            const { id, revision, created, modified, ...config } = rename(g);
-            database
-              .query('UPDATE groups SET config = ? WHERE id = ?')
-              .run(JSON.stringify(config), id);
-          }
-        return changed;
-      })();
+      return statements.reassignCharacter.run({ $old: oldCharacterId, $new: newCharacterId })
+        .changes;
     },
 
     deleteChatsForCharacter(characterId): number {

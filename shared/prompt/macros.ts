@@ -12,7 +12,6 @@ import { rollDice } from './dice.ts';
 
 export interface MacroEnvironment {
   char: string;
-  groupNames?: string;
   user: string;
   description?: string;
   personality?: string;
@@ -247,9 +246,9 @@ function coreValues(env: MacroEnvironment, now: Date): Record<string, () => stri
     char: () => env.char,
     bot: () => env.char,
     user: () => env.user,
-    // Not a group chat in V1: {{group}} and {{charIfNotGroup}} both resolve to the char.
-    group: () => env.groupNames ?? env.char,
-    charifnotgroup: () => env.groupNames ?? env.char,
+    // No group chats: {{group}} and {{charIfNotGroup}} are ST aliases that resolve to the char.
+    group: () => env.char,
+    charifnotgroup: () => env.char,
     description: () => env.description ?? '',
     personality: () => env.personality ?? '',
     scenario: () => env.scenario ?? '',

@@ -1,14 +1,9 @@
 import type {
-  ComposerKind,
   ComposerLabelMode,
   ComposerLayout,
   ComposerLayoutItem,
 } from '@shared/composer/layout.ts';
-import {
-  cloneComposerLayout,
-  DEFAULT_GROUP_COMPOSER_LAYOUT,
-  DEFAULT_SINGLE_COMPOSER_LAYOUT,
-} from '@shared/composer/layout.ts';
+import { cloneComposerLayout, DEFAULT_SINGLE_COMPOSER_LAYOUT } from '@shared/composer/layout.ts';
 import {
   type ReactNode,
   type Ref,
@@ -102,7 +97,6 @@ interface ComposerProps {
   busy: boolean;
   disabled: boolean;
   placeholder: string;
-  kind: ComposerKind;
   layout: ComposerLayout;
   /** Controls whose state and actions live in the chat view. Draft actions remain internal. */
   controls: ComposerControlBinding[];
@@ -127,7 +121,6 @@ export function Composer({
   busy,
   disabled,
   placeholder,
-  kind,
   layout,
   controls,
   onLayoutSave,
@@ -745,7 +738,6 @@ export function Composer({
       <div className="composer__tray" ref={trayRef}>
         {editing && layoutDraft && !busy ? (
           <ComposerCustomizer
-            kind={kind}
             layout={layoutDraft}
             controls={catalog}
             renderControl={renderControl}
@@ -755,15 +747,7 @@ export function Composer({
               setLayoutDraft(null);
               setLayoutError('');
             }}
-            onReset={() =>
-              setLayoutDraft(
-                cloneComposerLayout(
-                  kind === 'single'
-                    ? DEFAULT_SINGLE_COMPOSER_LAYOUT
-                    : DEFAULT_GROUP_COMPOSER_LAYOUT,
-                ),
-              )
-            }
+            onReset={() => setLayoutDraft(cloneComposerLayout(DEFAULT_SINGLE_COMPOSER_LAYOUT))}
             saveError={layoutError}
             onSave={async () => {
               try {

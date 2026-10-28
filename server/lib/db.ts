@@ -57,14 +57,6 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_order ON messages(chat_id, position);
 
-CREATE TABLE IF NOT EXISTS groups (
-  id TEXT PRIMARY KEY,
-  revision INTEGER NOT NULL DEFAULT 0,
-  created INTEGER NOT NULL,
-  modified INTEGER NOT NULL,
-  config TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

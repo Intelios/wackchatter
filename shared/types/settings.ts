@@ -155,7 +155,7 @@ export interface AppSettings {
    * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
    */
   quickCommands: QuickCommand[];
-  /** App-wide control trays, independently arranged for direct and group chats. */
+  /** The app-wide composer control tray. */
   composerLayouts: ComposerLayouts;
   /**
    * User regex scripts, in SillyTavern's format so files move between the two apps.

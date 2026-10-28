@@ -2,10 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  DEFAULT_GROUP_COMPOSER_LAYOUT,
-  DEFAULT_SINGLE_COMPOSER_LAYOUT,
-} from '../../shared/composer/layout.ts';
+import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '../../shared/composer/layout.ts';
 import type { Connection } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
 import {
@@ -97,20 +94,17 @@ describe('mergeSettings', () => {
     ]);
   });
 
-  test('composer layouts update independently and preserve required controls', () => {
+  test('a composer layout update keeps its arrangement', () => {
     const single = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
     single.rows[0]!.centre.push(single.rows[0]!.right.splice(0, 1)[0]!);
-    const next = mergeSettings(base(), {
-      composerLayouts: { single, group: DEFAULT_GROUP_COMPOSER_LAYOUT },
-    });
+    const next = mergeSettings(base(), { composerLayouts: { single } });
     expect(next.composerLayouts.single).toEqual(single);
-    expect(next.composerLayouts.group).toEqual(DEFAULT_GROUP_COMPOSER_LAYOUT);
   });
 
   test('a malformed composer layout cannot wipe a saved layout', () => {
     const current = base();
     const next = mergeSettings(current, {
-      composerLayouts: { single: { rows: [] }, group: current.composerLayouts.group } as never,
+      composerLayouts: { single: { rows: [] } } as never,
     });
     expect(next.composerLayouts.single).toEqual(current.composerLayouts.single);
   });
@@ -1423,18 +1417,26 @@ describe('getSettings on disk', () => {
   });
 });
 
-
 describe('TokenTrail recording defaults', () => {
   test('absent defaults on and explicit false survives migration', () => {
     const original = PATHS.root;
     const dir = mkdtempSync(join(tmpdir(), 'wc-tokentrail-default-'));
     try {
       setDataDir(dir);
-      for (const [stored, expected] of [[{}, true], [{ usageLog: false }, false], [{ usageLog: true }, true], [{ usageLog: 'yes' }, false]] as const) {
+      for (const [stored, expected] of [
+        [{}, true],
+        [{ usageLog: false }, false],
+        [{ usageLog: true }, true],
+        [{ usageLog: 'yes' }, false],
+      ] as const) {
         writeFileSync(PATHS.settings, JSON.stringify(stored));
         resetSettingsCache();
         expect(getSettings().usageLog).toBe(expected);
       }
-    } finally { setDataDir(original); resetSettingsCache(); rmSync(dir, { recursive: true, force: true }); }
+    } finally {
+      setDataDir(original);
+      resetSettingsCache();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

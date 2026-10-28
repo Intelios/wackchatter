@@ -299,6 +299,25 @@ describe('listing', () => {
     expect(store.listRecent(100).length).toBe(2);
   });
 
+  test('a group scene left by a 2.x library stays on disk but is never listed or read', () => {
+    const direct = store.createChat({ characterId: 'a.png' });
+    database
+      .query(
+        `INSERT INTO chats (id, character_id, kind, title, created, modified, revision, metadata)
+         VALUES ('old-group', NULL, 'group', 'Scene', 1, 1, 0, '{}')`,
+      )
+      .run();
+
+    expect(store.listChats().map((chat) => chat.id)).toEqual([direct.id]);
+    expect(store.listRecent(10).map((chat) => chat.id)).toEqual([direct.id]);
+    expect(store.listChatMetas().map((meta) => meta.id)).toEqual([direct.id]);
+    expect(store.getChat('old-group')).toBeNull();
+    expect(store.deleteChat('old-group')).toBe(false);
+    expect(database.query("SELECT COUNT(*) AS n FROM chats WHERE id = 'old-group'").get()).toEqual({
+      n: 1,
+    });
+  });
+
   test('summaries carry branch provenance without fetching whole chats', () => {
     const created = store.createChat({
       characterId: 'a.png',
