@@ -1,0 +1,1074 @@
+/* The chat stage: the transcript, its messages, the Line, and the margin. */
+
+.w3-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.w3-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 86px 32px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+  -webkit-mask-image: linear-gradient(
+    transparent 0,
+    #000 96px,
+    #000 calc(100% - 28px),
+    transparent
+  );
+  mask-image: linear-gradient(transparent 0, #000 96px, #000 calc(100% - 28px), transparent);
+}
+
+.w3-col {
+  max-width: var(--w3-column);
+  margin: 0 auto;
+}
+
+.w3-cover {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 26px 0 30px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--w3-line);
+}
+
+.w3-cover .w3-av {
+  box-shadow:
+    0 0 0 4px var(--w3-bg),
+    0 0 0 5.5px var(--w3-accent-line),
+    0 20px 60px -10px var(--w3-accent-line);
+  margin-bottom: 6px;
+}
+
+.w3-cover h1 {
+  margin: 0;
+  font-family: var(--w3-font-display);
+  font-weight: 750;
+  font-size: 30px;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.w3-cover p {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--w3-muted);
+  font-size: 14.5px;
+  text-wrap: balance;
+}
+
+.w3-cover__meta {
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}
+
+.w3-empty {
+  text-align: center;
+  color: var(--w3-muted);
+  padding: 30px 0;
+}
+
+/* ---------- Messages ---------- */
+
+.w3-msg {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px 0;
+  border-radius: 14px;
+  transition: background 1.2s ease;
+}
+
+.w3-msg[data-flash] {
+  background: var(--w3-accent-soft);
+  transition: none;
+}
+
+.w3-msg__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 24px;
+  margin-bottom: 3px;
+}
+
+.w3-msg__name {
+  font-family: var(--w3-font-display);
+  font-weight: 650;
+  font-size: 15px;
+  color: var(--w3-accent);
+}
+
+.w3-msg[data-role="user"] .w3-msg__name {
+  color: var(--w3-me);
+}
+
+.w3-msg__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--w3-faint);
+}
+
+.w3-msg__time,
+.w3-msg__prov {
+  opacity: 0;
+  transition: opacity var(--w3-quick);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-msg:hover .w3-msg__time,
+.w3-msg:hover .w3-msg__prov {
+  opacity: 1;
+}
+
+.w3-msg__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.w3-msg__flag[data-tone="warn"] {
+  color: var(--w3-accent);
+}
+
+.w3-msg[data-hidden] .w3-msg__content,
+.w3-msg[data-hidden] > .w3-av {
+  opacity: 0.4;
+}
+
+.w3-msg[data-role="user"] .w3-msg__bubble {
+  background: var(--w3-raised);
+  border: 1px solid var(--w3-line);
+  border-radius: 18px;
+  padding: 10px 16px 12px;
+}
+
+.w3-msg[data-role="user"][data-hidden] .w3-msg__bubble {
+  border-style: dashed;
+}
+
+/* The message text: the 2.x markdown renderer, set in the shell's voice. */
+.wc3 .message__text {
+  font-family: var(--w3-font);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.68;
+  color: var(--w3-soft);
+  overflow-wrap: anywhere;
+}
+
+.wc3 .message__text p {
+  margin: 0 0 0.7em;
+}
+
+.wc3 .message__text em {
+  color: var(--w3-muted);
+}
+
+.wc3 .message__text strong {
+  color: var(--w3-text);
+}
+
+.wc3 .w3-msg[data-dialogue] .message__dialogue {
+  color: var(--w3-say, var(--w3-dialogue));
+}
+
+.wc3 .message__text pre {
+  background: oklch(0 0 0 / 0.3);
+  border: 1px solid var(--w3-line);
+  border-radius: 10px;
+}
+
+.wc3 .message__text blockquote {
+  border-left-color: var(--w3-line-strong);
+  color: var(--w3-muted);
+}
+
+.wc3 .message__caret {
+  background: var(--w3-accent);
+}
+
+/* Swipes and re-rolls slide the new text in from the side it came from. */
+.w3-motion {
+  animation: w3-motion-in 0.42s var(--w3-spring) both;
+}
+
+.w3-motion--next {
+  --w3-from: 18px;
+}
+.w3-motion--prev {
+  --w3-from: -18px;
+}
+.w3-motion--reroll {
+  --w3-from: 0px;
+}
+
+@keyframes w3-motion-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--w3-from, 0));
+    filter: blur(3px);
+  }
+}
+
+/* Tools: hover to see them, always on the last reply. */
+.w3-msg__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  margin-top: 4px;
+  margin-left: -6px;
+  opacity: 0;
+  transition: opacity var(--w3-quick);
+}
+
+.w3-msg:hover .w3-msg__tools,
+.w3-msg:focus-within .w3-msg__tools,
+.w3-msg[data-last] .w3-msg__tools {
+  opacity: 1;
+}
+
+.w3-tbtn,
+.wc3 .w3-msg__tools .menu > button,
+.wc3 .w3-msg__tools button.w3-tbtn {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 0;
+  background: none;
+  color: var(--w3-faint);
+  padding: 0;
+}
+
+.w3-tbtn:hover:not(:disabled) {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.w3-tbtn:disabled {
+  opacity: 0.35;
+}
+
+.w3-tbtn[data-invisible] {
+  visibility: hidden;
+}
+
+.w3-swipe {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 0 2px;
+  border-radius: 10px;
+  background: oklch(1 0 0 / 0.04);
+}
+
+.w3-swipe__n {
+  font-size: 12px;
+  color: var(--w3-muted);
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.w3-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  margin-right: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--w3-me-line);
+  background: none;
+  color: var(--w3-me);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.w3-retry:hover:not(:disabled) {
+  background: var(--w3-me-soft);
+}
+
+/* Editing in place draws the composer's line under the text, in the speaker's colour. */
+.w3-msg__editor {
+  --w3-lc: var(--w3-accent);
+}
+
+.w3-msg[data-role="user"] .w3-msg__editor {
+  --w3-lc: var(--w3-me);
+}
+
+.w3-msg__edit {
+  display: block;
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: none;
+  padding: 0 0 10px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.68;
+  color: var(--w3-text);
+  caret-color: var(--w3-lc, var(--w3-accent));
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    var(--w3-lc, var(--w3-accent)) 8%,
+    var(--w3-lc, var(--w3-accent)) 92%,
+    transparent
+  );
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  animation: w3-line-in 0.6s var(--w3-spring);
+}
+
+@keyframes w3-line-in {
+  from {
+    background-size: 30% 2px;
+    background-position: 50% 100%;
+  }
+}
+
+.w3-msg__edit-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}
+
+.w3-textbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--w3-accent);
+}
+
+.w3-textbtn[data-quiet] {
+  color: var(--w3-muted);
+}
+
+.w3-textbtn:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.w3-textbtn:disabled {
+  opacity: 0.45;
+}
+
+.w3-linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--w3-accent);
+}
+
+.w3-linkish:hover {
+  text-decoration: underline;
+}
+
+/* Reasoning: quiet, folded, there when you want it. */
+.w3-reason {
+  margin: 0 0 8px;
+}
+
+.w3-reason__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 3px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--w3-faint);
+}
+
+button.w3-reason__head:hover {
+  color: var(--w3-soft);
+}
+
+.w3-reason__n {
+  font-weight: 400;
+}
+
+.w3-reason__head > .w3-ic:last-child {
+  transition: transform 0.35s var(--w3-spring);
+}
+
+.w3-reason[data-open] .w3-reason__head > .w3-ic:last-child {
+  transform: rotate(180deg);
+}
+
+.w3-reason[data-live] .w3-reason__label {
+  background: linear-gradient(90deg, var(--w3-faint), var(--w3-accent) 50%, var(--w3-faint));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: w3-shimmer 1.4s linear infinite;
+}
+
+@keyframes w3-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.w3-reason__body {
+  display: grid;
+  gap: 6px;
+  max-width: 64ch;
+  padding: 4px 0 2px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--w3-faint);
+  white-space: pre-wrap;
+}
+
+.w3-reason__body .w3-textbtn {
+  justify-self: start;
+  font-size: 12.5px;
+}
+
+.w3-reason[data-live] .w3-reason__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: 4.9em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 45%);
+  mask-image: linear-gradient(transparent, #000 45%);
+}
+
+/* A problem sits where the reply would have been. */
+.w3-problem {
+  margin: 8px 0 8px 54px;
+  max-width: 620px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--w3-danger-soft);
+  border: 1px solid var(--w3-danger-line);
+}
+
+.w3-problem__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--w3-danger);
+}
+
+.w3-problem__head b {
+  color: var(--w3-text);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.w3-problem p {
+  margin: 6px 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--w3-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The ⋯ menu, skinned for the shell. */
+.wc3 .w3-menu {
+  background: var(--w3-solid);
+  border-color: var(--w3-line-strong);
+  border-radius: 16px;
+  box-shadow: var(--w3-shadow);
+}
+
+/* ---------- The Line ---------- */
+
+.w3-dock {
+  flex: none;
+  padding: 6px 32px 28px;
+}
+
+.w3-line {
+  position: relative;
+  max-width: calc(var(--w3-column) + 60px);
+  margin: 0 auto;
+}
+
+.w3-line__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: end;
+  column-gap: 10px;
+  padding-bottom: 12px;
+}
+
+/* The line of light: dim at rest, bright and wide while you write. */
+.w3-line__row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--w3-me) 16%, var(--w3-me) 84%, transparent);
+  opacity: 0.35;
+  transform: scaleX(0.55);
+  transition:
+    opacity 0.4s,
+    transform 0.7s var(--w3-spring),
+    box-shadow 0.4s;
+}
+
+.w3-line__row::before {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -34px;
+  height: 68px;
+  pointer-events: none;
+  background: radial-gradient(50% 50% at 50% 50%, var(--w3-me-soft), transparent 72%);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.w3-line[data-active] .w3-line__row::after {
+  opacity: 1;
+  transform: none;
+  box-shadow: 0 0 16px var(--w3-me-line);
+}
+
+.w3-line[data-active] .w3-line__row::before {
+  opacity: 1;
+}
+
+.w3-line[data-busy] .w3-line__row::after {
+  opacity: 1;
+  transform: none;
+  animation: w3-line-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes w3-line-pulse {
+  50% {
+    opacity: 0.35;
+    box-shadow: 0 0 22px var(--w3-me-line);
+  }
+}
+
+.w3-line[data-blocked] .w3-line__row::after {
+  background: repeating-linear-gradient(90deg, var(--w3-faint) 0 7px, transparent 7px 14px);
+  opacity: 0.75;
+  transform: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.w3-line[data-blocked] .w3-line__row::before {
+  opacity: 0;
+}
+
+.w3-line__field {
+  position: relative;
+  min-width: 0;
+}
+
+/* The textarea draws only the caret; the ink mirror underneath draws the text. */
+.w3-line__input,
+.w3-ink {
+  margin: 0;
+  padding: 6px 0;
+  border: 0;
+  font-family: var(--w3-font);
+  font-size: 17px;
+  line-height: 1.55;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  scrollbar-width: none;
+}
+
+.w3-line__input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  resize: none;
+  outline: none;
+  background: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--w3-me);
+  min-height: calc(1.55em + 12px);
+}
+
+.wc3 .w3-line__input:focus-visible {
+  /* The line itself lights up for focus; a box would be a second, louder signal. */
+  outline: none;
+}
+
+.w3-line__input::placeholder {
+  color: var(--w3-faint);
+  -webkit-text-fill-color: var(--w3-faint);
+}
+
+.w3-line__input:disabled {
+  cursor: not-allowed;
+}
+
+.w3-ink {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--w3-text);
+}
+
+.w3-ink [data-ink="say"] {
+  color: var(--w3-me);
+}
+.w3-ink [data-ink="act"] {
+  color: var(--w3-muted);
+}
+.w3-ink [data-ink="macro"],
+.w3-ink [data-ink="command"] {
+  color: var(--w3-accent);
+}
+
+.w3-line__acts {
+  display: inline-flex;
+  gap: 2px;
+  padding-bottom: 2px;
+}
+
+.w3-line__act {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 0;
+  background: none;
+  color: var(--w3-muted);
+  display: grid;
+  place-items: center;
+  transition:
+    background var(--w3-quick),
+    color var(--w3-quick);
+}
+
+.w3-line__act:hover:not(:disabled) {
+  background: var(--w3-hover);
+  color: var(--w3-me);
+}
+
+.w3-line__act:disabled {
+  opacity: 0.4;
+}
+
+.w3-line__act::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: var(--w3-island);
+  color: var(--w3-soft);
+  border: 1px solid var(--w3-line);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    transform 0.2s var(--w3-out);
+  z-index: 5;
+}
+
+.w3-line__act:hover::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: 0.3s;
+}
+
+.w3-send {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--w3-me);
+  color: var(--w3-me-ink);
+  display: grid;
+  place-items: center;
+  transition:
+    transform 0.3s var(--w3-spring),
+    background 0.3s;
+}
+
+.w3-send:hover:not(:disabled) {
+  transform: scale(1.06);
+}
+
+.w3-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.w3-send:disabled {
+  opacity: 0.35;
+}
+
+.w3-send[data-stop] {
+  background: var(--w3-text);
+  color: var(--w3-bg);
+}
+
+.w3-send__face {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  transition:
+    opacity 0.2s,
+    transform 0.35s var(--w3-spring);
+}
+
+.w3-send__face .w3-ic {
+  stroke-width: 2.2;
+}
+
+.w3-send__face[data-face="stop"] {
+  opacity: 0;
+  transform: scale(0.4) rotate(-45deg);
+}
+
+.w3-send__face[data-face="stop"] .w3-ic {
+  width: 14px;
+  height: 14px;
+}
+
+.w3-send[data-stop] .w3-send__face[data-face="send"] {
+  opacity: 0;
+  transform: scale(0.4) rotate(45deg);
+}
+
+.w3-send[data-stop] .w3-send__face[data-face="stop"] {
+  opacity: 1;
+  transform: none;
+}
+
+.w3-line__cta {
+  position: absolute;
+  right: 0;
+  bottom: -24px;
+  font-size: 13px;
+}
+
+.w3-line__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13.5px;
+  color: var(--w3-danger);
+}
+
+.w3-line__error span {
+  color: var(--w3-soft);
+}
+
+/* Pinned guides sit above the line, in your colour. */
+.w3-guides {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.w3-guides__label {
+  font-size: 10.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.w3-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  height: 26px;
+  padding: 0 3px 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--w3-me-line);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+  background: oklch(0.1 0.01 var(--w3-h) / 0.55);
+}
+
+.w3-guide > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w3-guide > .w3-ic {
+  color: var(--w3-me);
+}
+
+.w3-guide button {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--w3-faint);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.w3-guide button:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+/* Slash command completion, above the line. */
+.w3-slash {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 14px);
+  z-index: 10;
+  width: min(460px, 100%);
+  max-height: 320px;
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 18px;
+  background: var(--w3-solid);
+  border: 1px solid var(--w3-line-strong);
+  box-shadow: var(--w3-shadow);
+  animation: w3-pop 0.35s var(--w3-spring);
+  transform-origin: 20px 100%;
+}
+
+@keyframes w3-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+  }
+}
+
+.w3-slash__item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.w3-slash__item[data-active],
+.w3-slash__item:hover {
+  background: var(--w3-hover);
+}
+
+.w3-slash__name {
+  font-family: var(--w3-font-mono);
+  font-size: 13px;
+  color: var(--w3-accent);
+}
+
+.w3-slash__desc {
+  font-size: 13px;
+  color: var(--w3-soft);
+}
+
+.w3-slash__usage {
+  grid-column: 2;
+  font-family: var(--w3-font-mono);
+  font-size: 11.5px;
+  color: var(--w3-faint);
+}
+
+/* ---------- The margin: a tool set on the page beside the chat ---------- */
+
+.w3-margin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  width: var(--w3-margin-w);
+  display: flex;
+  flex-direction: column;
+  animation: w3-margin-in 0.55s var(--w3-spring);
+}
+
+.w3-margin[data-side="R"] {
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(0.11 calc(0.02 * var(--w3-c)) var(--w3-h) / 0.82) 26%
+  );
+  --w3-from: 24px;
+}
+
+.w3-margin[data-side="L"] {
+  left: 0;
+  background: linear-gradient(
+    270deg,
+    transparent,
+    oklch(0.11 calc(0.02 * var(--w3-c)) var(--w3-h) / 0.82) 26%
+  );
+  --w3-from: -24px;
+}
+
+@keyframes w3-margin-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--w3-from));
+  }
+}
+
+/* The one hairline in the character's colour that separates the tool from the chat. */
+.w3-margin::before {
+  content: "";
+  position: absolute;
+  top: 92px;
+  bottom: 40px;
+  width: 1px;
+  background: linear-gradient(
+    transparent,
+    var(--w3-accent-line) 12%,
+    var(--w3-accent-line) 88%,
+    transparent
+  );
+  transform-origin: 50% 0;
+  animation: w3-hairline 0.8s var(--w3-out);
+}
+
+.w3-margin[data-side="R"]::before {
+  left: 26px;
+}
+.w3-margin[data-side="L"]::before {
+  right: 26px;
+}
+
+@keyframes w3-hairline {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.w3-margin__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 84px 22px 10px 48px;
+}
+
+.w3-margin[data-side="L"] .w3-margin__head {
+  padding: 84px 48px 10px 22px;
+}
+
+.w3-margin__title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.w3-margin__title h2 {
+  margin: 0;
+  font-family: var(--w3-font-display);
+  font-weight: 750;
+  font-size: 32px;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+
+.w3-margin__title span {
+  font-size: 13px;
+  color: var(--w3-muted);
+}
+
+.w3-margin__close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 0;
+  background: none;
+  color: var(--w3-muted);
+  display: grid;
+  place-items: center;
+}
+
+.w3-margin__close:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.w3-margin__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 18px 32px 40px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+}
+
+.w3-margin[data-side="L"] .w3-margin__body {
+  padding: 8px 40px 32px 18px;
+}
+
+.w3-margin__chrome {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.w3-margin__note {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--w3-line);
+  font-size: 13px;
+  color: var(--w3-muted);
+}

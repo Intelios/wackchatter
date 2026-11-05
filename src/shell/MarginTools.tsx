@@ -1,0 +1,291 @@
+/**
+ * The tools the island's wings open into the margin, and what each one shows.
+ *
+ * For now each tool hosts the 2.x panel that already does the job, so nothing goes missing
+ * while the shell is new. Restyling them one by one in the programme style is the sub-app
+ * work that follows; the wiring here is what LegacyShell passes the same panels.
+ */
+
+import { PROVIDERS } from '@shared/providers/types.ts';
+import { useState } from 'react';
+import type { UiChoice } from '../app/uiChoice.ts';
+import type { AppController } from '../app/useAppController.ts';
+import { CharacterEditor } from '../features/character/CharacterEditor.tsx';
+import { CharacterList } from '../features/character/CharacterList.tsx';
+import { InspectPanel } from '../features/chat/InspectPanel.tsx';
+import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
+import { LorePanel } from '../features/lore/LorePanel.tsx';
+import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
+import { PersonaPanel } from '../features/persona/PersonaPanel.tsx';
+import { GenerationPanel } from '../features/preset/GenerationPanel.tsx';
+import { PresetToolbar } from '../features/preset/PresetToolbar.tsx';
+import { PromptsPanel } from '../features/preset/PromptsPanel.tsx';
+import { UnsavedBar } from '../features/preset/UnsavedBar.tsx';
+import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
+import type { IconName } from './icons.tsx';
+
+export type ToolId =
+  | 'characters'
+  | 'lorebooks'
+  | 'personas'
+  | 'prompts'
+  | 'generation'
+  | 'memory'
+  | 'settings'
+  | 'inspect';
+
+export interface ToolSpec {
+  title: string;
+  icon: IconName;
+  /** The library opens on the left, the machinery on the right. */
+  side: 'L' | 'R';
+}
+
+export const TOOLS: Record<ToolId, ToolSpec> = {
+  characters: { title: 'Characters', icon: 'users', side: 'L' },
+  lorebooks: { title: 'Lorebooks', icon: 'book', side: 'L' },
+  personas: { title: 'Personas', icon: 'persona', side: 'L' },
+  prompts: { title: 'Prompts', icon: 'layers', side: 'R' },
+  generation: { title: 'Generation', icon: 'sliders', side: 'R' },
+  memory: { title: 'Memory', icon: 'memory', side: 'R' },
+  settings: { title: 'Settings', icon: 'gear', side: 'R' },
+  inspect: { title: 'Inspect', icon: 'inspect', side: 'R' },
+};
+
+export const LEFT_TOOLS: ToolId[] = ['characters', 'lorebooks', 'personas'];
+export const RIGHT_TOOLS: ToolId[] = ['prompts', 'generation', 'memory', 'settings', 'inspect'];
+
+export function toolSubtitle(id: ToolId, controller: AppController): string {
+  const { library, chat, app } = controller;
+  switch (id) {
+    case 'characters':
+      return controller.showEditor
+        ? `Editing ${controller.showEditor.name || 'a character'}`
+        : `${library.characters.length.toLocaleString()} in your library`;
+    case 'lorebooks':
+      return 'World info for this chat and every chat';
+    case 'personas':
+      return 'Who you are. A chat remembers who you were in it.';
+    case 'prompts':
+      return library.preset ? `Preset “${library.preset.name ?? library.presetId}”` : 'Loading…';
+    case 'generation':
+      return app.models.chat.model
+        ? `Chat model: ${app.models.chat.model.model}`
+        : (app.models.chat.blockedReason ?? 'Choose a chat model');
+    case 'memory':
+      return chat.state.chatId ? `Story memory for “${chat.state.title}”` : 'Story memory';
+    case 'settings':
+      return 'How the app looks and behaves';
+    case 'inspect':
+      return 'What was sent with the last reply';
+  }
+}
+
+export function MarginTool({
+  id,
+  controller,
+  onUiChoice,
+}: {
+  id: ToolId;
+  controller: AppController;
+  onUiChoice: (choice: UiChoice) => void;
+}) {
+  const { app, library, backups, chat, lore, preview, presetDraft } = controller;
+  const { settings, view: prefs, models, patchSettings } = app;
+  const { characters, personas, books, presets, presetId, preset } = library;
+  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
+  const connection = models.chat.model;
+  const presetChrome = (
+    <div className="w3-margin__chrome">
+      <PresetToolbar
+        presets={presets}
+        presetId={presetId}
+        onSelectPreset={library.selectPreset}
+        draft={presetDraft}
+      />
+      <UnsavedBar draft={presetDraft} />
+    </div>
+  );
+
+  switch (id) {
+    case 'characters': {
+      const editing = controller.showEditor;
+      if (editing) {
+        return (
+          <CharacterEditor
+            key={editing.avatar}
+            detail={editing}
+            onSaved={controller.characterSaved}
+            onRenamed={(saved) => void controller.characterRenamed(saved)}
+            onDeleted={controller.characterDeleted}
+            onBack={() => controller.setEditing(false)}
+            registerPersistence={controller.registerPersistence('character')}
+            dialogueColor={prefs.dialogueColors.characters[editing.avatar]}
+            dialogueColorsEnabled={prefs.dialogueColors.enabled}
+            avatarVersion={library.characterAvatarVersions[editing.avatar]}
+            rating={prefs.characterRatings[editing.avatar]}
+            onRatingChange={(value) => app.patchCharacterRating(editing.avatar, value)}
+            onDialogueColorChange={(value) =>
+              app.patchCharacterDialogueColor(editing.avatar, value)
+            }
+            onAvatarChanged={() => library.bumpCharacterAvatar(editing.avatar)}
+          />
+        );
+      }
+      return (
+        <CharacterList
+          characters={characters}
+          folders={library.folders}
+          collapsedFolders={prefs.collapsedCharacterFolders}
+          hiddenTags={prefs.hiddenTags}
+          ratings={prefs.characterRatings}
+          sort={prefs.characterListSort}
+          onSortChange={(sort) => void patchSettings({ characterListSort: sort })}
+          selected={controller.selected}
+          scrollMemory={controller.characterListScroll}
+          loading={library.loading}
+          error={controller.error}
+          onSelect={controller.selectCharacter}
+          onRefresh={library.refresh}
+          onEdit={controller.editCharacter}
+          onCollapsedFoldersChange={(next) =>
+            void patchSettings({ collapsedCharacterFolders: next })
+          }
+        />
+      );
+    }
+    case 'lorebooks':
+      return (
+        <LorePanel
+          books={books}
+          settings={prefs.worldInfo}
+          onBooksChanged={() => {
+            void library.refreshBooks();
+            void library.refreshPersonas();
+          }}
+          onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
+          activeBooks={lore.activeForPersona(chat.persona?.lorebookId ?? undefined)}
+          onBookEdited={lore.invalidate}
+          registerPersistence={controller.registerPersistence('lore')}
+        />
+      );
+    case 'personas':
+      return (
+        <PersonaPanel
+          personas={personas}
+          books={books}
+          characters={characters}
+          hiddenTags={prefs.hiddenTags}
+          connection={connection}
+          preset={preset}
+          globalVariables={settings?.variables ?? {}}
+          activeId={settings?.personaId ?? null}
+          recentIds={settings?.recentPersonaIds ?? []}
+          density={settings?.personaListDensity ?? 'list'}
+          onDensityChange={(personaListDensity) => void patchSettings({ personaListDensity })}
+          countTokens={app.countTokens}
+          onSelect={controller.selectPersona}
+          onChanged={library.refreshPersonas}
+          registerPersistence={controller.registerPersistence('persona')}
+          dialogueColors={prefs.dialogueColors}
+          avatarVersions={library.personaAvatarVersions}
+          onDialogueColorChange={app.patchPersonaDialogueColor}
+          onAvatarChanged={library.bumpPersonaAvatar}
+          onDeleted={controller.personaDeleted}
+        />
+      );
+    case 'prompts':
+      return (
+        <>
+          {presetChrome}
+          {preset ? (
+            <PromptsPanel
+              preset={preset}
+              draft={presetDraft}
+              selected={selectedPrompt}
+              onSelect={setSelectedPrompt}
+              tokenCounts={preview?.tokenCounts}
+              macroWarnings={preview?.macroWarnings}
+            />
+          ) : (
+            <div className="wc-empty">Loading presets…</div>
+          )}
+        </>
+      );
+    case 'generation':
+      return (
+        <>
+          {presetChrome}
+          <ConnectionPanel settings={settings} onChange={app.setSettings} />
+          {preset ? (
+            <GenerationPanel
+              preset={preset}
+              draft={presetDraft}
+              extraSamplersSent={
+                connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
+              }
+              connection={connection}
+              onConnectionPatch={app.patchChatConnection}
+            />
+          ) : (
+            <div className="wc-empty">Loading presets…</div>
+          )}
+        </>
+      );
+    case 'memory':
+      return (
+        <MemoryPanel
+          chat={chat}
+          mode={chat.memoryMode}
+          onModeChange={chat.nexus.setMode}
+          defaultMode={prefs.memoryMode}
+          onDefaultChange={(memoryMode) => void patchSettings({ memoryMode })}
+          settings={prefs.nexus}
+          onSettingsChange={(patch) => void patchSettings({ nexus: { ...prefs.nexus, ...patch } })}
+          summarySettings={prefs.summary}
+          onSummarySettingsChange={(patch) =>
+            void patchSettings({ summary: { ...prefs.summary, ...patch } })
+          }
+          model={models.slots.nexus}
+          onModelChange={(ref) => app.setModelSlot('nexus', ref)}
+          blockedReason={models.nexus.blockedReason}
+          summaryModel={models.slots.summary}
+          onSummaryModelChange={(ref) => app.setModelSlot('summary', ref)}
+          summaryBlockedReason={models.summary.blockedReason}
+        />
+      );
+    case 'settings':
+      return (
+        <>
+          <div className="w3-margin__note">
+            <span>
+              WackChatter 3.0 is being rebuilt. The 2.x interface is one keypress away
+              (Ctrl+Shift+U) while the new one catches up.
+            </span>
+            <button type="button" className="w3-pill" onClick={() => onUiChoice('legacy')}>
+              Use the 2.x interface
+            </button>
+          </div>
+          <UserSettingsPanel
+            settings={settings}
+            onPatch={app.patchUserSettings}
+            unsavedPreset={presetDraft.dirty}
+            backups={backups.backups}
+            characters={characters}
+            onRestoreBackup={(backupId) => void backups.restoreBackup(backupId)}
+            onPurgeBackup={(backupId) => void backups.purgeBackup(backupId)}
+            onPurgeAllBackups={() => void backups.purgeAllBackups()}
+          />
+        </>
+      );
+    case 'inspect':
+      return (
+        <InspectPanel
+          nexusRecall={chat.inspection?.nexusRecall ?? chat.nexus.recall}
+          nexusPreview={preview?.nexusRecall}
+          worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
+          inspection={chat.inspection}
+        />
+      );
+  }
+}
