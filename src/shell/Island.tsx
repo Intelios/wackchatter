@@ -115,15 +115,33 @@ export function Island({
     return () => clearTimeout(timer);
   }, [notice, onDismissNotice]);
 
-  const showWings = () => {
-    clearTimeout(wingTimer.current);
-    setWingsOut(true);
-  };
-  // A short grace, so crossing the gap between the island and a wing does not fold it.
-  const hideWings = () => {
-    clearTimeout(wingTimer.current);
-    wingTimer.current = setTimeout(() => setWingsOut(false), 450);
-  };
+  // The wings fold out while the pointer or focus is on the island, and fold back after a
+  // short grace, so crossing the gap between the island and a wing does not fold them.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const show = () => {
+      clearTimeout(wingTimer.current);
+      setWingsOut(true);
+    };
+    const hide = () => {
+      clearTimeout(wingTimer.current);
+      wingTimer.current = setTimeout(() => setWingsOut(false), 450);
+    };
+    const focusOut = (event: FocusEvent) => {
+      if (!wrap.contains(event.relatedTarget as Node)) hide();
+    };
+    wrap.addEventListener('pointerenter', show);
+    wrap.addEventListener('pointerleave', hide);
+    wrap.addEventListener('focusin', show);
+    wrap.addEventListener('focusout', focusOut);
+    return () => {
+      wrap.removeEventListener('pointerenter', show);
+      wrap.removeEventListener('pointerleave', hide);
+      wrap.removeEventListener('focusin', show);
+      wrap.removeEventListener('focusout', focusOut);
+    };
+  }, []);
 
   return (
     <div className="w3-island-anchor">
@@ -131,12 +149,6 @@ export function Island({
         ref={wrapRef}
         className="w3-island-wrap"
         data-wings={wingsOut || wingsPinned || undefined}
-        onPointerEnter={showWings}
-        onPointerLeave={hideWings}
-        onFocus={showWings}
-        onBlur={(event) => {
-          if (!wrapRef.current?.contains(event.relatedTarget as Node)) hideWings();
-        }}
       >
         <div
           ref={islandRef}

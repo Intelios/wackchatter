@@ -18,6 +18,7 @@ import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { Avatar } from './Avatar.tsx';
 import type { IslandMode } from './Island.tsx';
 import { Icon, type IconName } from './icons.tsx';
+import { introLine } from './intro.ts';
 
 export interface Face {
   name: string;
@@ -415,8 +416,8 @@ export function PersonaPane({
                 {persona.name}
                 {persona.variantLabel ? ` (${persona.variantLabel})` : ''}
               </span>
-              {persona.description ? (
-                <span className="w3-opt__s">{persona.description.slice(0, 140)}</span>
+              {introLine(persona.description) ? (
+                <span className="w3-opt__s">{introLine(persona.description)}</span>
               ) : null}
             </span>
             {persona.id === activeId ? (

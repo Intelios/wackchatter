@@ -90,8 +90,13 @@ export function useChatSurface({
     stopFollowing,
   });
 
+  /*
+   * A recap runs in impersonation's mode (a generation with no transcript home), so the
+   * mode alone cannot tell the two apart. Tracked here, from the run's own start and end.
+   */
+  const [recapRunning, setRecapRunning] = useState(false);
   // A generation whose text belongs to the composer rather than the transcript.
-  const impersonating = state.status !== 'idle' && state.mode === 'impersonate';
+  const impersonating = state.status !== 'idle' && state.mode === 'impersonate' && !recapRunning;
   const loadBlocksChat = Boolean(chat.loadError && !state.chatId);
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
@@ -211,12 +216,15 @@ export function useChatSurface({
     setRecapOpen(true);
     setRecapMeta(null);
     setRecapView({ status: 'active', text: '', error: null });
+    setRecapRunning(true);
     void chat.recap({
       onText: (text) => setRecapView((prev) => ({ ...prev, text })),
       onMeta: (meta) => setRecapMeta(meta),
       onError: (error) => setRecapView({ status: 'failed', text: '', error }),
-      onDone: () =>
-        setRecapView((prev) => (prev.status === 'failed' ? prev : { ...prev, status: 'done' })),
+      onDone: () => {
+        setRecapRunning(false);
+        setRecapView((prev) => (prev.status === 'failed' ? prev : { ...prev, status: 'done' }));
+      },
     });
   }, [chat]);
   const closeRecap = useCallback(() => setRecapOpen(false), []);
@@ -531,6 +539,7 @@ export function useChatSurface({
     closeCardReader,
 
     recapOpen,
+    recapRunning,
     recapView,
     recapMeta,
     runRecap,

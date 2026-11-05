@@ -43,6 +43,7 @@ import {
   SearchPane,
 } from './IslandPanes.tsx';
 import { Icon } from './icons.tsx';
+import { introLine } from './intro.ts';
 import type { LineHandle } from './LineComposer.tsx';
 import {
   LEFT_TOOLS,
@@ -150,7 +151,8 @@ function ChatShell({
 
   const generating = state.status !== 'idle';
   const summarising = chat.summaryStatus.running;
-  const impersonating = generating && state.mode === 'impersonate';
+  const impersonating = surface.impersonating;
+  const recapping = generating && surface.recapRunning;
   const islandBase: IslandMode = generating || summarising ? 'gen' : 'rest';
   const mode: IslandMode = surface.recapOpen ? 'recap' : (opened ?? islandBase);
 
@@ -267,7 +269,7 @@ function ChatShell({
   // One line about the character, with its macros resolved like the greeting's.
   const description = byAvatar.get(active.avatar)?.description ?? '';
   const intro = useMemo(
-    () => firstSentence(chat.renderGreeting(description)),
+    () => introLine(chat.renderGreeting(description)),
     [description, chat.renderGreeting],
   );
 
@@ -368,7 +370,7 @@ function ChatShell({
         key: `c:${summary.avatar}`,
         kind: 'Character',
         label: summary.name,
-        sub: summary.description.slice(0, 90),
+        sub: introLine(summary.description) || undefined,
         face: { name: summary.name, url: avatarUrlOf(summary.avatar) },
         run: () => controller.selectCharacter(summary.avatar),
       });
@@ -379,7 +381,7 @@ function ChatShell({
         key: `c:${summary.avatar}`,
         kind: 'Character',
         label: summary.name,
-        sub: summary.description.slice(0, 90),
+        sub: introLine(summary.description) || undefined,
         face: { name: summary.name, url: avatarUrlOf(summary.avatar) },
         run: () => controller.selectCharacter(summary.avatar),
       });
@@ -442,7 +444,7 @@ function ChatShell({
         key: `p:${p.id}`,
         kind: 'Persona',
         label: p.variantLabel ? `${p.name} (${p.variantLabel})` : p.name,
-        sub: p.description.slice(0, 90),
+        sub: introLine(p.description) || undefined,
         face: {
           name: p.name,
           url: p.avatar
@@ -606,9 +608,11 @@ function ChatShell({
                 label={
                   summarising
                     ? 'Writing the summary'
-                    : impersonating
-                      ? `Writing as ${persona?.name ?? 'you'}`
-                      : `${characterName} is writing`
+                    : recapping
+                      ? 'Writing the recap'
+                      : impersonating
+                        ? `Writing as ${persona?.name ?? 'you'}`
+                        : `${characterName} is writing`
                 }
                 thinkingLabel={impersonating ? undefined : `${characterName} is thinking`}
                 stream={chat.stream}
@@ -737,17 +741,4 @@ function ChatShell({
       </div>
     </ModelsProvider>
   );
-}
-
-/**
- * The first sentence of a description, for a one-line introduction. Cards written as
- * structured blocks (W++, JSON, `[Name's Personality= ...]`) have no sentence to offer,
- * and showing their syntax reads as a fault, so those give nothing.
- */
-function firstSentence(text: string): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
-  if (!clean) return '';
-  if (/^[[{(<]/.test(clean) || /^.{0,60}[=:]\s*["\[{]/.test(clean)) return '';
-  const match = /^(.{20,160}?[.!?])(\s|$)/.exec(clean);
-  return match ? match[1]! : clean.length > 160 ? `${clean.slice(0, 157)}…` : clean;
 }

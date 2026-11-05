@@ -261,7 +261,7 @@ function Problem({
         <Icon name="alert" />
         <b>{title}</b>
       </div>
-      <p>{detail}</p>
+      <p className="w3-problem__detail">{detail}</p>
       {action ? (
         <button type="button" className="w3-textbtn" onClick={action.run} disabled={disabled}>
           {action.label}

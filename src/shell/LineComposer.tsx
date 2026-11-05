@@ -175,6 +175,7 @@ export function LineComposer({
   );
 
   // Grow with the text, then scroll inside; the ink mirror follows the same scroll.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the text is the trigger, read through the element
   useLayoutEffect(() => {
     const element = textarea.current;
     if (!element) return;
@@ -216,7 +217,8 @@ export function LineComposer({
   function pinGuide() {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const name = trimmed.split(/\s+/).slice(0, 4).join(' ');
+    // The chip shows the name; a short note is its own name, a long one is trimmed.
+    const name = trimmed.length > 48 ? `${trimmed.slice(0, 47).trimEnd()}…` : trimmed;
     onGuidesChange([...guides, { id: crypto.randomUUID(), name, text: trimmed, enabled: true }]);
     setText('');
   }
@@ -242,7 +244,7 @@ export function LineComposer({
       }}
     >
       {enabledGuides.length ? (
-        <div className="w3-guides" aria-label="Guides steering every reply">
+        <div className="w3-guides">
           <span className="w3-guides__label">Guides</span>
           {enabledGuides.map((guide) => (
             <span key={guide.id} className="w3-guide" title={guide.text}>
@@ -250,6 +252,7 @@ export function LineComposer({
               <span>{guide.name || guide.text}</span>
               <button
                 type="button"
+                className="w3-guide__x"
                 aria-label={`Remove guide: ${guide.name || guide.text}`}
                 onClick={() => onGuidesChange(guides.filter((g) => g.id !== guide.id))}
               >

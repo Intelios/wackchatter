@@ -489,7 +489,7 @@ button.w3-reason__head:hover {
   font-size: 15px;
 }
 
-.w3-problem p {
+.w3-problem__detail {
   margin: 6px 0;
   font-size: 14px;
   line-height: 1.55;
@@ -627,7 +627,8 @@ button.w3-reason__head:hover {
   min-height: calc(1.55em + 12px);
 }
 
-.wc3 .w3-line__input:focus-visible {
+.wc3 .w3-line__input:focus-visible,
+.wc3 .w3-msg__edit:focus-visible {
   /* The line itself lights up for focus; a box would be a second, louder signal. */
   outline: none;
 }
@@ -840,11 +841,11 @@ button.w3-reason__head:hover {
   white-space: nowrap;
 }
 
-.w3-guide > .w3-ic {
+.w3-guides .w3-guide > .w3-ic {
   color: var(--w3-me);
 }
 
-.w3-guide button {
+.w3-guide__x {
   width: 20px;
   height: 20px;
   border: 0;
@@ -856,7 +857,7 @@ button.w3-reason__head:hover {
   flex: none;
 }
 
-.w3-guide button:hover {
+.w3-guide__x:hover {
   background: var(--w3-hover);
   color: var(--w3-text);
 }

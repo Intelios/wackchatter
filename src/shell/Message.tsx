@@ -125,6 +125,7 @@ export const Message = memo(function Message({
   const model = info?.extra?.model ? String(info.extra.model) : null;
 
   // Grow the editor with its text.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the draft is the trigger, read through the element
   useLayoutEffect(() => {
     const element = editorRef.current;
     if (!editing || !element) return;

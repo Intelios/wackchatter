@@ -155,18 +155,18 @@
     --w3-tint 600ms var(--w3-out);
 }
 
-.wc3 :focus-visible {
+:where(.wc3) :focus-visible {
   outline: 2px solid var(--w3-accent);
   outline-offset: 2px;
 }
 
-.wc3 button {
+:where(.wc3) button {
   font: inherit;
   color: inherit;
   cursor: pointer;
 }
 
-.wc3 button:disabled {
+:where(.wc3) button:disabled {
   cursor: not-allowed;
 }
 
@@ -379,13 +379,32 @@
   left: var(--w3-margin-w);
 }
 
+/*
+ * Reduced motion: the shell still changes shape and colour, but at once, and nothing
+ * drifts, breathes or sweeps. Timings come from the motion tokens, so shrinking them
+ * covers every morph; the ambient animations are switched off by name.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .wc3,
-  .wc3 *,
-  .wc3 *::before,
-  .wc3 *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  .wc3 {
+    --w3-morph: 1ms;
+    --w3-quick: 1ms;
+    transition: none;
+  }
+
+  .wc3 .w3-orb,
+  .wc3 .w3-bloom,
+  .wc3 .w3-breath,
+  .wc3 .w3-wash,
+  .wc3 .w3-island::before,
+  .wc3 .w3-wave i,
+  .wc3 .w3-gen-av::after,
+  .wc3 .w3-motion,
+  .wc3 .w3-margin,
+  .wc3 .w3-margin::before,
+  .wc3 .w3-slash,
+  .wc3 .w3-msg__edit,
+  .wc3 .w3-line__row::after,
+  .wc3 .w3-reason__label {
+    animation: none;
   }
 }

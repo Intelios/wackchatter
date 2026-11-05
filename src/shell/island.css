@@ -450,6 +450,14 @@
   color: var(--w3-text);
 }
 
+.w3-p-field:focus-within {
+  border-color: var(--w3-accent-line);
+}
+
+.wc3 .w3-p-field input:focus-visible {
+  outline: none;
+}
+
 .w3-p-field input::placeholder {
   color: var(--w3-faint);
 }
@@ -785,11 +793,11 @@
   text-overflow: ellipsis;
 }
 
-.w3-notice .w3-ic {
+.w3-island-wrap .w3-notice > .w3-ic {
   color: var(--w3-accent);
 }
 
-.w3-notice[data-tone="bad"] > .w3-ic {
+.w3-island-wrap .w3-notice[data-tone="bad"] > .w3-ic {
   color: var(--w3-danger);
 }
 
