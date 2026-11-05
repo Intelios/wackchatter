@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import {
   appendPresetTestUserMessage,
@@ -112,7 +112,7 @@ describe('preset test source resolution', () => {
       countText: (value) => value.split(/\s+/).length,
       countChat: (messages) => messages.length * 4,
     };
-    const connection: Connection = {
+    const connection: ResolvedModel = {
       id: 'conn-1',
       name: 'Test',
       provider: 'custom',

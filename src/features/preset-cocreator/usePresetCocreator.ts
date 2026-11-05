@@ -1,4 +1,5 @@
 import { cocreatorBudget } from '@shared/cocreator/generation.ts';
+import { resolveModelRef } from '@shared/models/slots.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { StreamState } from '@shared/providers/sse.ts';
@@ -14,8 +15,9 @@ import type {
   ReplacePresetDraftRequest,
 } from '@shared/types/preset-cocreator.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { presetCocreatorApi, referencePresetApi, streamGenerate } from '../../lib/api.ts';
+import { presetCocreatorApi, referencePresetApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
+import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import {
@@ -217,11 +219,12 @@ export function usePresetCocreator({
   );
 
   const settings = session.document.settings.assistant;
-  const assistantConnection = useMemo(() => {
-    const connection = connections.find((entry) => entry.id === settings.connectionId) ?? null;
-    if (!connection) return null;
-    return { ...connection, model: settings.model.trim() || connection.model };
-  }, [connections, settings.connectionId, settings.model]);
+  const assistantModel = useMemo(
+    () => resolveModelRef(connections, settings.model, 'assistant'),
+    [connections, settings.model],
+  );
+  const assistantConnection = assistantModel.ok ? assistantModel.model : null;
+  const assistantBlocked = assistantModel.ok ? null : assistantModel.reason;
   const countTokens = useTokenizer(assistantConnection?.model ?? '');
 
   const commitMessages = useCallback(
@@ -237,7 +240,7 @@ export function usePresetCocreator({
     ) => {
       if (abortRef.current) return;
       if (!assistantConnection) {
-        setError('Choose an assistant connection and model.');
+        setError(assistantBlocked ?? 'Choose an assistant model.');
         return;
       }
       const controller = new AbortController();
@@ -316,25 +319,22 @@ export function usePresetCocreator({
           stream.begin('', true);
           const generationId = crypto.randomUUID();
           partial = null;
-          const final = await streamGenerate(
+          const final = await runGeneration({
+            model: assistantConnection,
             body,
-            controller.signal,
-            {
-              onTick: (state) => {
-                if (abortRef.current !== controller) return;
-                partial = state;
-                stream.set(state.content, state.reasoning);
-              },
-            },
-            '',
-            assistantConnection.id,
-            {
+            signal: controller.signal,
+            usage: {
               feature: 'presetCocreator',
               generationId,
               sessionId: current.id,
               countText: countTokens.countText,
             },
-          );
+            onTick: (state) => {
+              if (abortRef.current !== controller) return;
+              partial = state;
+              stream.set(state.content, state.reasoning);
+            },
+          });
           partial = final;
           if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
@@ -441,6 +441,7 @@ export function usePresetCocreator({
     [
       adoptDraftResponse,
       assistantConnection,
+      assistantBlocked,
       commitMessages,
       countTokens,
       flush,

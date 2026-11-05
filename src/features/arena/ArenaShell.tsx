@@ -1055,7 +1055,6 @@ export function ArenaShell({
             settings={settings}
             onSettingsChange={onSettingsChange}
             resolved={resolved}
-            connections={connections}
             characters={characters}
             personas={personas}
             presets={presets}

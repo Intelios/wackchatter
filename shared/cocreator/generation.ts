@@ -1,6 +1,6 @@
 import { buildRequestBody } from '../providers/request.ts';
 import { thinkingMaxTokens } from '../providers/thinking.ts';
-import type { Connection } from '../providers/types.ts';
+import type { ResolvedModel } from '../providers/types.ts';
 import type { Preset } from '../types/preset.ts';
 
 export const COCREATOR_OUTPUT_TOKENS = 8192;
@@ -12,7 +12,7 @@ export const CONTINUE_DESIGN_REPLY =
 /** Both desks budget visible output separately from reasoning and chat sampler presets. */
 export function cocreatorBudget(options: {
   preset: Preset;
-  connection: Connection;
+  connection: ResolvedModel;
   outputTokens?: number;
   contextTokens?: number;
   stream?: boolean;

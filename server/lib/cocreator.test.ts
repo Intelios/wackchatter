@@ -63,7 +63,7 @@ const sideChat = () => ({
     exampleBlock: 'An example frozen in time.',
     messages: [{ role: 'assistant' as const, content: 'What is her name?' }],
   },
-  settings: { connectionId: 'side', outputTokens: 2048 },
+  settings: { model: { connectionId: 'side', modelId: 'cheap' }, outputTokens: 2048 },
   messages: [message({ id: 'side-answer', mes: 'Elowen.', extra: { model: 'side-model' } })],
 });
 
@@ -171,11 +171,10 @@ describe('creating and reading', () => {
           fields: { ...created.examples.fields, mes_example: true },
         },
         settings: {
-          connectionId: 'c1',
+          model: { connectionId: 'c1', modelId: 'design-model' },
           presetId: null,
           systemPrompt: 'Custom.',
           analysisPrompt: 'Inspect these.',
-          modelOverride: { connectionId: 'c1', model: 'design-model' },
           outputTokens: 16384,
           contextTokens: 65536,
         },
@@ -191,11 +190,10 @@ describe('creating and reading', () => {
     expect(read.examples.cards).toEqual(['Seraphina.png']);
     expect(read.examples.fields.mes_example).toBe(true);
     expect(read.settings).toEqual({
-      connectionId: 'c1',
+      model: { connectionId: 'c1', modelId: 'design-model' },
       presetId: null,
       systemPrompt: 'Custom.',
       analysisPrompt: 'Inspect these.',
-      modelOverride: { connectionId: 'c1', model: 'design-model' },
       outputTokens: 16384,
       contextTokens: 65536,
     });
@@ -526,11 +524,11 @@ describe('repairing stored JSON', () => {
 
   test('an absent session override stays absent, so it keeps following the app setting', () => {
     expect(normalizeSessionSettings({})).toEqual({});
-    expect(normalizeSessionSettings({ connectionId: 42, presetId: 'p1' })).toEqual({
+    expect(normalizeSessionSettings({ model: 42, presetId: 'p1' })).toEqual({
       presetId: 'p1',
     });
-    // Null is a real value here — "follow the chat connection" — and must survive.
-    expect(normalizeSessionSettings({ connectionId: null })).toEqual({ connectionId: null });
+    // Null is a real value for the preset — "use the active preset" — and must survive.
+    expect(normalizeSessionSettings({ presetId: null })).toEqual({ presetId: null });
   });
 
   test('blank prompts and malformed model overrides are discarded', () => {
@@ -538,9 +536,16 @@ describe('repairing stored JSON', () => {
       normalizeSessionSettings({
         systemPrompt: '   ',
         analysisPrompt: '',
-        modelOverride: { connectionId: 'c1', model: '   ' },
+        model: { connectionId: 'c1', modelId: '   ' },
       }),
     ).toEqual({});
+  });
+
+  test('a session keeps its model even when the connection is gone', () => {
+    // Resolving it reports the missing connection; normalising must not quietly drop it.
+    expect(normalizeSessionSettings({ model: { connectionId: 'gone', modelId: 'm' } })).toEqual({
+      model: { connectionId: 'gone', modelId: 'm' },
+    });
   });
 });
 

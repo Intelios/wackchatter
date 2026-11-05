@@ -1,4 +1,4 @@
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type { PresetDraftRevision } from '@shared/types/preset-cocreator.ts';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,7 +10,7 @@ import { findJsonProblem, formatJsonProblem } from './jsonProblem.ts';
 interface PresetDraftEditorProps {
   current: Pick<PresetDraftRevision, 'revision' | 'preset'>;
   busy: boolean;
-  connection: Connection | null;
+  connection: ResolvedModel | null;
   replaceDraft: (preset: Preset, summary?: string) => Promise<void>;
 }
 

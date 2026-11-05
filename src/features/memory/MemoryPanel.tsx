@@ -1,4 +1,4 @@
-import type { Connection } from '@shared/providers/types.ts';
+import type { ModelRef } from '@shared/models/slots.ts';
 import type { MemoryMode, SummarySettings } from '@shared/types/settings.ts';
 import { SelectField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
@@ -27,8 +27,11 @@ interface Props extends NexusSettingsProps {
   onDefaultChange: (mode: MemoryMode) => void;
   summarySettings: SummarySettings;
   onSummarySettingsChange: (patch: Partial<SummarySettings>) => void;
-  activeConnection: Connection | null;
-  summaryConnection: Connection | null;
+  /** The `summary` slot; null follows chat. */
+  summaryModel: ModelRef | null;
+  onSummaryModelChange: (ref: ModelRef | null) => void;
+  /** Why the summary model cannot run, or null when it can. */
+  summaryBlockedReason: string | null;
 }
 export function MemoryPanel(props: Props) {
   const { chat, mode, onModeChange } = props;
@@ -61,9 +64,9 @@ export function MemoryPanel(props: Props) {
         <SummaryPanel
           chat={chat}
           settings={props.summarySettings}
-          connections={props.connections}
-          activeConnection={props.activeConnection}
-          summaryConnection={props.summaryConnection}
+          model={props.summaryModel}
+          onModelChange={props.onSummaryModelChange}
+          blockedReason={props.summaryBlockedReason}
           onSettingsChange={props.onSummarySettingsChange}
         />
       ) : (
@@ -86,20 +89,16 @@ export function MemoryPanel(props: Props) {
           >
             Explore Nexus
           </button>
-          <NexusActivity
-            chat={chat}
-            configured={Boolean(
-              props.connections.some((c) => c.id === props.settings.connectionId) &&
-                props.settings.model,
-            )}
-          />
+          <NexusActivity chat={chat} configured={!props.blockedReason} />
         </Section>
       )}
       <Section title="Nexus settings">
         <NexusSettings
           settings={props.settings}
-          connections={props.connections}
           onSettingsChange={props.onSettingsChange}
+          model={props.model}
+          onModelChange={props.onModelChange}
+          blockedReason={props.blockedReason}
         />
       </Section>
       <Section title="New chats">

@@ -18,7 +18,7 @@
 
 import type { DataDirSource, LocationKind } from '../../shared/types/location.ts';
 import { resetArenaStore } from './arena.ts';
-import { resetChatStore } from './chats.ts';
+import { chatStore, resetChatStore } from './chats.ts';
 import { resetCocreatorStore } from './cocreator.ts';
 import { closeDatabase } from './db.ts';
 import { drainLocks } from './fs.ts';
@@ -187,6 +187,10 @@ export async function switchDataDir(input: string, expect: LocationKind): Promis
       setDataDir(destination);
       ensureDataDirs();
       await ensureDefaultPreset();
+      // Built now rather than on first use, because building it runs the 2.3 → 3.0
+      // conversion, and settings.json must be converted before any request reads or writes
+      // it — the order boot keeps too.
+      chatStore();
       // The pointer names the old root until this runs; a reader following it would open
       // a library the app has stopped writing to.
       publishLibraryPointer();

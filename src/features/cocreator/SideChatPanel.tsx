@@ -1,5 +1,5 @@
 import type { MessageState } from '@shared/chat/message.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
 import type { CardSlot } from '@shared/types/cocreator.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import { type Ref, useLayoutEffect, useRef, useState } from 'react';
@@ -14,7 +14,8 @@ import type { UseCocreator } from './useCocreator.ts';
 interface SideChatPanelProps {
   design: UseCocreator;
   defaults: CoCreatorSettings;
-  connections: Connection[];
+  models: ModelSlots;
+  onModelSlotChange: (slot: ModelSlot, ref: ModelRef | null) => void;
   active: boolean;
   examplesReady: boolean;
   composerRef: Ref<CocreatorComposerHandle>;
@@ -35,7 +36,8 @@ interface SideChatPanelProps {
 export function SideChatPanel({
   design,
   defaults,
-  connections,
+  models,
+  onModelSlotChange,
   active,
   examplesReady,
   composerRef,
@@ -89,7 +91,8 @@ export function SideChatPanel({
         <SideChatSetup
           design={design}
           defaults={defaults}
-          connections={connections}
+          models={models}
+          onModelSlotChange={onModelSlotChange}
           onDefaultsChange={onDefaultsChange}
         />
         <button type="button" className="wc-button wc-button--ghost" onClick={onClose}>

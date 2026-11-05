@@ -16,7 +16,9 @@ const messages: ApiMessage[] = [
   { role: 'user', content: 'Hello.' },
 ];
 
-function connection(overrides: Partial<ConnectionSettings> = {}): ConnectionSettings {
+type Target = ConnectionSettings & { model: string };
+
+function connection(overrides: Partial<Target> = {}): Target {
   return {
     provider: 'custom',
     baseUrl: 'https://api.example.com/v1',
@@ -232,7 +234,7 @@ describe('reasoning and usage', () => {
 });
 
 describe('Google AI Studio OpenAI compatibility', () => {
-  const google = (overrides: Partial<ConnectionSettings> = {}) =>
+  const google = (overrides: Partial<Target> = {}) =>
     connection({
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
       model: 'gemini-3.8-flash',
@@ -309,7 +311,7 @@ describe('reasoning effort', () => {
 });
 
 describe('Claude thinking on OpenRouter', () => {
-  const claude = (overrides: Partial<ConnectionSettings> = {}) =>
+  const claude = (overrides: Partial<Target> = {}) =>
     connection({ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5', ...overrides });
 
   test('auto leaves thinking off and the request otherwise untouched', () => {

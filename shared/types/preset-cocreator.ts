@@ -1,3 +1,4 @@
+import type { ModelRef } from '../models/slots.ts';
 import type { JsonPatchOperation, PresetDiffEntry } from '../preset-cocreator/patch.ts';
 import type { ChatCompletionBody, ProviderToolCall } from '../providers/types.ts';
 import type { WorldInfoSource } from '../worldinfo/activate.ts';
@@ -49,8 +50,8 @@ export interface PresetComparison {
 }
 
 export interface PresetCocreatorModelSettings {
-  connectionId: string | null;
-  model: string;
+  /** This document's pick for the assistant or the tester. Null is unconfigured. */
+  model: ModelRef | null;
   maxTokens: number;
   contextTokens?: number;
   temperature: number;

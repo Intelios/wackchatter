@@ -1,86 +1,46 @@
+import type { ModelRef } from '@shared/models/slots.ts';
 import { NEXUS_PROMPT, type NexusSettings as Settings } from '@shared/nexus/types.ts';
-import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import type { ReasoningEffort } from '@shared/types/preset.ts';
 import { useEffect, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { StoryMemoryPlacementFields } from '../../components/StoryMemoryPlacementFields.tsx';
 import { RefreshIcon } from '../../layout/icons.tsx';
-import { settingsApi } from '../../lib/api.ts';
-import { ModelCombobox } from '../connection/ModelCombobox.tsx';
+import { ModelPicker } from '../models/ModelPicker.tsx';
 
 export interface NexusSettingsProps {
   settings: Settings;
-  connections: Connection[];
   onSettingsChange: (patch: Partial<Settings>) => void;
+  /** The `nexus` slot. It never follows chat: Nexus spends in the background. */
+  model: ModelRef | null;
+  onModelChange: (ref: ModelRef | null) => void;
+  /** Why Nexus cannot run, or null when it can. */
+  blockedReason: string | null;
 }
 export function NexusSettings({
   settings,
-  connections,
   onSettingsChange: patch,
+  model,
+  onModelChange,
+  blockedReason,
 }: NexusSettingsProps) {
-  const [models, setModels] = useState<ProviderModel[]>([]);
-  const [error, setError] = useState('');
   const [prompt, setPrompt] = useState(settings.extractPrompt);
   const [template, setTemplate] = useState(settings.template);
   useEffect(() => setPrompt(settings.extractPrompt), [settings.extractPrompt]);
   useEffect(() => setTemplate(settings.template), [settings.template]);
-  const connection = connections.find((c) => c.id === settings.connectionId);
-  useEffect(() => {
-    let cancelled = false;
-    setModels([]);
-    setError('');
-    if (connection)
-      void settingsApi
-        .models(connection.id)
-        .then((r) => {
-          if (!cancelled) setModels(r.models);
-        })
-        .catch((e) => {
-          if (!cancelled)
-            setError(`Catalogue unavailable: ${e.message}. You can enter a model ID.`);
-        });
-    return () => {
-      cancelled = true;
-    };
-  }, [connection]);
   return (
     <div className="nexus-settings">
       <p>
         Nexus uses its own model for collection and deeper recall. Local search runs on this
         computer.
       </p>
-      <SelectField<string | null>
-        label="Saved connection"
-        value={settings.connectionId}
-        options={[
-          {
-            label:
-              settings.connectionId && !connection
-                ? 'Connection missing — choose another'
-                : 'Choose a connection',
-            value: null,
-          },
-          ...connections.map((c) => ({ label: c.name, value: c.id })),
-        ]}
-        onChange={(connectionId) => patch({ connectionId })}
-      />
       <div>
         <span className="nexus-field-label">Nexus model</span>
-        <ModelCombobox
-          models={models}
-          value={settings.model}
-          onCommit={(model) => patch({ model })}
-          disabled={!connection}
-          disabledReason="Choose a saved connection first."
-        />
+        <ModelPicker label="Nexus model" value={model} onChange={onModelChange} />
       </div>
-      {!connection || !settings.model ? (
-        <p role="status">
-          Paid Nexus operations are paused until a connection and model are selected.
-        </p>
+      {blockedReason ? (
+        <p role="status">Paid Nexus operations are paused. {blockedReason}</p>
       ) : null}
-      {error ? <p role="status">{error}</p> : null}
       <NumberField
         label="Collect every (new messages)"
         value={settings.autoInterval}

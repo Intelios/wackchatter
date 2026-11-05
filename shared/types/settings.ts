@@ -7,6 +7,7 @@
  */
 
 import { type ComposerLayouts, DEFAULT_COMPOSER_LAYOUTS } from '../composer/layout.ts';
+import { DEFAULT_MODEL_SLOTS, type ModelRef, type ModelSlots } from '../models/slots.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
@@ -20,13 +21,18 @@ import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
 export interface AppSettings {
-  /**
-   * Every saved connection. Generations use `activeConnection` — `connectionId` with a
-   * fallback to the first entry — so a stale or cleared selection never strands the app.
-   */
+  /** Every saved connection: endpoints and how to talk to them, never a model. */
   connections: Connection[];
-  /** The connection generations use. Null means "the first one". */
-  connectionId: string | null;
+  /**
+   * The model each app-wide feature runs on (`shared/models/slots.ts`). Field-wise in
+   * `mergeSettings`, so picking one slot's model never touches another's.
+   */
+  models: ModelSlots;
+  /**
+   * Models most recently picked anywhere, newest first, capped at `MAX_RECENT_MODELS`.
+   * Convenience only, like `recentPersonaIds`: it heads the model picker.
+   */
+  recentModels: ModelRef[];
   /** UI refresh rate during streaming. */
   streamingFps: number;
   /**
@@ -249,7 +255,7 @@ export type SummaryPosition = 'none' | 'beforeMain' | 'afterMain' | 'atDepth';
 /**
  * Where a story-memory feature's text lands in the prompt.
  *
- * Shared by `SummarySettings` and `MemorySettings` because assembly has exactly one slot
+ * Shared by `SummarySettings` and `NexusSettings` because assembly has exactly one slot
  * for "what happened earlier" and either feature can fill it. Splitting the placement out
  * is what lets that slot stay a single code path instead of two parallel ones that would
  * drift.
@@ -262,9 +268,8 @@ export interface StoryMemoryPlacement {
   role: 'system' | 'user' | 'assistant';
 }
 
+/** The summary's model is the `summary` slot in `AppSettings.models`. */
 export interface SummarySettings extends StoryMemoryPlacement {
-  /** Null follows the active chat connection; otherwise names a saved connection. */
-  connectionId: string | null;
   prompt: string;
   targetWords: number;
 }
@@ -273,7 +278,6 @@ export const DEFAULT_SUMMARY_PROMPT =
   'Ignore previous instructions. Summarize the most important facts and events in the story so far. If a summary already exists in your memory, use that as a base and expand with new facts. Limit the summary to {{words}} words or less. Your response should include nothing but the summary.';
 
 export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
-  connectionId: null,
   prompt: DEFAULT_SUMMARY_PROMPT,
   targetWords: 200,
   template: '[Summary: {{summary}}]',
@@ -299,9 +303,8 @@ export function isMemoryMode(value: unknown): value is MemoryMode {
 /**
  * Character Co-Creator preferences.
  *
- * Shaped like `SummarySettings`: a feature that calls a provider for something other than
- * the story gets its own connection choice, because the model that writes good prose is
- * often not the model that follows a formatting contract.
+ * Its model is the `cocreator` slot in `AppSettings.models` (the side chat's is `sideChat`):
+ * the model that writes good prose is often not the model that follows a formatting contract.
  *
  * It also gets its own preset, which summarisation does not. Samplers tuned for roleplay —
  * high temperature, repetition penalties — make a design partner erratic and make the fenced
@@ -309,8 +312,6 @@ export function isMemoryMode(value: unknown): value is MemoryMode {
  */
 export interface CoCreatorSettings {
   sideChat: SideChatDefaults;
-  /** Null follows the active chat connection; otherwise names a saved connection. */
-  connectionId: string | null;
   /**
    * Null follows the active preset.
    *
@@ -389,7 +390,6 @@ export const DEFAULT_COCREATOR_ANALYSIS_PROMPT =
 
 export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
   sideChat: { ...DEFAULT_SIDE_CHAT },
-  connectionId: null,
   presetId: null,
   systemPrompt: DEFAULT_COCREATOR_PROMPT,
   analysisPrompt: DEFAULT_COCREATOR_ANALYSIS_PROMPT,
@@ -415,20 +415,10 @@ export type SettingsResponse = AppSettings & { keys: Record<string, KeyInfo> };
  */
 export const DEFAULT_CONNECTION_ID = 'default';
 
-/** The connection generations use, or null when none exist. */
-export function activeConnection(
-  settings: Pick<AppSettings, 'connections' | 'connectionId'>,
-): Connection | null {
-  return (
-    settings.connections.find((connection) => connection.id === settings.connectionId) ??
-    settings.connections[0] ??
-    null
-  );
-}
-
 export const DEFAULT_SETTINGS: AppSettings = {
   connections: [{ ...DEFAULT_CONNECTION, id: DEFAULT_CONNECTION_ID, name: PROVIDERS.custom.label }],
-  connectionId: DEFAULT_CONNECTION_ID,
+  models: { ...DEFAULT_MODEL_SLOTS },
+  recentModels: [],
   streamingFps: 30,
   personaId: null,
   recentPersonaIds: [],

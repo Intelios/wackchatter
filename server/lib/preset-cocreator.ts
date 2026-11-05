@@ -2,6 +2,7 @@
 
 import type { Database } from 'bun:sqlite';
 import { COCREATOR_OUTPUT_TOKENS } from '../../shared/cocreator/generation.ts';
+import { normalizeModelRef } from '../../shared/models/slots.ts';
 import {
   applyPresetPatch,
   diffPreset,
@@ -72,8 +73,7 @@ export type PresetDraftSaveResult =
   | { kind: 'notFound' };
 
 const DEFAULT_MODEL_SETTINGS: PresetCocreatorModelSettings = {
-  connectionId: null,
-  model: '',
+  model: null,
   maxTokens: COCREATOR_OUTPUT_TOKENS,
   temperature: 0.2,
   reasoningEffort: 'medium',
@@ -138,8 +138,7 @@ function normalizeModelSettings(
     ? (record.reasoningEffort as PresetCocreatorModelSettings['reasoningEffort'])
     : fallback.reasoningEffort;
   return {
-    connectionId: typeof record.connectionId === 'string' ? record.connectionId : null,
-    model: typeof record.model === 'string' ? record.model : fallback.model,
+    model: record.model === undefined ? fallback.model : normalizeModelRef(record.model),
     maxTokens:
       typeof record.maxTokens === 'number' &&
       Number.isSafeInteger(record.maxTokens) &&

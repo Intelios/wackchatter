@@ -89,8 +89,10 @@ interface ChatViewProps {
   card: CardDataV2 | null;
   /** Leaves the chat for the character editor, offered from inside the sheet. */
   onEditCharacter: () => void;
-  /** False until an endpoint and model are configured. */
+  /** False until the chat model can run and a preset is loaded. */
   ready: boolean;
+  /** Why the chat model cannot run, when that is what keeps `ready` false. */
+  notReadyReason?: string | null;
   /** Leave the chat and go back to the no-character state. */
   onCloseChat: () => void;
   /** Open the right panel on a given tab, for the menu's jump entries. */
@@ -134,6 +136,7 @@ export function ChatView({
   card,
   onEditCharacter,
   ready,
+  notReadyReason,
   onCloseChat,
   onOpenPanel,
   guidance,
@@ -1172,7 +1175,7 @@ export function ChatView({
               ? 'Retry loading this character before sending a message.'
               : ready
                 ? `Message ${characterName}…`
-                : 'Configure an endpoint and model in the Connections panel first.'
+                : `${notReadyReason ?? 'Choose a chat model.'} The chat model is set in Connections.`
           }
         />
       </div>

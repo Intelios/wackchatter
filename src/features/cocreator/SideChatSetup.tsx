@@ -1,66 +1,35 @@
-import { normalizeSideDefaults, resolveSideSettings } from '@shared/cocreator/sideChat.ts';
-import type { Connection, ProviderModel } from '@shared/providers/types.ts';
+import { normalizeSideDefaults } from '@shared/cocreator/sideChat.ts';
+import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
 import type { SideChatModelSettings } from '@shared/types/cocreator.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
-import { useEffect, useState } from 'react';
-import { NumberField, SelectField } from '../../components/Field.tsx';
+import { useState } from 'react';
+import { NumberField } from '../../components/Field.tsx';
 import { Popover } from '../../components/Popover.tsx';
 import { GearIcon } from '../../layout/icons.tsx';
-import { settingsApi } from '../../lib/api.ts';
-import { ModelCombobox } from '../connection/ModelCombobox.tsx';
-import { modelPatch } from './settings.ts';
+import { ModelPicker } from '../models/ModelPicker.tsx';
 import type { UseCocreator } from './useCocreator.ts';
 
 export function SideChatSetup({
   design,
   defaults,
-  connections,
+  models,
+  onModelSlotChange,
   onDefaultsChange,
 }: {
   design: UseCocreator;
   defaults: CoCreatorSettings;
-  connections: Connection[];
+  /** The app's model slots: the defaults tab edits `sideChat`. */
+  models: ModelSlots;
+  onModelSlotChange: (slot: ModelSlot, ref: ModelRef | null) => void;
   onDefaultsChange: (patch: Partial<CoCreatorSettings>) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'session' | 'defaults'>('defaults');
-  const [models, setModels] = useState<ProviderModel[]>([]);
-  const [modelStatus, setModelStatus] = useState('');
-  const settings = mode === 'defaults' ? {} : (design.state.sideChat?.settings ?? {});
-  const resolved = resolveSideSettings(defaults.sideChat, settings, connections);
-  const savedConnection = connections.find((entry) => entry.id === resolved.connection?.id);
+  const settings: SideChatModelSettings =
+    mode === 'defaults' ? {} : (design.state.sideChat?.settings ?? {});
+  const outputTokens = settings.outputTokens ?? defaults.sideChat.outputTokens;
+  const contextTokens = settings.contextTokens ?? defaults.sideChat.contextTokens;
   const disabled = design.busy || (mode === 'session' && !design.state.sideChat);
-  const choice =
-    mode === 'defaults'
-      ? defaults.sideChat.connectionId
-      : settings.connectionId === undefined
-        ? 'default'
-        : settings.connectionId;
-
-  useEffect(() => {
-    if (!open || !savedConnection?.baseUrl) {
-      setModels([]);
-      setModelStatus('');
-      return;
-    }
-    let cancelled = false;
-    setModels([]);
-    setModelStatus('Loading models…');
-    void settingsApi
-      .models(savedConnection.id)
-      .then((result) => {
-        if (!cancelled) {
-          setModels(result.models);
-          setModelStatus('');
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) setModelStatus(`${(error as Error).message} You can enter a model id.`);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, savedConnection?.id, savedConnection?.baseUrl]);
 
   const patch = (value: SideChatModelSettings) => {
     if (mode === 'defaults')
@@ -99,39 +68,29 @@ export function SideChatSetup({
             </button>
           </div>
         </div>
-        <SelectField<string | null>
-          label="Side connection"
-          value={choice}
-          disabled={disabled}
-          options={[
-            ...(mode === 'session' ? [{ label: 'Use side-chat defaults', value: 'default' }] : []),
-            { label: 'Choose a connection', value: null },
-            ...(choice && choice !== 'default' && !connections.some((c) => c.id === choice)
-              ? [{ label: `Unavailable connection (${choice})`, value: choice }]
-              : []),
-            ...connections.map((c) => ({ label: c.name, value: c.id })),
-          ]}
-          onChange={(id) =>
-            patch({ connectionId: id === 'default' ? undefined : id, modelOverride: undefined })
-          }
-        />
         <div className="field">
           <span className="wc-label">Side model</span>
-          <ModelCombobox
-            models={models}
-            value={resolved.connection?.model ?? ''}
-            disabled={disabled || !savedConnection}
-            disabledReason={!savedConnection ? 'Choose a side connection first' : undefined}
-            onCommit={(model) => {
-              if (savedConnection)
-                patch({ ...modelPatch(savedConnection, model), connectionId: savedConnection.id });
-            }}
-          />
-          {modelStatus ? <p className="wc-hint">{modelStatus}</p> : null}
+          {mode === 'defaults' ? (
+            <ModelPicker
+              label="Default side-chat model"
+              value={models.sideChat}
+              onChange={(ref) => onModelSlotChange('sideChat', ref)}
+              disabled={disabled}
+            />
+          ) : (
+            <ModelPicker
+              label="Side-chat model for this session"
+              value={settings.model}
+              onChange={(ref) => patch({ model: ref ?? undefined })}
+              emptyLabel="Use side-chat default"
+              emptyFollows={models.sideChat}
+              disabled={disabled}
+            />
+          )}
         </div>
         <NumberField
           label="Side output tokens"
-          value={resolved.outputTokens}
+          value={outputTokens}
           min={1}
           max={2097152}
           disabled={disabled}
@@ -139,7 +98,7 @@ export function SideChatSetup({
         />
         <NumberField
           label="Side context tokens"
-          value={resolved.contextTokens}
+          value={contextTokens}
           min={1}
           max={2097152}
           disabled={disabled}
@@ -151,20 +110,15 @@ export function SideChatSetup({
             className="wc-button wc-button--ghost"
             disabled={disabled}
             onClick={() =>
-              patch({
-                connectionId: undefined,
-                modelOverride: undefined,
-                outputTokens: undefined,
-                contextTokens: undefined,
-              })
+              patch({ model: undefined, outputTokens: undefined, contextTokens: undefined })
             }
           >
             Use all side-chat defaults
           </button>
         ) : null}
         <p className="wc-hint">
-          Side chat uses the main Co-Creator sampler preset and streaming setting. Its connection
-          and model are independent. Full main context still uses input tokens.
+          Side chat uses the main Co-Creator sampler preset and streaming setting. Its model is its
+          own and never borrows the chat's. Full main context still uses input tokens.
         </p>
       </div>
     </Popover>

@@ -32,7 +32,22 @@ store keeps its old prepared statements and can ship the old shape until restart
 **Real-LLM tests** go through the **"For Agents to Use"** connection in `data/settings.json` —
 never the user's other connections. Don't rename or delete it.
 
-## Connections and the Co-Creator
+## Models, connections and the Co-Creator
+
+**Models are picked, connections are not** (`shared/models/slots.ts`). A connection is an endpoint
+only — no model. Every feature holds a `ModelRef` (`{connectionId, modelId}`): the app-wide slots
+in `AppSettings.models` (`chat`, `summary`, `nexus`, `cocreator`, `sideChat`; summary and
+Co-Creator follow chat when empty, Nexus and side chat never do), a Co-Creator session's own pick,
+the Preset Co-Creator's assistant and tester per document, each Arena contender. Slots merge
+field-wise, so picking one never moves another; deleting a connection clears the app slots and
+recents on it, while session and contender refs stay and report the missing connection when
+resolved. `resolveModelRef` / `resolveSlot` are the one place a ref becomes a `ResolvedModel` or a
+`disabledReason`. Pickers use `ModelPicker` under `ModelsProvider` (catalogues, recents).
+
+**`runGeneration` (`src/lib/generation.ts`) is the only way to `/api/generate`** —
+`generation.test.ts` pins it. It sends the model's connection id (the server has no "active"
+connection and refuses a request without one), forces the body's `model` to the resolved one, and
+logs usage, stopped replies included. Callers still build their own body and own their gate.
 
 **Connections are ours, not the preset's.** Connections live in `data/settings.json`, keys in
 `data/secrets.json` keyed by connection id, and keys never reach the browser. A key belongs to its
@@ -44,8 +59,8 @@ dropped, never sent literally), and an empty value removes a header, ours includ
 **The Co-Creator side chat** is one saved scratchpad in the session's whole-document
 revision/save queue. Its context snapshot is frozen text, never live references; its messages
 never enter the main prompt or turn counts, and both conversations share one generation gate and
-Stop. Side connection/model choices are explicit and endpoint-bound: missing configuration blocks
-sends. Opening, reopening and resetting never generate; reset keeps side settings and filed cards,
+Stop. The side chat's model is its own (the session's pick, else the `sideChat` slot) and never
+borrows another: missing configuration blocks sends. Opening, reopening and resetting never generate; reset keeps side settings and filed cards,
 including side-chat provenance.
 
 ## The data directory moves
@@ -73,9 +88,13 @@ anything older with one message, checked in `createSchema` before any write, at 
 answers 503 with it) and in `inspectLocation` (`too-old`). SillyTavern import compatibility — card
 V1/V2 mirrors, preset key renames, the 100000 order — is not migration and stays.
 
-**`upgrade.ts` is the one conversion**, 2.3 → 3.0, run once per library when its chat store is
-built (marker `library_version`). It rewrites only what 2.3 repaired lazily, in one transaction,
-**never touching `modified`** (recents and Stats key on it) while bumping `revision`. `SCHEMA` must
+**`upgrade.ts` is the one conversion**, 2.3 → 3.0, run when a library's chat store is built — at
+boot and right after a library switch, before anything reads settings.json. It runs in append-only
+steps (meta `conversion_step` counts those done), each idempotent: chats (what 2.3 repaired
+lazily), then models (each old connection/model pair becomes the `ModelRef` it meant, in
+settings.json and in Co-Creator session and Preset Co-Creator document JSON — rows first, because
+they need the connection models settings.json is about to lose). Steps **never touch `modified`**
+(recents and Stats key on it) and bump `revision`. `SCHEMA` must
 hold every column the stores write — `CREATE TABLE IF NOT EXISTS` never evolves a table — so any
 schema change is a new step there plus a `SCHEMA_VERSION` bump.
 
@@ -153,7 +172,7 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
   abandoned swipes excluded, manual corrections never regenerated; branching clamps sources to
   the copied prefix and remaps ids. Reviewed findings are one-request context, consumed on
   dispatch, never transcript messages.
-- **The memory model is independent:** own connection, model and samplers, fixed JSON contract.
+- **The memory model is independent:** its own `nexus` slot and samplers, fixed JSON contract.
   Missing configuration pauses paid work; errors stop, never retry automatically, and extraction
   never changes transcript visibility. Embeddings are a disposable local cache
   (`nexus_embeddings`) sharing the library lifecycle; the worker never fetches models remotely.

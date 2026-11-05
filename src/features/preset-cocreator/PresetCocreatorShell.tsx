@@ -1,4 +1,5 @@
 import { COCREATOR_OUTPUT_TOKENS } from '@shared/cocreator/generation.ts';
+import type { ModelRef } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
@@ -26,7 +27,8 @@ import './PresetCocreator.css';
 
 interface PresetCocreatorShellProps {
   connections: readonly Connection[];
-  activeConnectionId: string | null;
+  /** The chat model, which a new session's assistant and tester start on. */
+  chatModel: ModelRef | null;
   presets: readonly PresetSummary[];
   activePresetId: string | null;
   characters: readonly CharacterSummary[];
@@ -51,10 +53,9 @@ interface PresetCocreatorShellProps {
   registerPersistence: (controls: PersistenceControls | null) => void;
 }
 
-function modelDefaults(connection: Connection | null): PresetCocreatorModelSettings {
+function modelDefaults(model: ModelRef | null): PresetCocreatorModelSettings {
   return {
-    connectionId: connection?.id ?? null,
-    model: connection?.model ?? '',
+    model,
     maxTokens: COCREATOR_OUTPUT_TOKENS,
     temperature: 0.2,
     reasoningEffort: 'medium',
@@ -72,10 +73,6 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const persistenceRef = useRef<PersistenceControls | null>(null);
   const startingPresetId = useId();
-  const activeConnection =
-    props.connections.find((connection) => connection.id === props.activeConnectionId) ??
-    props.connections[0] ??
-    null;
 
   const refresh = useCallback(async () => {
     const [sessionList, referenceList] = await Promise.all([
@@ -117,7 +114,7 @@ export function PresetCocreatorShell(props: PresetCocreatorShellProps) {
     setLoading(true);
     setError('');
     try {
-      const assistant = modelDefaults(activeConnection);
+      const assistant = modelDefaults(props.chatModel);
       const created = await presetCocreatorApi.create({
         presetId: sourcePresetId || null,
         title: title.trim() || undefined,

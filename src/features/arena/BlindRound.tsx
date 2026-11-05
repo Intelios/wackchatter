@@ -174,7 +174,7 @@ export function BlindRound({
     const contender = side === 0 ? draw.left : draw.right;
     const move = side === 0 ? preview.left : preview.right;
     return {
-      name: contender.name.trim() || contender.model.trim() || contender.id,
+      name: contender.name.trim() || contender.model?.modelId || contender.id,
       rating: move.after,
       delta: move.delta,
     };
@@ -371,5 +371,5 @@ export function BlindRound({
 
 function labelOf(draw: RoundDraw, side: 0 | 1): string {
   const contender = side === 0 ? draw.left : draw.right;
-  return contender.name.trim() || contender.model.trim() || contender.id;
+  return contender.name.trim() || contender.model?.modelId || contender.id;
 }

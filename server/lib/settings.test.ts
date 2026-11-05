@@ -38,31 +38,19 @@ function connection(id: string, name: string, overrides?: Partial<Connection>): 
     name,
     provider: 'custom',
     baseUrl: `http://${id}`,
-    model: '',
     showReasoning: true,
     ...overrides,
   };
 }
 
-test('side-chat defaults merge independently and retain missing endpoint choices without fallback', () => {
+test('side-chat defaults merge field-wise', () => {
   const current = mergeSettings(base(), {
-    coCreator: {
-      sideChat: {
-        connectionId: 'missing-side',
-        modelOverride: { connectionId: 'missing-side', model: 'cheap' },
-        outputTokens: 1024,
-      },
-    } as never,
+    coCreator: { sideChat: { outputTokens: 1024 } } as never,
   });
   const next = mergeSettings(current, {
     coCreator: { sideChat: { contextTokens: 32768 } } as never,
   });
-  expect(next.coCreator.sideChat).toEqual({
-    connectionId: 'missing-side',
-    modelOverride: { connectionId: 'missing-side', model: 'cheap' },
-    outputTokens: 1024,
-    contextTokens: 32768,
-  });
+  expect(next.coCreator.sideChat).toEqual({ outputTokens: 1024, contextTokens: 32768 });
   expect(next.coCreator.systemPrompt).toBe(current.coCreator.systemPrompt);
   expect(mergeSettings(next, { streamingFps: 20 }).coCreator.sideChat).toEqual(
     next.coCreator.sideChat,
@@ -169,14 +157,33 @@ describe('mergeSettings', () => {
     }
   });
 
-  test('an unknown connectionId falls back to the first connection', () => {
-    const next = mergeSettings(base(), { connectionId: 'missing' });
-    expect(next.connectionId).toBe(DEFAULT_CONNECTION_ID);
+  test('model slots merge field-wise: picking one never resets another', () => {
+    const chat = { connectionId: DEFAULT_CONNECTION_ID, modelId: 'chat-model' };
+    const nexus = { connectionId: DEFAULT_CONNECTION_ID, modelId: 'memory-model' };
+    const first = mergeSettings(base(), { models: { chat } as never });
+    const second = mergeSettings(first, { models: { nexus } as never });
+    expect(second.models.chat).toEqual(chat);
+    expect(second.models.nexus).toEqual(nexus);
+    expect(mergeSettings(second, { models: { chat: null } as never }).models.nexus).toEqual(nexus);
   });
 
-  test('a known connectionId is kept and revalidated against the pinned list', () => {
-    const next = mergeSettings(base(), { connectionId: DEFAULT_CONNECTION_ID });
-    expect(next.connectionId).toBe(DEFAULT_CONNECTION_ID);
+  test('a slot naming no saved connection is cleared', () => {
+    const next = mergeSettings(base(), {
+      models: { chat: { connectionId: 'missing', modelId: 'm' } } as never,
+    });
+    expect(next.models.chat).toBeNull();
+  });
+
+  test('recent models are capped and deduped on the way in', () => {
+    const ref = (n: number) => ({ connectionId: DEFAULT_CONNECTION_ID, modelId: `m${n}` });
+    const next = mergeSettings(base(), {
+      recentModels: [ref(1), ref(1), ...Array.from({ length: 20 }, (_, i) => ref(i + 2))],
+    });
+    expect(next.recentModels).toHaveLength(8);
+    expect(next.recentModels.slice(0, 2)).toEqual([ref(1), ref(2)]);
+    expect(mergeSettings(next, { recentModels: null as never }).recentModels).toEqual(
+      next.recentModels,
+    );
   });
 
   test('unknown keys survive, so a newer build cannot be downgraded into data loss', () => {
@@ -234,28 +241,14 @@ describe('mergeSettings', () => {
   });
 
   test('summary preferences merge field-wise and normalize their constrained values', () => {
-    const withConnection = {
-      ...base(),
-      connections: [connection('a', 'A'), connection('b', 'B')],
-    };
-    const selected = mergeSettings(withConnection, {
-      summary: { connectionId: 'b', targetWords: 438, depth: -4, role: 'narrator' } as never,
+    const selected = mergeSettings(base(), {
+      summary: { targetWords: 438, depth: -4, role: 'narrator' } as never,
     });
 
-    expect(selected.summary.connectionId).toBe('b');
     expect(selected.summary.targetWords).toBe(450);
     expect(selected.summary.depth).toBe(0);
     expect(selected.summary.role).toBe(DEFAULT_SUMMARY.role);
     expect(selected.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
-  });
-
-  test('a missing summary connection falls back to following the active chat connection', () => {
-    const current = {
-      ...base(),
-      connections: [connection('a', 'A')],
-      summary: { ...DEFAULT_SUMMARY, connectionId: 'deleted' },
-    };
-    expect(mergeSettings(current, { streamingFps: 60 }).summary.connectionId).toBeNull();
   });
 
   test('the memory mode defaults to the summary, and an unknown mode falls back to it', () => {
@@ -502,7 +495,9 @@ describe('arena settings', () => {
   test('a partial arena patch keeps every untouched field', () => {
     const current = mergeSettings(base(), {
       arena: {
-        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'or', model: 'a/b', enabled: true }],
+        contenders: [
+          { id: 'k', name: 'Sonnet', model: { connectionId: 'or', modelId: 'a/b' }, enabled: true },
+        ],
         probes: [{ id: 'p', text: 'Say something.' }],
       } as never,
     });
@@ -520,7 +515,9 @@ describe('arena settings', () => {
     // the leaderboard's labels with it.
     const current = mergeSettings(base(), {
       arena: {
-        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'or', model: 'a/b', enabled: true }],
+        contenders: [
+          { id: 'k', name: 'Sonnet', model: { connectionId: 'or', modelId: 'a/b' }, enabled: true },
+        ],
         cardPool: ['Seraphina.png'],
         probes: [{ id: 'p', text: 'Say something.' }],
       } as never,
@@ -540,7 +537,7 @@ describe('arena settings', () => {
 
   test('an explicitly empty pool is emptying it on purpose, and stays empty', () => {
     const current = mergeSettings(base(), {
-      arena: { contenders: [{ id: 'k', name: '', connectionId: 'or', model: '', enabled: true }] },
+      arena: { contenders: [{ id: 'k', name: '', model: null, enabled: true }] },
     } as never);
 
     expect(mergeSettings(current, { arena: { contenders: [] } } as never).arena.contenders).toEqual(
@@ -560,9 +557,7 @@ describe('arena settings', () => {
       },
     } as never);
 
-    expect(next.arena.contenders).toEqual([
-      { id: 'k', name: 'first', connectionId: '', model: '', enabled: true },
-    ]);
+    expect(next.arena.contenders).toEqual([{ id: 'k', name: 'first', model: null, enabled: true }]);
   });
 
   test('a contender pointing at a deleted connection is kept, not dropped', () => {
@@ -570,11 +565,13 @@ describe('arena settings', () => {
     // would rewrite the leaderboard's labels the moment someone tidied their connections.
     const next = mergeSettings(base(), {
       arena: {
-        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'deleted-long-ago', model: 'a/b' }],
+        contenders: [
+          { id: 'k', name: 'Sonnet', model: { connectionId: 'deleted-long-ago', modelId: 'a/b' } },
+        ],
       },
     } as never);
 
-    expect(next.arena.contenders[0]?.connectionId).toBe('deleted-long-ago');
+    expect(next.arena.contenders[0]?.model?.connectionId).toBe('deleted-long-ago');
   });
 
   test('the merge map keeps only genuine id → id links', () => {
@@ -657,7 +654,6 @@ describe('co-creator settings', () => {
     expect(next.coCreator.presetId).toBe('design');
     expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
     expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
-    expect(next.coCreator.connectionId).toBeNull();
   });
 
   test('toggling one example field does not reset the other seven', () => {
@@ -696,12 +692,6 @@ describe('co-creator settings', () => {
     });
     expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
     expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
-  });
-
-  test('a connectionId naming no saved connection falls back to following the chat', () => {
-    const next = mergeSettings(base(), { coCreator: { connectionId: 'ghost' } as never });
-
-    expect(next.coCreator.connectionId).toBeNull();
   });
 
   test('a wrong-typed field falls back to its default rather than poisoning the file', () => {
@@ -961,8 +951,8 @@ describe('applyConnectionPatch', () => {
   }
 
   test('merges into one entry, normalising per field', () => {
-    const next = applyConnectionPatch(list(), 'b', { model: 'x/y', showReasoning: false });
-    expect(next?.[1]).toMatchObject({ id: 'b', model: 'x/y', showReasoning: false });
+    const next = applyConnectionPatch(list(), 'b', { name: 'Mine', showReasoning: false });
+    expect(next?.[1]).toMatchObject({ id: 'b', name: 'Mine', showReasoning: false });
     expect(next?.[0]).toEqual(list()[0]);
   });
 
@@ -989,7 +979,11 @@ describe('applyConnectionPatch', () => {
   });
 
   test('an unknown id changes nothing', () => {
-    expect(applyConnectionPatch(list(), 'zzz', { model: 'x' })).toBeNull();
+    expect(applyConnectionPatch(list(), 'zzz', { name: 'x' })).toBeNull();
+  });
+
+  test('a connection never takes a model: models are picked per slot', () => {
+    expect(applyConnectionPatch(list(), 'a', { model: 'x/y' })?.[0]).not.toHaveProperty('model');
   });
 
   test('edits do not mutate the input', () => {
@@ -1021,24 +1015,35 @@ describe('dropConnection', () => {
     return [connection('a', 'A'), connection('b', 'B'), connection('c', 'C')];
   }
 
-  test('dropping the selected entry falls back to the first remaining', () => {
-    const next = dropConnection(list(), 'b', 'b');
+  const settings = (connections: Connection[]) => ({
+    connections,
+    models: {
+      ...DEFAULT_SETTINGS.models,
+      chat: { connectionId: 'a', modelId: 'chat' },
+      nexus: { connectionId: 'b', modelId: 'memory' },
+    },
+    recentModels: [
+      { connectionId: 'b', modelId: 'memory' },
+      { connectionId: 'a', modelId: 'chat' },
+    ],
+  });
+
+  test('every slot and recent pick on the dropped connection goes with it', () => {
+    const next = dropConnection(settings(list()), 'b');
     expect(next?.connections.map((entry) => entry.id)).toEqual(['a', 'c']);
-    expect(next?.connectionId).toBe('a');
+    expect(next?.models.chat).toEqual({ connectionId: 'a', modelId: 'chat' });
+    expect(next?.models.nexus).toBeNull();
+    expect(next?.recentModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
   });
 
-  test('a selection pointing elsewhere survives the deletion', () => {
-    expect(dropConnection(list(), 'c', 'a')?.connectionId).toBe('c');
-  });
-
-  test('dropping the only connection clears the selection', () => {
-    const next = dropConnection([connection('a', 'Solo')], 'a', 'a');
+  test('dropping the only connection empties everything', () => {
+    const next = dropConnection(settings([connection('a', 'Solo')]), 'a');
     expect(next?.connections).toEqual([]);
-    expect(next?.connectionId).toBeNull();
+    expect(next?.models.chat).toBeNull();
   });
 
   test('an unknown id changes nothing', () => {
-    expect(dropConnection(list(), 'a', 'zzz')).toBeNull();
+    expect(dropConnection(settings(list()), 'zzz')).toBeNull();
   });
 });
 

@@ -50,8 +50,7 @@ describe('normalizeNexusSettings', () => {
   });
 
   test('other fields keep their own rules', () => {
-    const s = normalizeNexusSettings({ connectionId: '', autoInterval: 9999, motion: false });
-    expect(s.connectionId).toBeNull();
+    const s = normalizeNexusSettings({ autoInterval: 9999, motion: false });
     expect(s.autoInterval).toBe(2000);
     expect(s.motion).toBe(false);
   });

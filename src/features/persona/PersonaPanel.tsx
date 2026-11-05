@@ -8,7 +8,7 @@
  */
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -64,8 +64,8 @@ interface PersonaPanelProps {
   characters: CharacterSummary[];
   /** Tags the user hid from the character list. A hidden card must not reappear here. */
   hiddenTags: readonly string[];
-  /** The active connection and preset. The converter borrows both; it has no settings of its own. */
-  connection: Connection | null;
+  /** The chat model and the active preset. The converter borrows both; it has no settings of its own. */
+  connection: ResolvedModel | null;
   preset: Preset | null;
   globalVariables: MacroVariableMap;
   /** The app-wide current persona. */
@@ -120,8 +120,8 @@ export function PersonaPanel({
   const convertBlocked =
     characters.length === 0
       ? 'No characters in your library yet.'
-      : !connection?.baseUrl || !connection.model
-        ? 'The active connection needs an endpoint and a model.'
+      : !connection
+        ? 'Choose a chat model in Connections first.'
         : !preset
           ? 'Still loading your preset.'
           : null;

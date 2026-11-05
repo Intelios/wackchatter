@@ -13,8 +13,9 @@
 import { currentText, fromChatMessage } from '@shared/chat/message.ts';
 import { cocreatorBudget } from '@shared/cocreator/generation.ts';
 import { captureSideSnapshot, resolveSideSettings } from '@shared/cocreator/sideChat.ts';
+import type { ModelSlots } from '@shared/models/slots.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { Connection, ResolvedModel } from '@shared/providers/types.ts';
 import type { CharacterDetail } from '@shared/types/card.ts';
 import type { MessageExtra } from '@shared/types/chat.ts';
 import type { CocreatorSaveSnapshot, CocreatorSession } from '@shared/types/cocreator.ts';
@@ -29,8 +30,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { cocreatorApi, presetApi, streamGenerate } from '../../lib/api.ts';
+import { cocreatorApi, presetApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
+import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
@@ -55,7 +57,8 @@ export interface UseCocreatorOptions {
   session: CocreatorSession;
   defaults: CoCreatorSettings;
   connections: readonly Connection[];
-  activeConnectionId: string | null;
+  /** The app's model slots: the session falls back to `cocreator`, its side chat to `sideChat`. */
+  models: ModelSlots;
   presets: readonly PresetSummary[];
   activePresetId: string | null;
   activePreset: Preset | null;
@@ -104,14 +107,14 @@ export interface UseCocreator {
   /** `base` flushes a state the reducer has produced but React has not yet committed. */
   flushSaves: (base?: CocreatorState) => Promise<void>;
   persistence: PersistenceControls;
-  connection: Connection | null;
+  connection: ResolvedModel | null;
   presetId: string | null;
   preset: Preset | null;
   systemPrompt: string;
   analysisPrompt: string;
   countTokens: TokenCounter;
   sideCountTokens: TokenCounter;
-  sideConnection: Connection | null;
+  sideConnection: ResolvedModel | null;
   sideBlockedReason: string | null;
   sideContext: {
     totalTokens: number;
@@ -131,7 +134,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     session,
     defaults,
     connections,
-    activeConnectionId,
+    models,
     presets,
     activePresetId,
     activePreset,
@@ -152,21 +155,23 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         session: state.settings,
         defaults,
         connections,
-        activeConnectionId,
+        models,
         presets,
         activePresetId,
       }),
-    [state.settings, defaults, connections, activeConnectionId, presets, activePresetId],
+    [state.settings, defaults, connections, models, presets, activePresetId],
   );
   const connection = resolved.connection;
   const systemPrompt = resolved.systemPrompt;
   const streaming = resolved.streaming;
   const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
   const sideSettings = useMemo(
-    () => resolveSideSettings(defaults.sideChat, state.sideChat?.settings ?? {}, connections),
-    [defaults.sideChat, state.sideChat?.settings, connections],
+    () =>
+      resolveSideSettings(defaults.sideChat, state.sideChat?.settings ?? {}, models, connections),
+    [defaults.sideChat, state.sideChat?.settings, models, connections],
   );
-  const sideCountTokens = useTokenizer(sideSettings.connection?.model ?? '', tokenizerEncoding);
+  const sideConnection = sideSettings.model.ok ? sideSettings.model.model : null;
+  const sideCountTokens = useTokenizer(sideConnection?.model ?? '', tokenizerEncoding);
   const [loadedPreset, setLoadedPreset] = useState<{ id: string; value: Preset } | null>(null);
 
   useEffect(() => {
@@ -243,28 +248,6 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     }
   }, [session.id]);
 
-  // The override is endpoint-bound. If an inherited default moves the session to another
-  // connection, remove the stale choice instead of merely ignoring it and letting it spring
-  // back if the old connection is selected again later.
-  useEffect(() => {
-    const override = state.settings.modelOverride;
-    if (override && override.connectionId !== connection?.id) {
-      dispatch({ type: 'settings/patch', patch: { modelOverride: undefined } });
-    }
-  }, [state.settings.modelOverride, connection?.id]);
-
-  useEffect(() => {
-    const override = state.sideChat?.settings.modelOverride;
-    if (
-      override &&
-      sideSettings.connection &&
-      override.connectionId !== sideSettings.connection.id &&
-      state.status === 'idle'
-    ) {
-      dispatch({ type: 'side/settings', patch: { modelOverride: undefined } });
-    }
-  }, [state.sideChat?.settings.modelOverride, sideSettings.connection, state.status]);
-
   const captureSnapshot = useCallback((current: CocreatorState): CocreatorSaveSnapshot | null => {
     if (!current.sessionId) return null;
     return {
@@ -331,18 +314,19 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   }, []);
 
   const blockedReason = useMemo(() => {
-    if (!connection?.baseUrl || !connection.model) return 'No connection and model are configured';
+    if (!resolved.model.ok) return resolved.model.reason;
     if (!preset) return 'No preset is loaded';
     return null;
-  }, [connection, preset]);
+  }, [resolved.model, preset]);
 
   const sideContext = useMemo(() => {
-    if (!state.sideChat || !preset || !sideSettings.connection) return null;
+    if (!state.sideChat || !preset || !sideConnection) return null;
     try {
       const budget = cocreatorBudget({
         preset,
-        ...sideSettings,
-        connection: sideSettings.connection,
+        outputTokens: sideSettings.outputTokens,
+        contextTokens: sideSettings.contextTokens,
+        connection: sideConnection,
         stream: streaming,
       });
       const prompt = buildSidePrompt({
@@ -365,13 +349,12 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         error: (error as Error).message,
       };
     }
-  }, [state.sideChat, preset, sideSettings, sideCountTokens, streaming]);
-  const sideBlockedReason =
-    !sideSettings.connection?.baseUrl || !sideSettings.connection.model
-      ? 'Choose a side-chat connection and model in Side chat settings'
-      : !preset
-        ? 'No sampler preset is loaded'
-        : (sideContext?.error ?? null);
+  }, [state.sideChat, preset, sideSettings, sideConnection, sideCountTokens, streaming]);
+  const sideBlockedReason = !sideSettings.model.ok
+    ? sideSettings.model.reason
+    : !preset
+      ? 'No sampler preset is loaded'
+      : (sideContext?.error ?? null);
 
   const prepareSideChat = useCallback(
     (reset = false): CocreatorState | null => {
@@ -400,13 +383,13 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     ) => {
       const current = base ?? stateRef.current;
       if (current.status !== 'idle' || abortRef.current) return;
-      const selectedConnection = target === 'side' ? sideSettings.connection : connection;
+      const selectedConnection = target === 'side' ? sideConnection : connection;
       const counter = target === 'side' ? sideCountTokens : countTokens;
       if (!selectedConnection || !preset || (target === 'side' && !current.sideChat)) return;
 
       // Settings can change mid-generation. Keep the request body, the reply's recorded
       // metadata and the server-side connection lookup on one snapshot for the whole call.
-      const requestConnection: Connection = { ...selectedConnection };
+      const requestConnection: ResolvedModel = { ...selectedConnection };
       const requestExtra: MessageExtra = {
         api: requestConnection.provider,
         model: requestConnection.model,
@@ -514,31 +497,28 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         stream.begin(prefix, streaming);
         streamStarted = true;
 
-        const final = await streamGenerate(
+        const final = await runGeneration({
+          model: requestConnection,
           body,
-          controller.signal,
-          {
-            onFirstToken: () => {
-              if (ownsGeneration() && !controller.signal.aborted) {
-                dispatch({ type: 'gen/streaming', target });
-              }
-            },
-            onTick: (streamState) => {
-              if (!ownsGeneration() || controller.signal.aborted) return;
-              text = combine(streamState.content);
-              reasoning = streamState.reasoning;
-              stream.set(prefix + streamState.content, streamState.reasoning);
-            },
-          },
-          '',
-          requestConnection.id,
-          {
+          signal: controller.signal,
+          usage: {
             feature: target === 'side' ? 'cocreatorSideChat' : 'cocreator',
             generationId,
             ...(started.sessionId ? { sessionId: started.sessionId } : {}),
             countText: counter.countText,
           },
-        );
+          onFirstToken: () => {
+            if (ownsGeneration() && !controller.signal.aborted) {
+              dispatch({ type: 'gen/streaming', target });
+            }
+          },
+          onTick: (streamState) => {
+            if (!ownsGeneration() || controller.signal.aborted) return;
+            text = combine(streamState.content);
+            reasoning = streamState.reasoning;
+            stream.set(prefix + streamState.content, streamState.reasoning);
+          },
+        });
 
         // A non-streaming response can resolve in the same turn as an abort, so ownership is
         // checked after the await as well as inside the callbacks.
@@ -604,6 +584,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       exampleBlockRef,
       countTokens,
       sideSettings,
+      sideConnection,
       sideCountTokens,
       stream,
       streaming,
@@ -714,7 +695,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     analysisPrompt: resolved.analysisPrompt,
     countTokens,
     sideCountTokens,
-    sideConnection: sideSettings.connection,
+    sideConnection,
     sideBlockedReason,
     sideContext,
     openSideChat: (reset = false) => prepareSideChat(reset) !== null,

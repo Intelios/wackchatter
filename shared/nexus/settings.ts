@@ -8,8 +8,6 @@ export function normalizeNexusSettings(value: unknown): NexusSettings {
   const str = (key: keyof NexusSettings) =>
     typeof v[key] === 'string' ? (v[key] as string) : (DEFAULT_NEXUS[key] as string);
   return {
-    connectionId: typeof v.connectionId === 'string' && v.connectionId ? v.connectionId : null,
-    model: str('model'),
     extractPrompt: str('extractPrompt'),
     autoInterval: Math.floor(n('autoInterval', 0, 2000)),
     // Context ceilings move faster than this file: the upper bound is a garbage guard

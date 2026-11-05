@@ -13,7 +13,7 @@
 
 import type { ReasoningEffort } from '../types/preset.ts';
 import { isAnthropicModel } from './request.ts';
-import type { ConnectionSettings } from './types.ts';
+import type { ResolvedModel } from './types.ts';
 
 export const THINKING_HEADROOM: Record<ReasoningEffort, number> = {
   auto: 8192,
@@ -40,7 +40,7 @@ export function thinkingMaxTokens(options: {
   outputTokens: number;
   contextTokens: number;
   effort: ReasoningEffort;
-  connection: Pick<ConnectionSettings, 'provider' | 'model'> | null;
+  connection: Pick<ResolvedModel, 'provider' | 'model'> | null;
 }): number {
   if (options.connection?.provider === 'openrouter' && isAnthropicModel(options.connection.model))
     return options.outputTokens;

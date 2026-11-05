@@ -147,9 +147,7 @@ export function MergePicker({ source, resolved, merged, onMerge }: MergePickerPr
             data-contender-id={entry.contender.id}
             onClick={() => choose(entry.contender.id)}
           >
-            <span className="arena-mergepicker__name">
-              {contenderLabel(entry.contender, entry.connection)}
-            </span>
+            <span className="arena-mergepicker__name">{contenderLabel(entry.contender)}</span>
           </button>
         ))}
       </div>

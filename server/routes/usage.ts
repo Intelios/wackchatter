@@ -48,7 +48,9 @@ export async function handleUsageRoute(
   let provider: string | undefined;
   let providerName: string | undefined;
   try {
-    const connection = generationConnection(settings, report.connectionId);
+    const connection = report.connectionId
+      ? generationConnection(settings, report.connectionId)
+      : undefined;
     provider = connection?.provider;
     providerName = connection?.name;
   } catch {
@@ -61,7 +63,11 @@ export async function handleUsageRoute(
     v: 2,
     library_id: libraryIdentity(),
     ...(providerName ? { provider_name: providerName } : {}),
-    outcome: report.aborted ? 'cancelled' : ['completed','failed','unknown'].includes(report.outcome ?? '') ? report.outcome! : 'unknown',
+    outcome: report.aborted
+      ? 'cancelled'
+      : ['completed', 'failed', 'unknown'].includes(report.outcome ?? '')
+        ? report.outcome!
+        : 'unknown',
     id: report.id,
     ts: report.ts,
     feature: report.feature,

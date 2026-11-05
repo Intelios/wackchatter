@@ -20,6 +20,7 @@ import type { Database } from 'bun:sqlite';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
 import { normalizeSideSettings } from '../../shared/cocreator/sideChat.ts';
 import { emptyStash, normalizeStash, stashedSlotCount } from '../../shared/cocreator/stash.ts';
+import { normalizeModelRef } from '../../shared/models/slots.ts';
 import type { ChatMessage, StaleChatRevision } from '../../shared/types/chat.ts';
 import {
   type CardStash,
@@ -207,10 +208,12 @@ export function normalizeExamples(raw: unknown): ExampleSelection {
 }
 
 /**
- * Repair per-session model overrides.
+ * Repair per-session overrides.
  *
  * Absence is meaningful — it means "follow the app setting" — so a key is only kept when it
- * is actually present and of the right type. Writing a null for a missing key would silently
+ * is actually present and of the right type. A session's model ref is kept even when its
+ * connection has since been deleted: resolving it says so, rather than the session quietly
+ * moving to another model. Writing a null for a missing key would silently
  * pin the session to today's default.
  */
 export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
@@ -223,9 +226,8 @@ export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
       settings[key] = limit;
     }
   }
-  if (typeof value.connectionId === 'string' || value.connectionId === null) {
-    settings.connectionId = value.connectionId as string | null;
-  }
+  const model = normalizeModelRef(value.model);
+  if (model) settings.model = model;
   if (typeof value.presetId === 'string' || value.presetId === null) {
     settings.presetId = value.presetId as string | null;
   }
@@ -234,20 +236,6 @@ export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
   }
   if (typeof value.analysisPrompt === 'string' && value.analysisPrompt.trim()) {
     settings.analysisPrompt = value.analysisPrompt;
-  }
-  const modelOverride = value.modelOverride;
-  if (
-    modelOverride &&
-    typeof modelOverride === 'object' &&
-    typeof (modelOverride as Record<string, unknown>).connectionId === 'string' &&
-    typeof (modelOverride as Record<string, unknown>).model === 'string' &&
-    ((modelOverride as Record<string, unknown>).connectionId as string).trim() &&
-    ((modelOverride as Record<string, unknown>).model as string).trim()
-  ) {
-    settings.modelOverride = {
-      connectionId: (modelOverride as Record<string, unknown>).connectionId as string,
-      model: ((modelOverride as Record<string, unknown>).model as string).trim(),
-    };
   }
   return settings;
 }

@@ -1,5 +1,11 @@
 import { greetingTexts } from '@shared/chat/message.ts';
 import { type ComposerLayout, DEFAULT_SINGLE_COMPOSER_LAYOUT } from '@shared/composer/layout.ts';
+import {
+  DEFAULT_MODEL_SLOTS,
+  type ModelRef,
+  type ModelSlot,
+  resolveSlot,
+} from '@shared/models/slots.ts';
 import { DEFAULT_NEXUS } from '@shared/nexus/types.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
@@ -15,7 +21,6 @@ import type {
   SettingsResponse,
 } from '@shared/types/settings.ts';
 import {
-  activeConnection,
   type CoCreatorSettings,
   DEFAULT_COCREATOR,
   DEFAULT_DIALOGUE_COLORS,
@@ -28,7 +33,7 @@ import {
 } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { ArenaShell } from './features/arena/ArenaShell.tsx';
 import { resolveBackgroundEffect } from './features/backgrounds/resolve.ts';
@@ -43,6 +48,7 @@ import { TokenTrailPanel } from './features/integrations/TokenTrailPanel.tsx';
 import { LorePanel } from './features/lore/LorePanel.tsx';
 import { useLorebooks } from './features/lore/useLorebooks.ts';
 import { MemoryPanel } from './features/memory/MemoryPanel.tsx';
+import { ModelsProvider } from './features/models/ModelsContext.tsx';
 import { NexusExplorer } from './features/nexus/NexusExplorer.tsx';
 import { PersonaPanel } from './features/persona/PersonaPanel.tsx';
 import { recentPersonaId, withRecentPersona } from './features/persona/personaRoster.ts';
@@ -334,12 +340,15 @@ export function App() {
     };
   }, [selected]);
 
-  const connection = settings ? activeConnection(settings) : null;
+  // Every feature runs on the model its slot names (`shared/models/slots.ts`). A slot that
+  // cannot run resolves to null here, and its reason is what the feature shows instead.
+  const modelSlots = settings?.models ?? DEFAULT_MODEL_SLOTS;
+  const chatModel = settings ? resolveSlot(settings, 'chat') : null;
+  const connection = chatModel?.ok ? chatModel.model : null;
+  const chatBlockedReason = chatModel && !chatModel.ok ? chatModel.reason : null;
   const summarySettings: SummarySettings = settings?.summary ?? DEFAULT_SUMMARY;
-  const summaryConnection = summarySettings.connectionId
-    ? (settings?.connections.find((entry) => entry.id === summarySettings.connectionId) ??
-      connection)
-    : connection;
+  const summaryModel = settings ? resolveSlot(settings, 'summary') : null;
+  const summaryConnection = summaryModel?.ok ? summaryModel.model : null;
   // Detail resolves asynchronously. Never let the previous card accompany a newly
   // selected avatar into useChat's auto-open effect.
   const character = detail?.avatar === selected ? detail.card.data : null;
@@ -352,12 +361,10 @@ export function App() {
   );
 
   const nexusSettings = settings?.nexus ?? DEFAULT_NEXUS;
-  const nexusBase = settings?.connections.find((c) => c.id === nexusSettings.connectionId);
-  const nexusConnection =
-    nexusBase && nexusSettings.model
-      ? { ...nexusBase, model: nexusSettings.model, showReasoning: false }
-      : null;
-  const nexusCountTokens = useTokenizer(nexusSettings.model, settings?.tokenizerEncoding);
+  const nexusModel = settings ? resolveSlot(settings, 'nexus') : null;
+  // Nexus parses a JSON contract; reasoning text would only be noise in it.
+  const nexusConnection = nexusModel?.ok ? { ...nexusModel.model, showReasoning: false } : null;
+  const nexusCountTokens = useTokenizer(nexusConnection?.model ?? '', settings?.tokenizerEncoding);
   const memoryMode: MemoryMode = settings?.memoryMode ?? 'classic';
   const coCreatorSettings: CoCreatorSettings = settings?.coCreator ?? DEFAULT_COCREATOR;
   const arenaSettings: ArenaSettings = settings?.arena ?? DEFAULT_ARENA;
@@ -452,22 +459,43 @@ export function App() {
   );
 
   /**
-   * Write-through patch of the active connection, for the Generation panel's
+   * Write-through patch of the chat model's connection, for the Generation panel's
    * provider-behaviour toggles. Connection settings save immediately — they are not
    * part of the preset draft. Goes through the per-connection endpoint, never a
    * wholesale array, so a stale snapshot here cannot drop another connection.
    */
+  const chatConnectionId = connection?.id ?? null;
   const patchActiveConnection = useCallback(
     (patch: Partial<Connection>) => {
-      if (!settings) return;
-      const active = activeConnection(settings);
-      if (!active) return;
+      if (!chatConnectionId) return;
       settingsApi
-        .patchConnection(active.id, patch)
+        .patchConnection(chatConnectionId, patch)
         .then(setSettings)
         .catch((err) => setError((err as Error).message));
     },
-    [settings],
+    [chatConnectionId],
+  );
+
+  /** Pick one slot's model. Field-wise on the server, so no other slot moves. */
+  const setModelSlot = useCallback(
+    (slot: ModelSlot, ref: ModelRef | null) => void patchSettings({ models: { [slot]: ref } }),
+    [patchSettings],
+  );
+
+  const rememberModels = useCallback(
+    (recentModels: ModelRef[]) => void patchSettings({ recentModels }),
+    [patchSettings],
+  );
+
+  const withModels = (node: ReactNode) => (
+    <ModelsProvider
+      connections={settings?.connections ?? []}
+      recentModels={settings?.recentModels ?? []}
+      chatModel={modelSlots.chat}
+      onRecentModels={rememberModels}
+    >
+      {node}
+    </ModelsProvider>
   );
 
   const patchCharacterDialogueColor = useCallback(
@@ -607,6 +635,7 @@ export function App() {
     worldInfoSettings,
     guidanceSettings,
     summaryConnection,
+    summaryBlockedReason: summaryModel && !summaryModel.ok ? summaryModel.reason : null,
     summarySettings,
     summaryCountTokens,
     memoryMode,
@@ -1123,7 +1152,7 @@ export function App() {
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
   const showEditor = editing && detail?.avatar === selected ? detail : null;
-  const ready = Boolean(connection?.baseUrl && connection.model && preset);
+  const ready = Boolean(connection && preset);
 
   /*
    * The tab, not the top bar.
@@ -1162,7 +1191,7 @@ export function App() {
   const studioInspectorCollapsed = settings?.studioInspectorCollapsed === true;
 
   if (view === 'arena') {
-    return (
+    return withModels(
       <ArenaShell
         settings={arenaSettings}
         onSettingsChange={(patch) => void patchSettings({ arena: { ...arenaSettings, ...patch } })}
@@ -1187,7 +1216,7 @@ export function App() {
         effect={backgroundEffect}
         effectLayer={backgroundEffectLayer}
         onExit={exitArena}
-      />
+      />,
     );
   }
 
@@ -1197,7 +1226,7 @@ export function App() {
 
   if (view === 'cocreator') {
     if (coCreatorMode === 'landing') {
-      return (
+      return withModels(
         <CoCreatorLanding
           backgroundUrl={resolveBackgroundUrl(settings?.background)}
           backgroundBlur={Number(settings?.backgroundBlur ?? 8)}
@@ -1208,14 +1237,14 @@ export function App() {
           onCharacter={() => setCoCreatorMode('character')}
           onPreset={() => setCoCreatorMode('preset')}
           onExit={exitCoCreator}
-        />
+        />,
       );
     }
     if (coCreatorMode === 'preset') {
-      return (
+      return withModels(
         <PresetCocreatorShell
           connections={settings?.connections ?? []}
-          activeConnectionId={connection?.id ?? null}
+          chatModel={modelSlots.chat}
           presets={presets}
           activePresetId={presetId}
           characters={characters}
@@ -1253,14 +1282,15 @@ export function App() {
           registerPersistence={(controls) => {
             cocreatorPersistence.current = controls;
           }}
-        />
+        />,
       );
     }
-    return (
+    return withModels(
       <CocreatorShell
         defaults={coCreatorSettings}
         connections={settings?.connections ?? []}
-        activeConnectionId={connection?.id ?? null}
+        models={modelSlots}
+        onModelSlotChange={setModelSlot}
         presets={presets}
         activePresetId={presetId}
         activePreset={preset}
@@ -1289,12 +1319,12 @@ export function App() {
         registerPersistence={(controls) => {
           cocreatorPersistence.current = controls;
         }}
-      />
+      />,
     );
   }
 
   if (view === 'studio') {
-    return (
+    return withModels(
       <StudioShell
         characters={characters}
         folders={folders}
@@ -1319,11 +1349,11 @@ export function App() {
         registerPersistence={(controls) => {
           studioPersistence.current = controls;
         }}
-      />
+      />,
     );
   }
 
-  return (
+  return withModels(
     <AppShell
       leftPanel={leftPanel}
       rightPanel={rightPanel}
@@ -1454,9 +1484,14 @@ export function App() {
                   onSummarySettingsChange={(patch) =>
                     void patchSettings({ summary: { ...summarySettings, ...patch } })
                   }
-                  connections={settings?.connections ?? []}
-                  activeConnection={connection}
-                  summaryConnection={summaryConnection}
+                  model={modelSlots.nexus}
+                  onModelChange={(ref) => setModelSlot('nexus', ref)}
+                  blockedReason={nexusModel && !nexusModel.ok ? nexusModel.reason : null}
+                  summaryModel={modelSlots.summary}
+                  onSummaryModelChange={(ref) => setModelSlot('summary', ref)}
+                  summaryBlockedReason={
+                    summaryModel && !summaryModel.ok ? summaryModel.reason : null
+                  }
                 />
               ) : null}
 
@@ -1527,6 +1562,7 @@ export function App() {
             card={character}
             onEditCharacter={() => void transitionToCharacter(active.avatar, { editing: true })}
             ready={ready}
+            notReadyReason={chatBlockedReason}
             onCloseChat={() => void handleCloseChat()}
             onOpenPanel={(id) => void showRightPanel(id)}
             guidance={guidanceSettings}
@@ -1565,12 +1601,14 @@ export function App() {
         <NexusExplorer
           chat={chat}
           settings={nexusSettings}
-          connections={settings?.connections ?? []}
           onSettingsChange={(patch) =>
             void patchSettings({ nexus: { ...nexusSettings, ...patch } })
           }
+          model={modelSlots.nexus}
+          onModelChange={(ref) => setModelSlot('nexus', ref)}
+          blockedReason={nexusModel && !nexusModel.ok ? nexusModel.reason : null}
         />
       </ErrorBoundary>
-    </AppShell>
+    </AppShell>,
   );
 }

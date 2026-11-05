@@ -9,6 +9,7 @@
  * an alternate take on one turn. That is what lets `shared/chat/message.ts` serve both.
  */
 
+import type { ModelRef } from '../models/slots.ts';
 import type { ApiMessage, ChatMessage } from './chat.ts';
 
 /** The card fields a piece of generated content may be filed into. */
@@ -165,43 +166,37 @@ export interface ExampleSet {
 }
 
 /**
- * Per-session overrides of `AppSettings.coCreator`.
+ * Per-session overrides of `AppSettings.coCreator` and its model slot.
  *
- * Three states per field, expressed through optionality: absent follows the app setting,
- * and the app setting's own null has its own meaning ("follow the chat connection", "use the
- * active preset"). Collapsing absent into null would make a session silently stop tracking a
- * later change to the app default.
+ * Absent follows the app setting; the app setting's own null has its own meaning ("use the
+ * active preset"). Collapsing absent into null would make a session silently stop tracking
+ * a later change to the app default. `model` is the one exception to that worth naming: a
+ * session's pick is a whole `ModelRef`, so a session never pairs one screen's connection
+ * with another screen's model.
  */
 export interface SessionModelSettings {
   /** Design-specific allowances; independent of the chat sampler preset. */
   outputTokens?: number;
   contextTokens?: number;
-  connectionId?: string | null;
+  /** Absent runs on the `cocreator` slot (or the `sideChat` slot, for the side chat). */
+  model?: ModelRef;
   presetId?: string | null;
   systemPrompt?: string;
   analysisPrompt?: string;
-  /** A model choice belongs to the endpoint it was made against. */
-  modelOverride?: {
-    connectionId: string;
-    model: string;
-  };
 }
 
 export type SideChatModelSettings = Pick<
   SessionModelSettings,
-  'connectionId' | 'modelOverride' | 'outputTokens' | 'contextTokens'
+  'model' | 'outputTokens' | 'contextTokens'
 >;
 
+/** The side chat's model is the `sideChat` slot, which never borrows the chat's. */
 export interface SideChatDefaults {
-  /** Null is unconfigured. Side chat never borrows another connection. */
-  connectionId: string | null;
-  modelOverride?: SessionModelSettings['modelOverride'];
   outputTokens: number;
   contextTokens: number;
 }
 
 export const DEFAULT_SIDE_CHAT: Readonly<SideChatDefaults> = {
-  connectionId: null,
   outputTokens: 2048,
   contextTokens: 131072,
 };

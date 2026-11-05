@@ -1,4 +1,3 @@
-import type { Connection } from '@shared/providers/types.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import type { PresetComparison, ReferencePresetSummary } from '@shared/types/preset-cocreator.ts';
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -27,7 +26,6 @@ import type { PresetCocreatorController } from './usePresetCocreator.ts';
 
 interface PresetAssistantPanelProps {
   controller: PresetCocreatorController;
-  connections: readonly Connection[];
   /** Owned by the workspace, which also blocks shared reports on it. */
   toolCapability: boolean | null;
   onToolCapabilityChange: (supported: boolean | null) => void;
@@ -77,7 +75,6 @@ const ComparisonCard = memo(function ComparisonCard({
  */
 export const PresetAssistantPanel = memo(function PresetAssistantPanel({
   controller,
-  connections,
   toolCapability,
   onToolCapabilityChange,
   proposalActions,
@@ -258,7 +255,6 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
           <PresetModelSettings
             label="Co-Creator model"
             value={settings.assistant}
-            connections={connections}
             requireTools
             onCapabilityChange={onToolCapabilityChange}
             onChange={(assistant) => patchSettings({ assistant })}
@@ -277,7 +273,7 @@ export const PresetAssistantPanel = memo(function PresetAssistantPanel({
       </details>
 
       <div className="preset-cc-assistant__conversation" aria-live="polite" ref={conversationRef}>
-        {messages.length === 0 && settings.assistant.connectionId === null ? (
+        {messages.length === 0 && settings.assistant.model === null ? (
           <div className="wc-empty">
             Choose a native tool-capable model, then describe what you want to improve.
           </div>

@@ -1,11 +1,12 @@
-import type { Connection, ProviderId, ProviderModel } from '@shared/providers/types.ts';
+import type { ModelRef } from '@shared/models/slots.ts';
+import type { Connection, ProviderId } from '@shared/providers/types.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
-import { activeConnection } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Select } from '../../components/Select.tsx';
 import { PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { settingsApi } from '../../lib/api.ts';
+import { ModelPicker } from '../models/ModelPicker.tsx';
 import {
   addRow,
   type HeaderRow,
@@ -14,7 +15,6 @@ import {
   rowsToHeaders,
   updateRow,
 } from './headers.ts';
-import { ModelCombobox } from './ModelCombobox.tsx';
 import './ConnectionPanel.css';
 
 interface ConnectionPanelProps {
@@ -23,18 +23,18 @@ interface ConnectionPanelProps {
 }
 
 /**
- * The saved connections and the editor for the active one.
+ * The chat model, the saved connections, and the editor for one of them.
  *
- * Selecting a connection activates it — the same model as persona selection — so the
- * entry being edited is always the one generations use. The ready-gate in the chat
- * keeps an unconfigured activation from sending anything.
+ * A connection is an endpoint, not a choice of model: models are picked per feature
+ * (`shared/models/slots.ts`), the chat's at the top here. Selecting a connection in the
+ * list only opens it for editing — nothing about what generations run on moves.
  *
  * List mutations go through the server's per-connection endpoints and every async
  * result is checked against the connection that requested it, so nothing captured on
  * one connection can land on another.
  */
 export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
-  const [models, setModels] = useState<ProviderModel[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [keyDraft, setKeyDraft] = useState('');
   const [headerRows, setHeaderRows] = useState<HeaderRow[]>([]);
@@ -42,7 +42,13 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const connections = settings?.connections ?? [];
-  const connection = settings ? activeConnection(settings) : null;
+  const chatModel = settings?.models.chat ?? null;
+  // The entry being edited: the one picked in the list, else the chat model's, else the first.
+  const connection =
+    connections.find((entry) => entry.id === editingId) ??
+    connections.find((entry) => entry.id === chatModel?.connectionId) ??
+    connections[0] ??
+    null;
   const keyInfo = connection ? settings?.keys[connection.id] : undefined;
 
   // Which connection the panel shows right now. Async results compare against this
@@ -104,36 +110,6 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
     });
   }
 
-  // The model list is only fetchable once there is an endpoint to ask. The server lists
-  // the active connection's catalogue, which is the one being edited here.
-  const loadModels = useCallback(async () => {
-    if (!connection?.baseUrl) return;
-    const forId = connection.id;
-    setBusy(true);
-    try {
-      const result = (await settingsApi.models()).models;
-      if (connectionIdRef.current !== forId) return;
-      setModels(result);
-      setStatus('');
-    } catch (error) {
-      if (connectionIdRef.current !== forId) return;
-      setModels([]);
-      setStatus((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }, [connection?.baseUrl, connection?.id]);
-
-  // Refresh on connection, provider or endpoint change — not on every keystroke in the
-  // model box. Clearing first keeps the previous catalogue out of a new connection. The
-  // id and provider are triggers in their own right: the server lists the active
-  // connection's catalogue, so both can change the result without the baseUrl moving.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: id and provider are triggers
-  useEffect(() => {
-    setModels([]);
-    void loadModels();
-  }, [loadModels, connection?.id, connection?.provider]);
-
   async function saveKey() {
     if (!connection) return;
     const forId = connection.id;
@@ -146,7 +122,6 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
       if (connectionIdRef.current !== forId) return;
       setKeyDraft('');
       setStatus(keyDraft ? 'Key saved' : 'Key cleared');
-      await loadModels();
     } catch (error) {
       if (connectionIdRef.current !== forId) return;
       setStatus((error as Error).message);
@@ -173,7 +148,16 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
   }
 
   function create(provider: ProviderId) {
-    void apply(() => settingsApi.createConnection(provider));
+    void apply(async () => {
+      const next = await settingsApi.createConnection(provider);
+      // The server appends; open the new entry for editing.
+      setEditingId(next.connections.at(-1)?.id ?? null);
+      return next;
+    });
+  }
+
+  function pickChatModel(ref: ModelRef | null) {
+    void apply(() => settingsApi.save({ models: { chat: ref } }));
   }
 
   function remove() {
@@ -186,26 +170,41 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
 
   return (
     <div className="connection">
+      <label className="wc-label" htmlFor="wc-chat-model">
+        Chat model
+      </label>
+      <ModelPicker
+        id="wc-chat-model"
+        label="Chat model"
+        value={chatModel}
+        onChange={pickChatModel}
+      />
+      <p className="wc-hint">
+        Replies, recaps, impersonation and persona drafting run on this model. Summary, Nexus and
+        the Co-Creators pick their own in their settings.
+      </p>
+
+      <span className="wc-label">Connections</span>
       <div className="connection__list">
         {connections.map((entry) => {
-          const isActive = entry.id === connection?.id;
+          const isOpen = entry.id === connection?.id;
           return (
             <button
               type="button"
               key={entry.id}
               className="connection__item"
-              data-active={isActive || undefined}
-              aria-pressed={isActive}
-              onClick={() => {
-                if (!isActive) void apply(() => settingsApi.save({ connectionId: entry.id }));
-              }}
+              data-active={isOpen || undefined}
+              aria-pressed={isOpen}
+              onClick={() => setEditingId(entry.id)}
             >
               <span className="connection__item-name">
                 {entry.name}
-                {isActive ? <span className="connection__badge">Active</span> : null}
+                {entry.id === chatModel?.connectionId ? (
+                  <span className="connection__badge">Chat</span>
+                ) : null}
               </span>
               <span className="connection__item-summary">
-                {PROVIDERS[entry.provider].label} · {entry.model || entry.baseUrl}
+                {PROVIDERS[entry.provider].label} · {entry.baseUrl}
                 {settings.keys[entry.id]?.present ? ' · key set' : ''}
               </span>
             </button>
@@ -253,7 +252,7 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
               // Switching provider also moves the endpoint to that provider's default,
               // since a base URL is meaningless across providers. The server drops the
               // stored key: it belongs to the old endpoint.
-              void patch({ provider: next, baseUrl: PROVIDERS[next].defaultBaseUrl, model: '' });
+              void patch({ provider: next, baseUrl: PROVIDERS[next].defaultBaseUrl });
             }}
           />
 
@@ -301,28 +300,6 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
             Stored on this machine only, never sent to the browser and never written into a preset.{' '}
             {PROVIDERS[connection.provider].requiresKey ? '' : 'Local endpoints usually need none.'}
           </p>
-
-          <label className="wc-label" htmlFor="wc-model">
-            Model
-          </label>
-          <div className="connection__row">
-            <ModelCombobox
-              models={models}
-              value={connection.model}
-              onCommit={(model) => void patch({ model })}
-              disabled={!connection.baseUrl}
-              disabledReason="Set an endpoint first"
-            />
-            <button
-              type="button"
-              className="wc-button"
-              onClick={() => void loadModels()}
-              disabled={busy}
-              title="Refresh the model list"
-            >
-              Refresh
-            </button>
-          </div>
 
           <span className="wc-label">Custom headers</span>
           {headerRows.map((row) => (
@@ -397,7 +374,7 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
           </div>
         </>
       ) : (
-        <p className="wc-hint">No connections yet — add one to start chatting.</p>
+        <p className="wc-hint">No connections yet — add one, then pick a chat model above.</p>
       )}
     </div>
   );

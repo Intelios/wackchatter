@@ -30,7 +30,6 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import type { ArenaProbe, ArenaRound, ArenaSettings, Contender } from '@shared/types/arena.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
@@ -39,8 +38,8 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Select } from '../../components/Select.tsx';
 import { GripIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
-import { settingsApi } from '../../lib/api.ts';
-import { ModelCombobox } from '../connection/ModelCombobox.tsx';
+import { ModelPicker } from '../models/ModelPicker.tsx';
+import { useModels } from '../models/ModelsContext.tsx';
 import { personaDisplayName } from '../persona/personaRoster.ts';
 import { CardPicker } from './CardPicker.tsx';
 import { CueField } from './CueField.tsx';
@@ -58,7 +57,6 @@ interface PoolPanelProps {
   settings: ArenaSettings;
   onSettingsChange: (patch: Partial<ArenaSettings>) => void;
   resolved: readonly ResolvedContender[];
-  connections: readonly Connection[];
   characters: readonly CharacterSummary[];
   personas: readonly Persona[];
   presets: readonly PresetSummary[];
@@ -79,8 +77,6 @@ interface EntrantProps {
   resolved: ResolvedContender;
   colour: string;
   row: LeaderboardRow | null;
-  connections: readonly Connection[];
-  models: ProviderModel[];
   /** The whole pool, for the merge picker's target list and its naming. */
   pool: readonly ResolvedContender[];
   merged: MergeMap;
@@ -98,8 +94,6 @@ function Entrant({
   resolved,
   colour,
   row,
-  connections,
-  models,
   pool,
   merged,
   mergedInto,
@@ -133,7 +127,7 @@ function Entrant({
         <button
           type="button"
           className="arena-entrant__grip"
-          aria-label={`Reorder ${contender.name || contender.model || 'contender'}`}
+          aria-label={`Reorder ${contender.name || contender.model?.modelId || 'contender'}`}
           title="Drag to reorder. Position sets the colour it wears everywhere else."
           {...attributes}
           {...listeners}
@@ -144,7 +138,7 @@ function Entrant({
         <input
           className="wc-input arena-entrant__name"
           value={contender.name}
-          placeholder={contender.model || 'Name it (optional)'}
+          placeholder={contender.model?.modelId || 'Name it (optional)'}
           aria-label="Contender name"
           onChange={(event) => onPatch({ name: event.target.value })}
         />
@@ -153,7 +147,7 @@ function Entrant({
           className="arena-entrant__enabled"
           title={
             mergedInto
-              ? `${contenderLabel(mergedInto.contender, mergedInto.connection)} fights for both in the blind draw.`
+              ? `${contenderLabel(mergedInto.contender)} fights for both in the blind draw.`
               : undefined
           }
         >
@@ -171,26 +165,10 @@ function Entrant({
       </div>
 
       <div className="arena-entrant__where">
-        <Select
-          label="Connection"
-          value={contender.connectionId}
-          options={[
-            { value: '', label: 'Choose a connection…' },
-            ...connections.map((entry) => ({ value: entry.id, label: entry.name })),
-          ]}
-          onChange={(connectionId) =>
-            // The model belongs to the endpoint it was chosen against, so moving the
-            // contender drops it rather than pointing a stale id at a new server.
-            onPatch({ connectionId, model: '' })
-          }
-        />
-
-        <ModelCombobox
-          models={models}
+        <ModelPicker
+          label="Contender model"
           value={contender.model}
-          onCommit={(model) => onPatch({ model })}
-          disabled={!contender.connectionId}
-          disabledReason="Choose a connection first"
+          onChange={(model) => onPatch({ model })}
         />
       </div>
 
@@ -200,9 +178,8 @@ function Entrant({
 
       {mergedInto ? (
         <p className="arena-entrant__folded">
-          Counted under{' '}
-          <strong>{contenderLabel(mergedInto.contender, mergedInto.connection)}</strong> — one
-          rating over both.{' '}
+          Counted under <strong>{contenderLabel(mergedInto.contender)}</strong> — one rating over
+          both.{' '}
           <button type="button" className="arena-entrant__unmerge" onClick={onUnmerge}>
             Split apart
           </button>
@@ -211,8 +188,7 @@ function Entrant({
 
       {mergedFrom.length > 0 ? (
         <p className="arena-entrant__foldin">
-          Includes{' '}
-          {mergedFrom.map((entry) => contenderLabel(entry.contender, entry.connection)).join(', ')}.
+          Includes {mergedFrom.map((entry) => contenderLabel(entry.contender)).join(', ')}.
         </p>
       ) : null}
 
@@ -263,7 +239,6 @@ export function PoolPanel({
   settings,
   onSettingsChange,
   resolved,
-  connections,
   characters,
   personas,
   presets,
@@ -277,7 +252,7 @@ export function PoolPanel({
   onClearHistory,
   onPurgeContender,
 }: PoolPanelProps) {
-  const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
+  const { chatModel } = useModels();
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [confirmingCueId, setConfirmingCueId] = useState<string | null>(null);
   const [confirmingRetiredId, setConfirmingRetiredId] = useState<string | null>(null);
@@ -305,39 +280,6 @@ export function PoolPanel({
     return () => clearTimeout(timer);
   }, [confirmingRetiredId]);
 
-  /*
-   * Model catalogues, fetched once per connection that a contender actually points at.
-   *
-   * Lazily and per connection rather than for all of them up front: a pool of six
-   * contenders on one endpoint should cost one request, and an endpoint nobody is using
-   * should cost none.
-   */
-  const wanted = [...new Set(settings.contenders.map((entry) => entry.connectionId))].filter(
-    (id) => id && connections.some((connection) => connection.id === id),
-  );
-  const wantedKey = wanted.join(',');
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: wantedKey stands in for wanted
-  useEffect(() => {
-    let cancelled = false;
-    for (const id of wanted) {
-      if (models[id]) continue;
-      void settingsApi
-        .models(id)
-        .then((result) => {
-          if (!cancelled) setModels((current) => ({ ...current, [id]: result.models }));
-        })
-        .catch(() => {
-          // An endpoint that will not list its models is not an error worth a banner: the
-          // combobox accepts a typed model id, which is the whole reason it is a combobox.
-          if (!cancelled) setModels((current) => ({ ...current, [id]: [] }));
-        });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [wantedKey, models]);
-
   const patchContender = useCallback(
     (id: string, patch: Partial<Contender>) => {
       onSettingsChange({
@@ -350,22 +292,19 @@ export function PoolPanel({
   );
 
   const addContender = useCallback(() => {
-    const connection = connections[0];
     onSettingsChange({
       contenders: [
         ...settings.contenders,
         {
           id: crypto.randomUUID(),
           name: '',
-          connectionId: connection?.id ?? '',
-          // Empty follows the connection's own model, which is the right default: it makes
-          // "benchmark what I normally use" a one-click entry.
-          model: '',
+          // Starts on the chat model, which makes "benchmark what I normally use" one click.
+          model: chatModel,
           enabled: true,
         },
       ],
     });
-  }, [connections, onSettingsChange, settings.contenders]);
+  }, [chatModel, onSettingsChange, settings.contenders]);
 
   const removeContender = useCallback(
     (id: string) => {
@@ -539,9 +478,9 @@ export function PoolPanel({
           <div>
             <h2>Contenders</h2>
             <p className="wc-hint">
-              An endpoint plus a model. One connection can hold as many contenders as you like —
-              leave the model blank to use the connection&rsquo;s own. Drag to reorder: position
-              sets the colour each one wears across the Arena.
+              A model on one of your connections — as many per connection as you like. New
+              contenders start on the chat model. Drag to reorder: position sets the colour each
+              one wears across the Arena.
             </p>
           </div>
           <button type="button" className="wc-button" onClick={addContender}>
@@ -586,8 +525,6 @@ export function PoolPanel({
                       resolved={entry}
                       colour={colourOf(colours, entry.contender.id)}
                       row={rowFor(entry.contender.id)}
-                      connections={connections}
-                      models={models[entry.contender.connectionId] ?? []}
                       pool={resolved}
                       merged={settings.mergedContenders}
                       mergedInto={mergedInto}
@@ -643,8 +580,8 @@ export function PoolPanel({
                             {
                               id: retired.contenderId,
                               name: label,
-                              connectionId: '',
-                              model: retired.model,
+                              // Rounds record a model id, not where it ran: pick it again.
+                              model: null,
                               enabled: true,
                             },
                           ],

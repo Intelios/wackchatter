@@ -1,6 +1,6 @@
 import { DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
 import { claudeThinkingBudget, isAnthropicModel } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { Connection, ResolvedModel } from '@shared/providers/types.ts';
 import {
   CHARACTER_NAMES_BEHAVIOR,
   type Preset,
@@ -25,9 +25,9 @@ interface GenerationPanelProps {
   draft: PresetDraft;
   /** Whether the active provider sends OpenRouter-style extra samplers. */
   extraSamplersSent?: boolean;
-  /** The active connection, for the provider-behaviour toggles below. */
-  connection?: Connection | null;
-  /** Write-through patch of the active connection — not part of the preset draft. */
+  /** The chat model, whose connection the provider-behaviour toggles below belong to. */
+  connection?: ResolvedModel | null;
+  /** Write-through patch of that connection — not part of the preset draft. */
   onConnectionPatch?: (patch: Partial<Connection>) => void;
 }
 
@@ -181,13 +181,13 @@ export function GenerationPanel({
 
       {connection && onConnectionPatch ? (
         <Section title="Provider behaviour" defaultOpen>
-          {/* Connection settings, not preset fields: they describe how the active
+          {/* Connection settings, not preset fields: they describe how the chat model’s
               endpoint is asked, and save immediately rather than with the preset. */}
           <CheckField
             label="Show reasoning"
             checked={connection.showReasoning !== false}
             onChange={(checked) => onConnectionPatch({ showReasoning: checked })}
-            hint={`Ask reasoning models for their thinking text. Applies to the active connection, ${connection.name}.`}
+            hint={`Ask reasoning models for their thinking text. Applies to the chat model’s connection, ${connection.name}.`}
           />
           <CheckField
             label="Report real token usage"

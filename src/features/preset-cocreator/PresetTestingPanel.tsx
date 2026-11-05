@@ -1,6 +1,5 @@
 import { greetingTexts } from '@shared/chat/message.ts';
 import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/greeting.ts';
-import type { Connection } from '@shared/providers/types.ts';
 import { regexDepths } from '@shared/regex/depth.ts';
 import { applyRegexScripts, createRegexCompileCache } from '@shared/regex/engine.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
@@ -52,7 +51,6 @@ const NO_CARD = '\u0000no-card';
 interface PresetTestingPanelProps {
   controller: PresetCocreatorController;
   testing: PresetTestingController;
-  connections: readonly Connection[];
   presets: readonly PresetSummary[];
   references: readonly ReferencePresetSummary[];
   characters: readonly CharacterSummary[];
@@ -84,7 +82,6 @@ interface PresetTestingPanelProps {
 export const PresetTestingPanel = memo(function PresetTestingPanel({
   controller,
   testing,
-  connections,
   presets,
   references,
   characters,
@@ -563,7 +560,6 @@ export const PresetTestingPanel = memo(function PresetTestingPanel({
             <PresetModelSettings
               label="Testing model"
               value={test?.testingSettings ?? controller.session.document.settings.testing}
-              connections={connections}
               onChange={testing.setTestingSettings}
             />
           </fieldset>

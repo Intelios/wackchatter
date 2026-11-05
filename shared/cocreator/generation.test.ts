@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '../prompt/defaults.ts';
 import { buildRequestBody } from '../providers/request.ts';
-import type { Connection } from '../providers/types.ts';
+import type { ResolvedModel } from '../providers/types.ts';
 import { cocreatorBudget } from './generation.ts';
 
-const connection: Connection = {
+const connection: ResolvedModel = {
   id: 'test',
   name: 'Test',
   provider: 'custom',

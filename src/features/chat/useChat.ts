@@ -18,7 +18,7 @@ import { createDisplayRegexMacros, resolveGreetingMacros } from '@shared/prompt/
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { RegexMacros } from '@shared/regex/engine.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
@@ -49,7 +49,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { chatApi, streamGenerate } from '../../lib/api.ts';
+import { chatApi } from '../../lib/api.ts';
+import { runGeneration } from '../../lib/generation.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
   packClassicSummaryChunk,
@@ -99,8 +100,8 @@ export interface UseChatOptions {
    * so the settings snapshot can follow the chat instead of the other way around.
    */
   onPersonaSwitch?: (personaId: string | null) => void;
-  /** The selected saved connection, including its stable id for generation routing. */
-  connection: Connection | null;
+  /** The `chat` slot's model, or null when it cannot run (the app shows why). */
+  connection: ResolvedModel | null;
   countTokens: TokenCounter;
   streamingFps: number;
   /** Lorebooks that apply to this chat, already loaded. */
@@ -110,14 +111,16 @@ export interface UseChatOptions {
   worldInfoSettings?: WorldInfoSettings;
   /** Template, depth and role for guided generations and persistent guides. */
   guidanceSettings?: GuidanceSettings;
-  /** Resolved summary connection and its model-specific counter. */
-  summaryConnection?: Connection | null;
+  /** The `summary` slot's model and its model-specific counter. */
+  summaryConnection?: ResolvedModel | null;
+  /** Why the summary model cannot run, shown when someone asks for a summary anyway. */
+  summaryBlockedReason?: string | null;
   summarySettings?: SummarySettings;
   summaryCountTokens?: TokenCounter;
   /** Which story-memory feature reaches the model on every generation. */
   memoryMode?: MemoryMode;
   nexusSettings?: NexusSettings;
-  nexusConnection?: Connection | null;
+  nexusConnection?: ResolvedModel | null;
   nexusCountTokens?: TokenCounter;
   globalVariables: MacroVariableMap;
   /** Persist global macro effects and refresh the app settings snapshot. */
@@ -279,6 +282,7 @@ export function useChat(options: UseChatOptions): UseChat {
     worldInfoSettings,
     guidanceSettings,
     summaryConnection,
+    summaryBlockedReason,
     summarySettings,
     summaryCountTokens,
     memoryMode: defaultMemoryMode = 'classic',
@@ -677,7 +681,7 @@ export function useChat(options: UseChatOptions): UseChat {
       // Settings can change while the prompt is being assembled or global variables are
       // persisted. Keep the request body, reply metadata, and server-side connection lookup
       // on the same connection snapshot for the entire generation.
-      const requestConnection: Connection = { ...connection };
+      const requestConnection: ResolvedModel = { ...connection };
 
       const startAction: ChatAction = {
         type: 'gen/started',
@@ -894,25 +898,12 @@ export function useChat(options: UseChatOptions): UseChat {
         streamStarted = true;
         text = seed;
 
-        const final = await streamGenerate(
+        const final = await runGeneration({
+          model: requestConnection,
           body,
-          controller.signal,
-          {
-            onFirstToken: () => {
-              if (ownsGeneration() && !controller.signal.aborted) {
-                dispatch({ type: 'gen/streaming' });
-              }
-            },
-            onTick: (streamState) => {
-              if (!ownsGeneration() || controller.signal.aborted) return;
-              text = streamState.content;
-              reasoning = streamState.reasoning;
-              stream.set(streamState.content, streamState.reasoning);
-            },
-          },
+          signal: controller.signal,
           seed,
-          requestConnection.id,
-          {
+          usage: {
             // Tagged apart in the usage log: an impersonation is still a paid chat
             // generation, but it produced no swipe and should not be counted as a reply.
             feature: isImpersonation ? 'impersonate' : 'chat',
@@ -921,7 +912,18 @@ export function useChat(options: UseChatOptions): UseChat {
             ...(characterId ? { character: characterId } : {}),
             countText: countTokens.countText,
           },
-        );
+          onFirstToken: () => {
+            if (ownsGeneration() && !controller.signal.aborted) {
+              dispatch({ type: 'gen/streaming' });
+            }
+          },
+          onTick: (streamState) => {
+            if (!ownsGeneration() || controller.signal.aborted) return;
+            text = streamState.content;
+            reasoning = streamState.reasoning;
+            stream.set(streamState.content, streamState.reasoning);
+          },
+        });
 
         // A non-streaming response can resolve in the same turn as an abort, so check
         // ownership after the await as well as in the streaming callbacks.
@@ -1299,7 +1301,7 @@ export function useChat(options: UseChatOptions): UseChat {
 
       // Snapshot the connection like `generate` does: settings can change while the prompt
       // is being built, and a body and its server-side key lookup must agree on one.
-      const requestConnection: Connection = { ...connection };
+      const requestConnection: ResolvedModel = { ...connection };
 
       const startAction: ChatAction = {
         type: 'gen/started',
@@ -1379,31 +1381,28 @@ export function useChat(options: UseChatOptions): UseChat {
         stream.begin('', streamed);
         streamStarted = true;
 
-        const final = await streamGenerate(
+        const final = await runGeneration({
+          model: requestConnection,
           body,
-          controller.signal,
-          {
-            onFirstToken: () => {
-              if (ownsGeneration() && !controller.signal.aborted) {
-                dispatch({ type: 'gen/streaming' });
-              }
-            },
-            onTick: (streamState) => {
-              if (!ownsGeneration() || controller.signal.aborted) return;
-              text = streamState.content;
-              stream.set(streamState.content, streamState.reasoning);
-            },
-          },
-          '',
-          requestConnection.id,
-          {
+          signal: controller.signal,
+          usage: {
             feature: 'recap',
             generationId,
             ...(started.chatId ? { sessionId: started.chatId } : {}),
             ...(characterId ? { character: characterId } : {}),
             countText: countTokens.countText,
           },
-        );
+          onFirstToken: () => {
+            if (ownsGeneration() && !controller.signal.aborted) {
+              dispatch({ type: 'gen/streaming' });
+            }
+          },
+          onTick: (streamState) => {
+            if (!ownsGeneration() || controller.signal.aborted) return;
+            text = streamState.content;
+            stream.set(streamState.content, streamState.reasoning);
+          },
+        });
 
         if (!ensureGenerationActive()) return;
         stream.end();
@@ -1484,18 +1483,17 @@ export function useChat(options: UseChatOptions): UseChat {
         current.status !== 'idle' ||
         !character ||
         !preset ||
-        !summaryConnection ||
         !summarySettings ||
         !summaryCountTokens
       ) {
         return;
       }
-      if (!summaryConnection.baseUrl || !summaryConnection.model) {
+      if (!summaryConnection) {
         setSummaryStatus({
           running: false,
           processed: 0,
           total: 0,
-          error: 'The selected summary connection needs an endpoint and model.',
+          error: summaryBlockedReason ?? 'Choose a summary model.',
         });
         return;
       }
@@ -1674,19 +1672,18 @@ export function useChat(options: UseChatOptions): UseChat {
             stream: false,
             maxTokens,
           });
-          const result = await streamGenerate(
+          const result = await runGeneration({
+            model: summaryConnection,
             body,
-            controller.signal,
-            { onTick: () => {} },
-            '',
-            summaryConnection.id,
-            {
+            signal: controller.signal,
+            usage: {
               feature: 'summary',
               sessionId: current.chatId,
               ...(characterId ? { character: characterId } : {}),
               countText: summaryCountTokens.countText,
             },
-          );
+            onTick: () => {},
+          });
           const nextSummary = result.content.trim();
           if (!nextSummary) throw new Error('The summary connection returned an empty response.');
           if (controller.signal.aborted || stateRef.current.chatId !== current.chatId) return;
@@ -1741,6 +1738,7 @@ export function useChat(options: UseChatOptions): UseChat {
       preset,
       persona,
       summaryConnection,
+      summaryBlockedReason,
       summarySettings,
       summaryCountTokens,
       globalVariables,

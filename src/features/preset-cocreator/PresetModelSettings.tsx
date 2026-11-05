@@ -1,16 +1,13 @@
 import { COCREATOR_CONTEXT_TOKENS } from '@shared/cocreator/generation.ts';
-import type { Connection, ProviderModel } from '@shared/providers/types.ts';
 import type { PresetCocreatorModelSettings } from '@shared/types/preset-cocreator.ts';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { NumberField, SelectField } from '../../components/Field.tsx';
-import { Select } from '../../components/Select.tsx';
-import { settingsApi } from '../../lib/api.ts';
-import { ModelCombobox } from '../connection/ModelCombobox.tsx';
+import { ModelPicker } from '../models/ModelPicker.tsx';
+import { useModels } from '../models/ModelsContext.tsx';
 
 interface PresetModelSettingsProps {
   label: string;
   value: PresetCocreatorModelSettings;
-  connections: readonly Connection[];
   onChange: (value: PresetCocreatorModelSettings) => void;
   requireTools?: boolean;
   onCapabilityChange?: (supported: boolean | null) => void;
@@ -19,45 +16,24 @@ interface PresetModelSettingsProps {
 export function PresetModelSettings({
   label,
   value,
-  connections,
   onChange,
   requireTools = false,
   onCapabilityChange,
 }: PresetModelSettingsProps) {
-  const [models, setModels] = useState<ProviderModel[]>([]);
-  const [modelError, setModelError] = useState('');
-  const connectionFieldId = useId();
-  const selected = connections.find((connection) => connection.id === value.connectionId) ?? null;
+  const { catalogs, loadCatalogs } = useModels();
+  const catalog = value.model ? catalogs[value.model.connectionId] : undefined;
 
+  // The tool-capability note reads the catalogue whether or not the picker was opened.
   useEffect(() => {
-    if (!selected) {
-      setModels([]);
-      return;
-    }
-    let cancelled = false;
-    setModelError('');
-    void settingsApi
-      .models(selected.id)
-      .then((result) => {
-        if (!cancelled) setModels(result.models);
-      })
-      .catch((failure) => {
-        if (!cancelled) {
-          setModels([]);
-          setModelError((failure as Error).message);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selected]);
+    if (requireTools) loadCatalogs();
+  }, [requireTools, loadCatalogs]);
 
   const capability = useMemo(() => {
-    const id = value.model.trim() || selected?.model || '';
-    const model = models.find((entry) => entry.id === id);
-    if (!model?.supportedParameters) return null;
-    return model.supportedParameters.includes('tools');
-  }, [models, selected?.model, value.model]);
+    if (!value.model || catalog?.status !== 'ready') return null;
+    const listed = catalog.models.find((entry) => entry.id === value.model?.modelId);
+    if (!listed?.supportedParameters) return null;
+    return listed.supportedParameters.includes('tools');
+  }, [catalog, value.model]);
 
   useEffect(() => onCapabilityChange?.(capability), [capability, onCapabilityChange]);
 
@@ -65,38 +41,11 @@ export function PresetModelSettings({
     <div className="preset-cc-model">
       <h3>{label}</h3>
       <div className="field">
-        <label className="wc-label" htmlFor={connectionFieldId}>
-          Connection
-        </label>
-        <Select
-          id={connectionFieldId}
-          label={`${label} connection`}
-          value={value.connectionId ?? ''}
-          placeholder="Choose a connection"
-          options={connections.map((connection) => ({
-            value: connection.id,
-            label: connection.name,
-            // Two connections to one provider differ by model; the name alone may not say.
-            description: connection.model || undefined,
-          }))}
-          onChange={(id) => {
-            const connection = connections.find((entry) => entry.id === id);
-            onChange({
-              ...value,
-              connectionId: connection?.id ?? null,
-              model: connection?.model ?? '',
-            });
-          }}
-        />
-      </div>
-      <div className="field">
         <span className="wc-label">Model</span>
-        <ModelCombobox
-          models={models}
+        <ModelPicker
+          label={label}
           value={value.model}
-          disabled={!selected}
-          disabledReason="Choose a connection first."
-          onCommit={(model) => onChange({ ...value, model })}
+          onChange={(model) => onChange({ ...value, model })}
         />
       </div>
       {requireTools ? (
@@ -113,7 +62,9 @@ export function PresetModelSettings({
               : 'Tool capability is unknown. The model remains selectable; a rejected tool request will be shown here.'}
         </p>
       ) : null}
-      {modelError ? <p className="wc-hint">Model catalogue: {modelError}</p> : null}
+      {requireTools && catalog?.status === 'error' ? (
+        <p className="wc-hint">Model catalogue: {catalog.error}</p>
+      ) : null}
       {requireTools ? (
         <div className="preset-cc-model__generation">
           <NumberField

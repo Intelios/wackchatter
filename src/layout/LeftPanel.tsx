@@ -1,5 +1,5 @@
 import type { NexusRecall } from '@shared/nexus/types.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { MacroWarning } from '@shared/types/chat.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { SettingsResponse } from '@shared/types/settings.ts';
@@ -28,9 +28,9 @@ interface LeftPanelProps {
   tokenCounts?: Record<string, number>;
   macroWarnings?: MacroWarning[];
   extraSamplersSent: boolean;
-  /** The active connection, for the Generation panel's provider-behaviour toggles. */
-  connection: Connection | null;
-  onConnectionPatch: (patch: Partial<Connection>) => void;
+  /** The chat model, for the Generation panel's provider-behaviour toggles. */
+  connection: ResolvedModel | null;
+  onConnectionPatch: (patch: Partial<ResolvedModel>) => void;
   worldInfo: ActivationResult | null;
   nexusRecall?: NexusRecall | null;
   nexusPreview?: NexusRecall;

@@ -11,13 +11,10 @@
  * rounds it summarises.
  */
 
+import type { ModelRef } from '../models/slots.ts';
+
 /**
- * One entrant: an endpoint plus the model to run on it.
- *
- * A contender is deliberately **not** a connection. `Connection.model` is a single string,
- * so a pool of connections would cap the benchmark at one model per endpoint — where one
- * OpenRouter connection can serve a dozen. The Co-Creator already solved this with
- * `SessionModelSettings.modelOverride`; this is the same idea given a name and a rating.
+ * One entrant: a model, given a name and a rating.
  *
  * The persona rule: `id` is opaque and `name` is editable. Rounds key on the id, so
  * renaming an entrant cannot orphan its history.
@@ -25,9 +22,8 @@
 export interface Contender {
   id: string;
   name: string;
-  connectionId: string;
-  /** Empty follows the connection's own model, so the simple case needs no duplication. */
-  model: string;
+  /** Null until one is picked; a contender without a model cannot be drawn. */
+  model: ModelRef | null;
   /** In the blind draw. The Arena may still pick a disabled contender by hand. */
   enabled: boolean;
 }

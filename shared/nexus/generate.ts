@@ -1,7 +1,7 @@
 import { createDefaultPreset } from '../prompt/defaults.ts';
 import type { StreamState } from '../providers/sse.ts';
 import { thinkingMaxTokens } from '../providers/thinking.ts';
-import type { ConnectionSettings } from '../providers/types.ts';
+import type { ResolvedModel } from '../providers/types.ts';
 import type { Preset } from '../types/preset.ts';
 import type { NexusSettings } from './types.ts';
 
@@ -34,7 +34,7 @@ export function nexusPreset(settings: NexusSettings): Preset {
  */
 export function nexusMaxTokens(
   settings: NexusSettings,
-  connection: Pick<ConnectionSettings, 'provider' | 'model'> | null,
+  connection: Pick<ResolvedModel, 'provider' | 'model'> | null,
 ): number {
   return thinkingMaxTokens({
     outputTokens: settings.outputTokens,

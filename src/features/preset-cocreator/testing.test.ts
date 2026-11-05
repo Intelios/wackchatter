@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { assemblePrompt } from '@shared/prompt/assemble.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -71,7 +71,7 @@ const persona: Persona = {
   avatar: null,
 };
 
-const connection: Connection = {
+const connection: ResolvedModel = {
   id: 'conn-1',
   name: 'Test connection',
   provider: 'custom',
@@ -144,8 +144,7 @@ describe('scenario snapshots', () => {
     const testChat = createPresetTest(scenario(), 'Compare', {
       presetSource: { kind: 'library', id: 'Other' },
       testingSettings: {
-        connectionId: 'conn-1',
-        model: 'test-model',
+        model: { connectionId: 'conn-1', modelId: 'test-model' },
         maxTokens: 1024,
         temperature: 0.2,
         reasoningEffort: 'auto',

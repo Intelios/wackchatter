@@ -16,6 +16,12 @@ import {
   DEFAULT_SINGLE_COMPOSER_LAYOUT,
   normalizeComposerLayout,
 } from '../../shared/composer/layout.ts';
+import {
+  type ModelSlots,
+  normalizeModelRef,
+  normalizeModelSlots,
+  normalizeRecentModels,
+} from '../../shared/models/slots.ts';
 import { normalizeNexusSettings } from '../../shared/nexus/settings.ts';
 import { normalizeBase } from '../../shared/providers/request.ts';
 import type { Connection, ConnectionSettings, ProviderId } from '../../shared/providers/types.ts';
@@ -94,7 +100,6 @@ function normalizeConnectionEntry(value: unknown): Connection | null {
         : PROVIDERS[provider].label,
     provider,
     baseUrl,
-    model: typeof value.model === 'string' ? value.model : '',
     showReasoning: value.showReasoning !== false,
   };
 
@@ -127,14 +132,6 @@ function normalizeConnections(value: unknown): Connection[] {
     connections.push(connection);
   }
   return connections;
-}
-
-/** A selection that does not name an existing connection falls back to the first. */
-function normalizeConnectionId(value: unknown, connections: Connection[]): string | null {
-  if (typeof value === 'string' && connections.some((connection) => connection.id === value)) {
-    return value;
-  }
-  return connections[0]?.id ?? null;
 }
 
 /**
@@ -208,14 +205,9 @@ const SUMMARY_POSITIONS: SummarySettings['position'][] = [
   'atDepth',
 ];
 
-/** Coerce summary preferences and revalidate their optional connection reference. */
-function normalizeSummary(value: unknown, connections: Connection[]): SummarySettings {
+/** Coerce summary preferences. */
+function normalizeSummary(value: unknown): SummarySettings {
   const stored = isRecord(value) ? value : {};
-  const connectionId =
-    typeof stored.connectionId === 'string' &&
-    connections.some((connection) => connection.id === stored.connectionId)
-      ? stored.connectionId
-      : null;
   const targetWords =
     typeof stored.targetWords === 'number' && Number.isFinite(stored.targetWords)
       ? Math.min(1000, Math.max(25, Math.round(stored.targetWords / 25) * 25))
@@ -226,7 +218,6 @@ function normalizeSummary(value: unknown, connections: Connection[]): SummarySet
       : DEFAULT_SUMMARY.depth;
 
   return {
-    connectionId,
     prompt: typeof stored.prompt === 'string' ? stored.prompt : DEFAULT_SUMMARY.prompt,
     targetWords,
     template: typeof stored.template === 'string' ? stored.template : DEFAULT_SUMMARY.template,
@@ -277,19 +268,14 @@ function normalizeExampleSets(value: unknown): ExampleSet[] {
 }
 
 /**
- * Coerce Co-Creator preferences and revalidate their optional connection reference.
+ * Coerce Co-Creator preferences.
  *
  * `presetId` is deliberately NOT validated against anything here: presets are files, not
  * settings, so the server would have to read the directory to check. A dangling id falls
  * back to the active preset on the client, which is the same outcome with less coupling.
  */
-function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreatorSettings {
+function normalizeCoCreator(value: unknown): CoCreatorSettings {
   const stored = isRecord(value) ? value : {};
-  const connectionId =
-    typeof stored.connectionId === 'string' &&
-    connections.some((connection) => connection.id === stored.connectionId)
-      ? stored.connectionId
-      : null;
 
   const storedFields = isRecord(stored.exampleFields) ? stored.exampleFields : {};
   const exampleFields = { ...DEFAULT_EXAMPLE_FIELDS } as ExampleFields;
@@ -301,7 +287,6 @@ function normalizeCoCreator(value: unknown, connections: Connection[]): CoCreato
 
   return {
     sideChat: normalizeSideDefaults(stored.sideChat),
-    connectionId,
     presetId: typeof stored.presetId === 'string' && stored.presetId ? stored.presetId : null,
     systemPrompt:
       typeof stored.systemPrompt === 'string' && stored.systemPrompt.trim()
@@ -340,10 +325,10 @@ function normalizeDialogueColorMap(value: unknown): Record<string, DialogueColor
  * id is dropped, because the id is what edits, deletes and — crucially — recorded rounds
  * address.
  *
- * A contender whose connection has since been deleted is deliberately KEPT. It is unusable,
- * not invalid, and its rounds still name it; dropping it here would quietly rewrite the
- * leaderboard's labels the moment someone tidied their connection list. The panel shows it
- * disabled with a reason instead.
+ * A contender whose connection has since been deleted is deliberately KEPT, model and all
+ * (`normalizeModelRef` without the connection list). It is unusable, not invalid, and its
+ * rounds still name it; dropping it here would quietly rewrite the leaderboard's labels the
+ * moment someone tidied their connection list. The panel shows it disabled with a reason.
  */
 function normalizeContenders(value: unknown): Contender[] {
   if (!Array.isArray(value)) return [];
@@ -358,8 +343,7 @@ function normalizeContenders(value: unknown): Contender[] {
     contenders.push({
       id,
       name: typeof entry.name === 'string' ? entry.name : '',
-      connectionId: typeof entry.connectionId === 'string' ? entry.connectionId : '',
-      model: typeof entry.model === 'string' ? entry.model : '',
+      model: normalizeModelRef(entry.model),
       // Opt-out rather than opt-in: a contender you took the trouble to add is one you
       // meant to benchmark.
       enabled: entry.enabled !== false,
@@ -616,14 +600,15 @@ export function getSettings(): AppSettings {
     ...DEFAULT_SETTINGS,
     ...stored,
     connections,
-    connectionId: normalizeConnectionId(stored.connectionId, connections),
+    models: normalizeModelSlots(stored.models, connections),
+    recentModels: normalizeRecentModels(stored.recentModels, connections),
     worldInfo: normalizeWorldInfo(stored.worldInfo),
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
-    summary: normalizeSummary(stored.summary, connections),
+    summary: normalizeSummary(stored.summary),
     memoryMode: normalizeMemoryMode(stored.memoryMode),
     nexus: normalizeNexusSettings(stored.nexus),
-    coCreator: normalizeCoCreator(stored.coCreator, connections),
+    coCreator: normalizeCoCreator(stored.coCreator),
     arena: normalizeArena(stored.arena),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
@@ -655,7 +640,7 @@ export function getSettings(): AppSettings {
 /**
  * Apply a partial update. Pure, so the merge rules are testable without a filesystem.
  *
- * `worldInfo` and `guidance` merge FIELD-WISE. A shallow spread would drop every field
+ * `worldInfo`, `guidance` and `models` merge FIELD-WISE. A shallow spread would drop every field
  * the patch didn't mention, so a client changing only the scan depth would silently
  * reset the budget and every match setting along with it.
  *
@@ -673,10 +658,14 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     ...current,
     ...patch,
     connections: current.connections,
-    connectionId: normalizeConnectionId(
-      patch.connectionId !== undefined ? patch.connectionId : current.connectionId,
-      current.connections,
-    ),
+    // Field-wise, so picking one slot's model can never reset another's.
+    models: isRecord(patch.models)
+      ? normalizeModelSlots({ ...current.models, ...patch.models }, current.connections)
+      : current.models,
+    // Capped here as well as on read — the recentPersonaIds rule.
+    recentModels: Array.isArray(patch.recentModels)
+      ? normalizeRecentModels(patch.recentModels, current.connections)
+      : current.recentModels,
     worldInfo: patch.worldInfo
       ? normalizeWorldInfo({ ...current.worldInfo, ...patch.worldInfo })
       : current.worldInfo,
@@ -685,34 +674,31 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
       ? normalizeGuidance({ ...current.guidance, ...patch.guidance })
       : current.guidance,
     summary: patch.summary
-      ? normalizeSummary({ ...current.summary, ...patch.summary }, current.connections)
-      : normalizeSummary(current.summary, current.connections),
+      ? normalizeSummary({ ...current.summary, ...patch.summary })
+      : current.summary,
     memoryMode:
       patch.memoryMode === undefined ? current.memoryMode : normalizeMemoryMode(patch.memoryMode),
     nexus: normalizeNexusSettings({ ...current.nexus, ...patch.nexus }),
     coCreator: patch.coCreator
-      ? normalizeCoCreator(
-          {
-            ...current.coCreator,
-            ...patch.coCreator,
-            sideChat: { ...current.coCreator.sideChat, ...patch.coCreator.sideChat },
-            // Nested one level deeper than the rest, so it needs its own spread or toggling
-            // one field would reset the other seven.
-            exampleFields: {
-              ...current.coCreator.exampleFields,
-              ...(patch.coCreator.exampleFields ?? {}),
-            },
-            exampleSets:
-              patch.coCreator.exampleSets !== undefined
-                ? patch.coCreator.exampleSets
-                : current.coCreator.exampleSets,
-            quickCommands: Array.isArray(patch.coCreator.quickCommands)
-              ? patch.coCreator.quickCommands
-              : current.coCreator.quickCommands,
+      ? normalizeCoCreator({
+          ...current.coCreator,
+          ...patch.coCreator,
+          sideChat: { ...current.coCreator.sideChat, ...patch.coCreator.sideChat },
+          // Nested one level deeper than the rest, so it needs its own spread or toggling
+          // one field would reset the other seven.
+          exampleFields: {
+            ...current.coCreator.exampleFields,
+            ...(patch.coCreator.exampleFields ?? {}),
           },
-          current.connections,
-        )
-      : normalizeCoCreator(current.coCreator, current.connections),
+          exampleSets:
+            patch.coCreator.exampleSets !== undefined
+              ? patch.coCreator.exampleSets
+              : current.coCreator.exampleSets,
+          quickCommands: Array.isArray(patch.coCreator.quickCommands)
+            ? patch.coCreator.quickCommands
+            : current.coCreator.quickCommands,
+        })
+      : current.coCreator,
     // Field-wise like coCreator, and for the same reason — but note the three array
     // sub-fields are guarded on `Array.isArray` rather than merely spread, and the merge map
     // on `isRecord` the way `characterRatings` is: `normalizeArena` turns a non-array into an
@@ -878,21 +864,23 @@ export function applyConnectionPatch(
 }
 
 /**
- * Remove one entry and fix the selection. Pure. Returns null when the id names no
- * entry. A selection pointing at the deleted entry falls back per
- * `normalizeConnectionId`; one pointing elsewhere is kept.
+ * Remove one entry, and every app-wide model pick that ran on it. Pure. Returns null when
+ * the id names no entry. A slot left empty follows chat or reports itself unconfigured;
+ * per-session picks and Arena contenders keep their refs and report the missing connection
+ * when resolved, so nothing changes model behind anyone's back.
  */
 export function dropConnection(
-  connections: Connection[],
-  selectedId: string | null,
+  settings: Pick<AppSettings, 'connections' | 'models' | 'recentModels'>,
   id: string,
-): { connections: Connection[]; connectionId: string | null } | null {
-  if (!connections.some((connection) => connection.id === id)) return null;
+): Pick<AppSettings, 'connections' | 'models' | 'recentModels'> | null {
+  if (!settings.connections.some((connection) => connection.id === id)) return null;
 
-  const rest = connections.filter((connection) => connection.id !== id);
+  const connections = settings.connections.filter((connection) => connection.id !== id);
+  const models: ModelSlots = normalizeModelSlots(settings.models, connections);
   return {
-    connections: rest,
-    connectionId: normalizeConnectionId(selectedId === id ? null : selectedId, rest),
+    connections,
+    models,
+    recentModels: normalizeRecentModels(settings.recentModels, connections),
   };
 }
 
@@ -904,7 +892,7 @@ function writeSettings(next: AppSettings): AppSettings {
 }
 
 /**
- * Create a connection server-side and activate it.
+ * Create a connection server-side.
  *
  * The id and the name are minted here, not by the client: two fast "New connection"
  * clicks — or two tabs — then serialize through this process and each gets its own
@@ -918,15 +906,10 @@ export function addConnection(provider: ProviderId): AppSettings {
     name: nextConnectionName(current.connections, provider),
     provider,
     baseUrl: PROVIDERS[provider].defaultBaseUrl,
-    model: '',
     showReasoning: true,
   };
 
-  return writeSettings({
-    ...current,
-    connections: [...current.connections, connection],
-    connectionId: connection.id,
-  });
+  return writeSettings({ ...current, connections: [...current.connections, connection] });
 }
 
 /** Edit one entry. Returns null when the id names no entry. */
@@ -941,19 +924,13 @@ export function patchConnectionEntry(
   return writeSettings({ ...current, connections });
 }
 
-/** Remove one entry and fix the selection. Returns null when the id names no entry. */
+/** Remove one entry and the slots that ran on it. Returns null when the id names no entry. */
 export function deleteConnectionEntry(id: string): AppSettings | null {
   const current = getSettings();
-  const dropped = dropConnection(current.connections, current.connectionId, id);
+  const dropped = dropConnection(current, id);
   if (!dropped) return null;
 
-  return writeSettings({
-    ...current,
-    connections: dropped.connections,
-    connectionId: dropped.connectionId,
-    summary: normalizeSummary(current.summary, dropped.connections),
-    coCreator: normalizeCoCreator(current.coCreator, dropped.connections),
-  });
+  return writeSettings({ ...current, ...dropped });
 }
 
 /** Re-key or remove the local dialogue colour attached to a character filename. */

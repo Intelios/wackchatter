@@ -295,9 +295,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const recalled = new Set(
     n.recall?.hits.filter((h) => h.included).flatMap((h) => h.nodeIds) ?? [],
   );
-  const configured = Boolean(
-    config.connections.some((c) => c.id === config.settings.connectionId) && config.settings.model,
-  );
+  const configured = !config.blockedReason;
   // Hand-authored records are real writes to the chat; on a Summary/off chat they would
   // never be recalled, so the add affordances wait for the mode switch instead.
   const nexusMode = chat.memoryMode === 'nexus';
@@ -575,7 +573,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
               </button>
             ) : null}
           </div>
-          {!configured ? <p>Configure a connection and model in Settings first.</p> : null}
+          {!configured ? <p>{config.blockedReason} See Nexus settings.</p> : null}
           {!nexusMode ? <p>Switch this chat to Nexus memory to search with the model.</p> : null}
           {n.run.error ? <p role="status">{n.run.error}</p> : null}
           {n.findings.map((f) => {

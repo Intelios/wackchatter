@@ -1,12 +1,14 @@
-import type { Connection } from '@shared/providers/types.ts';
+import type { ModelRef } from '@shared/models/slots.ts';
 import { DEFAULT_SUMMARY_PROMPT, type SummarySettings } from '@shared/types/settings.ts';
 import { useEffect, useState } from 'react';
-import { SelectField, TextField } from '../../components/Field.tsx';
+import { TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
 import { StoryMemoryPlacementFields } from '../../components/StoryMemoryPlacementFields.tsx';
 import { RefreshIcon, StopIcon } from '../../layout/icons.tsx';
 import type { UseChat } from '../chat/useChat.ts';
+import { ModelPicker } from '../models/ModelPicker.tsx';
+import { useModels } from '../models/ModelsContext.tsx';
 import './SummaryPanel.css';
 
 interface SummaryPanelProps {
@@ -21,20 +23,23 @@ interface SummaryPanelProps {
     | 'editSummary'
   >;
   settings: SummarySettings;
-  connections: Connection[];
-  activeConnection: Connection | null;
-  summaryConnection: Connection | null;
+  /** The `summary` slot; null follows chat. */
+  model: ModelRef | null;
+  onModelChange: (ref: ModelRef | null) => void;
+  /** Why the summary model cannot run, or null when it can. */
+  blockedReason: string | null;
   onSettingsChange: (patch: Partial<SummarySettings>) => void;
 }
 
 export function SummaryPanel({
   chat,
   settings,
-  connections,
-  activeConnection,
-  summaryConnection,
+  model,
+  onModelChange,
+  blockedReason,
   onSettingsChange,
 }: SummaryPanelProps) {
+  const { chatModel } = useModels();
   const [promptDraft, setPromptDraft] = useState(settings.prompt);
   const [templateDraft, setTemplateDraft] = useState(settings.template);
   const { summaryStatus } = chat;
@@ -47,15 +52,13 @@ export function SummaryPanel({
     ? 'Open a chat first.'
     : chat.busy
       ? 'Stop the current reply before summarizing.'
-      : !summaryConnection
-        ? 'Add a connection first.'
-        : !summaryConnection.baseUrl || !summaryConnection.model
-          ? 'Configure an endpoint and model for the selected connection.'
-          : !promptDraft.trim()
-            ? 'Enter a summary prompt first.'
-            : chat.summaryPending === 0
-              ? 'No new chat messages need summarizing.'
-              : undefined;
+      : blockedReason
+        ? blockedReason
+        : !promptDraft.trim()
+          ? 'Enter a summary prompt first.'
+          : chat.summaryPending === 0
+            ? 'No new chat messages need summarizing.'
+            : undefined;
 
   return (
     <div className="summary-panel">
@@ -122,20 +125,15 @@ export function SummaryPanel({
       </Section>
 
       <Section title="Generation" defaultOpen>
-        <SelectField<string | null>
-          label="Summarize with"
-          value={settings.connectionId}
-          options={[
-            {
-              label: activeConnection
-                ? `Same as chat connection (${activeConnection.name})`
-                : 'Same as chat connection',
-              value: null,
-            },
-            ...connections.map((connection) => ({ label: connection.name, value: connection.id })),
-          ]}
-          onChange={(connectionId) => onSettingsChange({ connectionId })}
+        <span className="wc-label">Summarize with</span>
+        <ModelPicker
+          label="Summary model"
+          value={model}
+          onChange={onModelChange}
+          emptyLabel="Same as chat"
+          emptyFollows={chatModel}
           disabled={summaryStatus.running}
+          disabledReason="Wait for the summary to finish."
         />
 
         <TextField

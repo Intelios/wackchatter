@@ -16,7 +16,7 @@ import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, SwipeInfo } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -82,8 +82,7 @@ export function createPresetTest(
     presetSource: structuredClone(options.presetSource ?? { kind: 'draft' }),
     testingSettings: structuredClone(
       options.testingSettings ?? {
-        connectionId: null,
-        model: '',
+        model: null,
         maxTokens: 1024,
         temperature: 0.2,
         reasoningEffort: 'auto',
@@ -149,7 +148,7 @@ export function preparePresetTestRequest(options: {
   test: PresetTest;
   kind: PresetTestGenerationKind;
   preset: Preset;
-  connection: Connection;
+  connection: ResolvedModel;
   countTokens: TokenCounter;
 }): PreparedPresetTestRequest | null {
   const prepared = preparePresetTestGeneration(options.test, options.kind);

@@ -1,3 +1,4 @@
+import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { CocreatorSession, CocreatorSessionSummary } from '@shared/types/cocreator.ts';
@@ -18,7 +19,9 @@ import './CocreatorShell.css';
 interface CocreatorShellProps {
   defaults: CoCreatorSettings;
   connections: Connection[];
-  activeConnectionId: string | null;
+  /** The app's model slots, and how to change one from the setup popovers. */
+  models: ModelSlots;
+  onModelSlotChange: (slot: ModelSlot, ref: ModelRef | null) => void;
   presets: PresetSummary[];
   activePresetId: string | null;
   activePreset: Preset | null;
@@ -53,7 +56,8 @@ interface CocreatorShellProps {
 export function CocreatorShell({
   defaults,
   connections,
-  activeConnectionId,
+  models,
+  onModelSlotChange,
   presets,
   activePresetId,
   activePreset,
@@ -267,7 +271,8 @@ export function CocreatorShell({
             seed={seed}
             defaults={defaults}
             connections={connections}
-            activeConnectionId={activeConnectionId}
+            models={models}
+            onModelSlotChange={onModelSlotChange}
             presets={presets}
             activePresetId={activePresetId}
             activePreset={activePreset}

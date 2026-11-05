@@ -2,7 +2,7 @@ import { currentText, type MessageState, userMessage } from '@shared/chat/messag
 import { CONTINUE_DESIGN_REPLY, cocreatorBudget } from '@shared/cocreator/generation.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { ChatCompletionBody, Connection } from '@shared/providers/types.ts';
+import type { ChatCompletionBody, ResolvedModel } from '@shared/providers/types.ts';
 import type { ApiMessage } from '@shared/types/chat.ts';
 import type { SessionModelSettings, SideChatSnapshot } from '@shared/types/cocreator.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -14,7 +14,7 @@ export function buildDesignGeneration(input: {
   mode: 'send' | 'swipe' | 'continue';
   messages: MessageState[];
   preset: Preset;
-  connection: Connection;
+  connection: ResolvedModel;
   settings: SessionModelSettings;
   systemPrompt: string;
   exampleBlock: string;

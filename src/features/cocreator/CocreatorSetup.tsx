@@ -1,5 +1,5 @@
 import { COCREATOR_CONTEXT_TOKENS, COCREATOR_OUTPUT_TOKENS } from '@shared/cocreator/generation.ts';
-import type { Connection, ProviderModel } from '@shared/providers/types.ts';
+import { type ModelRef, type ModelSlot, type ModelSlots, slotRef } from '@shared/models/slots.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import {
   type CoCreatorSettings,
@@ -10,21 +10,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckField, NumberField, SelectField, TextField } from '../../components/Field.tsx';
 import { Popover } from '../../components/Popover.tsx';
 import { GearIcon } from '../../layout/icons.tsx';
-import { settingsApi } from '../../lib/api.ts';
-import { ModelCombobox } from '../connection/ModelCombobox.tsx';
-import { connectionPatch, modelPatch } from './settings.ts';
+import { ModelPicker } from '../models/ModelPicker.tsx';
 import type { UseCocreator } from './useCocreator.ts';
 import './CocreatorSetup.css';
 
 type Mode = 'session' | 'defaults';
-type SessionConnectionChoice = 'default' | 'active' | string;
 type SessionPresetChoice = 'default' | 'active' | string;
 
 interface CocreatorSetupProps {
   design: UseCocreator;
   defaults: CoCreatorSettings;
-  connections: Connection[];
-  activeConnectionId: string | null;
+  /** The app's model slots: the defaults tab edits `cocreator`. */
+  models: ModelSlots;
+  onModelSlotChange: (slot: ModelSlot, ref: ModelRef | null) => void;
   presets: PresetSummary[];
   activePresetId: string | null;
   onDefaultsChange: (patch: Partial<CoCreatorSettings>) => void;
@@ -32,10 +30,6 @@ interface CocreatorSetupProps {
   onOpenChange: (open: boolean) => void;
   mode: Mode;
   onModeChange: (mode: Mode) => void;
-}
-
-function activeConnection(connections: Connection[], id: string | null): Connection | null {
-  return (id ? connections.find((entry) => entry.id === id) : null) ?? connections[0] ?? null;
 }
 
 function PromptEditor({
@@ -112,8 +106,8 @@ function PromptEditor({
 export function CocreatorSetup({
   design,
   defaults,
-  connections,
-  activeConnectionId,
+  models,
+  onModelSlotChange,
   presets,
   activePresetId,
   onDefaultsChange,
@@ -122,50 +116,9 @@ export function CocreatorSetup({
   mode,
   onModeChange,
 }: CocreatorSetupProps) {
-  const [models, setModels] = useState<ProviderModel[]>([]);
-  const [modelsStatus, setModelsStatus] = useState('');
   const settings = design.state.settings;
   const disabled = design.busy;
-  const active = activeConnection(connections, activeConnectionId);
 
-  const modelConnection = design.connection
-    ? (connections.find((entry) => entry.id === design.connection?.id) ?? null)
-    : null;
-
-  useEffect(() => {
-    if (!open || mode !== 'session' || !modelConnection?.baseUrl) {
-      setModels([]);
-      setModelsStatus('');
-      return;
-    }
-    let cancelled = false;
-    setModels([]);
-    setModelsStatus('Loading models…');
-    void settingsApi
-      .models(modelConnection.id)
-      .then((result) => {
-        if (!cancelled) {
-          setModels(result.models);
-          setModelsStatus('');
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setModels([]);
-          setModelsStatus(`${(error as Error).message} You can still enter a model id.`);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, mode, modelConnection?.id, modelConnection?.baseUrl]);
-
-  const connectionChoice: SessionConnectionChoice =
-    settings.connectionId === undefined
-      ? 'default'
-      : settings.connectionId === null
-        ? 'active'
-        : settings.connectionId;
   const presetChoice: SessionPresetChoice =
     settings.presetId === undefined
       ? 'default'
@@ -173,11 +126,11 @@ export function CocreatorSetup({
         ? 'active'
         : settings.presetId;
 
-  const label = useMemo(() => {
-    const name = design.connection?.name ?? 'No connection';
-    const model = design.connection?.model || 'no model';
-    return `${name} · ${model}`;
-  }, [design.connection]);
+  const label = useMemo(
+    () =>
+      design.connection ? `${design.connection.model} · ${design.connection.name}` : 'No model',
+    [design.connection],
+  );
 
   return (
     <Popover
@@ -225,21 +178,18 @@ export function CocreatorSetup({
 
         {mode === 'defaults' ? (
           <div className="cocreator-setup__body cocreator-setup__body--defaults">
-            <SelectField<string | null>
-              label="Default connection"
-              value={defaults.connectionId}
-              options={[
-                {
-                  label: active
-                    ? `Follow active connection (${active.name})`
-                    : 'Follow active connection',
-                  value: null,
-                },
-                ...connections.map((entry) => ({ label: entry.name, value: entry.id })),
-              ]}
-              onChange={(connectionId) => onDefaultsChange({ connectionId })}
-              disabled={disabled}
-            />
+            <div className="field">
+              <span className="wc-label">Default model</span>
+              <ModelPicker
+                label="Default Co-Creator model"
+                value={models.cocreator}
+                onChange={(ref) => onModelSlotChange('cocreator', ref)}
+                emptyLabel="Same as chat"
+                emptyFollows={models.chat}
+                disabled={disabled}
+                disabledReason="Stop the current reply before changing its setup."
+              />
+            </div>
             <SelectField<string | null>
               label="Default sampler preset"
               value={defaults.presetId}
@@ -279,52 +229,20 @@ export function CocreatorSetup({
           </div>
         ) : (
           <div className="cocreator-setup__body cocreator-setup__body--session">
-            <SelectField<SessionConnectionChoice>
-              label="Connection"
-              value={connectionChoice}
-              options={[
-                { label: 'Use Co-Creator default', value: 'default' },
-                {
-                  label: active
-                    ? `Follow active connection (${active.name})`
-                    : 'Follow active connection',
-                  value: 'active',
-                },
-                ...connections.map((entry) => ({ label: entry.name, value: entry.id })),
-              ]}
-              onChange={(choice) =>
-                design.dispatch({
-                  type: 'settings/patch',
-                  patch: connectionPatch(
-                    choice === 'default' ? undefined : choice === 'active' ? null : choice,
-                    settings,
-                  ),
-                })
-              }
-              disabled={disabled}
-            />
-
-            {modelConnection ? (
-              <div className="field">
-                <span className="wc-label">Model</span>
-                <ModelCombobox
-                  models={models}
-                  value={design.connection?.model ?? ''}
-                  onCommit={(model) =>
-                    design.dispatch({
-                      type: 'settings/patch',
-                      patch: modelPatch(modelConnection, model),
-                    })
-                  }
-                  disabled={disabled}
-                  disabledReason="Stop the current reply before changing its setup."
-                />
-                <p className="wc-hint">
-                  {modelsStatus ||
-                    `Connection default: ${modelConnection.model || 'none selected'}`}
-                </p>
-              </div>
-            ) : null}
+            <div className="field">
+              <span className="wc-label">Model</span>
+              <ModelPicker
+                label="Model for this session"
+                value={settings.model}
+                onChange={(ref) =>
+                  design.dispatch({ type: 'settings/patch', patch: { model: ref ?? undefined } })
+                }
+                emptyLabel="Use Co-Creator default"
+                emptyFollows={slotRef(models, 'cocreator')}
+                disabled={disabled}
+                disabledReason="Stop the current reply before changing its setup."
+              />
+            </div>
 
             <SelectField<SessionPresetChoice>
               label="Sampler preset"

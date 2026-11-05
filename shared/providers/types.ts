@@ -34,11 +34,15 @@ export interface OpenRouterRouting {
   middleOut?: boolean;
 }
 
+/**
+ * An endpoint: where requests go and how they are shaped. Deliberately without a model —
+ * models are chosen per slot as a `ModelRef` (`shared/models/`), so picking one never
+ * rewrites the connection and no slot can spring back to a model another slot left there.
+ */
 export interface ConnectionSettings {
   provider: ProviderId;
   /** Base URL with no trailing slash and no /chat/completions suffix. */
   baseUrl: string;
-  model: string;
   routing?: OpenRouterRouting;
   /** Extra headers the user configured. Merged last, so they can override ours. */
   headers?: Record<string, string>;
@@ -69,10 +73,19 @@ export interface Connection extends ConnectionSettings {
   name: string;
 }
 
+/**
+ * A saved connection bound to one model: what a generation actually runs on. Built only by
+ * resolving a `ModelRef` (`resolveModel`), never stored. `id` stays the connection's id, so
+ * the server-side key lookup and the usage log need nothing new.
+ */
+export interface ResolvedModel extends Connection {
+  model: string;
+}
+
 export interface GenerationRequest {
   messages: ApiMessage[];
   preset: Preset;
-  connection: ConnectionSettings;
+  connection: ConnectionSettings & { model: string };
   stream: boolean;
   /** Overrides the preset's openai_max_tokens. */
   maxTokens?: number;
@@ -143,6 +156,5 @@ export interface ProviderModel {
 export const DEFAULT_CONNECTION: ConnectionSettings = {
   provider: 'custom',
   baseUrl: PROVIDERS.custom.defaultBaseUrl,
-  model: '',
   showReasoning: true,
 };

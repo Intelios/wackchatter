@@ -1,30 +1,37 @@
 import { describe, expect, test } from 'bun:test';
+import { DEFAULT_MODEL_SLOTS, type ModelSlots } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import { DEFAULT_COCREATOR } from '@shared/types/settings.ts';
-import { connectionPatch, modelPatch, resolveCocreatorSettings } from './settings.ts';
+import { resolveCocreatorSettings } from './settings.ts';
 
 const connections: Connection[] = [
-  { id: 'active', name: 'Active', provider: 'custom', baseUrl: 'http://active/v1', model: 'a' },
-  { id: 'design', name: 'Design', provider: 'openrouter', baseUrl: 'http://design/v1', model: 'b' },
+  { id: 'active', name: 'Active', provider: 'custom', baseUrl: 'http://active/v1' },
+  { id: 'design', name: 'Design', provider: 'openrouter', baseUrl: 'http://design/v1' },
 ];
 const presets: PresetSummary[] = [
   { id: 'chat', name: 'Chat', modified: 1 },
   { id: 'design-preset', name: 'Design', modified: 1 },
 ];
+const chat = { connectionId: 'active', modelId: 'chat-model' };
+const design = { connectionId: 'design', modelId: 'design-model' };
 
-function resolve(session: Parameters<typeof resolveCocreatorSettings>[0]['session']) {
+function resolve(
+  session: Parameters<typeof resolveCocreatorSettings>[0]['session'],
+  models: ModelSlots = { ...DEFAULT_MODEL_SLOTS, chat, cocreator: design },
+  streaming = true,
+) {
   return resolveCocreatorSettings({
     session,
     defaults: {
       ...DEFAULT_COCREATOR,
-      connectionId: 'design',
       presetId: 'design-preset',
       systemPrompt: 'Default system.',
       analysisPrompt: 'Default analysis.',
+      streaming,
     },
     connections,
-    activeConnectionId: 'active',
+    models,
     presets,
     activePresetId: 'chat',
   });
@@ -33,71 +40,38 @@ function resolve(session: Parameters<typeof resolveCocreatorSettings>[0]['sessio
 describe('resolving Co-Creator settings', () => {
   test('an empty session follows the Co-Creator defaults', () => {
     const result = resolve({});
-    expect(result.connection?.id).toBe('design');
+    expect(result.connection).toMatchObject({ id: 'design', model: 'design-model' });
     expect(result.presetId).toBe('design-preset');
     expect(result.systemPrompt).toBe('Default system.');
     expect(result.analysisPrompt).toBe('Default analysis.');
     expect(result.streaming).toBe(true);
   });
 
-  test('explicit null follows the active app selections', () => {
-    const result = resolve({ connectionId: null, presetId: null });
-    expect(result.connection?.id).toBe('active');
-    expect(result.presetId).toBe('chat');
+  test('an unset Co-Creator slot follows the chat model', () => {
+    const result = resolve({}, { ...DEFAULT_MODEL_SLOTS, chat });
+    expect(result.connection).toMatchObject({ id: 'active', model: 'chat-model' });
   });
 
-  test('missing saved selections fall back through the defaults', () => {
-    const result = resolve({ connectionId: 'deleted', presetId: 'deleted' });
-    expect(result.connection?.id).toBe('design');
-    expect(result.presetId).toBe('design-preset');
+  test('a session’s own model wins, pair and all', () => {
+    const own = { connectionId: 'active', modelId: 'session-model' };
+    expect(resolve({ model: own }).connection).toMatchObject({
+      id: 'active',
+      model: 'session-model',
+    });
   });
 
-  test('a model override applies only to the connection it names', () => {
-    expect(
-      resolve({ modelOverride: { connectionId: 'design', model: 'session-model' } }).connection
-        ?.model,
-    ).toBe('session-model');
-    expect(
-      resolve({
-        connectionId: null,
-        modelOverride: { connectionId: 'design', model: 'session-model' },
-      }).connection?.model,
-    ).toBe('a');
+  test('a session model on a deleted connection blocks rather than switching model', () => {
+    const result = resolve({ model: { connectionId: 'deleted', modelId: 'm' } });
+    expect(result.connection).toBeNull();
+    expect(!result.model.ok && result.model.reason).toContain('was deleted');
+  });
+
+  test('explicit null follows the active preset; a missing one falls back to the default', () => {
+    expect(resolve({ presetId: null }).presetId).toBe('chat');
+    expect(resolve({ presetId: 'deleted' }).presetId).toBe('design-preset');
   });
 
   test('streaming follows the Co-Creator defaults even when toggled off', () => {
-    const result = resolveCocreatorSettings({
-      session: {},
-      defaults: {
-        ...DEFAULT_COCREATOR,
-        connectionId: 'design',
-        presetId: 'design-preset',
-        systemPrompt: 'Default system.',
-        analysisPrompt: 'Default analysis.',
-        streaming: false,
-      },
-      connections,
-      activeConnectionId: 'active',
-      presets,
-      activePresetId: 'chat',
-    });
-    expect(result.streaming).toBe(false);
-  });
-});
-
-describe('session patches', () => {
-  test('switching connection clears a bound model override', () => {
-    expect(
-      connectionPatch('active', {
-        modelOverride: { connectionId: 'design', model: 'session-model' },
-      }),
-    ).toEqual({ connectionId: 'active', modelOverride: undefined });
-  });
-
-  test('the saved connection model is represented by inheritance', () => {
-    expect(modelPatch(connections[1]!, 'b')).toEqual({ modelOverride: undefined });
-    expect(modelPatch(connections[1]!, 'other')).toEqual({
-      modelOverride: { connectionId: 'design', model: 'other' },
-    });
+    expect(resolve({}, undefined, false).streaming).toBe(false);
   });
 });

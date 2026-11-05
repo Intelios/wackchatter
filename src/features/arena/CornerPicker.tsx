@@ -128,7 +128,7 @@ export function CornerPicker({ resolved, value, onChange, column, side }: Corner
       }}
     >
       <span className="arena-corner__pickname">
-        {selected ? contenderLabel(selected.contender, selected.connection) : 'Choose a contender…'}
+        {selected ? contenderLabel(selected.contender) : 'Choose a contender…'}
       </span>
       <ChevronIcon className="arena-corner__chevron" />
     </button>
@@ -168,9 +168,7 @@ export function CornerPicker({ resolved, value, onChange, column, side }: Corner
                 title={unavailable ? (item.unavailableReason ?? undefined) : undefined}
                 onClick={() => choose(item.contender.id)}
               >
-                <span className="arena-cornerpicker__name">
-                  {contenderLabel(item.contender, item.connection)}
-                </span>
+                <span className="arena-cornerpicker__name">{contenderLabel(item.contender)}</span>
                 {unavailable ? (
                   <span className="arena-cornerpicker__why">{item.unavailableReason}</span>
                 ) : null}

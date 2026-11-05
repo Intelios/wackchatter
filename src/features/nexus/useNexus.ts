@@ -28,7 +28,7 @@ import type {
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { looseParseJson } from '@shared/providers/looseJson.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { ApiMessage, ChatMessage } from '@shared/types/chat.ts';
 import {
   type Dispatch,
@@ -39,7 +39,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { streamGenerate } from '../../lib/api.ts';
+import { runGeneration } from '../../lib/generation.ts';
 import {
   type ChatAction,
   type ChatState,
@@ -53,7 +53,7 @@ interface Options {
   stateRef: RefObject<ChatState>;
   dispatch: Dispatch<ChatAction>;
   settings: NexusSettings;
-  connection: Connection | null;
+  connection: ResolvedModel | null;
   counter: TokenCounter;
   enabled: boolean;
   profile: string;
@@ -341,7 +341,7 @@ export function useNexus(options: Options) {
     const o = opts.current;
     const connection = o.connection;
     if (!connection?.baseUrl || !connection.model)
-      throw new Error('Choose a saved connection and a model for Nexus in Settings.');
+      throw new Error('Choose a Nexus model in Nexus settings.');
     const preset = nexusPreset(o.settings);
     const body = buildRequestBody({
       messages: apiMessages,
@@ -350,19 +350,18 @@ export function useNexus(options: Options) {
       stream: false,
       maxTokens: nexusMaxTokens(o.settings, connection),
     });
-    const result = await streamGenerate(
+    const result = await runGeneration({
+      model: connection,
       body,
-      controller.signal,
-      { onTick: () => {} },
-      '',
-      connection.id,
-      {
+      signal: controller.signal,
+      usage: {
         feature: 'memory',
         sessionId: o.stateRef.current.chatId ?? undefined,
         character: o.stateRef.current.characterId ?? undefined,
         countText: o.counter.countText,
       },
-    );
+      onTick: () => {},
+    });
     const failure = nexusRequestError(result);
     if (failure) throw new Error(failure);
     return result;

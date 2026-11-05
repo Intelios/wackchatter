@@ -24,7 +24,7 @@ function round(
 }
 
 function contender(id: string): Contender {
-  return { id, name: id, connectionId: 'or', model: `${id}/model`, enabled: true };
+  return { id, name: id, model: { connectionId: 'or', modelId: `${id}/model` }, enabled: true };
 }
 
 const probes: ArenaProbe[] = [{ id: 'p1', text: 'Say something.' }];

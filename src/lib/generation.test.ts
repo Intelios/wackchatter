@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { streamGenerate } from './api.ts';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { ChatCompletionBody, ResolvedModel } from '@shared/providers/types.ts';
+import { isAbortError, runGeneration, type StreamHandlers, type UsageMeta } from './generation.ts';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -8,6 +11,28 @@ afterEach(() => {
 
 const signal = new AbortController().signal;
 const noop = { onTick: () => {} };
+
+const model = (id = 'test-connection', name = 'test-model'): ResolvedModel => ({
+  id,
+  name: 'Test',
+  provider: 'custom',
+  baseUrl: 'http://localhost/v1',
+  model: name,
+});
+
+function run(
+  body: ChatCompletionBody,
+  handlers: StreamHandlers = noop,
+  options: { model?: ResolvedModel; usage?: UsageMeta } = {},
+) {
+  return runGeneration({
+    model: options.model ?? model(),
+    body,
+    signal,
+    ...handlers,
+    ...(options.usage ? { usage: options.usage } : {}),
+  });
+}
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -30,26 +55,29 @@ function sseResponse(frames: string[]): Response {
   });
 }
 
-describe('streamGenerate', () => {
+describe('runGeneration', () => {
   test('a non-streamed completion returns its content', async () => {
     globalThis.fetch = (async () =>
       jsonResponse({ choices: [{ message: { content: 'hello' } }] })) as unknown as typeof fetch;
 
-    const state = await streamGenerate({}, signal, noop);
+    const state = await run({});
     expect(state.content).toBe('hello');
     expect(state.error).toBeUndefined();
   });
 
-  test('an explicit summary connection id is sent without changing the completion body', async () => {
+  test('the model’s connection travels beside the body, and the body runs on that model', async () => {
     let payload: unknown;
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       payload = JSON.parse(String(init?.body));
       return jsonResponse({ choices: [{ message: { content: 'summary' } }] });
     }) as unknown as typeof fetch;
 
-    await streamGenerate({ model: 'summary-model' }, signal, noop, '', 'summary-connection');
+    // Built against another model: the one it was asked to run on wins.
+    await run({ model: 'stale', temperature: 1 }, noop, {
+      model: model('summary-connection', 'summary-model'),
+    });
     expect(payload).toEqual({
-      body: { model: 'summary-model' },
+      body: { model: 'summary-model', temperature: 1 },
       connectionId: 'summary-connection',
     });
   });
@@ -67,11 +95,14 @@ describe('streamGenerate', () => {
     const body = { model: 'test-model', messages: [{ role: 'user', content: 'Hello' }] };
     const features = ['chat', 'summary', 'memory'] as const;
     for (const [i, feature] of features.entries()) {
-      await streamGenerate(body, signal, noop, '', 'go-connection', {
-        feature,
-        sessionId: i === 2 ? 'chat-2' : 'chat-1',
-        generationId: `generation-${i}`,
-        countText: () => 1,
+      await run(body, noop, {
+        model: model('go-connection'),
+        usage: {
+          feature,
+          sessionId: i === 2 ? 'chat-2' : 'chat-1',
+          generationId: `generation-${i}`,
+          countText: () => 1,
+        },
       });
     }
     expect(posted).toEqual([
@@ -81,7 +112,7 @@ describe('streamGenerate', () => {
     ]);
   });
 
-  test('a streamed request also forwards its session without requiring a connection override', async () => {
+  test('a streamed request also forwards its session', async () => {
     let payload: unknown;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (input === '/api/generate') {
@@ -91,19 +122,21 @@ describe('streamGenerate', () => {
       return jsonResponse({ ok: true });
     }) as unknown as typeof fetch;
 
-    await streamGenerate({ stream: true }, signal, noop, '', undefined, {
-      feature: 'chat',
-      sessionId: 'chat-1',
-      countText: () => 1,
+    await run({ stream: true }, noop, {
+      usage: { feature: 'chat', sessionId: 'chat-1', countText: () => 1 },
     });
-    expect(payload).toEqual({ body: { stream: true }, sessionId: 'chat-1' });
+    expect(payload).toEqual({
+      body: { stream: true, model: 'test-model' },
+      connectionId: 'test-connection',
+      sessionId: 'chat-1',
+    });
   });
 
   test('a completion-shaped error in a 200 non-stream body throws', async () => {
     globalThis.fetch = (async () =>
       jsonResponse({ error: { message: 'provider exploded' } })) as unknown as typeof fetch;
 
-    expect(streamGenerate({}, signal, noop)).rejects.toThrow('provider exploded');
+    expect(run({})).rejects.toThrow('provider exploded');
   });
 
   test('a non-200 response throws with the provider message', async () => {
@@ -114,7 +147,7 @@ describe('streamGenerate', () => {
         headers: { 'content-type': 'application/json' },
       })) as unknown as typeof fetch;
 
-    expect(streamGenerate({}, signal, noop)).rejects.toThrow('overloaded');
+    expect(run({})).rejects.toThrow('overloaded');
   });
 
   test('a streamed completion returns its accumulated content', async () => {
@@ -124,7 +157,7 @@ describe('streamGenerate', () => {
         JSON.stringify({ choices: [{ delta: { content: 'lo' } }] }),
       ])) as unknown as typeof fetch;
 
-    const state = await streamGenerate({}, signal, noop);
+    const state = await run({});
     expect(state.content).toBe('hello');
     expect(state.error).toBeUndefined();
   });
@@ -138,12 +171,15 @@ describe('streamGenerate', () => {
 
     const ticks: string[] = [];
     let firstToken = 0;
-    await streamGenerate({}, signal, {
-      onFirstToken: () => {
-        firstToken += 1;
+    await run(
+      {},
+      {
+        onFirstToken: () => {
+          firstToken += 1;
+        },
+        onTick: (state) => ticks.push(`${state.reasoning}|${state.content}`),
       },
-      onTick: (state) => ticks.push(`${state.reasoning}|${state.content}`),
-    });
+    );
 
     expect(firstToken).toBe(1);
     expect(ticks[0]).toBe('Thinking…|');
@@ -156,7 +192,7 @@ describe('streamGenerate', () => {
         JSON.stringify({ error: { message: 'rate limited' } }),
       ])) as unknown as typeof fetch;
 
-    expect(streamGenerate({}, signal, noop)).rejects.toThrow('rate limited');
+    expect(run({})).rejects.toThrow('rate limited');
   });
 
   test('the non-stream error does not reach the tick handler', async () => {
@@ -166,12 +202,15 @@ describe('streamGenerate', () => {
     const ticks: unknown[] = [];
     let firstToken = false;
     await expect(
-      streamGenerate({}, signal, {
-        onTick: (state) => ticks.push(state),
-        onFirstToken: () => {
-          firstToken = true;
+      run(
+        {},
+        {
+          onTick: (state) => ticks.push(state),
+          onFirstToken: () => {
+            firstToken = true;
+          },
         },
-      }),
+      ),
     ).rejects.toThrow('provider exploded');
     expect(ticks).toEqual([]);
     expect(firstToken).toBe(false);
@@ -188,10 +227,12 @@ describe('streamGenerate', () => {
       return jsonResponse({ choices: [{ message: { content: 'hello world' } }] });
     }) as unknown as typeof fetch;
 
-    await streamGenerate({}, signal, noop, '', 'test-connection', {
-      feature: 'memory',
-      sessionId: 'chat-1',
-      countText: (text) => text.split(' ').length * 10,
+    await run({}, noop, {
+      usage: {
+        feature: 'memory',
+        sessionId: 'chat-1',
+        countText: (text) => text.split(' ').length * 10,
+      },
     });
 
     expect(posted.length).toBe(1);
@@ -203,4 +244,30 @@ describe('streamGenerate', () => {
       estimated: true,
     });
   });
+});
+
+test('isAbortError tells a stop from a failure', () => {
+  expect(isAbortError(new DOMException('stopped', 'AbortError'))).toBe(true);
+  expect(isAbortError(new Error('provider exploded'))).toBe(false);
+  expect(isAbortError(null)).toBe(false);
+});
+
+/** Every client source file, tests excluded. */
+function sources(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sources(path);
+    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
+test('the generation service is the only way to the generate proxy', () => {
+  const root = join(import.meta.dir, '..');
+  const offenders = sources(root).filter((path) => {
+    if (path === join(import.meta.dir, 'generation.ts')) return false;
+    const text = readFileSync(path, 'utf8');
+    // The URL as a string literal — prose in a comment naming the route is fine.
+    return /['"`](\/api)?\/generate['"`]/.test(text);
+  });
+  expect(offenders).toEqual([]);
 });

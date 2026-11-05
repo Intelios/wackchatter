@@ -325,7 +325,6 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
             >
               <PresetAssistantPanel
                 controller={controller}
-                connections={props.connections}
                 presets={props.presets}
                 references={props.references}
                 toolCapability={toolCapability}
@@ -396,7 +395,6 @@ export function PresetCocreatorWorkspace(props: PresetCocreatorWorkspaceProps) {
           <PresetTestingPanel
             controller={controller}
             testing={testing}
-            connections={props.connections}
             presets={props.presets}
             references={props.references}
             characters={props.characters}

@@ -9,7 +9,7 @@
  */
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -31,7 +31,7 @@ const LONG_DESCRIPTION_TOKENS = 200;
 interface PersonaConverterProps {
   characters: CharacterSummary[];
   hiddenTags: readonly string[];
-  connection: Connection | null;
+  connection: ResolvedModel | null;
   preset: Preset | null;
   globalVariables: MacroVariableMap;
   countTokens: TokenCounter;

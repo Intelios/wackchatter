@@ -70,8 +70,7 @@ describe('Preset Co-Creator session store', () => {
       presetSource: { kind: 'reference', id: 'Example' },
       testingSettings: {
         ...session.document.settings.testing,
-        connectionId: 'connection-1',
-        model: 'model-one',
+        model: { connectionId: 'connection-1', modelId: 'model-one' },
       },
       composerDraft: 'Unsent question',
       localVariables: {},
@@ -117,7 +116,7 @@ describe('Preset Co-Creator session store', () => {
     expect(saved.kind).toBe('saved');
     const loaded = store.getSession(session.id)!.document;
     expect(loaded.tests[0]?.presetSource).toEqual({ kind: 'reference', id: 'Example' });
-    expect(loaded.tests[0]?.testingSettings.model).toBe('model-one');
+    expect(loaded.tests[0]?.testingSettings.model?.modelId).toBe('model-one');
     expect(loaded.tests[0]?.composerDraft).toBe('Unsent question');
     expect(loaded.batchQueue.note).toBe('Compare the results');
     expect(loaded.batchQueue.includePrompt).toBe(false);
