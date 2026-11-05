@@ -47,7 +47,11 @@ resolved. `resolveModelRef` / `resolveSlot` are the one place a ref becomes a `R
 **`runGeneration` (`src/lib/generation.ts`) is the only way to `/api/generate`** —
 `generation.test.ts` pins it. It sends the model's connection id (the server has no "active"
 connection and refuses a request without one), forces the body's `model` to the resolved one, and
-logs usage, stopped replies included. Callers still build their own body and own their gate.
+logs usage, stopped replies included. Callers build their own body. **One generation at a time
+is a `GenerationSlot`** (same file): a claim is the ownership token, so a newer claim or a chat
+switch makes late callbacks inert, and only the holder's `release()` may clean up. Chat replies,
+impersonation and the recap share one slot (one Stop); the summary has its own, and each refuses
+while the other is busy.
 
 **Connections are ours, not the preset's.** Connections live in `data/settings.json`, keys in
 `data/secrets.json` keyed by connection id, and keys never reach the browser. A key belongs to its
@@ -249,6 +253,15 @@ multi-word key skips whole-word matching and becomes a substring test (`red drag
 boundary.
 
 ## UI
+
+**State and markup are apart.** `src/app/useAppController.ts` holds everything the app knows and
+does — settings (`useAppSettings`, defaults and slot resolution in the pure `settingsView.ts`),
+the library, the trash bin, navigation — and `src/app/LegacyShell.tsx` is markup over it. The
+3.0 shell replaces `LegacyShell` in `App.tsx`. `useChat` is likewise a composer over
+`useChatSession`, `useChatGeneration`, `useChatSummary` and `useChatLifecycle`, with the pure parts
+in `chatRequest.ts` and `summary/summaryPrompt.ts`. Every navigation that leaves the chat stops
+generation, flushes saves, and refuses to move if a flush fails.
+
 
 - Colour, spacing, sizing and motion come from `src/styles/tokens.css`; components hardcode none.
 - **`Popover` is the only popup mechanism** (`Menu` is its data-driven variant). Focus calls
