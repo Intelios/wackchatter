@@ -324,3 +324,73 @@ export function isAbortError(error: unknown): boolean {
     ? error.name === 'AbortError'
     : (error as { name?: unknown } | null)?.name === 'AbortError';
 }
+
+/**
+ * One generation in flight at a time, and the Stop for it.
+ *
+ * Every feature that generates had its own copy of this: an abort controller in a ref, an
+ * "is this still my generation?" check that also failed once the user had navigated away,
+ * and a cleanup that cleared the ref only if a newer generation had not replaced it. The
+ * slot is that pattern once. A claim is the generation's ownership token: a newer claim
+ * replaces it, so every late callback from the old one becomes inert instead of writing into
+ * a transcript the reader has already left.
+ */
+export class GenerationSlot {
+  private controller: AbortController | null = null;
+
+  /** Something holds the slot — the generation has not settled yet. */
+  get busy(): boolean {
+    return this.controller !== null;
+  }
+
+  /**
+   * Take the slot for a new generation. `stillCurrent` narrows ownership further — "the
+   * same chat is still open" — so a claim also stops owning when its context moves on.
+   * Claiming does not abort the previous holder; callers refuse to start while busy.
+   */
+  claim(stillCurrent: () => boolean = () => true): GenerationClaim {
+    const controller = new AbortController();
+    this.controller = controller;
+    const owns = () => this.controller === controller && stillCurrent();
+    return {
+      signal: controller.signal,
+      owns,
+      live: () => owns() && !controller.signal.aborted,
+      ensureActive: () => {
+        if (!owns()) return false;
+        if (controller.signal.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+        return true;
+      },
+      release: () => {
+        if (this.controller !== controller) return false;
+        this.controller = null;
+        return true;
+      },
+    };
+  }
+
+  /** Stop whatever holds the slot. It still settles, and releases, on its own path. */
+  abort(): void {
+    this.controller?.abort();
+  }
+}
+
+export interface GenerationClaim {
+  signal: AbortSignal;
+  /** The slot is still this generation's, and its context has not moved on. */
+  owns: () => boolean;
+  /** Owned and not stopped: whether a stream callback should still publish. */
+  live: () => boolean;
+  /**
+   * For after an await: false when the generation lost ownership (settle nothing), throws
+   * an `AbortError` when it was stopped (settle as stopped), true to carry on.
+   */
+  ensureActive: () => boolean;
+  /**
+   * Free the slot if this generation still holds it — whatever its context. True when it
+   * did: the one place a generation's own cleanup is allowed to run.
+   */
+  release: () => boolean;
+}

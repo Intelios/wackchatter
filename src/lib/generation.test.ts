@@ -2,7 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChatCompletionBody, ResolvedModel } from '@shared/providers/types.ts';
-import { isAbortError, runGeneration, type StreamHandlers, type UsageMeta } from './generation.ts';
+import {
+  GenerationSlot,
+  isAbortError,
+  runGeneration,
+  type StreamHandlers,
+  type UsageMeta,
+} from './generation.ts';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -270,4 +276,42 @@ test('the generation service is the only way to the generate proxy', () => {
     return /['"`](\/api)?\/generate['"`]/.test(text);
   });
   expect(offenders).toEqual([]);
+});
+
+describe('GenerationSlot', () => {
+  test('a claim owns the slot until a newer claim replaces it', () => {
+    const slot = new GenerationSlot();
+    const first = slot.claim();
+    expect(slot.busy).toBe(true);
+    expect(first.owns()).toBe(true);
+    const second = slot.claim();
+    expect(first.owns()).toBe(false);
+    // The stale claim's cleanup must not free the newer one's slot.
+    expect(first.release()).toBe(false);
+    expect(slot.busy).toBe(true);
+    expect(second.release()).toBe(true);
+    expect(slot.busy).toBe(false);
+  });
+
+  test('ownership also ends when the claim’s context moves on', () => {
+    const slot = new GenerationSlot();
+    let chatId = 'a';
+    const claim = slot.claim(() => chatId === 'a');
+    chatId = 'b';
+    expect(claim.owns()).toBe(false);
+    expect(claim.ensureActive()).toBe(false);
+    // The slot itself is still held, and its holder may still release it.
+    expect(claim.release()).toBe(true);
+  });
+
+  test('Stop aborts the holder, which then settles as stopped', () => {
+    const slot = new GenerationSlot();
+    const claim = slot.claim();
+    expect(claim.live()).toBe(true);
+    slot.abort();
+    expect(claim.signal.aborted).toBe(true);
+    expect(claim.live()).toBe(false);
+    expect(() => claim.ensureActive()).toThrow('aborted');
+    expect(slot.busy).toBe(true);
+  });
 });

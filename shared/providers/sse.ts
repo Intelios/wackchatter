@@ -130,7 +130,7 @@ export interface StreamState {
   id?: string;
   /**
    * Stable identity for this generation: `id` when the provider gave one, otherwise a
-   * uuid minted before the request. Assigned by the transport (src/lib/api.ts), not by
+   * uuid minted before the request. Assigned by the transport (src/lib/generation.ts), not by
    * the parser, because only the transport knows a request was made at all — a body
    * parsed straight out of a fixture has no generation behind it.
    */
