@@ -3,7 +3,7 @@
  *
  * Markup over the app controller, like `LegacyShell`, so it inherits every behaviour
  * unchanged. It covers the chat for now: the island and its wings, the margin, the
- * transcript and the Line. Everything it does not draw yet (the welcome screen, Studio,
+ * transcript and the Line, and the home screen. Everything it does not draw yet (Studio,
  * the Co-Creators, Arena, Stats) still renders through the 2.x shell, so nothing is out of
  * reach while the rebuild catches up.
  */
@@ -31,6 +31,7 @@ import { NexusExplorer } from '../features/nexus/NexusExplorer.tsx';
 import { characterApi, chatApi, personaApi } from '../lib/api.ts';
 import { downloadUrl } from '../lib/download.ts';
 import { ChatStage } from './ChatStage.tsx';
+import { HomeShell } from './Home.tsx';
 import { Island, type IslandMode, type IslandNotice, WingButton } from './Island.tsx';
 import {
   type CastAction,
@@ -53,6 +54,7 @@ import {
   type ToolId,
   toolSubtitle,
 } from './MarginTools.tsx';
+import { buildSearchItems } from './search.ts';
 import { replay, useAura } from './useAura.ts';
 
 export function Shell({
@@ -62,7 +64,11 @@ export function Shell({
   controller: AppController;
   onUiChoice: (choice: UiChoice) => void;
 }) {
-  // Everything the shell does not draw yet goes through the 2.x one.
+  // No character open: the home screen. Everything else the shell does not draw yet (Studio,
+  // the Co-Creators, Arena, Stats) still goes through the 2.x one.
+  if (controller.view === 'app' && !controller.active) {
+    return <HomeShell controller={controller} onUiChoice={onUiChoice} />;
+  }
   if (controller.view !== 'app' || !controller.active || !controller.character) {
     return <LegacyShell controller={controller} />;
   }
@@ -363,111 +369,20 @@ function ChatShell({
     setTool((current) => (current === id ? null : id));
   }, []);
 
-  const searchItems = useMemo<SearchItem[]>(() => {
-    const items: SearchItem[] = [];
-    for (const summary of recentCharacters) {
-      items.push({
-        key: `c:${summary.avatar}`,
-        kind: 'Character',
-        label: summary.name,
-        sub: introLine(summary.description) || undefined,
-        face: { name: summary.name, url: avatarUrlOf(summary.avatar) },
-        run: () => controller.selectCharacter(summary.avatar),
-      });
-    }
-    for (const summary of library.characters) {
-      if (recentCharacters.includes(summary)) continue;
-      items.push({
-        key: `c:${summary.avatar}`,
-        kind: 'Character',
-        label: summary.name,
-        sub: introLine(summary.description) || undefined,
-        face: { name: summary.name, url: avatarUrlOf(summary.avatar) },
-        run: () => controller.selectCharacter(summary.avatar),
-      });
-    }
-    for (const summary of chat.chats) {
-      items.push({
-        key: `chat:${summary.id}`,
-        kind: 'Chat',
-        label: summary.title,
-        sub: `${characterName} · ${summary.messageCount} messages`,
-        icon: 'chat',
-        run: () => void chat.openChat(summary.id),
-      });
-    }
-    for (const id of [...LEFT_TOOLS, ...RIGHT_TOOLS]) {
-      items.push({
-        key: `t:${id}`,
-        kind: 'Tool',
-        label: TOOLS[id].title,
-        icon: TOOLS[id].icon,
-        run: () => openTool(id),
-      });
-    }
-    items.push(
-      {
-        key: 'a:studio',
-        kind: 'App',
-        label: 'Studio',
-        sub: 'Organise and edit your library',
-        icon: 'studio',
-        run: () => void controller.enterStudio(),
-      },
-      {
-        key: 'a:cocreator',
-        kind: 'App',
-        label: 'Co-Creator',
-        sub: 'Write a character or preset with a model',
-        icon: 'sparkles',
-        run: () => void controller.enterCoCreator(),
-      },
-      {
-        key: 'a:arena',
-        kind: 'App',
-        label: 'Model Arena',
-        sub: 'Compare models blind',
-        icon: 'arena',
-        run: () => void controller.enterArena(),
-      },
-      {
-        key: 'a:stats',
-        kind: 'App',
-        label: 'Stats',
-        sub: 'Usage in TokenTrail',
-        icon: 'stats',
-        run: () => void controller.enterStats(),
-      },
-    );
-    for (const p of library.personas) {
-      items.push({
-        key: `p:${p.id}`,
-        kind: 'Persona',
-        label: p.variantLabel ? `${p.name} (${p.variantLabel})` : p.name,
-        sub: introLine(p.description) || undefined,
-        face: {
-          name: p.name,
-          url: p.avatar
-            ? personaApi.avatarUrl(p.id, library.personaAvatarVersions[p.id] ?? p.avatar)
-            : null,
-          me: true,
-        },
-        run: () => controller.selectPersona(p.id),
-      });
-    }
-    return items;
-  }, [
-    recentCharacters,
-    library.characters,
-    library.personas,
-    library.personaAvatarVersions,
-    chat.chats,
-    chat.openChat,
-    characterName,
-    avatarUrlOf,
-    controller,
-    openTool,
-  ]);
+  const searchItems = useMemo<SearchItem[]>(
+    () =>
+      buildSearchItems({
+        controller,
+        recentCharacters,
+        chats: chat.chats,
+        characterName,
+        avatarUrlOf,
+        tools: [...LEFT_TOOLS, ...RIGHT_TOOLS],
+        openTool,
+        onOpenChat: (id) => void chat.openChat(id),
+      }),
+    [recentCharacters, chat.chats, chat.openChat, characterName, avatarUrlOf, controller, openTool],
+  );
 
   // --- Margin ----------------------------------------------------------------------------
 

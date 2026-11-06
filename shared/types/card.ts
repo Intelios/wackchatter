@@ -132,6 +132,8 @@ export interface CharacterSummary {
   tags: string[];
   character_version: string;
   hasLorebook: boolean;
+  /** The start of the first greeting, macros unresolved, for the home screen. */
+  greeting?: string;
   /** ms epoch, from file mtime. */
   modified: number;
 }

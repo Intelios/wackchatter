@@ -230,6 +230,29 @@ describe('listing', () => {
     expect(summary?.messageCount).toBe(0);
   });
 
+  test('the last reply is the newest character message, current swipe, never yours', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      messages: [
+        message({ mes: 'older reply' }),
+        message({ mes: 'latest', swipes: ['other', 'latest'], swipe_id: 1 }),
+        message({ mes: 'a note', is_system: true }),
+        message({ mes: 'my turn', is_user: true }),
+      ],
+    });
+    const summary = store.listChats('a.png').find((c) => c.id === created.id);
+    expect(summary?.lastMessage).toBe('my turn');
+    expect(summary?.lastReply).toBe('latest');
+  });
+
+  test('a chat with no character message has an empty last reply', () => {
+    const created = store.createChat({
+      characterId: 'a.png',
+      messages: [message({ mes: 'hello?', is_user: true })],
+    });
+    expect(store.listChats('a.png').find((c) => c.id === created.id)?.lastReply).toBe('');
+  });
+
   test('a long message is truncated for the preview', () => {
     const created = store.createChat({
       characterId: 'a.png',

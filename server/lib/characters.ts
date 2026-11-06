@@ -68,6 +68,7 @@ function summarize(
     tags: card.data.tags,
     character_version: card.data.character_version,
     hasLorebook: Boolean(card.data.character_book?.entries?.length),
+    greeting: (card.data.first_mes ?? '').slice(0, 600),
     modified,
   };
 }

@@ -20,6 +20,7 @@ function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
     modified: seed * 1000,
     messageCount: 1,
     lastMessage: 'Hello.',
+    lastReply: 'Hello.',
     ...overrides,
   };
 }

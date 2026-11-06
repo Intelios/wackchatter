@@ -33,27 +33,32 @@ export function RestPane({
   persona,
   onOpen,
 }: {
-  character: Face;
+  /** None on the home screen, where nobody is in the scene yet. */
+  character: Face | null;
   chatTitle: string;
   persona: Face | null;
   onOpen: (mode: IslandMode) => void;
 }) {
   return (
     <>
-      <button
-        type="button"
-        className="w3-isl-btn"
-        aria-label={`${character.name}: switch character or chat`}
-        onClick={() => onOpen('cast')}
-      >
-        <Avatar url={character.url} name={character.name} size="sm" />
-        <span className="w3-isl-stack">
-          <span className="w3-who-name">{character.name}</span>
-          <span className="w3-who-sub">{chatTitle}</span>
-        </span>
-        <Icon name="chevronDown" size="sm" />
-      </button>
-      <span className="w3-isl-sep" aria-hidden="true" />
+      {character ? (
+        <>
+          <button
+            type="button"
+            className="w3-isl-btn"
+            aria-label={`${character.name}: switch character or chat`}
+            onClick={() => onOpen('cast')}
+          >
+            <Avatar url={character.url} name={character.name} size="sm" />
+            <span className="w3-isl-stack">
+              <span className="w3-who-name">{character.name}</span>
+              <span className="w3-who-sub">{chatTitle}</span>
+            </span>
+            <Icon name="chevronDown" size="sm" />
+          </button>
+          <span className="w3-isl-sep" aria-hidden="true" />
+        </>
+      ) : null}
       <button
         type="button"
         className="w3-isl-btn"

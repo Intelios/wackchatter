@@ -137,3 +137,14 @@ describe('updateWorldLinks', () => {
     );
   });
 });
+
+describe('listing', () => {
+  test('a summary carries the start of the first greeting for the home screen', async () => {
+    const card = createBlankCard('Alice');
+    card.data.first_mes = `"Hello."${' and more'.repeat(200)}`;
+    await createCharacter(card);
+    const greeting = listCharacters()[0]?.greeting ?? '';
+    expect(greeting.startsWith('"Hello."')).toBe(true);
+    expect(greeting.length).toBe(600);
+  });
+});

@@ -231,6 +231,8 @@ export interface ChatSummary {
   messageCount: number;
   /** Preview text from the last message. */
   lastMessage: string;
+  /** The character's newest reply (current swipe), for the home screen's quote; '' if none. */
+  lastReply: string;
   /**
    * Branch provenance — enough to build the branch family from the list alone, without
    * fetching every chat in full. Absent on a chat that was never branched off another.

@@ -303,6 +303,9 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
       (SELECT substr(json_extract(m.swipes, '$[' || m.swipe_id || ']'), 1, 200)
          FROM messages m WHERE m.chat_id = c.id
         ORDER BY m.position DESC LIMIT 1) AS lastMessage,
+      (SELECT substr(json_extract(m.swipes, '$[' || m.swipe_id || ']'), 1, 600)
+         FROM messages m WHERE m.chat_id = c.id AND m.is_user = 0 AND m.is_system = 0
+        ORDER BY m.position DESC LIMIT 1) AS lastReply,
       json_extract(c.metadata, '$.branchedFrom') AS branchedFrom
     FROM chats c
     WHERE c.kind = 'direct'`;
@@ -320,6 +323,7 @@ export function createChatStore(database: Database, options: ChatStoreOptions = 
     return {
       ...row,
       lastMessage: row.lastMessage ?? '',
+      lastReply: row.lastReply ?? '',
       branchedFrom: origin ?? undefined,
     };
   }
