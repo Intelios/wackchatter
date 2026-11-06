@@ -1,0 +1,813 @@
+/* ---------- The Personas tool ---------- */
+
+.w3-persona {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  padding: 0 0 28px;
+}
+
+.w3-persona__error {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--w3-danger-soft);
+  color: var(--w3-danger);
+  font-size: 13px;
+}
+
+.w3-persona__error button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Search, and New beside it, where it is found first. */
+.w3-persona__tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.w3-persona__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  color: var(--w3-faint);
+  transition: border-color var(--w3-quick) ease;
+}
+
+.w3-persona__search:focus-within {
+  border-color: var(--w3-accent-line);
+}
+
+.w3-persona__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--w3-text);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.w3-persona__search input::placeholder {
+  color: var(--w3-faint);
+}
+
+.w3-persona__new .popover__trigger {
+  height: 38px;
+  padding: 0 14px 0 11px;
+  gap: 6px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  color: var(--w3-soft);
+  font-size: 13px;
+}
+
+.w3-persona__new .popover__trigger:hover,
+.w3-persona__new .popover__trigger[aria-expanded="true"] {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+/* A face: the picture, or the name's first letter. */
+.w3-pface {
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--w3-accent-soft);
+  color: var(--w3-accent);
+  font-family: var(--w3-font-display);
+  font-weight: 700;
+}
+
+.w3-pface img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  display: block;
+}
+
+/* ---------- You ---------- */
+
+.w3-you {
+  position: relative;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  margin: 4px 0 8px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.w3-you__face {
+  width: 92px;
+  height: 92px;
+  border-radius: 24px;
+  font-size: 40px;
+  animation: w3-you-in 0.4s var(--w3-out) both;
+}
+
+.w3-you[data-none] .w3-you__face {
+  background: var(--w3-hover);
+  color: var(--w3-faint);
+}
+
+.w3-you__text {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  animation: w3-you-in 0.4s var(--w3-out) 40ms both;
+}
+
+/* Becoming someone else: the card's new contents settle in. */
+@keyframes w3-you-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+.w3-you__kicker {
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-accent);
+}
+
+.w3-you__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding-right: 92px;
+}
+
+.w3-you__name h3 {
+  margin: 0;
+  font-family: var(--w3-font-display);
+  font-size: 26px;
+  font-weight: 750;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.w3-you__name span {
+  font-size: 13px;
+  color: var(--w3-muted);
+}
+
+.w3-you__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.w3-you__tabs button {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-muted);
+  font: inherit;
+  font-size: 12.5px;
+  transition:
+    background var(--w3-quick) ease,
+    color var(--w3-quick) ease;
+}
+
+.w3-you__tabs button:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.w3-you__tabs button[aria-pressed="true"] {
+  background: var(--w3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+  color: var(--w3-text);
+}
+
+.w3-you__tabs .w3-you__add {
+  width: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  color: var(--w3-faint);
+}
+
+.w3-you__desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--w3-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.w3-you__facts {
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  color: var(--w3-faint);
+}
+
+.w3-you__actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 2px;
+}
+
+.w3-you__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--w3-muted);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.w3-you__actions button:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+/* ---------- Everyone else ---------- */
+
+.w3-prows {
+  display: grid;
+  gap: 2px;
+  margin-top: -4px;
+}
+
+.w3-prow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 14px;
+  transition: background var(--w3-quick) ease;
+}
+
+.w3-prow:hover {
+  background: var(--w3-hover);
+}
+
+.w3-prow__pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.w3-prow__face {
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+}
+
+.w3-prow__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.w3-prow__text b {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.w3-prow__text b small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--w3-muted);
+}
+
+.w3-prow__text > span {
+  font-size: 12.5px;
+  color: var(--w3-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-prow__count {
+  flex: none;
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  color: var(--w3-faint);
+}
+
+.w3-prow__edit {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin-right: 6px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--w3-faint);
+  opacity: 0;
+  transition: opacity var(--w3-quick) ease;
+}
+
+.w3-prow:hover .w3-prow__edit,
+.w3-prow__edit:focus-visible {
+  opacity: 1;
+}
+
+.w3-prow__edit:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+/* ---------- The editor ---------- */
+
+.w3-pedit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  animation: w3-sheet-in 0.35s var(--w3-out) both;
+}
+
+.w3-pedit__ident {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.w3-pedit__portrait {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  cursor: pointer;
+}
+
+.w3-pedit__face {
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+  font-size: 36px;
+}
+
+.w3-pedit__replace {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: oklch(0.1 0.01 var(--w3-h) / 0.6);
+  color: var(--w3-text);
+  font-size: 11.5px;
+  opacity: 0;
+  transition: opacity var(--w3-quick) ease;
+}
+
+.w3-pedit__portrait:hover .w3-pedit__replace,
+.w3-pedit__portrait:focus-within .w3-pedit__replace {
+  opacity: 1;
+}
+
+.w3-pedit__fields {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.w3-pedit__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  outline: 0;
+  background: var(--w3-raised);
+  color: var(--w3-text);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color var(--w3-quick) ease;
+}
+
+.w3-pedit__input:focus {
+  border-color: var(--w3-accent-line);
+}
+
+.w3-pedit__input--name {
+  height: 40px;
+  font-family: var(--w3-font-display);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.w3-pedit__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.w3-pedit__input--label {
+  flex: 1;
+}
+
+.w3-pedit__use {
+  flex: none;
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.w3-pedit__use:hover {
+  filter: brightness(1.08);
+}
+
+.w3-pedit__using {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--w3-accent);
+}
+
+.w3-pedit__group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.w3-pedit__desc {
+  min-height: 170px;
+  resize: vertical;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  outline: 0;
+  background: var(--w3-raised);
+  color: var(--w3-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  transition: border-color var(--w3-quick) ease;
+}
+
+.w3-pedit__desc:focus {
+  border-color: var(--w3-accent-line);
+}
+
+.w3-pedit__under {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  color: var(--w3-faint);
+}
+
+.w3-pedit__under b {
+  font-weight: 400;
+  color: var(--w3-soft);
+}
+
+/* Placement as a sentence: each choice is a word to click. */
+.w3-pedit__sentence {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 2.1;
+  color: var(--w3-soft);
+}
+
+.w3-word,
+.w3-word .wc-select-popover {
+  display: inline-block;
+  width: auto;
+  vertical-align: baseline;
+}
+
+.w3-word .wc-select-trigger {
+  display: inline-flex;
+  gap: 3px;
+  height: auto;
+  min-height: 0;
+  width: auto;
+  padding: 0 7px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--w3-accent-soft);
+  box-shadow: none;
+  color: var(--w3-text);
+  font-size: inherit;
+  font-weight: 600;
+  line-height: 1.75;
+}
+
+.w3-word .wc-select-trigger:hover,
+.w3-word .wc-select-trigger[aria-expanded="true"] {
+  background: oklch(0.77 calc(0.15 * var(--w3-c)) var(--w3-h) / 0.26);
+}
+
+.w3-word .wc-select-trigger__text {
+  overflow: visible;
+}
+
+.w3-word .wc-select-trigger__chevron {
+  width: 11px;
+  height: 11px;
+  opacity: 0.7;
+}
+
+.w3-word .wc-select-popup {
+  min-width: 230px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.w3-pedit__select .wc-select-trigger {
+  border-color: transparent;
+  border-radius: 10px;
+  background: var(--w3-raised);
+}
+
+.w3-pedit__variants {
+  display: grid;
+  gap: 2px;
+}
+
+.w3-pedit__variants button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.w3-pedit__variants button:hover {
+  background: var(--w3-hover);
+}
+
+.w3-pedit__variants button[aria-current] {
+  background: var(--w3-raised);
+}
+
+.w3-pedit__vface {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+}
+
+.w3-pedit__variants b {
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.w3-pedit__vdesc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--w3-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-pedit__variants i {
+  flex: none;
+  font-family: var(--w3-font-mono);
+  font-size: 9.5px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--w3-accent);
+}
+
+.w3-pedit__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.w3-pedit__ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-muted);
+  font: inherit;
+  font-size: 13px;
+}
+
+.w3-pedit__ghost:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.w3-pedit__ghost[data-armed] {
+  box-shadow: inset 0 0 0 1px var(--w3-danger-line);
+  color: var(--w3-danger);
+}
+
+.w3-pedit__end {
+  padding-top: 10px;
+  border-top: 1px solid var(--w3-line);
+}
+
+/* ---------- From a character ---------- */
+/* The converter is shared with 2.x; here it wears the tool's look. */
+
+.w3-persona--from .persona-convert {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  animation: w3-sheet-in 0.35s var(--w3-out) both;
+}
+
+.w3-persona--from .persona-convert__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.w3-persona--from .persona-convert__top .wc-button {
+  height: auto;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--w3-muted);
+  font-size: 13px;
+}
+
+.w3-persona--from .persona-convert__top .wc-button:first-child {
+  margin-left: -6px;
+}
+
+.w3-persona--from .persona-convert__top .wc-button:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.w3-persona--from .persona-convert__lede {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--w3-muted);
+}
+
+.w3-persona--from .persona-roster__search {
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--w3-raised);
+}
+
+.w3-persona--from .persona-roster__search:focus-within {
+  border-color: var(--w3-accent-line);
+}
+
+.w3-persona--from .persona-convert__cards {
+  gap: 2px;
+}
+
+.w3-persona--from .persona-convert__card {
+  gap: 12px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+}
+
+.w3-persona--from .persona-convert__card:hover {
+  background: var(--w3-hover);
+}
+
+.w3-persona--from .persona-convert__face {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.w3-persona--from .persona-convert__source {
+  padding: 10px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--w3-raised);
+}
+
+.w3-persona--from .persona-convert__source .persona-convert__face {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+}
+
+.w3-persona--from .persona-convert__takes {
+  justify-content: flex-start;
+}
+
+.w3-persona--from .persona-convert__actions .wc-button--primary {
+  border-radius: 999px;
+}
+
+.w3-persona--from .persona-convert > *,
+.w3-persona--from .persona-convert .persona-roster__search {
+  margin: 0;
+}
+
+.w3-persona--from .persona-convert__top {
+  position: static;
+  background: none;
+}
+
+.w3-persona--from .persona-convert__cards,
+.w3-persona--from .persona-convert__draft {
+  padding: 0;
+}
+
+.w3-persona--from .persona-convert__take {
+  border: 0;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+}
+
+.w3-persona--from .persona-convert__take[aria-pressed="true"] {
+  background: var(--w3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.w3-persona--from .persona-convert__source-kicker {
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+}
+
+.w3-persona__newmenu {
+  min-width: 290px;
+}

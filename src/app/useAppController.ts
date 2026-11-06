@@ -25,6 +25,8 @@ import { useAppSettings } from './useAppSettings.ts';
 import { useBackups } from './useBackups.ts';
 import { useLibrary } from './useLibrary.ts';
 
+/** The Personas tool's page over its list. */
+export type PersonaPage = { kind: 'edit'; id: string } | { kind: 'from' };
 export type AppView = 'app' | 'studio' | 'cocreator' | 'tokentrail' | 'arena';
 export type CoCreatorMode = 'landing' | 'character' | 'preset';
 
@@ -75,6 +77,12 @@ export function useAppController() {
    * viewer, so unlike `editing` it never changes the open chat.
    */
   const [characterSheet, setCharacterSheet] = useState<string | null>(null);
+  /**
+   * What the 3.0 Personas tool shows over its list: one persona's editor, or the
+   * from-a-character page. Null for the list. Here rather than in the tool because the
+   * margin's heading names the open persona.
+   */
+  const [personaPage, setPersonaPage] = useState<PersonaPage | null>(null);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((message: string) => setError(message), []);
@@ -685,6 +693,8 @@ export function useAppController() {
     setEditing,
     characterSheet,
     setCharacterSheet,
+    personaPage,
+    setPersonaPage,
     ready,
     error,
     showError,

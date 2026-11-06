@@ -121,11 +121,13 @@ function ChatShell({
   const importRef = useRef<HTMLInputElement>(null);
 
   const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet } = controller;
-  // A character's sheet belongs to the Characters tool: leaving the tool goes back to the list.
+  const { setCharacterSheet, setPersonaPage } = controller;
+  // A character's sheet and a persona's page belong to their tools: leaving the tool goes
+  // back to its list.
   useEffect(() => {
     if (tool !== 'characters') setCharacterSheet(null);
-  }, [tool, setCharacterSheet]);
+    if (tool !== 'personas') setPersonaPage(null);
+  }, [tool, setCharacterSheet, setPersonaPage]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const noticeId = useRef(0);
@@ -505,7 +507,12 @@ function ChatShell({
             <div className="w3-margin__body">
               <ErrorBoundary
                 where={TOOLS[tool].title}
-                resetKeys={[tool, controller.characterSheet, controller.selected]}
+                resetKeys={[
+                  tool,
+                  controller.characterSheet,
+                  controller.personaPage,
+                  controller.selected,
+                ]}
               >
                 <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />
               </ErrorBoundary>

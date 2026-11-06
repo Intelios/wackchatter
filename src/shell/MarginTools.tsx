@@ -15,7 +15,6 @@ import { InspectPanel } from '../features/chat/InspectPanel.tsx';
 import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
 import { LorePanel } from '../features/lore/LorePanel.tsx';
 import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
-import { PersonaPanel } from '../features/persona/PersonaPanel.tsx';
 import { GenerationPanel } from '../features/preset/GenerationPanel.tsx';
 import { PresetToolbar } from '../features/preset/PresetToolbar.tsx';
 import { PromptsPanel } from '../features/preset/PromptsPanel.tsx';
@@ -23,6 +22,7 @@ import { UnsavedBar } from '../features/preset/UnsavedBar.tsx';
 import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
 import { CharacterSheet } from './CharacterSheet.tsx';
 import type { IconName } from './icons.tsx';
+import { PersonaTool } from './PersonaTool.tsx';
 
 export type ToolId =
   | 'characters'
@@ -68,6 +68,11 @@ export function toolTitle(id: ToolId, controller: AppController): string {
   if (id === 'characters' && controller.characterSheet) {
     return sheetCharacter(controller)?.name ?? 'Character';
   }
+  if (id === 'personas' && controller.personaPage) {
+    const page = controller.personaPage;
+    if (page.kind === 'from') return 'From a character';
+    return controller.library.personas.find((p) => p.id === page.id)?.name || 'Persona';
+  }
   return TOOLS[id].title;
 }
 
@@ -83,8 +88,20 @@ export function toolSubtitle(id: ToolId, controller: AppController): string {
     }
     case 'lorebooks':
       return 'World info for this chat and every chat';
-    case 'personas':
-      return 'Who you are. A chat remembers who you were in it.';
+    case 'personas': {
+      const page = controller.personaPage;
+      if (page?.kind === 'from') return 'A persona drafted from a card';
+      const { personas } = library;
+      if (page?.kind === 'edit') {
+        const persona = personas.find((p) => p.id === page.id);
+        if (persona?.variantOf) return `${persona.variantLabel ?? 'Unlabelled'} · a variant`;
+        const variants = personas.filter((p) => p.variantOf === page.id).length;
+        return variants ? `${variants} ${variants === 1 ? 'variant' : 'variants'}` : 'Persona';
+      }
+      const variants = personas.filter((p) => p.variantOf).length;
+      const people = personas.length - variants;
+      return `${people} ${people === 1 ? 'persona' : 'personas'}${variants ? ` · ${variants} ${variants === 1 ? 'variant' : 'variants'}` : ''}`;
+    }
     case 'prompts':
       return library.preset ? `Preset “${library.preset.name ?? library.presetId}”` : 'Loading…';
     case 'generation':
@@ -191,7 +208,9 @@ export function MarginTool({
       );
     case 'personas':
       return (
-        <PersonaPanel
+        <PersonaTool
+          page={controller.personaPage}
+          setPage={controller.setPersonaPage}
           personas={personas}
           books={books}
           characters={characters}
@@ -201,8 +220,6 @@ export function MarginTool({
           globalVariables={settings?.variables ?? {}}
           activeId={settings?.personaId ?? null}
           recentIds={settings?.recentPersonaIds ?? []}
-          density={settings?.personaListDensity ?? 'list'}
-          onDensityChange={(personaListDensity) => void patchSettings({ personaListDensity })}
           countTokens={app.countTokens}
           onSelect={controller.selectPersona}
           onChanged={library.refreshPersonas}

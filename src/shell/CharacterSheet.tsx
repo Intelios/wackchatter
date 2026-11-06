@@ -57,7 +57,7 @@ export interface CharacterSheetProps {
  * A value set here, held until the saved setting comes back with it. Settings writes wait
  * for the server, and without the hold a star or a crop would flick back for a moment.
  */
-function useHeld<T>(saved: T): [T, (value: T) => void] {
+export function useHeld<T>(saved: T): [T, (value: T) => void] {
   const [held, setHeld] = useState<{ value: T } | null>(null);
   useEffect(() => {
     if (held && Object.is(held.value, saved)) setHeld(null);
@@ -378,7 +378,7 @@ function RatingStars({
  * The dialogue colour: from the portrait (the default), one of the presets, your own, or
  * off for this speaker. The open chat's Aura follows the pick, shifting over a second.
  */
-function ColourSwatches({
+export function ColourSwatches({
   value,
   autoColor,
   onChange,

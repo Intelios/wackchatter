@@ -20,7 +20,7 @@ import { characterApi, personaApi } from '../../lib/api.ts';
 import { fetchPngFile } from '../../lib/imageFile.ts';
 import { matchesQuery, visibleTagsOf } from '../character/characterTree.ts';
 import './PersonaConverter.css';
-import { appendTake, editTake, hasDirtyTake, stepTake, type Take } from './takes.ts';
+import { appendTake, editTake, hasDirtyTake, type Take } from './takes.ts';
 import { usePersonaDerive } from './usePersonaDerive.ts';
 
 /** A real library is hundreds of cards; the list is a means of finding one, not of browsing. */
@@ -185,6 +185,7 @@ export function PersonaConverter({
           <img src={characterApi.imageUrl(card.avatar, card.modified)} alt="" loading="lazy" />
         </span>
         <span className="persona-convert__source-text">
+          <span className="persona-convert__source-kicker">Made from</span>
           <span className="persona-convert__source-name">{card.name}</span>
           <span className="persona-convert__source-hint">
             Only what the card actually states — anything it leaves out is left blank.
@@ -226,28 +227,22 @@ export function PersonaConverter({
       {take ? (
         <div className="persona-convert__draft">
           {takes.length > 1 ? (
+            // Numbered, so any take is one click away; each keeps its own edits.
             <div className="persona-convert__takes">
-              <button
-                type="button"
-                className="wc-button wc-button--ghost"
-                disabled={index === 0}
-                onClick={() => setIndex(stepTake(takes, index, -1))}
-                aria-label="Previous take"
-              >
-                ‹
-              </button>
-              <span>
-                Take {index + 1} of {takes.length}
-              </span>
-              <button
-                type="button"
-                className="wc-button wc-button--ghost"
-                disabled={index === takes.length - 1}
-                onClick={() => setIndex(stepTake(takes, index, 1))}
-                aria-label="Next take"
-              >
-                ›
-              </button>
+              {takes.map((entry, at) => (
+                <button
+                  // biome-ignore lint/suspicious/noArrayIndexKey: takes only ever append
+                  key={at}
+                  type="button"
+                  className="persona-convert__take"
+                  aria-pressed={at === index}
+                  aria-label={`Take ${at + 1}${entry.dirty ? ', edited' : ''}`}
+                  onClick={() => setIndex(at)}
+                >
+                  {at + 1}
+                </button>
+              ))}
+              <span>Every take is kept, edits too</span>
             </div>
           ) : null}
 
@@ -298,7 +293,7 @@ export function PersonaConverter({
               onClick={() => void roll(card)}
               title="Ask again — this keeps the take you have"
             >
-              Re-roll
+              Ask again
             </button>
           </div>
         </div>
