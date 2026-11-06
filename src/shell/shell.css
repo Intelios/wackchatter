@@ -403,7 +403,8 @@
   .wc3 .w3-margin::before,
   .wc3 .w3-slash,
   .wc3 .w3-msg__edit,
-  .wc3 .w3-line__row::after,
+  .wc3 .w3-light__beam,
+  .wc3 .w3-light__comet,
   .wc3 .w3-reason__label {
     animation: none;
   }

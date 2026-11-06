@@ -238,6 +238,7 @@ export function ChatStage({
           onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
           onDraftChange={chat.nexus.draftChanged}
           onBeforeSend={onBeforeSend}
+          failed={state.error}
         />
       </div>
     </div>

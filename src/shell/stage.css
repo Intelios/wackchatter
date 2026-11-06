@@ -527,61 +527,190 @@ button.w3-reason__head:hover {
   padding-bottom: 12px;
 }
 
-/* The line of light: dim at rest, bright and wide while you write. */
-.w3-line__row::after {
-  content: "";
+/*
+ * The Line's light. Its colour (--w3-lc) is yours while it is your turn and hands over to
+ * the character's while they speak; the registered property lets the hand-over fade.
+ */
+@property --w3-lc {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+.w3-line {
+  --w3-lc: var(--w3-me);
+  transition: --w3-lc 900ms var(--w3-out);
+}
+
+.w3-line[data-voice="char"] {
+  --w3-lc: var(--w3-accent);
+}
+
+.w3-light {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   height: 2px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, transparent, var(--w3-me) 16%, var(--w3-me) 84%, transparent);
-  opacity: 0.35;
-  transform: scaleX(0.55);
-  transition:
-    opacity 0.4s,
-    transform 0.7s var(--w3-spring),
-    box-shadow 0.4s;
-}
-
-.w3-line__row::before {
-  content: "";
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  bottom: -34px;
-  height: 68px;
   pointer-events: none;
-  background: radial-gradient(50% 50% at 50% 50%, var(--w3-me-soft), transparent 72%);
-  opacity: 0;
-  transition: opacity 0.5s;
+  /* The comet measures its run against the line's own width. */
+  container-type: inline-size;
 }
 
-.w3-line[data-active] .w3-line__row::after {
-  opacity: 1;
-  transform: none;
-  box-shadow: 0 0 16px var(--w3-me-line);
+.w3-light[data-alarm] {
+  --w3-lc: var(--w3-danger);
 }
 
-.w3-line[data-active] .w3-line__row::before {
-  opacity: 1;
+/* The line itself. At rest: a short pilot light, breathing. */
+.w3-light__beam {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--w3-lc) 16%, var(--w3-lc) 84%, transparent);
+  opacity: 0.4;
+  transform: scaleX(0.5);
+  transition:
+    opacity 0.5s,
+    transform 0.8s var(--w3-spring),
+    box-shadow 0.5s;
+  animation: w3-pilot 5.5s ease-in-out infinite;
 }
 
-.w3-line[data-busy] .w3-line__row::after {
-  opacity: 1;
-  transform: none;
-  animation: w3-line-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes w3-line-pulse {
+@keyframes w3-pilot {
   50% {
-    opacity: 0.35;
-    box-shadow: 0 0 22px var(--w3-me-line);
+    opacity: 0.6;
+    box-shadow: 0 0 10px color-mix(in oklch, var(--w3-lc) 35%, transparent);
   }
 }
 
-.w3-line[data-blocked] .w3-line__row::after {
+/* The pool of light it casts on the page below. */
+.w3-light__glow {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: -34px;
+  height: 68px;
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    color-mix(in oklch, var(--w3-lc) 20%, transparent),
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+/* Writing, generating or alarmed: the full line, lit. */
+.w3-line[data-active] .w3-light__beam,
+.w3-line[data-busy] .w3-light__beam,
+.w3-light[data-alarm] .w3-light__beam {
+  opacity: 1;
+  transform: none;
+  animation: none;
+  box-shadow: 0 0 16px color-mix(in oklch, var(--w3-lc) 55%, transparent);
+}
+
+.w3-line[data-active] .w3-light__glow,
+.w3-line[data-busy] .w3-light__glow,
+.w3-light[data-alarm] .w3-light__glow {
+  opacity: 1;
+}
+
+/* The bright spot that follows your caret. */
+.w3-light__spark {
+  position: absolute;
+  bottom: -4px;
+  left: var(--w3-spark-x, 50%);
+  width: 110px;
+  height: 10px;
+  margin-left: -55px;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--w3-lc) 70%, white),
+    transparent
+  );
+  filter: blur(2px);
+  opacity: 0;
+  transition:
+    left 0.22s var(--w3-out),
+    opacity 0.35s;
+}
+
+.w3-line:not([data-busy], [data-blocked]) .w3-light[data-spark] .w3-light__spark {
+  opacity: 0.9;
+}
+
+/* Waiting for the first words: a comet runs along the line. Thinking: slower, dimmer. */
+.w3-light__comet {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 140px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--w3-lc) 80%, white),
+    transparent
+  );
+  filter: blur(1.5px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.w3-light[data-phase="waiting"] .w3-light__comet {
+  opacity: 1;
+  animation: w3-comet 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+.w3-light[data-phase="thinking"] .w3-light__comet {
+  opacity: 0.55;
+  animation: w3-comet 2.8s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+@keyframes w3-comet {
+  from {
+    transform: translateX(-60px);
+  }
+  to {
+    transform: translateX(calc(100cqw - 80px));
+  }
+}
+
+/* Speaking: each burst of words ripples out from the centre. */
+.w3-light__ripple {
+  position: absolute;
+  inset: -1px 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--w3-lc) 60%, white) 30%,
+    color-mix(in oklch, var(--w3-lc) 60%, white) 70%,
+    transparent
+  );
+  opacity: 0;
+  filter: blur(1px);
+}
+
+/* Sending: a streak of light that leaves the line upward with the message. */
+.w3-light__flare {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 3px;
+  height: 70px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: linear-gradient(to top, color-mix(in oklch, var(--w3-lc) 70%, white), transparent);
+  filter: blur(1px);
+  opacity: 0;
+  transform-origin: 50% 100%;
+}
+
+/* No model: dashed and unlit. */
+.w3-line[data-blocked] .w3-light__beam {
   background: repeating-linear-gradient(90deg, var(--w3-faint) 0 7px, transparent 7px 14px);
   opacity: 0.75;
   transform: none;
@@ -589,7 +718,7 @@ button.w3-reason__head:hover {
   animation: none;
 }
 
-.w3-line[data-blocked] .w3-line__row::before {
+.w3-line[data-blocked] .w3-light__glow {
   opacity: 0;
 }
 
@@ -623,7 +752,7 @@ button.w3-reason__head:hover {
   background: none;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  caret-color: var(--w3-me);
+  caret-color: var(--w3-lc, var(--w3-me));
   min-height: calc(1.55em + 12px);
 }
 

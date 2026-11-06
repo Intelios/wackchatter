@@ -29,6 +29,7 @@ import { type SlashCommandHelp, slashCompletion } from '../features/chat/slashCo
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { Icon, type IconName } from './icons.tsx';
 import { inkSegments } from './ink.ts';
+import { caretLeft, LineLight, type LineLightHandle } from './LineLight.tsx';
 
 export interface LineHandle {
   /** Append on a new line when there is a draft, replace when there is not. */
@@ -61,6 +62,8 @@ interface LineComposerProps {
   onDraftChange?: (text: string) => void;
   /** Called with the field's position just before a send, for the lift-off. */
   onBeforeSend?: (from: DOMRect) => void;
+  /** The chat's current error; a new one makes the line flicker. */
+  failed?: string | null;
   ref?: Ref<LineHandle>;
 }
 
@@ -87,6 +90,7 @@ export function LineComposer({
   onGuidesChange,
   onDraftChange,
   onBeforeSend,
+  failed = null,
   ref,
 }: LineComposerProps) {
   const [text, setText] = useState('');
@@ -95,6 +99,8 @@ export function LineComposer({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const inkRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const lightRef = useRef<LineLightHandle>(null);
   const listboxId = useId();
   // The input that started a generation, so focus comes back to it after.
   const focusBeforeGenerate = useRef<Element | null>(null);
@@ -190,6 +196,31 @@ export function LineComposer({
     return () => window.removeEventListener('resize', resize);
   }, [displayed]);
 
+  // The bright spot on the line sits under the caret while you write.
+  const placeSpark = useCallback(() => {
+    const field = textarea.current;
+    const ink = inkRef.current;
+    const row = rowRef.current;
+    const light = lightRef.current;
+    if (!field || !ink || !row || !light) return;
+    if (document.activeElement !== field) {
+      light.spark(null);
+      return;
+    }
+    const rowLeft = row.getBoundingClientRect().left;
+    const left =
+      caretLeft(ink, field.selectionStart ?? 0) ??
+      fieldRef.current?.getBoundingClientRect().left ??
+      rowLeft;
+    light.spark(left - rowLeft);
+  }, []);
+
+  // The ink has re-rendered with the new text by now, so the caret can be measured.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the text is the trigger
+  useLayoutEffect(() => {
+    placeSpark();
+  }, [displayed, placeSpark]);
+
   async function submit() {
     const trimmed = text.trim();
     if (!trimmed || busy || disabled) return;
@@ -197,9 +228,11 @@ export function LineComposer({
     const rect = fieldRef.current?.getBoundingClientRect();
     const isCommand = trimmed.startsWith('/');
     if (rect && !isCommand) onBeforeSend?.(rect);
+    if (!isCommand) lightRef.current?.launch();
     const failure = await onSend(trimmed);
     if (failure) {
       setError(failure);
+      lightRef.current?.alarm();
       focusBeforeGenerate.current = null;
       return;
     }
@@ -237,6 +270,7 @@ export function LineComposer({
       data-active={focused || has || undefined}
       data-busy={busy || undefined}
       data-blocked={blocked ? true : undefined}
+      data-voice={busy && !impersonating ? 'char' : 'me'}
       onSubmit={(event) => {
         event.preventDefault();
         if (busy) onStop();
@@ -270,7 +304,8 @@ export function LineComposer({
         </div>
       ) : null}
 
-      <div className="w3-line__row">
+      <div className="w3-line__row" ref={rowRef}>
+        <LineLight ref={lightRef} busy={busy} stream={stream} failed={failed} />
         <span className="w3-line__acts">
           <LineAction
             icon="mask"
@@ -335,9 +370,15 @@ export function LineComposer({
             disabled={disabled || busy}
             placeholder={placeholder}
             aria-label="Your message"
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+              setFocused(true);
+              requestAnimationFrame(placeSpark);
+            }}
+            onClick={placeSpark}
+            onKeyUp={placeSpark}
             onBlur={() => {
               setFocused(false);
+              lightRef.current?.spark(null);
               setSlashDismissed(true);
               macro.dismiss();
             }}
@@ -346,12 +387,16 @@ export function LineComposer({
             }}
             onChange={(event) => {
               setText(event.target.value);
+              lightRef.current?.kick();
               setError(null);
               setSlashDismissed(false);
               setSlashIndex(0);
               macro.sync();
             }}
-            onSelect={macro.sync}
+            onSelect={() => {
+              macro.sync();
+              placeSpark();
+            }}
             {...(macro.open
               ? macroComboboxProps(macro)
               : {
