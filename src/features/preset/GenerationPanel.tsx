@@ -1,5 +1,10 @@
 import { DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
-import { claudeThinkingBudget, isAnthropicModel } from '@shared/providers/request.ts';
+import {
+  claudeReplyTokens,
+  claudeThinkingBudget,
+  isAnthropicModel,
+} from '@shared/providers/request.ts';
+import { isResponseUnlimited, responseCap } from '@shared/providers/responseLength.ts';
 import type { Connection, ResolvedModel } from '@shared/providers/types.ts';
 import {
   CHARACTER_NAMES_BEHAVIOR,
@@ -48,7 +53,8 @@ export function GenerationPanel({
   // Claude on OpenRouter reads the effort selector as an on/off switch for thinking, and pays
   // for it with tokens on top of the reply. Both are worth stating where the knob is, and the
   // number comes from the same helper the request builder uses so it cannot drift.
-  const responseTokens = preset.openai_max_tokens ?? 300;
+  const unlimited = isResponseUnlimited(preset);
+  const responseTokens = claudeReplyTokens(responseCap(preset));
   const claudeOnOpenRouter =
     connection?.provider === 'openrouter' && isAnthropicModel(connection.model);
   const claudeBudget = claudeOnOpenRouter
@@ -298,7 +304,21 @@ export function GenerationPanel({
           max={16384}
           step={1}
           onChange={(v) => setField('openai_max_tokens', Math.round(v))}
+          disabled={unlimited}
         />
+        <label className="generation-panel__check">
+          <input
+            type="checkbox"
+            checked={unlimited}
+            onChange={(e) => setField('openai_max_tokens_unlimited', e.target.checked)}
+          />
+          <span>
+            No limit
+            <span className="wc-hint">
+              Replies run until the model finishes. Turn off to cap them at Max response.
+            </span>
+          </span>
+        </label>
         <label className="generation-panel__check">
           <input
             type="checkbox"

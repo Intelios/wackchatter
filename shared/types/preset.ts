@@ -112,6 +112,12 @@ export interface Preset {
   // Budget
   openai_max_context?: number;
   openai_max_tokens?: number;
+  /**
+   * WackChatter extension: send no `max_tokens`, so nothing cuts the reply off.
+   * `openai_max_tokens` is kept (SillyTavern reads it) but is not sent while this is on.
+   * See `shared/providers/responseLength.ts`.
+   */
+  openai_max_tokens_unlimited?: boolean;
   max_context_unlocked?: boolean;
 
   // Assembly behaviour

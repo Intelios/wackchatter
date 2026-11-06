@@ -10,6 +10,7 @@
 import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
+import { responseReserve } from '@shared/providers/responseLength.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, MacroVariableMap } from '@shared/types/chat.ts';
@@ -171,7 +172,9 @@ export function useChatSummary(options: ChatSummaryOptions) {
       let rollingSummary = current.metadata.summary?.text ?? '';
       let runLocalVariables = { ...(current.metadata.variables ?? {}) };
       let runGlobalVariables = { ...globalVariables };
-      const maxTokens = Math.ceil(effective.targetWords * 2);
+      // Room kept free in the context for the summary while packing turns. Never sent as a
+      // cap: a thinking model spends tokens before writing, and a cap cut summaries short.
+      const maxTokens = Math.max(Math.ceil(effective.targetWords * 2), responseReserve(preset));
       const sources =
         resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [];
 
@@ -261,7 +264,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
             preset,
             connection: summaryConnection,
             stream: false,
-            maxTokens,
+            maxTokens: null,
           });
           const result = await runGeneration({
             model: summaryConnection,

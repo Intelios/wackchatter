@@ -12,6 +12,7 @@
  * greeting quoting a different message than the prompt did.
  */
 
+import { responseReserve } from '../providers/responseLength.ts';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '../types/chat.ts';
 import type { Preset } from '../types/preset.ts';
@@ -47,7 +48,7 @@ export function chatEnvironment(options: ChatMacroOptions): MacroEnvironment {
     charJailbreak: character.post_history_instructions,
     creatorNotes: character.creator_notes,
     maxContext: preset.openai_max_context ?? 4095,
-    maxResponse: preset.openai_max_tokens ?? 300,
+    maxResponse: responseReserve(preset),
     lastMessage: messages.at(-1)?.mes ?? '',
     lastUserMessage: [...messages].reverse().find((message) => message.is_user)?.mes ?? '',
     lastCharMessage: [...messages].reverse().find((message) => !message.is_user)?.mes ?? '',

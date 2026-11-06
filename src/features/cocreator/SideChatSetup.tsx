@@ -27,7 +27,6 @@ export function SideChatSetup({
   const [mode, setMode] = useState<'session' | 'defaults'>('defaults');
   const settings: SideChatModelSettings =
     mode === 'defaults' ? {} : (design.state.sideChat?.settings ?? {});
-  const outputTokens = settings.outputTokens ?? defaults.sideChat.outputTokens;
   const contextTokens = settings.contextTokens ?? defaults.sideChat.contextTokens;
   const disabled = design.busy || (mode === 'session' && !design.state.sideChat);
 
@@ -88,14 +87,6 @@ export function SideChatSetup({
             />
           )}
         </div>
-        <NumberField
-          label="Side output tokens"
-          value={outputTokens}
-          min={1}
-          max={2097152}
-          disabled={disabled}
-          onChange={(outputTokens) => patch({ outputTokens })}
-        />
         <NumberField
           label="Side context tokens"
           value={contextTokens}

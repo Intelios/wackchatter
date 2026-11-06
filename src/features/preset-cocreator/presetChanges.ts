@@ -26,6 +26,7 @@ const SETTING_LABELS: Record<string, string> = {
   presence_penalty: 'Presence penalty',
   repetition_penalty: 'Repetition penalty',
   openai_max_tokens: 'Max response tokens',
+  openai_max_tokens_unlimited: 'No reply limit',
   openai_max_context: 'Context size',
   reasoning_effort: 'Reasoning effort',
   stream_openai: 'Streaming',

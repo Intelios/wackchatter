@@ -14,6 +14,7 @@ import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
+import { responseReserve } from '@shared/providers/responseLength.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { MacroVariableMap } from '@shared/types/chat.ts';
@@ -638,7 +639,8 @@ export function useChatGeneration(options: ChatGenerationOptions) {
         return;
       }
 
-      const maxTokens = preset.openai_max_tokens ?? 300;
+      // Room kept free for the recap; never sent as a cap (the recap preset is unlimited).
+      const maxTokens = responseReserve(preset);
       const built = buildRecapRequest({
         messages: toChatMessages(started),
         counter: countTokens,

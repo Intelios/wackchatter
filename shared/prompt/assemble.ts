@@ -19,6 +19,7 @@
  */
 
 import { DEFAULT_NEXUS } from '../nexus/types.ts';
+import { responseReserve } from '../providers/responseLength.ts';
 import { regexDepths } from '../regex/depth.ts';
 import {
   applyRegexScripts,
@@ -411,7 +412,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   const maxContext = preset.openai_max_context ?? 4095;
   const maxResponse = Math.max(
     0,
-    Math.floor(options.reservedCompletionTokens ?? preset.openai_max_tokens ?? 300),
+    Math.floor(options.reservedCompletionTokens ?? responseReserve(preset)),
   );
   const runtime = createMacroRuntime(localVariables, globalVariables);
   const effectiveScenario = scenarioOverride !== undefined ? scenarioOverride : character.scenario;

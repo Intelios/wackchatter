@@ -37,9 +37,6 @@ import { buildScene, sceneSeedId } from './scene.ts';
 import { type ArenaState, arenaReducer, initialArenaState, isBusy } from './state/arenaReducer.ts';
 import { createControllerRegistry } from './state/controllerRegistry.ts';
 
-/** The reply budget when the chosen preset does not name one. */
-const DEFAULT_MAX_TOKENS = 400;
-
 export interface RunColumnRequest {
   contender: Contender;
   /** Already resolved — the connection with this contender's model applied. */
@@ -211,7 +208,6 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
           preset: activePreset,
           connection: column.connection,
           stream: streaming,
-          maxTokens: activePreset.openai_max_tokens ?? DEFAULT_MAX_TOKENS,
         });
 
         if (!owns()) return;

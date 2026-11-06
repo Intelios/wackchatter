@@ -23,9 +23,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { characterApi } from '../../lib/api.ts';
 import { runGeneration } from '../../lib/generation.ts';
 
-/** A derived persona is ~150 tokens. The headroom is for a model that pads its JSON. */
-const MAX_DERIVE_TOKENS = 600;
-
 export interface DeriveResult {
   name: string;
   description: string;
@@ -153,7 +150,8 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
           preset,
           connection,
           stream: false,
-          maxTokens: MAX_DERIVE_TOKENS,
+          // No cap: a thinking model spends tokens before the JSON, and a cap cut it off.
+          maxTokens: null,
         });
 
         const result = await runGeneration({

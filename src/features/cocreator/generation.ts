@@ -84,7 +84,8 @@ export function buildDesignGeneration(input: {
         preset,
         connection,
         stream: streaming,
-        maxTokens: budget.maxTokens,
+        // No cap: the budget above only reserves room. A cap cut long cards off.
+        maxTokens: null,
       }),
       messages: prompt.messages,
     },

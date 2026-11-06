@@ -289,7 +289,8 @@ export function usePresetCocreator({
             preset: utilityPreset,
             connection: assistantConnection,
             stream: true,
-            maxTokens: budget.maxTokens,
+            // No cap: the budget only reserves room in the context.
+            maxTokens: null,
           });
           body.messages = [
             {

@@ -9,6 +9,7 @@ import {
   modelsUrl,
   parseModelList,
 } from './request.ts';
+import { CLAUDE_UNCAPPED_REPLY } from './responseLength.ts';
 import type { ConnectionSettings } from './types.ts';
 
 const messages: ApiMessage[] = [
@@ -27,10 +28,11 @@ function connection(overrides: Partial<Target> = {}): Target {
   };
 }
 
+/** A capped preset, the SillyTavern shape: most tests here are about the number sent. */
 function build(preset: Partial<Preset> = {}, conn = connection(), extra = {}) {
   return buildRequestBody({
     messages,
-    preset: { ...createDefaultPreset(), ...preset },
+    preset: { ...createDefaultPreset(), openai_max_tokens_unlimited: false, ...preset },
     connection: conn,
     stream: true,
     ...extra,
@@ -69,6 +71,27 @@ describe('the base body', () => {
   test('max_tokens comes from the preset, and the request overrides it', () => {
     expect(build({ openai_max_tokens: 512 }).max_tokens).toBe(512);
     expect(build({ openai_max_tokens: 512 }, connection(), { maxTokens: 32 }).max_tokens).toBe(32);
+  });
+
+  test('an unlimited preset or a null override sends no max_tokens at all', () => {
+    const unlimited = build({ openai_max_tokens: 512, openai_max_tokens_unlimited: true });
+    expect(Object.hasOwn(unlimited, 'max_tokens')).toBe(false);
+    const overridden = build({ openai_max_tokens: 512 }, connection(), { maxTokens: null });
+    expect(Object.hasOwn(overridden, 'max_tokens')).toBe(false);
+    // A number in the request still caps an unlimited preset.
+    expect(
+      build({ openai_max_tokens_unlimited: true }, connection(), { maxTokens: 64 }).max_tokens,
+    ).toBe(64);
+  });
+
+  test('a preset made here starts unlimited', () => {
+    const body = buildRequestBody({
+      messages,
+      preset: createDefaultPreset(),
+      connection: connection(),
+      stream: true,
+    });
+    expect(Object.hasOwn(body, 'max_tokens')).toBe(false);
   });
 });
 
@@ -328,6 +351,18 @@ describe('Claude thinking on OpenRouter', () => {
     const body = build({ reasoning_effort: 'high', openai_max_tokens: 300 }, claude());
     expect(body.reasoning).toEqual({ exclude: false, max_tokens: 1024 });
     expect(body.max_tokens).toBe(1324);
+  });
+
+  test('uncapped, the reply gets CLAUDE_UNCAPPED_REPLY on top of the budget', () => {
+    const body = build({ reasoning_effort: 'medium', openai_max_tokens_unlimited: true }, claude());
+    // 25% of 32000.
+    expect(body.reasoning).toEqual({ exclude: false, max_tokens: 8000 });
+    expect(body.max_tokens).toBe(CLAUDE_UNCAPPED_REPLY + 8000);
+  });
+
+  test('uncapped without thinking, Claude is sent no max_tokens either', () => {
+    const body = build({ reasoning_effort: 'auto', openai_max_tokens_unlimited: true }, claude());
+    expect(Object.hasOwn(body, 'max_tokens')).toBe(false);
   });
 
   test('a budget is sent instead of an effort, never alongside it', () => {

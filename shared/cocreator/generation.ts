@@ -9,7 +9,12 @@ export const CONTINUE_DESIGN_REPLY =
   'Continue your interrupted answer exactly where it stopped. Do not repeat the existing text. ' +
   'If it stopped inside a card block, finish that block and its closing fence before proceeding.';
 
-/** Both desks budget visible output separately from reasoning and chat sampler presets. */
+/**
+ * How much of the context both desks keep free for the reply, reasoning included, and what
+ * that leaves for the prompt. Only a reserve: requests send no cap (`maxTokens: null`), so a
+ * long card or a long think is never cut off. `outputTokens` is the visible-reply share of the
+ * reserve; no longer shown in setup, a stored value still sizes it.
+ */
 export function cocreatorBudget(options: {
   preset: Preset;
   connection: ResolvedModel;
@@ -26,10 +31,10 @@ export function cocreatorBudget(options: {
     contextTokens <= outputTokens + 128
   ) {
     throw new Error(
-      'Co-Creator context size must leave room for the reply and its prompt. Raise the context size or lower the output limit in setup.',
+      'Co-Creator context size must leave room for the reply and its prompt. Raise the context size in setup.',
     );
   }
-  const maxTokens = thinkingMaxTokens({
+  const replyTokens = thinkingMaxTokens({
     outputTokens,
     contextTokens,
     effort: options.preset.reasoning_effort ?? 'auto',
@@ -42,12 +47,11 @@ export function cocreatorBudget(options: {
       preset: options.preset,
       connection: options.connection,
       stream: options.stream ?? true,
-      maxTokens,
+      maxTokens: replyTokens,
     }).max_tokens,
   );
   return {
     outputTokens,
-    maxTokens,
     reservedTokens,
     promptTokens: contextTokens - reservedTokens - 128,
   };

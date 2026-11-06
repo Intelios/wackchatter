@@ -1,4 +1,4 @@
-import { COCREATOR_CONTEXT_TOKENS, COCREATOR_OUTPUT_TOKENS } from '@shared/cocreator/generation.ts';
+import { COCREATOR_CONTEXT_TOKENS } from '@shared/cocreator/generation.ts';
 import { type ModelRef, type ModelSlot, type ModelSlots, slotRef } from '@shared/models/slots.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import {
@@ -269,20 +269,6 @@ export function CocreatorSetup({
               disabled={disabled}
             />
 
-            <NumberField
-              label="Output token limit"
-              value={settings.outputTokens ?? COCREATOR_OUTPUT_TOKENS}
-              min={1}
-              max={131072}
-              disabled={disabled}
-              hint="Co-Creator only. Reasoning receives additional room; this replaces the chat preset’s reply limit."
-              onChange={(value) =>
-                design.dispatch({
-                  type: 'settings/patch',
-                  patch: { outputTokens: Math.round(value) },
-                })
-              }
-            />
             <NumberField
               label="Context size"
               value={settings.contextTokens ?? COCREATOR_CONTEXT_TOKENS}

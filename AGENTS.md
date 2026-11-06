@@ -138,8 +138,13 @@ committed runtime per request**, `greeting.ts` uses a **fresh runtime per call, 
 **Assembly** (`shared/prompt/assemble.ts`)
 - Macros substitute **per prompt and per message**, never over a joined string. `{{random}}`
   re-rolls per occurrence; `{{pick}}` is the seeded alternative.
-- Budget is `openai_max_context - openai_max_tokens`; history packs **newest-first** and stops at
-  the first message that doesn't fit.
+- Budget is `openai_max_context - responseReserve(preset)` (`openai_max_tokens` when capped);
+  history packs **newest-first** and stops at the first message that doesn't fit.
+- **The app never caps a reply on its own** (`shared/providers/responseLength.ts`). Only a
+  preset with a cap sends `max_tokens`; new presets start with `openai_max_tokens_unlimited`
+  (not in `PRESET_DEFAULTS`, so imports keep their number). Summary, recap, Nexus, the
+  Co-Creators and persona derive send none — their budgets only reserve context. Claude
+  thinking on OpenRouter is the one exception: the budget must fit under `max_tokens`.
 - `injection_position: ABSOLUTE` splices at `injection_depth` (0 = after the last message). Ties:
   low→high `injection_order`, then assistant→user→system. ST's ordering; tuned presets must match.
 - A card's `system_prompt` / `post_history_instructions` override `main` / `jailbreak` unless

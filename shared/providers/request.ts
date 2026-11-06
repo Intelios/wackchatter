@@ -20,6 +20,7 @@
  */
 
 import type { Preset } from '../types/preset.ts';
+import { CLAUDE_UNCAPPED_REPLY, responseCap } from './responseLength.ts';
 import type {
   ChatCompletionBody,
   ConnectionSettings,
@@ -236,13 +237,17 @@ const CLAUDE_THINKING_CONFLICTS = [
   'repetition_penalty',
 ];
 
+/** The reply allowance Claude's thinking budget is sized from and added to. */
+export function claudeReplyTokens(cap: number | null): number {
+  return cap ?? CLAUDE_UNCAPPED_REPLY;
+}
+
 export function buildRequestBody(request: GenerationRequest): ChatCompletionBody {
   const { messages, preset, connection, stream } = request;
   const descriptor = PROVIDERS[connection.provider];
 
-  // Named rather than inlined: the Claude thinking budget below is sized from the reply
-  // budget and then added to it, so both have to read the same number.
-  const responseTokens = request.maxTokens ?? preset.openai_max_tokens ?? 300;
+  // Null sends no `max_tokens`, so nothing cuts the reply off (responseLength.ts).
+  const cap = request.maxTokens !== undefined ? request.maxTokens : responseCap(preset);
 
   const body: ChatCompletionBody = {
     model: connection.model,
@@ -250,8 +255,8 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     stream,
     temperature: preset.temperature ?? 1,
     top_p: preset.top_p ?? 1,
-    max_tokens: responseTokens,
   };
+  if (cap !== null) body.max_tokens = cap;
 
   // Off the neutral 0 or absent: both mean the key does not travel. Negative penalties are
   // real settings and still go out.
@@ -317,15 +322,19 @@ export function buildRequestBody(request: GenerationRequest): ChatCompletionBody
     // explicit budget is the only switch. We size it here rather than sending `effort`, which
     // OpenRouter would turn into a budget we cannot see: `max_tokens` has to clear that number,
     // so guessing at their ratios would be the only alternative.
+    //
+    // The one place a number has to travel when nothing caps the reply: the budget must fit
+    // under `max_tokens`, so an uncapped reply gets CLAUDE_UNCAPPED_REPLY on top of it.
+    const replyTokens = claudeReplyTokens(cap);
     const claudeBudget = isAnthropicModel(connection.model)
-      ? claudeThinkingBudget(responseTokens, preset, stream)
+      ? claudeThinkingBudget(replyTokens, preset, stream)
       : null;
 
     if (claudeBudget !== null) {
       reasoning.max_tokens = claudeBudget;
       // On top of the reply rather than carved out of it: the reply keeps the length the user
       // asked for, and `max_tokens` clears the budget by construction.
-      body.max_tokens = responseTokens + claudeBudget;
+      body.max_tokens = replyTokens + claudeBudget;
       // Anthropic rejects temperature/top_p/top_k alongside thinking, and the other three it
       // never accepted at all. Deleted here, after the sampler block above has written them.
       for (const key of CLAUDE_THINKING_CONFLICTS) delete body[key];

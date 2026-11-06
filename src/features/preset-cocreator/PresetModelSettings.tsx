@@ -68,14 +68,6 @@ export function PresetModelSettings({
       {requireTools ? (
         <div className="preset-cc-model__generation">
           <NumberField
-            label="Output token limit"
-            hint="Reasoning receives additional room within the context budget."
-            value={value.maxTokens}
-            min={1}
-            max={131072}
-            onChange={(maxTokens) => onChange({ ...value, maxTokens: Math.round(maxTokens) })}
-          />
-          <NumberField
             label="Context size"
             value={value.contextTokens ?? COCREATOR_CONTEXT_TOKENS}
             min={1024}

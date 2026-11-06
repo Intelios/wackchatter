@@ -67,15 +67,6 @@ export function NexusSettings({
         onChange={(inputTokens) => patch({ inputTokens })}
         hint="Match the model's real context — modern models take 200K to 1M."
       />
-      <NumberField
-        label="Memory model output (tokens)"
-        value={settings.outputTokens}
-        min={256}
-        max={16384}
-        step={256}
-        onChange={(outputTokens) => patch({ outputTokens })}
-        hint="Buys only the visible JSON. Reasoning is budgeted separately, on top."
-      />
       <SelectField<ReasoningEffort>
         label="Reasoning effort"
         value={settings.reasoningEffort}

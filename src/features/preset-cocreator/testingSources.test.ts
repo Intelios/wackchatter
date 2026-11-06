@@ -90,6 +90,7 @@ describe('preset test source resolution', () => {
   test('outgoing macros, assembled prompt and provider body share one resolved copy', async () => {
     const external = createDefaultPreset();
     external.openai_max_tokens = 96;
+    external.openai_max_tokens_unlimited = false;
     const resolved = await resolvePresetTestSource({ kind: 'library', id: 'Other' }, session, {
       library: async () => ({ preset: external, version: 'first-version' }),
       reference: async () => {

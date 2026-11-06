@@ -739,7 +739,11 @@ describe('token budget', () => {
   });
 
   test('budget is max_context minus max_tokens', () => {
-    const base = { ...createDefaultPreset(), new_chat_prompt: '' };
+    const base = {
+      ...createDefaultPreset(),
+      new_chat_prompt: '',
+      openai_max_tokens_unlimited: false,
+    };
 
     const roomy = assemble({
       preset: {
@@ -759,6 +763,21 @@ describe('token budget', () => {
     });
 
     expect(tight.messages.length).toBeLessThan(roomy.messages.length);
+  });
+
+  test('an unlimited reply reserves a quarter of the context instead', () => {
+    const base = { ...createDefaultPreset(), new_chat_prompt: '' };
+    const preset = {
+      ...setPromptOrder(base, [{ identifier: 'chatHistory', enabled: true }]),
+      openai_max_context: 100,
+      openai_max_tokens: 0,
+    };
+    const unlimited = assemble({ preset, messages: makeMessages(40) });
+    const capped = assemble({
+      preset: { ...preset, openai_max_tokens_unlimited: false },
+      messages: makeMessages(40),
+    });
+    expect(unlimited.messages.length).toBeLessThan(capped.messages.length);
   });
 
   test('reports per-prompt token counts', () => {
@@ -1138,6 +1157,7 @@ describe('complete-message token accounting', () => {
       ),
       openai_max_context: 10,
       openai_max_tokens: 3,
+      openai_max_tokens_unlimited: false,
     };
     const result = assemble({ preset, countTokens: wireCounter });
 

@@ -62,8 +62,8 @@ export interface NexusSettings extends StoryMemoryPlacement {
   /** The memory model's context: the packing target for transcript windows. Not capped. */
   inputTokens: number;
   /**
-   * The visible-JSON allowance. Reasoning never comes out of it — `nexusMaxTokens` buys
-   * thinking room on top, sized by `reasoningEffort` and clamped to the context's slack.
+   * Room kept free in the context for the JSON while packing. Never sent as a cap, and no
+   * longer shown in settings; a stored value still sizes the reserve.
    */
   outputTokens: number;
   budgetTokens: number;

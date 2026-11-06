@@ -87,8 +87,11 @@ export interface GenerationRequest {
   preset: Preset;
   connection: ConnectionSettings & { model: string };
   stream: boolean;
-  /** Overrides the preset's openai_max_tokens. */
-  maxTokens?: number;
+  /**
+   * Overrides the preset's reply cap: a number caps the reply, `null` sends no cap. Absent,
+   * the preset decides (`responseCap`).
+   */
+  maxTokens?: number | null;
   stop?: string[];
   /**
    * How many completions to ask for. Opt-in per request rather than read from `preset.n`,
