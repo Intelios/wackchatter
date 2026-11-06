@@ -38,6 +38,7 @@ import type {
   ChatMetadata,
   MacroWarning,
   MessageExtra,
+  ReplyTrace,
 } from '@shared/types/chat.ts';
 import type { GenerationType } from '@shared/types/preset.ts';
 
@@ -61,6 +62,20 @@ export interface PromptInspection {
   macroWarnings: MacroWarning[];
   /** The exact object POSTed to /api/generate, or null when preflight rejected it. */
   body: ChatCompletionBody | null;
+  /** Where each of `messages` came from (assembly's `origins`). */
+  origins?: string[][];
+  /** The chat it was for, so the Inspect tool never shows another chat's prompt. */
+  chatId?: string | null;
+  /** The message it wrote into. Null for an impersonation, which writes none. */
+  messageId?: string | null;
+  /** The attempt's id: the `generation_id` its swipe records. */
+  generationId?: string;
+  /** The lore entries that fired, by name, for "since the turn before". */
+  lore?: string[];
+  /** Set when the attempt ends, however it ends. */
+  trace?: ReplyTrace;
+  /** Set when an attempt failed, with what went wrong. */
+  failure?: string;
   overflow?: ContextOverflow;
   response?: {
     model?: string;
@@ -152,6 +167,8 @@ export type ChatAction =
   | { type: 'swipe/select'; id: string; index: number }
   | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
   | { type: 'gen/inspected'; inspection: PromptInspection }
+  /** An attempt ended: its timeline joins its inspection. */
+  | { type: 'gen/traced'; generationId: string; trace: ReplyTrace; failure?: string }
   | { type: 'gen/streaming' }
   | {
       type: 'gen/finished';
@@ -165,13 +182,20 @@ export type ChatAction =
        */
       finishReason?: string | null;
     }
-  | { type: 'gen/aborted'; text: string; reasoning?: string; generationId?: string }
+  | {
+      type: 'gen/aborted';
+      text: string;
+      reasoning?: string;
+      generationId?: string;
+      trace?: ReplyTrace;
+    }
   | {
       type: 'gen/failed';
       message: string;
       text?: string;
       reasoning?: string;
       generationId?: string;
+      trace?: ReplyTrace;
     }
   | { type: 'error/cleared' };
 
@@ -499,6 +523,20 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         inspections: [action.inspection, ...state.inspections].slice(0, MAX_INSPECTIONS),
       };
 
+    case 'gen/traced':
+      return {
+        ...state,
+        inspections: state.inspections.map((inspection) =>
+          inspection.generationId === action.generationId
+            ? {
+                ...inspection,
+                trace: action.trace,
+                ...(action.failure ? { failure: action.failure } : {}),
+              }
+            : inspection,
+        ),
+      };
+
     case 'gen/streaming':
       // A late frame from a generation that already settled must not revive it.
       return state.status === 'connecting' ? { ...state, status: 'streaming' } : state;
@@ -525,6 +563,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
               // id here is what lets it be reconciled against the usage log rather than
               // counted a second time as an unidentified swipe.
               ...(action.generationId ? { generation_id: action.generationId } : {}),
+              ...(action.trace ? { trace: action.trace } : {}),
             }
           : undefined,
       );
@@ -541,6 +580,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
                 truncated: true,
                 ...(action.reasoning ? { reasoning: action.reasoning } : {}),
                 ...(action.generationId ? { generation_id: action.generationId } : {}),
+                ...(action.trace ? { trace: action.trace } : {}),
               }
             : undefined,
         ),

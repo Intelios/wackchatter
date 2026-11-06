@@ -477,6 +477,7 @@ function ChatShell({
         data-overlay-root
         data-margin={side ?? undefined}
         data-wide={
+          tool === 'inspect' ||
           (tool === 'preset' && controller.presetPrompt) ||
           (tool === 'lorebooks' && controller.lorePage?.entry != null)
             ? ''
@@ -548,7 +549,12 @@ function ChatShell({
                   controller.selected,
                 ]}
               >
-                <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />
+                <MarginTool
+                  id={tool}
+                  controller={controller}
+                  onUiChoice={onUiChoice}
+                  onOpenTool={setTool}
+                />
               </ErrorBoundary>
             </div>
           </aside>

@@ -2118,3 +2118,48 @@ describe('the story-memory slot', () => {
     expect(result.messages.map((m) => m.content).join('\n')).not.toContain('The Cellar');
   });
 });
+
+describe('where each message came from', () => {
+  test('origins line up with the messages, injections and all', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'charDescription', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: makeMessages(3),
+      worldInfoDepth: [{ depth: 1, order: 100, role: 'system', content: 'fog on the water' }],
+      authorNote: { text: 'keep it short', position: 'atDepth', depth: 1, role: 'system' },
+    });
+
+    expect(result.origins).toHaveLength(result.messages.length);
+    expect(result.origins).toEqual([
+      ['main'],
+      ['charDescription'],
+      ['chatHistory'],
+      ['chatHistory'],
+      // Lore and the note share depth, order and role, so they go as one message.
+      ['worldInfoDepth', 'authorNote'],
+      ['chatHistory'],
+    ]);
+    // Nothing about origins reaches the wire.
+    for (const message of result.messages)
+      expect(Object.keys(message).sort()).toEqual(['content', 'role']);
+  });
+
+  test('a squashed system message names every prompt in it', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'charDescription', enabled: true },
+        { identifier: 'scenario', enabled: true },
+      ]),
+      squash_system_messages: true,
+    };
+    expect(assemble({ preset }).origins).toEqual([['main', 'charDescription', 'scenario']]);
+  });
+});

@@ -15,6 +15,7 @@ import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import { responseReserve } from '@shared/providers/responseLength.ts';
+import { isLengthCutoff } from '@shared/providers/sse.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { MacroVariableMap } from '@shared/types/chat.ts';
@@ -37,6 +38,7 @@ import {
   toChatMessages,
 } from './state/chatReducer.ts';
 import type { StreamStore } from './state/streamStore.ts';
+import { markStream, settleTrace, type TraceMarks } from './trace.ts';
 import type { ChatSession } from './useChatSession.ts';
 
 /**
@@ -164,6 +166,8 @@ export function useChatGeneration(options: ChatGenerationOptions) {
       };
       const started = chatReducer(current, startAction);
       dispatch(startAction);
+      // The reply's timeline starts here: everything up to the request is building it.
+      const marks: TraceMarks = { start: performance.now() };
 
       // The reducer refuses some starts outright — swiping with no reply to swipe. An
       // impersonation owns no message, so it is the one start with no `streamingId`.
@@ -194,6 +198,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
 
         // Activation runs over the state that already contains the folded user message, so
         // the message just typed is in the scan buffer for the reply it triggers.
+        const loreStart = performance.now();
         const lore = worldInfoForChat({
           sources:
             resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [],
@@ -205,9 +210,13 @@ export function useChatGeneration(options: ChatGenerationOptions) {
           countTokens,
         });
         setWorldInfo(lore ? { chatId: started.chatId ?? null, result: lore } : null);
+        if (lore) {
+          marks.lore = { ms: performance.now() - loreStart, fired: lore.activated.length };
+        }
 
         // Recall runs over the same post-fold transcript, so a record keyed on a word in the
         // message just typed fires for the reply it triggered rather than the next one.
+        const recallStart = performance.now();
         const recall =
           memoryMode === 'nexus'
             ? await prepareNexus(
@@ -218,6 +227,12 @@ export function useChatGeneration(options: ChatGenerationOptions) {
                 claim.signal,
               )
             : undefined;
+        if (memoryMode === 'nexus') {
+          marks.memory = {
+            ms: performance.now() - recallStart,
+            recalled: recall?.hits.length ?? 0,
+          };
+        }
 
         const request = prepareChatRequest({
           mode,
@@ -236,9 +251,16 @@ export function useChatGeneration(options: ChatGenerationOptions) {
           globalVariables,
           countTokens,
           regexScripts,
+          generationId,
         });
         dispatch({ type: 'gen/inspected', inspection: request.inspection });
         if (!request.ok) {
+          dispatch({
+            type: 'gen/traced',
+            generationId,
+            trace: settleTrace(marks, performance.now(), 'failed'),
+            failure: request.message,
+          });
           dispatch({ type: 'gen/failed', message: request.message });
           return;
         }
@@ -270,6 +292,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
         streamStarted = true;
         text = seed;
 
+        marks.sent = performance.now();
         const final = await runGeneration({
           model,
           body,
@@ -289,6 +312,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
           },
           onTick: (streamState) => {
             if (!claim.live()) return;
+            markStream(marks, performance.now(), streamState, seed);
             text = streamState.content;
             reasoning = streamState.reasoning;
             stream.set(streamState.content, streamState.reasoning);
@@ -300,7 +324,14 @@ export function useChatGeneration(options: ChatGenerationOptions) {
         if (!claim.ensureActive()) return;
         endStream();
 
-        const { extra, alternates } = recordReply({
+        const trace = settleTrace(
+          marks,
+          performance.now(),
+          isLengthCutoff(final.finishReason) ? 'length' : 'finished',
+          final.usage,
+        );
+        dispatch({ type: 'gen/traced', generationId, trace });
+        const recorded = recordReply({
           final,
           model,
           presetId,
@@ -309,6 +340,12 @@ export function useChatGeneration(options: ChatGenerationOptions) {
           completions,
           countText: countTokens.countText,
         });
+        // The spare completions came from the same request, so they share its timeline.
+        const extra = { ...recorded.extra, trace };
+        const alternates = recorded.alternates.map((alternate) => ({
+          ...alternate,
+          extra: { ...alternate.extra, trace },
+        }));
 
         // Hand the composer its text before the dispatch, so both land in one render: the
         // busy state clears and the draft already holds what the model wrote. An empty
@@ -331,16 +368,19 @@ export function useChatGeneration(options: ChatGenerationOptions) {
         // than lost. Nothing arrived means nothing is delivered.
         if (isImpersonation && claim.owns() && text.trim()) onText?.(text);
         // Whatever arrived before the failure is kept, as SillyTavern does.
-        if (claim.owns() && claim.signal.aborted)
-          dispatch({ type: 'gen/aborted', text, reasoning, generationId });
-        else if (claim.owns())
+        if (claim.owns()) {
+          const stopped = claim.signal.aborted;
+          const message = (error as Error).message;
+          const trace = settleTrace(marks, performance.now(), stopped ? 'stopped' : 'failed');
           dispatch({
-            type: 'gen/failed',
+            type: 'gen/traced',
             generationId,
-            message: (error as Error).message,
-            text,
-            reasoning,
+            trace,
+            ...(stopped ? {} : { failure: message }),
           });
+          if (stopped) dispatch({ type: 'gen/aborted', text, reasoning, generationId, trace });
+          else dispatch({ type: 'gen/failed', generationId, message, text, reasoning, trace });
+        }
       } finally {
         // An old request may settle after a newer generation has replaced it. It must not
         // free that one's slot, stop its stream, or refresh the newer chat's list.

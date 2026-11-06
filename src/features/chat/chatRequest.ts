@@ -79,6 +79,8 @@ export interface ChatRequestInput {
   globalVariables: MacroVariableMap;
   countTokens: TokenCounter;
   regexScripts?: readonly RegexScript[];
+  /** The attempt's id, so the Inspect tool can join the inspection to its swipe. */
+  generationId?: string;
 }
 
 export type ChatRequest =
@@ -153,6 +155,11 @@ export function prepareChatRequest(input: ChatRequestInput): ChatRequest {
     totalTokens: assembled.totalTokens,
     droppedMessages: assembled.droppedMessages,
     macroWarnings: assembled.macroWarnings,
+    origins: assembled.origins,
+    chatId: started.chatId,
+    messageId: mode === 'impersonate' ? null : started.streamingId,
+    ...(input.generationId ? { generationId: input.generationId } : {}),
+    lore: lore ? [...new Set(lore.activated.map((entry) => entry.label))] : [],
   };
 
   if (!assembled.ok) {

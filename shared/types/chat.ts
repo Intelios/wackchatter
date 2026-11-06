@@ -68,7 +68,32 @@ export interface MessageExtra {
   truncated?: boolean;
   /** Co-Creator-only provenance for user actions whose wording is editable. */
   coCreatorAction?: 'analyseExamples';
+  /** How long each phase of this reply took, for the Inspect tool. */
+  trace?: ReplyTrace;
   [key: string]: unknown;
+}
+
+/**
+ * A reply's timeline, in milliseconds from the moment it started. Small on purpose: it is
+ * kept on every swipe for good, while the prompt it sent is kept only for the session.
+ */
+export interface ReplyTrace {
+  /** The request went to the provider. Everything before it was building the prompt. */
+  sent: number;
+  /** How long the lore scan took, and how many entries fired. */
+  lore?: { ms: number; fired: number };
+  /** How long memory recall took, and how many memories it chose. Nexus chats only. */
+  memory?: { ms: number; recalled: number };
+  /** The first thinking arrived. Absent when the model did not think. */
+  thinking?: number;
+  /** The first visible text arrived. Absent when none did. */
+  writing?: number;
+  /** It ended: finished, stopped or failed. */
+  end: number;
+  outcome: 'finished' | 'length' | 'stopped' | 'failed';
+  /** Thinking and cached prompt tokens, when the provider reported them. */
+  thinkingTokens?: number;
+  cachedTokens?: number;
 }
 
 export interface ChatMessage {

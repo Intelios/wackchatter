@@ -33,6 +33,7 @@ function assembly(
     tokenCounts: {},
     totalTokens: messages.length,
     droppedMessages,
+    origins: messages.map(() => ['chatHistory']),
     macroWarnings: [],
     variableUpdates: { local: {}, global: {}, localChanged: false, globalChanged: false },
   };

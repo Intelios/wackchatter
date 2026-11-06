@@ -154,7 +154,12 @@ export interface DepthInjection {
   order: number;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /** Where it came from, for the Inspect tool. Never sent. */
+  source?: string;
 }
+
+/** Injections that share a wire position, joined, with every source they came from. */
+type GroupedInjection = DepthInjection & { sources: string[] };
 
 /**
  * The name used for the user when no persona is set.
@@ -187,6 +192,12 @@ interface AssembleBase {
   totalTokens: number;
   /** Messages dropped because the budget ran out. */
   droppedMessages: number;
+  /**
+   * Where each message in `messages` came from, index for index: prompt identifiers, or
+   * `chatHistory` for the transcript. More than one when messages were joined (grouped
+   * injections, squashed system messages). Read by the Inspect tool only.
+   */
+  origins: string[][];
   macroWarnings: MacroWarning[];
   variableUpdates: {
     local: MacroVariableMap;
@@ -266,10 +277,14 @@ export function parseExampleDialogue(
  * Splice depth-injected content into the chat history.
  * Depth counts back from the end: 0 = after the last message, 1 = before it.
  */
-function applyDepthInjections(history: ApiMessage[], injections: DepthInjection[]): ApiMessage[] {
+function applyDepthInjections(
+  history: ApiMessage[],
+  injections: GroupedInjection[],
+  onInject?: (message: ApiMessage, sources: string[]) => void,
+): ApiMessage[] {
   if (!injections.length) return history;
 
-  const byDepth = new Map<number, DepthInjection[]>();
+  const byDepth = new Map<number, GroupedInjection[]>();
   for (const injection of injections) {
     const list = byDepth.get(injection.depth) ?? [];
     list.push(injection);
@@ -292,21 +307,32 @@ function applyDepthInjections(history: ApiMessage[], injections: DepthInjection[
     group.sort((a, b) => a.order - b.order || roleOrder[b.role] - roleOrder[a.role]);
 
     const index = Math.max(0, originalLength - depth);
-    result.splice(index, 0, ...group.map((item) => ({ role: item.role, content: item.content })));
+    result.splice(
+      index,
+      0,
+      ...group.map((item) => {
+        const message: ApiMessage = { role: item.role, content: item.content };
+        onInject?.(message, item.sources);
+        return message;
+      }),
+    );
   }
 
   return result;
 }
 
 /** Coalesce injections with one wire position, exactly as prompt managers do. */
-function groupDepthInjections(injections: DepthInjection[]): DepthInjection[] {
-  const grouped = new Map<string, DepthInjection & { contents: string[] }>();
+function groupDepthInjections(injections: DepthInjection[]): GroupedInjection[] {
+  const grouped = new Map<string, GroupedInjection & { contents: string[] }>();
 
   for (const injection of injections) {
     const key = `${injection.depth}\u0000${injection.order}\u0000${injection.role}`;
+    const source = injection.source ?? 'worldInfoDepth';
     const existing = grouped.get(key);
-    if (existing) existing.contents.push(injection.content);
-    else grouped.set(key, { ...injection, contents: [injection.content] });
+    if (existing) {
+      existing.contents.push(injection.content);
+      if (!existing.sources.includes(source)) existing.sources.push(source);
+    } else grouped.set(key, { ...injection, contents: [injection.content], sources: [source] });
   }
 
   return [...grouped.values()].map(({ contents, ...injection }) => ({
@@ -319,7 +345,10 @@ function groupDepthInjections(injections: DepthInjection[]): DepthInjection[] {
  * Merge consecutive system messages that have no `name`, matching SillyTavern's
  * squashSystemMessages. Named messages act as hard breaks.
  */
-function squashSystemMessages(messages: ApiMessage[]): ApiMessage[] {
+function squashSystemMessages(
+  messages: ApiMessage[],
+  origins?: Map<ApiMessage, string[]>,
+): ApiMessage[] {
   const result: ApiMessage[] = [];
 
   for (const message of messages) {
@@ -331,8 +360,17 @@ function squashSystemMessages(messages: ApiMessage[]): ApiMessage[] {
 
     if (squashable) {
       previous.content = `${previous.content}\n${message.content}`;
+      if (origins) {
+        const joined = origins.get(previous) ?? [];
+        for (const source of origins.get(message) ?? []) {
+          if (!joined.includes(source)) joined.push(source);
+        }
+        origins.set(previous, joined);
+      }
     } else {
-      result.push({ ...message });
+      const copy = { ...message };
+      origins?.set(copy, [...(origins.get(message) ?? [])]);
+      result.push(copy);
     }
   }
 
@@ -725,6 +763,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         order: prompt.injection_order ?? DEFAULT_INJECTION_ORDER,
         role: prompt.role ?? 'system',
         content,
+        source: entry.identifier,
       };
       absolutePrompts.push(injection);
       const tokens = messageCost({ role: injection.role, content: injection.content });
@@ -739,6 +778,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
             order: injection.order + (summaryConfig.position === 'beforeMain' ? -1 : 1),
             role: summaryConfig.role,
             content: summaryContent,
+            source: storyIdentifier,
           };
           absolutePrompts.push(summaryInjection);
           tokenCounts[storyIdentifier] = messageCost({
@@ -757,6 +797,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
             order: injection.order + (authorNote.position === 'beforeScenario' ? -1 : 1),
             role: authorNote.role,
             content: noteContent,
+            source: 'authorNote',
           };
           absolutePrompts.push(noteInjection);
           tokenCounts.authorNote = messageCost({
@@ -810,7 +851,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
   for (const injection of worldInfoDepth) {
     const content = substitute(injection.content, 'worldInfoDepth');
     if (!content.trim()) continue;
-    depthInjections.push({ ...injection, content });
+    depthInjections.push({ ...injection, content, source: 'worldInfoDepth' });
   }
 
   if (personaPosition === 'atDepth' && personaText) {
@@ -821,6 +862,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         order: DEFAULT_INJECTION_ORDER,
         role: persona?.role ?? 'system',
         content,
+        source: 'personaDescription',
       });
     }
   }
@@ -834,6 +876,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         order: DEFAULT_INJECTION_ORDER,
         role: authorNote.role,
         content: resolvedAuthorNoteDepth,
+        source: 'authorNote',
       });
     }
   }
@@ -847,6 +890,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         order: DEFAULT_INJECTION_ORDER,
         role: summaryConfig.role,
         content,
+        source: storyIdentifier,
       };
       depthInjections.push(injection);
       summaryDepthTokens = messageCost({ role: injection.role, content: injection.content });
@@ -876,6 +920,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       order: DEFAULT_INJECTION_ORDER,
       role: guidanceConfig.guideRole,
       content,
+      source: 'guides',
     };
     depthInjections.push(injection);
     guideTokens += messageCost({ role: injection.role, content: injection.content });
@@ -894,6 +939,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
         order: DEFAULT_INJECTION_ORDER,
         role: guidanceConfig.role,
         content: filled,
+        source: 'guidance',
       });
     }
   }
@@ -948,43 +994,72 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     ? substitute(preset.send_if_empty, 'sendIfEmpty')
     : '';
 
+  /**
+   * Where the last materialised array's messages came from, index for index. Kept beside
+   * the array rather than on its messages, so nothing extra can ever reach the wire.
+   */
+  let materializedOrigins: string[][] = [];
+
   /** Build and normalise the exact message array that would be sent to the provider. */
   function materialize(
     examples: ApiMessage[],
     packedHistory: ApiMessage[],
     includeSendIfEmpty = false,
   ): ApiMessage[] {
+    const origins = new Map<ApiMessage, string[]>();
+    const tagged = (message: ApiMessage, sources: string[]) => {
+      origins.set(message, sources);
+      return message;
+    };
+    const inject = (message: ApiMessage, sources: string[]) => origins.set(message, sources);
+
     const history = [
-      ...(newChatMarker ? [{ role: 'system' as const, content: newChatMarker }] : []),
-      ...applyDepthInjections(packedHistory, groupedInjections),
+      ...(newChatMarker
+        ? [tagged({ role: 'system' as const, content: newChatMarker }, ['newChatPrompt'])]
+        : []),
+      ...applyDepthInjections(packedHistory, groupedInjections, inject),
     ];
     if (includeSendIfEmpty && sendIfEmpty && history.at(-1)?.role === 'assistant') {
-      history.push({ role: 'user', content: sendIfEmpty });
+      history.push(tagged({ role: 'user', content: sendIfEmpty }, ['sendIfEmpty']));
     }
 
     let final = slots.flatMap((slot) => {
       if (slot.identifier === 'dialogueExamples')
-        return examples.map((message) => ({ ...message }));
-      if (slot.identifier === 'chatHistory') return history.map((message) => ({ ...message }));
-      return slot.messages.map((message) => ({ ...message }));
+        return examples.map((message) => tagged({ ...message }, ['dialogueExamples']));
+      if (slot.identifier === 'chatHistory')
+        return history.map((message) =>
+          tagged({ ...message }, origins.get(message) ?? ['chatHistory']),
+        );
+      return slot.messages.map((message) => tagged({ ...message }, [slot.identifier]));
     });
 
     // A disabled history marker still needs a home for absolute/depth injections.
     if (historySlotIndex === -1 && groupedInjections.length) {
-      final = [...final, ...applyDepthInjections([], groupedInjections)];
+      final = [...final, ...applyDepthInjections([], groupedInjections, inject)];
     }
 
     if (generationType === 'continue') {
       final = applyContinue(final, preset, continueNudge, hasContinuableAssistant);
+      // Continue makes the nudge and the moved partial reply fresh; the rest pass through.
+      for (const message of final) {
+        if (origins.has(message)) continue;
+        origins.set(
+          message,
+          message.role === 'system' && message.content === continueNudge
+            ? ['continueNudge']
+            : ['chatHistory'],
+        );
+      }
     }
-    if (preset.squash_system_messages) final = squashSystemMessages(final);
-    return [
+    if (preset.squash_system_messages) final = squashSystemMessages(final, origins);
+    const sent = [
       ...final,
-      ...finalControls.map((control) => ({
-        role: control.role,
-        content: control.content,
-      })),
+      ...finalControls.map((control) =>
+        tagged({ role: control.role, content: control.content }, [control.identifier]),
+      ),
     ];
+    materializedOrigins = sent.map((message) => origins.get(message) ?? []);
+    return sent;
   }
 
   const fixed = materialize([], []);
@@ -997,6 +1072,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
       tokenCounts,
       totalTokens: fixedTokens,
       droppedMessages: 0,
+      origins: materializedOrigins,
       macroWarnings: [...runtime.warnings],
       variableUpdates: variableUpdates(),
       error: {
@@ -1152,6 +1228,7 @@ export function assemblePrompt(options: AssembleOptions): AssembleResult {
     tokenCounts,
     totalTokens,
     droppedMessages,
+    origins: materializedOrigins,
     macroWarnings: [...runtime.warnings],
     variableUpdates: variableUpdates(),
   };

@@ -7,15 +7,18 @@
  */
 
 import { PROVIDERS } from '@shared/providers/types.ts';
+import { useMemo } from 'react';
 import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
-import { InspectPanel } from '../features/chat/InspectPanel.tsx';
 import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
 import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
 import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
+import { characterApi } from '../lib/api.ts';
 import { CharacterSheet } from './CharacterSheet.tsx';
+import { InspectTool } from './InspectTool.tsx';
 import type { IconName } from './icons.tsx';
+import { chatTurns } from './inspect.ts';
 import { LoreTool } from './LoreTool.tsx';
 import { CARD_BOOK } from './lore.ts';
 import { PersonaTool } from './PersonaTool.tsx';
@@ -149,8 +152,15 @@ export function toolSubtitle(id: ToolId, controller: AppController): string {
       return chat.state.chatId ? `Story memory for “${chat.state.title}”` : 'Story memory';
     case 'settings':
       return 'How the app looks and behaves';
-    case 'inspect':
-      return 'What was sent with the last reply';
+    case 'inspect': {
+      if (!chat.state.chatId) return 'Every reply, timed, and what it sent';
+      const count = chatTurns(
+        chat.state.messages,
+        chat.state.inspections.filter((i) => i.chatId === chat.state.chatId),
+        null,
+      ).filter((turn) => turn.n !== null).length;
+      return `${count} ${count === 1 ? 'reply' : 'replies'} in this chat · the last 10 keep their prompt`;
+    }
   }
 }
 
@@ -158,10 +168,13 @@ export function MarginTool({
   id,
   controller,
   onUiChoice,
+  onOpenTool,
 }: {
   id: ToolId;
   controller: AppController;
   onUiChoice: (choice: UiChoice) => void;
+  /** Move the margin to another tool, for links between them. */
+  onOpenTool?: (id: ToolId) => void;
 }) {
   const { app, library, backups, chat, lore, preview, presetDraft } = controller;
   const { settings, view: prefs, models, patchSettings } = app;
@@ -336,13 +349,49 @@ export function MarginTool({
         </>
       );
     case 'inspect':
-      return (
-        <InspectPanel
-          nexusRecall={chat.inspection?.nexusRecall ?? chat.nexus.recall}
-          nexusPreview={preview?.nexusRecall}
-          worldInfo={chat.worldInfo ?? preview?.worldInfo ?? null}
-          inspection={chat.inspection}
-        />
-      );
+      return <InspectMargin controller={controller} onOpenTool={onOpenTool} />;
   }
+}
+
+/** Inspect, fed from the open chat. Its own component so the names it needs are memoised. */
+function InspectMargin({
+  controller,
+  onOpenTool,
+}: {
+  controller: AppController;
+  onOpenTool?: (id: ToolId) => void;
+}) {
+  const { chat, library, app } = controller;
+  const card = library.characters.find((entry) => entry.avatar === controller.selected);
+  const prompts = library.preset?.prompts;
+  const charName = card?.name ?? 'them';
+  const personaName = chat.persona?.name ?? null;
+  const names = useMemo(
+    () => ({
+      char: charName,
+      persona: personaName,
+      prompts: new Map((prompts ?? []).map((p) => [p.identifier, p.name || p.identifier])),
+    }),
+    [charName, personaName, prompts],
+  );
+  const live = chat.state.status !== 'idle' ? chat.state.streamingId : null;
+  return (
+    <InspectTool
+      chatId={chat.state.chatId}
+      messages={chat.state.messages}
+      inspections={chat.state.inspections}
+      liveMessageId={live}
+      names={names}
+      avatarUrl={
+        card
+          ? characterApi.imageUrl(
+              card.avatar,
+              library.characterAvatarVersions[card.avatar] ?? card.modified,
+            )
+          : null
+      }
+      countText={app.countTokens.countText}
+      onOpenTool={(tool) => onOpenTool?.(tool)}
+    />
+  );
 }
