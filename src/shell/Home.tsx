@@ -231,7 +231,7 @@ export function HomeShell({
     let live = true;
     for (const entry of stack) {
       const url = avatarUrlOf(entry.avatar);
-      new Image().src = url;
+      void preloadPortrait(url);
       void cachedAvatarColor(url).then((color) => {
         if (!live) return;
         setColors((current) =>
@@ -448,11 +448,7 @@ export function HomeShell({
         }
       >
         <Backdrop url={backdropUrl} />
-        <div className="w3-aura" aria-hidden="true">
-          <span className="w3-orb w3-orb--1" />
-          <span className="w3-orb w3-orb--2" />
-          <span className="w3-orb w3-orb--3" />
-        </div>
+        <div className="w3-aura" aria-hidden="true" />
         {backdropUrl ? <div className="w3-scrim" aria-hidden="true" /> : null}
 
         <div className="w3-scene">
@@ -750,6 +746,31 @@ function Headline({ text, share, split = true }: { text: string; share: number; 
   );
 }
 
+/**
+ * Portraits fetched and decoded ahead of time, kept alive so the browser keeps them decoded:
+ * a cover can then fade in the instant a name is settled on, instead of waiting for a large
+ * PNG to decode first, which is what made the fade start late.
+ */
+const decoded = new Map<string, Promise<void>>();
+const DECODED_LIMIT = 40;
+const keepAlive: HTMLImageElement[] = [];
+
+function preloadPortrait(url: string): Promise<void> {
+  const known = decoded.get(url);
+  if (known) return known;
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = url;
+  const ready = image.decode().catch(() => {});
+  decoded.set(url, ready);
+  keepAlive.push(image);
+  if (keepAlive.length > DECODED_LIMIT) {
+    const dropped = keepAlive.shift();
+    if (dropped) decoded.delete(dropped.src);
+  }
+  return ready;
+}
+
 /** One cover in the stack of covers that cross-fade into each other. */
 interface Page {
   id: number;
@@ -811,10 +832,8 @@ function Cover({
       add();
       return;
     }
-    const image = new Image();
-    image.src = imageUrl;
     const timer = setTimeout(add, DECODE_WAIT_MS);
-    image.decode().then(add, add);
+    void preloadPortrait(imageUrl).then(add);
     return () => {
       live = false;
       clearTimeout(timer);

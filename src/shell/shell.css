@@ -208,63 +208,34 @@
   pointer-events: none;
 }
 
+/*
+ * The colour glow: three soft pools of the character's colour, painted straight onto the
+ * aura as one background. Never separate layers: Chromium (Helium, at least) flashed the
+ * glow's layers whenever the cover above them changed, even standing still in a fixed
+ * colour. Painted flat it is part of the page, so nothing above can make it flicker. It
+ * no longer drifts, because drifting would mean repainting it every frame.
+ */
+.w3-aura {
+  background:
+    radial-gradient(
+      360px 340px at 120px 60px,
+      oklch(0.62 calc(0.19 * var(--w3-c)) var(--w3-h) / calc(0.3 * var(--w3-tint))),
+      transparent
+    ),
+    radial-gradient(
+      320px 310px at calc(100% - 80px) 390px,
+      oklch(0.56 calc(0.17 * var(--w3-c)) calc(var(--w3-h) + 34) / calc(0.22 * var(--w3-tint))),
+      transparent
+    ),
+    radial-gradient(
+      430px 270px at 50% 100%,
+      oklch(0.52 calc(0.16 * var(--w3-c)) calc(var(--w3-h) - 28) / calc(0.22 * var(--w3-tint))),
+      transparent
+    );
+}
+
 .wc3[data-image="true"] .w3-aura {
   opacity: 0.7;
-}
-
-.w3-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-}
-
-.w3-orb--1 {
-  width: 560px;
-  height: 520px;
-  left: -160px;
-  top: -200px;
-  background: oklch(0.62 calc(0.19 * var(--w3-c)) var(--w3-h) / calc(0.3 * var(--w3-tint)));
-  animation: w3-drift-1 34s ease-in-out infinite alternate;
-}
-
-.w3-orb--2 {
-  width: 480px;
-  height: 460px;
-  right: -160px;
-  top: 160px;
-  background: oklch(
-    0.56 calc(0.17 * var(--w3-c)) calc(var(--w3-h) + 34) /
-    calc(0.22 * var(--w3-tint))
-  );
-  animation: w3-drift-2 41s ease-in-out infinite alternate;
-}
-
-.w3-orb--3 {
-  width: 700px;
-  height: 380px;
-  left: 26%;
-  bottom: -260px;
-  background: oklch(
-    0.52 calc(0.16 * var(--w3-c)) calc(var(--w3-h) - 28) /
-    calc(0.22 * var(--w3-tint))
-  );
-  animation: w3-drift-3 47s ease-in-out infinite alternate;
-}
-
-@keyframes w3-drift-1 {
-  to {
-    transform: translate(140px, 90px) scale(1.15);
-  }
-}
-@keyframes w3-drift-2 {
-  to {
-    transform: translate(-120px, -60px) scale(0.9);
-  }
-}
-@keyframes w3-drift-3 {
-  to {
-    transform: translate(-90px, -40px) scale(1.1);
-  }
 }
 
 /* Sending lifts a wash of colour from the bottom of the screen, under the dim. */
@@ -391,7 +362,6 @@
     transition: none;
   }
 
-  .wc3 .w3-orb,
   .wc3 .w3-bloom,
   .wc3 .w3-breath,
   .wc3 .w3-wash,

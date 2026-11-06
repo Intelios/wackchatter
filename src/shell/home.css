@@ -92,6 +92,7 @@
   mask:
     linear-gradient(to right, transparent 0, #000 32%, #000 70%, transparent 100%) intersect,
     linear-gradient(to top, transparent 0, #000 30%);
+  will-change: transform;
 }
 
 /*
@@ -101,10 +102,13 @@
 .w3-home__page {
   position: absolute;
   inset: 0;
+  /* Its own layer, so the portrait's soft-edged mask is drawn once and the fade is only
+     composited, never re-masked frame by frame. */
+  will-change: opacity;
 }
 
 .w3-home__page[data-arriving] {
-  animation: w3-home-page-in 0.4s var(--w3-out) both;
+  animation: w3-home-page-in 0.32s var(--w3-out) both;
 }
 
 @keyframes w3-home-page-in {

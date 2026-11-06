@@ -453,11 +453,7 @@ function ChatShell({
         }
       >
         <Backdrop url={backdropUrl} />
-        <div className="w3-aura" aria-hidden="true">
-          <span className="w3-orb w3-orb--1" />
-          <span className="w3-orb w3-orb--2" />
-          <span className="w3-orb w3-orb--3" />
-        </div>
+        <div className="w3-aura" aria-hidden="true" />
         <div className="w3-breath" aria-hidden="true" />
         <div className="w3-bloom" ref={bloomRef} aria-hidden="true" />
         {backdropUrl ? <div className="w3-scrim" aria-hidden="true" /> : null}
