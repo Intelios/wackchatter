@@ -799,9 +799,7 @@ function Cover({
     [asked, isLead, askedUrl],
   );
   const { shown, out } = useSwap(target);
-  const { entry, imageUrl } = shown;
-  const [broken, setBroken] = useState<string | null>(null);
-  const hasImage = broken !== imageUrl;
+  const { entry } = shown;
   const quote = quoteOf(entry.reply, { char: entry.name, user: personaName });
   const kicker = cast
     ? `Your cast · ${plural(castSize, 'character')}`
@@ -810,13 +808,7 @@ function Cover({
 
   return (
     <div className="w3-home__cover" data-out={out || undefined}>
-      <div className="w3-home__portrait" aria-hidden="true">
-        {hasImage ? (
-          <img src={imageUrl} alt="" draggable={false} onError={() => setBroken(imageUrl)} />
-        ) : (
-          <span className="w3-home__initial">{[...entry.name.trim()][0]?.toUpperCase()}</span>
-        )}
-      </div>
+      <Portraits url={askedUrl} name={asked.name} />
       <div className="w3-home__left">
         <span className="w3-home__kicker w3-home__swap">{kicker}</span>
         {quote ? (
@@ -842,6 +834,62 @@ function Cover({
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** One portrait in the cross-fade, or the initial when its image will not load. */
+interface PortraitLayer {
+  url: string;
+  name: string;
+  broken: boolean;
+}
+
+/**
+ * The cover's portrait, cross-faded: a new portrait is decoded first, then fades in over the
+ * old one, which is only dropped once it is covered. The page never shows the hole between
+ * two portraits, which is what read as a flicker.
+ */
+function Portraits({ url, name }: { url: string; name: string }) {
+  const [layers, setLayers] = useState<PortraitLayer[]>([{ url, name, broken: false }]);
+  useEffect(() => {
+    let live = true;
+    const image = new Image();
+    image.src = url;
+    const add = (broken: boolean) => {
+      if (!live) return;
+      setLayers((current) =>
+        current.at(-1)?.url === url
+          ? current
+          : // At most the one being covered and the one arriving.
+            [...current.slice(-1), { url, name, broken }],
+      );
+    };
+    image.decode().then(
+      () => add(false),
+      () => add(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, [url, name]);
+
+  return (
+    <div className="w3-home__portrait" aria-hidden="true">
+      {layers.map((layer, index) => (
+        <div
+          key={layer.url}
+          className="w3-home__layer"
+          data-arriving={index === layers.length - 1 && layers.length > 1 ? '' : undefined}
+          onAnimationEnd={() => setLayers((current) => current.slice(-1))}
+        >
+          {layer.broken ? (
+            <span className="w3-home__initial">{[...layer.name.trim()][0]?.toUpperCase()}</span>
+          ) : (
+            <img src={layer.url} alt="" draggable={false} />
+          )}
+        </div>
+      ))}
     </div>
   );
 }

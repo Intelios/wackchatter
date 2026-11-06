@@ -368,7 +368,8 @@
   z-index: 2;
   transition:
     right var(--w3-morph) var(--w3-spring),
-    left var(--w3-morph) var(--w3-spring);
+    left var(--w3-morph) var(--w3-spring),
+    opacity 0.35s var(--w3-out);
 }
 
 .wc3[data-margin="R"] .w3-scene {
@@ -377,6 +378,41 @@
 
 .wc3[data-margin="L"] .w3-scene {
   left: var(--w3-margin-w);
+}
+
+/*
+ * Switching character: the new scene waits unseen until its chat is there, then fades in,
+ * while a still copy of the old one (.w3-ghost) fades out over it.
+ */
+.w3-scene[data-veiled] {
+  opacity: 0;
+  transition: none;
+}
+
+.w3-ghost {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.w3-ghost:empty {
+  display: none;
+}
+
+.w3-ghost > * {
+  position: absolute;
+  inset: 0;
+}
+
+.w3-ghost[data-go] {
+  animation: w3-ghost-out 0.35s var(--w3-out) forwards;
+}
+
+@keyframes w3-ghost-out {
+  to {
+    opacity: 0;
+  }
 }
 
 /*

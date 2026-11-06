@@ -17,7 +17,15 @@ import './stage.css';
 import { greetingTexts } from '@shared/chat/message.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { LegacyShell } from '../app/LegacyShell.tsx';
 import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
@@ -114,6 +122,8 @@ function ChatShell({
   const { state } = chat;
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
   const washRef = useRef<HTMLDivElement>(null);
   const bloomRef = useRef<HTMLDivElement>(null);
   const lineRef = useRef<LineHandle>(null);
@@ -176,6 +186,54 @@ function ChatShell({
 
   useAura(rootRef, washRef, auraColor, personaColor, active.avatar);
   const [firstAura] = useState(() => initialAuraStyle(auraColor, personaColor));
+
+  // --- Switching character: a cross-fade, never a blank frame ------------------------------
+
+  /*
+   * The old transcript is gone within a frame of picking someone else, well before the new
+   * one has loaded. So the moment the pick changes (before that frame is painted), a still
+   * copy of the old scene is laid over the page and fades out, while the new chat fades in
+   * underneath once its own messages are there. A cap keeps a slow load from hiding the
+   * chat for long.
+   */
+  const liveAvatar = controller.active?.avatar ?? null;
+  const previousAvatar = useRef(liveAvatar);
+  const [veiled, setVeiled] = useState(false);
+  useLayoutEffect(() => {
+    const before = previousAvatar.current;
+    previousAvatar.current = liveAvatar;
+    if (!before || !liveAvatar || before === liveAvatar) return;
+    const scene = sceneRef.current;
+    const ghost = ghostRef.current;
+    if (!scene || !ghost) return;
+    const still = scene.cloneNode(true) as HTMLElement;
+    still.removeAttribute('id');
+    for (const element of still.querySelectorAll('[id]')) element.removeAttribute('id');
+    ghost.replaceChildren(still);
+    // A copy starts scrolled to the top; put every scroller back where the original was.
+    const from = scene.querySelectorAll<HTMLElement>('*');
+    const to = still.querySelectorAll<HTMLElement>('*');
+    from.forEach((element, index) => {
+      if (element.scrollTop) to[index]?.scrollTo({ top: element.scrollTop });
+    });
+    delete ghost.dataset.go;
+    setVeiled(true);
+  }, [liveAvatar]);
+  const openFor = chat.chats.find((summary) => summary.id === state.chatId)?.characterId;
+  const arrived = Boolean(controller.character) && openFor === liveAvatar;
+  useEffect(() => {
+    if (!veiled) return;
+    const reveal = () => {
+      setVeiled(false);
+      replay(ghostRef.current);
+    };
+    if (arrived) {
+      reveal();
+      return;
+    }
+    const timer = setTimeout(reveal, 1500);
+    return () => clearTimeout(timer);
+  }, [veiled, arrived]);
 
   // --- Generating ----------------------------------------------------------------------
 
@@ -462,7 +520,7 @@ function ChatShell({
         <div className="w3-bloom" ref={bloomRef} aria-hidden="true" />
         {backdropUrl ? <div className="w3-scrim" aria-hidden="true" /> : null}
 
-        <div className="w3-scene">
+        <div className="w3-scene" ref={sceneRef} data-veiled={veiled || undefined}>
           <ErrorBoundary where="the chat" resetKeys={[controller.selected, state.chatId]}>
             <ChatStage
               chat={chat}
@@ -481,6 +539,15 @@ function ChatShell({
             />
           </ErrorBoundary>
         </div>
+
+        <div
+          className="w3-ghost"
+          ref={ghostRef}
+          aria-hidden="true"
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) event.currentTarget.replaceChildren();
+          }}
+        />
 
         <div className="w3-wash" ref={washRef} aria-hidden="true" />
 
