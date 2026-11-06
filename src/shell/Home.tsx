@@ -51,7 +51,7 @@ import {
 import { Island, type IslandMode, type IslandNotice, WingButton } from './Island.tsx';
 import { PersonaPane, RestPane, type SearchItem, SearchPane } from './IslandPanes.tsx';
 import { Icon } from './icons.tsx';
-import { MarginTool, TOOLS, type ToolId, toolSubtitle } from './MarginTools.tsx';
+import { MarginTool, TOOLS, type ToolId, toolSubtitle, toolTitle } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, useAura } from './useAura.ts';
 
@@ -101,6 +101,11 @@ export function HomeShell({
   /** Which name in the stack the cover shows; 0 is the chat you were last in. */
   const [picked, setPicked] = useState(0);
   const [tool, setTool] = useState<ToolId | null>(null);
+  const { setCharacterSheet } = controller;
+  // A character's sheet belongs to the Characters tool: leaving the tool goes back to the list.
+  useEffect(() => {
+    if (tool !== 'characters') setCharacterSheet(null);
+  }, [tool, setCharacterSheet]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const [onApps, setOnApps] = useState(false);
@@ -568,7 +573,7 @@ export function HomeShell({
           <aside className="w3-margin" data-side={side} key={tool} aria-label={TOOLS[tool].title}>
             <header className="w3-margin__head">
               <div className="w3-margin__title">
-                <h2>{TOOLS[tool].title}</h2>
+                <h2>{toolTitle(tool, controller)}</h2>
                 <span>{toolSubtitle(tool, controller)}</span>
               </div>
               <button
@@ -581,7 +586,10 @@ export function HomeShell({
               </button>
             </header>
             <div className="w3-margin__body">
-              <ErrorBoundary where={TOOLS[tool].title} resetKeys={[tool, controller.editing]}>
+              <ErrorBoundary
+                where={TOOLS[tool].title}
+                resetKeys={[tool, controller.characterSheet]}
+              >
                 <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />
               </ErrorBoundary>
             </div>

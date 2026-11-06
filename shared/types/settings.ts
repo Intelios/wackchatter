@@ -139,6 +139,12 @@ export interface AppSettings {
    * shared card nor is overwritten by an imported one.
    */
   characterRatings: Record<string, number>;
+  /**
+   * Where each character's face strip is cut, as the vertical position of the portrait in
+   * percent (0 top, 100 bottom), keyed by PNG filename like the ratings. Absent means the
+   * automatic crop (`AUTO_FACE_CROP`). Local UI state, never written into the card.
+   */
+  characterCrops: Record<string, number>;
   /** How the character list orders its cards. Rating sorts within each folder, not across. */
   characterListSort: 'name' | 'rating';
   /** Tags omitted from character-list chips. Matching is case-insensitive. */
@@ -219,6 +225,12 @@ export type CharacterRating = 1 | 2 | 3 | 4 | 5;
 
 export const CHARACTER_RATING_MIN = 1 as const;
 export const CHARACTER_RATING_MAX = 5 as const;
+
+/**
+ * Where a face strip is cut when nobody has moved it: a fifth of the way down, where most
+ * card art puts the eyes. Percent of the portrait's height, as CSS `object-position`.
+ */
+export const AUTO_FACE_CROP = 20;
 
 /**
  * How many entries `AppSettings.recentPersonaIds` keeps.
@@ -472,6 +484,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     personas: {},
   },
   characterRatings: {},
+  characterCrops: {},
   characterListSort: 'name',
   hiddenTags: [],
   collapsedCharacterFolders: [],

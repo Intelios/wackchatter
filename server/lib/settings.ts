@@ -434,6 +434,20 @@ function normalizeCharacterRatings(value: unknown): Record<string, number> {
 }
 
 /**
+ * Coerce the stored face-strip crops: finite numbers clamped to 0–100, one decimal. Keyed by
+ * the avatar filename like the ratings; anything else is dropped rather than shown wrong.
+ */
+function normalizeCharacterCrops(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  const entries: Array<[string, number]> = [];
+  for (const [avatar, candidate] of Object.entries(value)) {
+    if (!avatar || typeof candidate !== 'number' || !Number.isFinite(candidate)) continue;
+    entries.push([avatar, Math.round(Math.min(100, Math.max(0, candidate)) * 10) / 10]);
+  }
+  return Object.fromEntries(entries);
+}
+
+/**
  * Coerce the stored background→effect pairing map. Only string→string entries survive;
  * the client's effect catalog is the authority on ids, so an id it no longer knows is kept
  * here and degrades to "no effect" at render — the deleted-upload rule for pairings.
@@ -616,6 +630,7 @@ export function getSettings(): AppSettings {
     arena: normalizeArena(stored.arena),
     dialogueColors: normalizeDialogueColors(stored.dialogueColors),
     characterRatings: normalizeCharacterRatings(stored.characterRatings),
+    characterCrops: normalizeCharacterCrops(stored.characterCrops),
     backgroundEffectEnabled:
       typeof stored.backgroundEffectEnabled === 'boolean'
         ? stored.backgroundEffectEnabled
@@ -780,6 +795,13 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
               : patch.characterRatings,
           )
         : current.characterRatings,
+    // The ratings' guard, for the crops beside them.
+    characterCrops:
+      isRecord(patch.characterCrops) || patch.characterCrops === undefined
+        ? normalizeCharacterCrops(
+            patch.characterCrops === undefined ? current.characterCrops : patch.characterCrops,
+          )
+        : current.characterCrops,
     // Same guard for the background→effect pairings. The client always sends the whole
     // map (it holds the loaded settings), so a real object replaces wholesale — the
     // `dialogueColors` semantics — while `{"backgroundEffects": null}` keeps the map.
@@ -982,13 +1004,32 @@ export function reassignCharacterRating(
   oldAvatar: string,
   newAvatar: string | null,
 ): AppSettings | null {
-  if (!Object.hasOwn(current.characterRatings, oldAvatar)) return null;
+  const ratings = rekeyAvatar(current.characterRatings, oldAvatar, newAvatar);
+  return ratings ? { ...current, characterRatings: ratings } : null;
+}
 
-  const ratings = { ...current.characterRatings };
-  const value = ratings[oldAvatar]!;
-  delete ratings[oldAvatar];
-  if (newAvatar !== null) ratings[newAvatar] = value;
-  return { ...current, characterRatings: ratings };
+/** The rating's rule for a character's face-strip crop: it follows the file, or goes with it. */
+export function reassignCharacterCrop(
+  current: AppSettings,
+  oldAvatar: string,
+  newAvatar: string | null,
+): AppSettings | null {
+  const crops = rekeyAvatar(current.characterCrops, oldAvatar, newAvatar);
+  return crops ? { ...current, characterCrops: crops } : null;
+}
+
+/** Move one avatar-keyed entry to a new key, or drop it; null when there was no entry. */
+function rekeyAvatar(
+  map: Record<string, number>,
+  oldAvatar: string,
+  newAvatar: string | null,
+): Record<string, number> | null {
+  if (!Object.hasOwn(map, oldAvatar)) return null;
+  const next = { ...map };
+  const value = next[oldAvatar]!;
+  delete next[oldAvatar];
+  if (newAvatar !== null) next[newAvatar] = value;
+  return next;
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   mergeSettings,
   nextConnectionName,
   reassignArenaCardPool,
+  reassignCharacterCrop,
   reassignCharacterDialogueColor,
   reassignCharacterExampleSets,
   reassignCharacterRating,
@@ -381,6 +382,27 @@ describe('mergeSettings', () => {
       characterRatings: { 'Float.png': 2.5, 'String.png': '4', Good: 3 } as never,
     });
     expect(next.characterRatings).toEqual({ Good: 3 });
+  });
+
+  test('face-strip crops are clamped to 0–100, rounded, and junk is dropped', () => {
+    const next = mergeSettings(base(), {
+      characterCrops: {
+        'A.png': 31.46,
+        'High.png': 140,
+        'Low.png': -3,
+        'Nan.png': Number.NaN,
+        'S.png': '30',
+        '': 5,
+      } as never,
+    });
+    expect(next.characterCrops).toEqual({ 'A.png': 31.5, 'High.png': 100, 'Low.png': 0 });
+  });
+
+  test('a stale patch cannot wipe the crops', () => {
+    const current = mergeSettings(base(), { characterCrops: { 'A.png': 25 } });
+    for (const patch of [{ characterCrops: null }, { characterCrops: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).characterCrops).toEqual({ 'A.png': 25 });
+    }
   });
 
   test('background effect pairings replace wholesale, but a malformed patch cannot wipe them', () => {
@@ -925,6 +947,18 @@ describe('character rating identity changes', () => {
     const current = mergeSettings(base(), { characterRatings: { rated: 3 } });
     expect(reassignCharacterRating(current, 'rated', null)).not.toBeNull();
     expect(reassignCharacterRating(current, 'absent', null)).toBeNull();
+  });
+
+  test('a crop moves with its card, goes with a deleted one, and an uncropped card is a no-op', () => {
+    const current = mergeSettings(base(), { characterCrops: { 'Old.png': 40, 'Other.png': 10 } });
+    expect(reassignCharacterCrop(current, 'Old.png', 'New.png')?.characterCrops).toEqual({
+      'New.png': 40,
+      'Other.png': 10,
+    });
+    expect(reassignCharacterCrop(current, 'Old.png', null)?.characterCrops).toEqual({
+      'Other.png': 10,
+    });
+    expect(reassignCharacterCrop(current, 'Missing.png', null)).toBeNull();
   });
 });
 

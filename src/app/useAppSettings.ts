@@ -153,7 +153,7 @@ export function useAppSettings(onError: (message: string) => void) {
     [patchSettings],
   );
 
-  const { dialogueColors, characterRatings } = view;
+  const { dialogueColors, characterRatings, characterCrops } = view;
 
   const patchCharacterDialogueColor = useCallback(
     (avatar: string, value: DialogueColorOverride | undefined) => {
@@ -188,6 +188,18 @@ export function useAppSettings(onError: (message: string) => void) {
     [characterRatings, patchSettings, settings],
   );
 
+  /** Where a face strip is cut; undefined goes back to the automatic crop. */
+  const patchCharacterCrop = useCallback(
+    (avatar: string, value: number | undefined) => {
+      if (!settings) return;
+      const crops = { ...characterCrops };
+      if (value === undefined) delete crops[avatar];
+      else crops[avatar] = value;
+      void patchSettings({ characterCrops: crops });
+    },
+    [characterCrops, patchSettings, settings],
+  );
+
   const commitGlobalVariables = useCallback(
     async (variables: SettingsResponse['variables']) => {
       await saveSettingsStrict({ variables });
@@ -204,9 +216,11 @@ export function useAppSettings(onError: (message: string) => void) {
       if (!current) return current;
       const characters = rekey(current.dialogueColors.characters, from, to);
       const characterRatings = rekey(current.characterRatings, from, to);
+      const characterCrops = rekey(current.characterCrops ?? {}, from, to);
       if (
         characters === current.dialogueColors.characters &&
-        characterRatings === current.characterRatings
+        characterRatings === current.characterRatings &&
+        characterCrops === current.characterCrops
       ) {
         return current;
       }
@@ -214,6 +228,7 @@ export function useAppSettings(onError: (message: string) => void) {
         ...current,
         dialogueColors: { ...current.dialogueColors, characters },
         characterRatings,
+        characterCrops,
       };
     });
   }, []);
@@ -260,6 +275,7 @@ export function useAppSettings(onError: (message: string) => void) {
     patchCharacterDialogueColor,
     patchPersonaDialogueColor,
     patchCharacterRating,
+    patchCharacterCrop,
     commitGlobalVariables,
     followCharacter,
     forgetPersona,

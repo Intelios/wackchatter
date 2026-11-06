@@ -224,6 +224,18 @@ describe('character cascades', () => {
     await rollback();
     expect(getSettings().characterRatings).toEqual({ 'Old.png': 4 });
   });
+  test('the face-strip crop follows a rename, comes back on rollback and goes on delete', async () => {
+    saveSettings({ characterCrops: { 'Old.png': 31.5, 'Other.png': 12 } });
+
+    const rollback = cascadeCharacterRename('Old.png', 'New.png');
+    expect(getSettings().characterCrops).toEqual({ 'New.png': 31.5, 'Other.png': 12 });
+
+    await rollback();
+    expect(getSettings().characterCrops).toEqual({ 'Old.png': 31.5, 'Other.png': 12 });
+
+    cascadeCharacterDelete('Old.png');
+    expect(getSettings().characterCrops).toEqual({ 'Other.png': 12 });
+  });
 });
 
 describe('preset cascades', () => {

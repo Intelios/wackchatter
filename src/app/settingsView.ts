@@ -91,6 +91,7 @@ export interface SettingsView {
   guidance: GuidanceSettings;
   dialogueColors: DialogueColorSettings;
   characterRatings: Record<string, number>;
+  characterCrops: Record<string, number>;
   characterListSort: 'name' | 'rating';
   hiddenTags: string[];
   quickCommands: QuickCommand[];
@@ -133,6 +134,7 @@ export function appSettingsView(settings: AppSettings | null): SettingsView {
     guidance: settings?.guidance ?? DEFAULT_GUIDANCE,
     dialogueColors: settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS,
     characterRatings: settings?.characterRatings ?? {},
+    characterCrops: settings?.characterCrops ?? {},
     characterListSort: settings?.characterListSort === 'rating' ? 'rating' : 'name',
     hiddenTags: strings(settings?.hiddenTags),
     quickCommands: settings?.quickCommands ?? [],

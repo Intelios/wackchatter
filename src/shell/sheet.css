@@ -1,0 +1,413 @@
+/* ---------- The character sheet, in the Characters tool ---------- */
+
+.w3-sheet {
+  display: grid;
+  /* Never wider than the margin, whatever a long line in the notes would like. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  padding: 0 0 28px;
+  /* In from the side, never up from empty: the list it replaces is right behind it. */
+  animation: w3-sheet-in 0.35s var(--w3-out) both;
+}
+
+@keyframes w3-sheet-in {
+  from {
+    opacity: 0.4;
+    transform: translateX(-10px);
+  }
+}
+
+.w3-sheet__back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -6px;
+  padding: 4px 10px 4px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--w3-muted);
+  font: inherit;
+  font-size: 13px;
+}
+
+.w3-sheet__back:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.w3-sheet__yours,
+.w3-sheet__group {
+  display: grid;
+  gap: 12px;
+}
+
+/* The crop: the strip at full size, to be dragged. */
+.w3-sheet__crop-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.w3-sheet__crop {
+  position: relative;
+  height: 128px;
+  border-radius: 16px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background: oklch(0.13 calc(0.02 * var(--w3-c)) var(--w3-h));
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.w3-sheet__crop:focus-visible {
+  outline: 2px solid var(--w3-accent);
+  outline-offset: 2px;
+}
+
+.w3-sheet__crop[data-dragging] {
+  cursor: grabbing;
+}
+
+.w3-sheet__crop img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.w3-sheet__grip {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  display: grid;
+  gap: 3px;
+  padding: 7px 6px;
+  border-radius: 8px;
+  background: oklch(0.1 0.01 var(--w3-h) / 0.7);
+  transform: translateY(-50%);
+}
+
+.w3-sheet__grip i {
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--w3-soft);
+}
+
+.w3-sheet__crop-note {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__crop-note button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--w3-muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.w3-sheet__crop-note button:hover {
+  color: var(--w3-text);
+}
+
+/* Rating and colour: a label and its control. */
+.w3-sheet__field {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.w3-sheet__field > span {
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__stars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.w3-sheet__stars button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--wc-star-empty);
+  transition:
+    color var(--w3-quick) ease,
+    transform var(--w3-quick) var(--w3-spring);
+}
+
+.w3-sheet__stars button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.w3-sheet__stars button:hover {
+  background: var(--w3-hover);
+  transform: scale(1.12);
+}
+
+.w3-sheet__stars button[data-on] {
+  color: var(--wc-star);
+}
+
+/* After a click, the lit stars pop in one after another. */
+.w3-sheet__stars[data-pop] button[data-on] svg {
+  animation: w3-star-pop 0.42s var(--w3-spring) both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+.w3-sheet__stars[data-pop] button:not([data-on]) svg {
+  animation: w3-star-out 0.25s ease both;
+}
+
+@keyframes w3-star-pop {
+  0% {
+    transform: scale(0.55) rotate(-18deg);
+  }
+  60% {
+    transform: scale(1.28) rotate(6deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes w3-star-out {
+  from {
+    transform: scale(0.8);
+  }
+}
+
+.w3-sheet__stars small {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.w3-sheet__swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sw);
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08);
+  transition:
+    box-shadow var(--w3-quick) ease,
+    transform var(--w3-quick) var(--w3-spring);
+}
+
+.w3-sheet__swatch:hover {
+  transform: scale(1.12);
+}
+
+.w3-sheet__swatch[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 2px oklch(0.12 0.02 var(--w3-h)),
+    0 0 0 3.5px var(--sw);
+}
+
+.w3-sheet__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-hover);
+  color: var(--w3-muted);
+  font: inherit;
+  font-size: 12px;
+}
+
+.w3-sheet__chip:has(i) {
+  padding-left: 5px;
+}
+
+.w3-sheet__chip i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.w3-sheet__chip:hover {
+  color: var(--w3-text);
+}
+
+.w3-sheet__chip[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+  color: var(--w3-text);
+}
+
+.w3-sheet__hex {
+  width: 92px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--w3-accent-line);
+  border-radius: 999px;
+  background: none;
+  color: var(--w3-text);
+  font-family: var(--w3-font-mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.w3-sheet__hex[data-invalid] {
+  border-color: var(--w3-line-strong);
+}
+
+.w3-sheet__hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}
+
+/* Section labels: small capitals and a hairline. */
+.w3-sheet__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--w3-line);
+}
+
+.w3-sheet__notes {
+  display: grid;
+  gap: 10px;
+  color: var(--w3-soft);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.w3-sheet__notes > * {
+  margin: 0;
+}
+
+.w3-sheet__notes pre {
+  white-space: pre-wrap;
+}
+
+.w3-sheet__notes img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.w3-sheet__fold > button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--w3-line);
+  background: none;
+  color: var(--w3-soft);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.w3-sheet__fold > button:hover {
+  color: var(--w3-text);
+}
+
+.w3-sheet__fold small {
+  margin-left: auto;
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__fold .w3-ic {
+  color: var(--w3-faint);
+  transform: rotate(-90deg);
+  transition: transform var(--w3-quick) var(--w3-out);
+}
+
+.w3-sheet__fold[data-open] .w3-ic {
+  transform: none;
+}
+
+.w3-sheet__fold-text {
+  padding: 10px 2px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--w3-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.w3-sheet__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__studio {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.w3-sheet__studio:hover {
+  filter: brightness(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .w3-sheet,
+  .w3-sheet__stars[data-pop] button svg {
+    animation: none;
+  }
+}

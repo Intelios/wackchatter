@@ -53,6 +53,7 @@ import {
   TOOLS,
   type ToolId,
   toolSubtitle,
+  toolTitle,
 } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, replay, useAura } from './useAura.ts';
@@ -120,6 +121,11 @@ function ChatShell({
   const importRef = useRef<HTMLInputElement>(null);
 
   const [tool, setTool] = useState<ToolId | null>(null);
+  const { setCharacterSheet } = controller;
+  // A character's sheet belongs to the Characters tool: leaving the tool goes back to the list.
+  useEffect(() => {
+    if (tool !== 'characters') setCharacterSheet(null);
+  }, [tool, setCharacterSheet]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const noticeId = useRef(0);
@@ -148,7 +154,7 @@ function ChatShell({
     creatorNotes: character.creator_notes ?? '',
     card: character,
     onEditCharacter: () => {
-      controller.editCharacter(active.avatar);
+      setCharacterSheet(active.avatar);
       setTool('characters');
     },
     dialogueColors: prefs.dialogueColors,
@@ -484,7 +490,7 @@ function ChatShell({
           <aside className="w3-margin" data-side={side} key={tool} aria-label={TOOLS[tool].title}>
             <header className="w3-margin__head">
               <div className="w3-margin__title">
-                <h2>{TOOLS[tool].title}</h2>
+                <h2>{toolTitle(tool, controller)}</h2>
                 <span>{toolSubtitle(tool, controller)}</span>
               </div>
               <button
@@ -499,7 +505,7 @@ function ChatShell({
             <div className="w3-margin__body">
               <ErrorBoundary
                 where={TOOLS[tool].title}
-                resetKeys={[tool, controller.editing, controller.selected]}
+                resetKeys={[tool, controller.characterSheet, controller.selected]}
               >
                 <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />
               </ErrorBoundary>
@@ -595,7 +601,7 @@ function ChatShell({
                 }}
                 onEditCharacter={() => {
                   setOpened(null);
-                  controller.editCharacter(active.avatar);
+                  setCharacterSheet(active.avatar);
                   setTool('characters');
                 }}
                 chatTitle={state.title}

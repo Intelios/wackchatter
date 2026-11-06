@@ -355,3 +355,143 @@
   color: var(--wc-danger);
   font-size: var(--wc-text-sm);
 }
+
+/* ---------------------------------------------------------------------------
+ * Face strips (the 3.0 shell): each card is its portrait cut to a band across the eyes,
+ * with the name over it. The picture fades out under the words through a mask on the image
+ * itself, not a scrim laid over it, so a strip is one layer however the list repaints.
+ * ------------------------------------------------------------------------- */
+
+.character-list[data-look="strips"] .character-list__search {
+  padding: 2px 0 10px;
+  border-bottom: 0;
+}
+
+.character-list[data-look="strips"] .character-list__items {
+  padding: 0 0 12px;
+  gap: 4px;
+}
+
+.character-list[data-look="strips"] .character-card,
+.character-list[data-look="strips"] .character-folder {
+  margin-left: calc(var(--depth, 0) * 16px);
+}
+
+.character-list[data-look="strips"] .character-card {
+  position: relative;
+  height: 58px;
+  flex: none;
+  padding-right: 8px;
+  border-radius: 12px;
+  overflow: hidden;
+  isolation: isolate;
+  background: oklch(0.13 calc(0.02 * var(--w3-c)) var(--w3-h));
+}
+
+.character-list[data-look="strips"] .character-card:hover {
+  background: oklch(0.17 calc(0.03 * var(--w3-c)) var(--w3-h));
+}
+
+.character-list[data-look="strips"] .character-card__open {
+  align-self: stretch;
+  padding: 0 4px 0 14px;
+  gap: 10px;
+}
+
+.character-list[data-look="strips"] .character-card__avatar {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: none;
+  mask-image: linear-gradient(90deg, transparent 8%, rgb(0 0 0 / 0.35) 40%, #000 92%);
+  transition: transform 0.5s var(--w3-out);
+}
+
+.character-list[data-look="strips"] .character-card:hover .character-card__avatar {
+  transform: translateX(-6px);
+}
+
+.character-list[data-look="strips"] .character-card__name {
+  font-size: 15.5px;
+  font-weight: 650;
+  text-shadow: 0 1px 8px oklch(0 0 0 / 0.6);
+}
+
+.character-list[data-look="strips"] .character-card__meta {
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  color: var(--w3-soft);
+  text-shadow: 0 1px 6px oklch(0 0 0 / 0.7);
+}
+
+.character-list[data-look="strips"] .character-card__stars {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: oklch(0.1 0.01 var(--w3-h) / 0.7);
+}
+
+.character-list[data-look="strips"] .character-card__edit {
+  color: var(--w3-soft);
+  background: oklch(0.1 0.01 var(--w3-h) / 0.7);
+  border-radius: 8px;
+}
+
+/* The open chat: an edge in the character's colour, steady rather than breathing. */
+.character-list[data-look="strips"] .character-card[data-current] {
+  animation: none;
+  box-shadow:
+    inset 3px 0 0 var(--w3-accent),
+    inset 0 0 0 1px var(--w3-accent-line);
+}
+
+/* Folders: a heading and a hairline, not a row. */
+.character-list[data-look="strips"] .character-folder {
+  flex: none;
+  margin-top: 8px;
+}
+
+.character-list[data-look="strips"] .character-folder:hover {
+  background: none;
+}
+
+.character-list[data-look="strips"] .character-folder__toggle {
+  padding: 6px 4px;
+  gap: 8px;
+  color: var(--w3-muted);
+  font-family: var(--w3-font-display);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.character-list[data-look="strips"] .character-folder__toggle:hover {
+  color: var(--w3-text);
+}
+
+.character-list[data-look="strips"] .character-folder__icon {
+  display: none;
+}
+
+.character-list[data-look="strips"] .character-folder__name {
+  flex: none;
+  max-width: 70%;
+}
+
+.character-list[data-look="strips"] .character-folder__count {
+  margin-left: 0;
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+}
+
+.character-list[data-look="strips"] .character-folder__toggle::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--w3-line);
+}
+
+.character-list[data-look="strips"] .character-list__footer {
+  border-top: 1px solid var(--w3-line);
+}

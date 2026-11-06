@@ -10,7 +10,6 @@ import { PROVIDERS } from '@shared/providers/types.ts';
 import { useState } from 'react';
 import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
-import { CharacterEditor } from '../features/character/CharacterEditor.tsx';
 import { CharacterList } from '../features/character/CharacterList.tsx';
 import { InspectPanel } from '../features/chat/InspectPanel.tsx';
 import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
@@ -22,6 +21,7 @@ import { PresetToolbar } from '../features/preset/PresetToolbar.tsx';
 import { PromptsPanel } from '../features/preset/PromptsPanel.tsx';
 import { UnsavedBar } from '../features/preset/UnsavedBar.tsx';
 import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
+import { CharacterSheet } from './CharacterSheet.tsx';
 import type { IconName } from './icons.tsx';
 
 export type ToolId =
@@ -55,13 +55,32 @@ export const TOOLS: Record<ToolId, ToolSpec> = {
 export const LEFT_TOOLS: ToolId[] = ['characters', 'lorebooks', 'personas'];
 export const RIGHT_TOOLS: ToolId[] = ['prompts', 'generation', 'memory', 'settings', 'inspect'];
 
+/** The character whose sheet is open in the Characters tool, if it is still in the library. */
+function sheetCharacter(controller: AppController) {
+  const avatar = controller.characterSheet;
+  return avatar
+    ? controller.library.characters.find((entry) => entry.avatar === avatar)
+    : undefined;
+}
+
+/** A tool's heading: its name, or on a character's sheet, the character's. */
+export function toolTitle(id: ToolId, controller: AppController): string {
+  if (id === 'characters' && controller.characterSheet) {
+    return sheetCharacter(controller)?.name ?? 'Character';
+  }
+  return TOOLS[id].title;
+}
+
 export function toolSubtitle(id: ToolId, controller: AppController): string {
   const { library, chat, app } = controller;
   switch (id) {
-    case 'characters':
-      return controller.showEditor
-        ? `Editing ${controller.showEditor.name || 'a character'}`
-        : `${library.characters.length.toLocaleString()} in your library`;
+    case 'characters': {
+      if (controller.characterSheet) {
+        const entry = sheetCharacter(controller);
+        return entry?.creator ? `by ${entry.creator}` : (entry?.folder ?? '');
+      }
+      return `${library.characters.length.toLocaleString()} in your library`;
+    }
     case 'lorebooks':
       return 'World info for this chat and every chat';
     case 'personas':
@@ -109,31 +128,32 @@ export function MarginTool({
 
   switch (id) {
     case 'characters': {
-      const editing = controller.showEditor;
-      if (editing) {
+      const sheet = controller.characterSheet;
+      if (sheet) {
         return (
-          <CharacterEditor
-            key={editing.avatar}
-            detail={editing}
-            onSaved={controller.characterSaved}
-            onRenamed={(saved) => void controller.characterRenamed(saved)}
-            onDeleted={controller.characterDeleted}
-            onBack={() => controller.setEditing(false)}
-            registerPersistence={controller.registerPersistence('character')}
-            dialogueColor={prefs.dialogueColors.characters[editing.avatar]}
+          <CharacterSheet
+            key={sheet}
+            avatar={sheet}
+            summary={characters.find((entry) => entry.avatar === sheet)}
+            avatarVersion={library.characterAvatarVersions[sheet]}
+            userName={personas.find((entry) => entry.id === settings?.personaId)?.name ?? 'you'}
+            rating={prefs.characterRatings[sheet]}
+            onRating={(value) => app.patchCharacterRating(sheet, value)}
+            crop={prefs.characterCrops[sheet]}
+            onCrop={(value) => app.patchCharacterCrop(sheet, value)}
+            dialogueColor={prefs.dialogueColors.characters[sheet]}
             dialogueColorsEnabled={prefs.dialogueColors.enabled}
-            avatarVersion={library.characterAvatarVersions[editing.avatar]}
-            rating={prefs.characterRatings[editing.avatar]}
-            onRatingChange={(value) => app.patchCharacterRating(editing.avatar, value)}
-            onDialogueColorChange={(value) =>
-              app.patchCharacterDialogueColor(editing.avatar, value)
-            }
-            onAvatarChanged={() => library.bumpCharacterAvatar(editing.avatar)}
+            onDialogueColor={(value) => app.patchCharacterDialogueColor(sheet, value)}
+            countTokens={app.countTokens}
+            onBack={() => controller.setCharacterSheet(null)}
+            onOpenStudio={() => void controller.enterStudioOn(sheet)}
           />
         );
       }
       return (
         <CharacterList
+          look="strips"
+          crops={prefs.characterCrops}
           characters={characters}
           folders={library.folders}
           collapsedFolders={prefs.collapsedCharacterFolders}
@@ -147,7 +167,7 @@ export function MarginTool({
           error={controller.error}
           onSelect={controller.selectCharacter}
           onRefresh={library.refresh}
-          onEdit={controller.editCharacter}
+          onEdit={controller.setCharacterSheet}
           onCollapsedFoldersChange={(next) =>
             void patchSettings({ collapsedCharacterFolders: next })
           }

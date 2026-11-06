@@ -11,6 +11,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import type { CharacterSummary } from '@shared/types/card.ts';
+import { AUTO_FACE_CROP } from '@shared/types/settings.ts';
 import {
   type CSSProperties,
   type RefObject,
@@ -64,6 +65,13 @@ interface CharacterListProps {
   onEdit: (avatar: string) => void;
   onRefresh: () => void;
   onCollapsedFoldersChange: (next: string[]) => void;
+  /**
+   * How a card is drawn. `strips` (the 3.0 shell) cuts each portrait to a band across the
+   * eyes with the name over it; `rows` is the 2.x list.
+   */
+  look?: 'rows' | 'strips';
+  /** Where each face strip is cut, by avatar; absent means the automatic crop. */
+  crops?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -88,6 +96,8 @@ export function CharacterList({
   onEdit,
   onRefresh,
   onCollapsedFoldersChange,
+  look = 'rows',
+  crops,
 }: CharacterListProps) {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -223,7 +233,7 @@ export function CharacterList({
   const message = error ?? actionError;
 
   return (
-    <div className="character-list">
+    <div className="character-list" data-look={look}>
       <div className="character-list__search">
         <input
           className="wc-input"
@@ -307,6 +317,8 @@ export function CharacterList({
                   draggable={!searching}
                   current={row.character.avatar === selected}
                   hiddenTags={hiddenTags}
+                  strip={look === 'strips'}
+                  crop={crops?.[row.character.avatar] ?? AUTO_FACE_CROP}
                   onSelect={() => onSelect(row.character.avatar)}
                   onEdit={() => onEdit(row.character.avatar)}
                 />
@@ -514,6 +526,9 @@ interface CharacterRowProps {
   current: boolean;
   /** Tags hidden from the chips, case-insensitively. */
   hiddenTags: string[];
+  /** Drawn as a face strip: the portrait fills the row, cut at `crop` percent down. */
+  strip: boolean;
+  crop: number;
   onSelect: () => void;
   onEdit: () => void;
 }
@@ -526,6 +541,8 @@ function CharacterRow({
   draggable,
   current,
   hiddenTags,
+  strip,
+  crop,
   onSelect,
   onEdit,
 }: CharacterRowProps) {
@@ -579,11 +596,15 @@ function CharacterRow({
           src={characterApi.imageUrl(character.avatar, character.modified)}
           alt=""
           loading="lazy"
+          style={strip ? { objectPosition: `50% ${crop}%` } : undefined}
         />
         <span className="character-card__text">
           <span className="character-card__name">{character.name}</span>
-          <span className="character-card__meta">{meta}</span>
-          {visibleTags.length ? (
+          <span className="character-card__meta">
+            {/* A strip has one quiet line: the creator (or folder) and the first two tags. */}
+            {strip ? [meta, ...visibleTags.slice(0, 2)].join(' · ') : meta}
+          </span>
+          {!strip && visibleTags.length ? (
             <span className="character-card__tags" title={visibleTags.join(', ')}>
               {displayedTags.map(({ key, value }) => (
                 <span className="character-card__tag" key={key}>
@@ -618,8 +639,8 @@ function CharacterRow({
         type="button"
         className="wc-button wc-button--ghost character-card__edit"
         onClick={onEdit}
-        title={`Edit ${character.name}`}
-        aria-label={`Edit ${character.name}`}
+        title={strip ? `About ${character.name}` : `Edit ${character.name}`}
+        aria-label={strip ? `About ${character.name}` : `Edit ${character.name}`}
       >
         <EditIcon />
       </button>

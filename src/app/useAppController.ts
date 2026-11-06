@@ -70,6 +70,11 @@ export function useAppController() {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CharacterDetail | null>(null);
   const [editing, setEditing] = useState(false);
+  /**
+   * The character whose sheet the 3.0 Characters tool is showing, or null for the list. A
+   * viewer, so unlike `editing` it never changes the open chat.
+   */
+  const [characterSheet, setCharacterSheet] = useState<string | null>(null);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((message: string) => setError(message), []);
@@ -476,6 +481,16 @@ export function useAppController() {
     setView('studio');
   }, [suspendChat]);
 
+  /** Into the Studio on one card, the way the Co-Creator's Finish arrives there. */
+  const enterStudioOn = useCallback(
+    async (avatar: string) => {
+      if (!(await suspendChat())) return;
+      setStudioInitialAvatar(avatar);
+      setView('studio');
+    },
+    [suspendChat],
+  );
+
   const exitStudio = useCallback(async () => {
     if (!(await flushArea('studio'))) return;
     // Cleared, or entering the Studio again later would re-open the handed-off card.
@@ -668,6 +683,8 @@ export function useAppController() {
     showEditor,
     editing,
     setEditing,
+    characterSheet,
+    setCharacterSheet,
     ready,
     error,
     showError,
@@ -687,6 +704,7 @@ export function useAppController() {
     personaDeleted,
     selectPersona,
     enterStudio,
+    enterStudioOn,
     exitStudio,
     enterCoCreator,
     enterCoCreatorFromStudio,

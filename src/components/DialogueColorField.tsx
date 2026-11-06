@@ -12,7 +12,7 @@ const FALLBACK_COLOR = '#e18a24';
  * contrast check the field warns about, so no preset ships a colour the editor would
  * flag on its own input.
  */
-const DIALOGUE_COLOR_PRESETS = [
+export const DIALOGUE_COLOR_PRESETS = [
   { label: 'Orange', value: '#e18a24' },
   { label: 'Red', value: '#ff6b6b' },
   { label: 'Pink', value: '#ff8fa3' },
