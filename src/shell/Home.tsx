@@ -51,13 +51,13 @@ import {
 import { Island, type IslandMode, type IslandNotice, WingButton } from './Island.tsx';
 import { PersonaPane, RestPane, type SearchItem, SearchPane } from './IslandPanes.tsx';
 import { Icon } from './icons.tsx';
-import { MarginTool, TOOLS, type ToolId, toolSubtitle, toolTitle } from './MarginTools.tsx';
+import { MarginTool, TOOLS, ToolHeading, type ToolId, toolSubtitle } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, useAura } from './useAura.ts';
 
 /** The wings at home: everything that does not need a chat open. */
 const HOME_LEFT: ToolId[] = ['characters', 'lorebooks', 'personas'];
-const HOME_RIGHT: ToolId[] = ['prompts', 'generation', 'settings'];
+const HOME_RIGHT: ToolId[] = ['preset', 'settings'];
 
 /** The app's own colour, for a library with nobody in it yet and for Create | Arena. */
 const LIME = '#c2ee4a';
@@ -101,13 +101,14 @@ export function HomeShell({
   /** Which name in the stack the cover shows; 0 is the chat you were last in. */
   const [picked, setPicked] = useState(0);
   const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet, setPersonaPage } = controller;
+  const { setCharacterSheet, setPersonaPage, setPresetPrompt } = controller;
   // A character's sheet and a persona's page belong to their tools: leaving the tool goes
   // back to its list.
   useEffect(() => {
     if (tool !== 'characters') setCharacterSheet(null);
     if (tool !== 'personas') setPersonaPage(null);
-  }, [tool, setCharacterSheet, setPersonaPage]);
+    if (tool !== 'preset') setPresetPrompt(null);
+  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const [onApps, setOnApps] = useState(false);
@@ -440,6 +441,7 @@ export function HomeShell({
         data-overlay-root
         data-screen={screen}
         data-margin={side ?? undefined}
+        data-wide={tool === 'preset' && controller.presetPrompt ? '' : undefined}
         data-image={Boolean(backdropUrl)}
         data-dropping={dropping || undefined}
         data-apps={onApps || undefined}
@@ -575,7 +577,7 @@ export function HomeShell({
           <aside className="w3-margin" data-side={side} key={tool} aria-label={TOOLS[tool].title}>
             <header className="w3-margin__head">
               <div className="w3-margin__title">
-                <h2>{toolTitle(tool, controller)}</h2>
+                <ToolHeading id={tool} controller={controller} />
                 <span>{toolSubtitle(tool, controller)}</span>
               </div>
               <button
@@ -590,7 +592,12 @@ export function HomeShell({
             <div className="w3-margin__body">
               <ErrorBoundary
                 where={TOOLS[tool].title}
-                resetKeys={[tool, controller.characterSheet, controller.personaPage]}
+                resetKeys={[
+                  tool,
+                  controller.characterSheet,
+                  controller.personaPage,
+                  controller.presetPrompt,
+                ]}
               >
                 <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />
               </ErrorBoundary>

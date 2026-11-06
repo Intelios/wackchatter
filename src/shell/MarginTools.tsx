@@ -7,7 +7,6 @@
  */
 
 import { PROVIDERS } from '@shared/providers/types.ts';
-import { useState } from 'react';
 import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
@@ -15,21 +14,17 @@ import { InspectPanel } from '../features/chat/InspectPanel.tsx';
 import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
 import { LorePanel } from '../features/lore/LorePanel.tsx';
 import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
-import { GenerationPanel } from '../features/preset/GenerationPanel.tsx';
-import { PresetToolbar } from '../features/preset/PresetToolbar.tsx';
-import { PromptsPanel } from '../features/preset/PromptsPanel.tsx';
-import { UnsavedBar } from '../features/preset/UnsavedBar.tsx';
 import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
 import { CharacterSheet } from './CharacterSheet.tsx';
 import type { IconName } from './icons.tsx';
 import { PersonaTool } from './PersonaTool.tsx';
+import { PresetSwitcher, PresetTool } from './PresetTool.tsx';
 
 export type ToolId =
   | 'characters'
   | 'lorebooks'
   | 'personas'
-  | 'prompts'
-  | 'generation'
+  | 'preset'
   | 'memory'
   | 'settings'
   | 'inspect';
@@ -45,15 +40,14 @@ export const TOOLS: Record<ToolId, ToolSpec> = {
   characters: { title: 'Characters', icon: 'users', side: 'L' },
   lorebooks: { title: 'Lorebooks', icon: 'book', side: 'L' },
   personas: { title: 'Personas', icon: 'persona', side: 'L' },
-  prompts: { title: 'Prompts', icon: 'layers', side: 'R' },
-  generation: { title: 'Generation', icon: 'sliders', side: 'R' },
+  preset: { title: 'Preset', icon: 'sliders', side: 'R' },
   memory: { title: 'Memory', icon: 'memory', side: 'R' },
   settings: { title: 'Settings', icon: 'gear', side: 'R' },
   inspect: { title: 'Inspect', icon: 'inspect', side: 'R' },
 };
 
 export const LEFT_TOOLS: ToolId[] = ['characters', 'lorebooks', 'personas'];
-export const RIGHT_TOOLS: ToolId[] = ['prompts', 'generation', 'memory', 'settings', 'inspect'];
+export const RIGHT_TOOLS: ToolId[] = ['preset', 'memory', 'settings', 'inspect'];
 
 /** The character whose sheet is open in the Characters tool, if it is still in the library. */
 function sheetCharacter(controller: AppController) {
@@ -73,7 +67,33 @@ export function toolTitle(id: ToolId, controller: AppController): string {
     if (page.kind === 'from') return 'From a character';
     return controller.library.personas.find((p) => p.id === page.id)?.name || 'Persona';
   }
+  if (id === 'preset' && controller.library.preset) {
+    const { library } = controller;
+    return (
+      library.presets.find((p) => p.id === library.presetId)?.name ?? library.presetId ?? 'Preset'
+    );
+  }
   return TOOLS[id].title;
+}
+
+/**
+ * A tool's heading. On the Preset tool the preset's name is the switcher; everywhere else it
+ * is the title.
+ */
+export function ToolHeading({ id, controller }: { id: ToolId; controller: AppController }) {
+  if (id === 'preset' && controller.library.preset) {
+    const { library, presetDraft } = controller;
+    return (
+      <PresetSwitcher
+        name={toolTitle(id, controller)}
+        presets={library.presets}
+        presetId={library.presetId}
+        dirty={presetDraft.dirty}
+        onSelect={library.selectPreset}
+      />
+    );
+  }
+  return <h2>{toolTitle(id, controller)}</h2>;
 }
 
 export function toolSubtitle(id: ToolId, controller: AppController): string {
@@ -102,11 +122,9 @@ export function toolSubtitle(id: ToolId, controller: AppController): string {
       const people = personas.length - variants;
       return `${people} ${people === 1 ? 'persona' : 'personas'}${variants ? ` · ${variants} ${variants === 1 ? 'variant' : 'variants'}` : ''}`;
     }
-    case 'prompts':
-      return library.preset ? `Preset “${library.preset.name ?? library.presetId}”` : 'Loading…';
-    case 'generation':
+    case 'preset':
       return app.models.chat.model
-        ? `Chat model: ${app.models.chat.model.model}`
+        ? `Preset · ${app.models.chat.model.model}`
         : (app.models.chat.blockedReason ?? 'Choose a chat model');
     case 'memory':
       return chat.state.chatId ? `Story memory for “${chat.state.title}”` : 'Story memory';
@@ -129,19 +147,7 @@ export function MarginTool({
   const { app, library, backups, chat, lore, preview, presetDraft } = controller;
   const { settings, view: prefs, models, patchSettings } = app;
   const { characters, personas, books, presets, presetId, preset } = library;
-  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const connection = models.chat.model;
-  const presetChrome = (
-    <div className="w3-margin__chrome">
-      <PresetToolbar
-        presets={presets}
-        presetId={presetId}
-        onSelectPreset={library.selectPreset}
-        draft={presetDraft}
-      />
-      <UnsavedBar draft={presetDraft} />
-    </div>
-  );
 
   switch (id) {
     case 'characters': {
@@ -231,43 +237,26 @@ export function MarginTool({
           onDeleted={controller.personaDeleted}
         />
       );
-    case 'prompts':
+    case 'preset':
       return (
-        <>
-          {presetChrome}
-          {preset ? (
-            <PromptsPanel
-              preset={preset}
-              draft={presetDraft}
-              selected={selectedPrompt}
-              onSelect={setSelectedPrompt}
-              tokenCounts={preview?.tokenCounts}
-              macroWarnings={preview?.macroWarnings}
-            />
-          ) : (
-            <div className="wc-empty">Loading presets…</div>
-          )}
-        </>
-      );
-    case 'generation':
-      return (
-        <>
-          {presetChrome}
-          <ConnectionPanel settings={settings} onChange={app.setSettings} />
-          {preset ? (
-            <GenerationPanel
-              preset={preset}
-              draft={presetDraft}
-              extraSamplersSent={
-                connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
-              }
-              connection={connection}
-              onConnectionPatch={app.patchChatConnection}
-            />
-          ) : (
-            <div className="wc-empty">Loading presets…</div>
-          )}
-        </>
+        <PresetTool
+          preset={preset}
+          draft={presetDraft}
+          presetCount={presets.length}
+          presetId={presetId}
+          tokenCounts={preview?.tokenCounts}
+          macroWarnings={preview?.macroWarnings ?? []}
+          countTokens={app.countTokens}
+          open={controller.presetPrompt}
+          setOpen={controller.setPresetPrompt}
+          chatModel={models.slots.chat}
+          onChatModel={(ref) => app.setModelSlot('chat', ref)}
+          connection={connection}
+          extraSamplersSent={
+            connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
+          }
+          onConnectionPatch={app.patchChatConnection}
+        />
       );
     case 'memory':
       return (
@@ -303,6 +292,10 @@ export function MarginTool({
               Use the 2.x interface
             </button>
           </div>
+          <section className="w3-margin__section" aria-label="Connections">
+            <h3 className="w3-sheet__label">Connections</h3>
+            <ConnectionPanel settings={settings} onChange={app.setSettings} showChatModel={false} />
+          </section>
           <UserSettingsPanel
             settings={settings}
             onPatch={app.patchUserSettings}

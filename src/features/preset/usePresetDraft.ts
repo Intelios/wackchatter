@@ -13,6 +13,7 @@
 import type { Preset } from '@shared/types/preset.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { presetApi } from '../../lib/api.ts';
+import { sameValue } from '../../lib/sameValue.ts';
 
 interface UsePresetDraftOptions {
   presetId: string | null;
@@ -35,6 +36,8 @@ export interface PresetDraft {
    * and `dirty` is what Save, Revert and the switch guard all key off.
    */
   dirty: boolean;
+  /** The preset as it was last loaded or saved: what Revert returns to. */
+  saved: Preset | null;
   status: string;
   renaming: boolean;
   nameDraft: string;
@@ -62,6 +65,7 @@ export function usePresetDraft({
   onRevertPreset,
 }: UsePresetDraftOptions): PresetDraft {
   const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState<Preset | null>(preset);
   const [status, setStatus] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -78,17 +82,19 @@ export function usePresetDraft({
   useEffect(() => {
     if (preset && preset === ownEdit.current) return;
     setDirty(false);
+    setSaved(preset);
     setStatus('');
   }, [preset]);
 
   const change = useCallback(
     (next: Preset) => {
       ownEdit.current = next;
-      setDirty(true);
+      // Putting every change back by hand leaves nothing to save.
+      setDirty(!sameValue(next, saved));
       setStatus('');
       onPresetChange(next);
     },
-    [onPresetChange],
+    [onPresetChange, saved],
   );
 
   const setField = useCallback(
@@ -105,6 +111,7 @@ export function usePresetDraft({
       const saved = await presetApi.save(presetId, preset, presetVersion ?? undefined);
       onPresetVersionChange(saved.version);
       setDirty(false);
+      setSaved(preset);
       setStatus('Saved');
     } catch (err) {
       setStatus((err as Error).message);
@@ -180,6 +187,7 @@ export function usePresetDraft({
 
   return {
     dirty,
+    saved,
     status,
     renaming,
     nameDraft,

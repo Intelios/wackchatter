@@ -20,6 +20,8 @@ import './ConnectionPanel.css';
 interface ConnectionPanelProps {
   settings: SettingsResponse | null;
   onChange: (settings: SettingsResponse) => void;
+  /** Off where the chat model is picked elsewhere (the 3.0 Preset tool). */
+  showChatModel?: boolean;
 }
 
 /**
@@ -33,7 +35,11 @@ interface ConnectionPanelProps {
  * result is checked against the connection that requested it, so nothing captured on
  * one connection can land on another.
  */
-export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
+export function ConnectionPanel({
+  settings,
+  onChange,
+  showChatModel = true,
+}: ConnectionPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [keyDraft, setKeyDraft] = useState('');
@@ -170,19 +176,23 @@ export function ConnectionPanel({ settings, onChange }: ConnectionPanelProps) {
 
   return (
     <div className="connection">
-      <label className="wc-label" htmlFor="wc-chat-model">
-        Chat model
-      </label>
-      <ModelPicker
-        id="wc-chat-model"
-        label="Chat model"
-        value={chatModel}
-        onChange={pickChatModel}
-      />
-      <p className="wc-hint">
-        Replies, recaps, impersonation and persona drafting run on this model. Summary, Nexus and
-        the Co-Creators pick their own in their settings.
-      </p>
+      {showChatModel ? (
+        <>
+          <label className="wc-label" htmlFor="wc-chat-model">
+            Chat model
+          </label>
+          <ModelPicker
+            id="wc-chat-model"
+            label="Chat model"
+            value={chatModel}
+            onChange={pickChatModel}
+          />
+          <p className="wc-hint">
+            Replies, recaps, impersonation and persona drafting run on this model. Summary, Nexus
+            and the Co-Creators pick their own in their settings.
+          </p>
+        </>
+      ) : null}
 
       <span className="wc-label">Connections</span>
       <div className="connection__list">

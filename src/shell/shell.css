@@ -89,6 +89,12 @@
   --w3-me-line: oklch(0.85 calc(0.11 * var(--w3-pc)) var(--w3-ph) / 0.45);
   --w3-me-ink: oklch(0.22 calc(0.05 * var(--w3-pc)) var(--w3-ph));
 
+  /* The context bar: what each part of a request draws on */
+  --w3-seg-mine: var(--w3-accent);
+  --w3-seg-card: oklch(0.78 0.11 200);
+  --w3-seg-lore: oklch(0.8 0.11 150);
+  --w3-seg-history: oklch(0.62 calc(0.03 * var(--w3-c)) var(--w3-h));
+
   /* Meaning, apart from any character's colour */
   --w3-danger: oklch(0.74 0.15 30);
   --w3-danger-soft: oklch(0.74 0.15 30 / 0.1);

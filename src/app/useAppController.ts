@@ -83,6 +83,11 @@ export function useAppController() {
    * margin's heading names the open persona.
    */
   const [personaPage, setPersonaPage] = useState<PersonaPage | null>(null);
+  /**
+   * The prompt open in the 3.0 Preset tool's editor, by identifier, or null for none. Here
+   * because the shell widens the margin while one is open.
+   */
+  const [presetPrompt, setPresetPrompt] = useState<string | null>(null);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((message: string) => setError(message), []);
@@ -695,6 +700,8 @@ export function useAppController() {
     setCharacterSheet,
     personaPage,
     setPersonaPage,
+    presetPrompt,
+    setPresetPrompt,
     ready,
     error,
     showError,

@@ -531,51 +531,6 @@
   color: var(--w3-soft);
 }
 
-.w3-word,
-.w3-word .wc-select-popover {
-  display: inline-block;
-  width: auto;
-  vertical-align: baseline;
-}
-
-.w3-word .wc-select-trigger {
-  display: inline-flex;
-  gap: 3px;
-  height: auto;
-  min-height: 0;
-  width: auto;
-  padding: 0 7px 0 8px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--w3-accent-soft);
-  box-shadow: none;
-  color: var(--w3-text);
-  font-size: inherit;
-  font-weight: 600;
-  line-height: 1.75;
-}
-
-.w3-word .wc-select-trigger:hover,
-.w3-word .wc-select-trigger[aria-expanded="true"] {
-  background: oklch(0.77 calc(0.15 * var(--w3-c)) var(--w3-h) / 0.26);
-}
-
-.w3-word .wc-select-trigger__text {
-  overflow: visible;
-}
-
-.w3-word .wc-select-trigger__chevron {
-  width: 11px;
-  height: 11px;
-  opacity: 0.7;
-}
-
-.w3-word .wc-select-popup {
-  min-width: 230px;
-  font-weight: 400;
-  line-height: 1.4;
-}
-
 .w3-pedit__select .wc-select-trigger {
   border-color: transparent;
   border-radius: 10px;

@@ -51,9 +51,9 @@ import {
   MarginTool,
   RIGHT_TOOLS,
   TOOLS,
+  ToolHeading,
   type ToolId,
   toolSubtitle,
-  toolTitle,
 } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, replay, useAura } from './useAura.ts';
@@ -121,13 +121,14 @@ function ChatShell({
   const importRef = useRef<HTMLInputElement>(null);
 
   const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet, setPersonaPage } = controller;
+  const { setCharacterSheet, setPersonaPage, setPresetPrompt } = controller;
   // A character's sheet and a persona's page belong to their tools: leaving the tool goes
   // back to its list.
   useEffect(() => {
     if (tool !== 'characters') setCharacterSheet(null);
     if (tool !== 'personas') setPersonaPage(null);
-  }, [tool, setCharacterSheet, setPersonaPage]);
+    if (tool !== 'preset') setPresetPrompt(null);
+  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const noticeId = useRef(0);
@@ -419,7 +420,7 @@ function ChatShell({
   // --- Margin ----------------------------------------------------------------------------
 
   const side = tool ? TOOLS[tool].side : null;
-  const chooseModel = useCallback(() => openTool('generation'), [openTool]);
+  const chooseModel = useCallback(() => openTool('preset'), [openTool]);
 
   const bloom = useCallback(() => replay(bloomRef.current), []);
   const onCopied = useCallback(
@@ -450,6 +451,7 @@ function ChatShell({
         className="wc3"
         data-overlay-root
         data-margin={side ?? undefined}
+        data-wide={tool === 'preset' && controller.presetPrompt ? '' : undefined}
         data-image={Boolean(backdropUrl)}
         data-generating={generating || undefined}
         style={
@@ -492,7 +494,7 @@ function ChatShell({
           <aside className="w3-margin" data-side={side} key={tool} aria-label={TOOLS[tool].title}>
             <header className="w3-margin__head">
               <div className="w3-margin__title">
-                <h2>{toolTitle(tool, controller)}</h2>
+                <ToolHeading id={tool} controller={controller} />
                 <span>{toolSubtitle(tool, controller)}</span>
               </div>
               <button
@@ -511,6 +513,7 @@ function ChatShell({
                   tool,
                   controller.characterSheet,
                   controller.personaPage,
+                  controller.presetPrompt,
                   controller.selected,
                 ]}
               >

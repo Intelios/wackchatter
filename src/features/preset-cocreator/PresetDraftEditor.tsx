@@ -59,6 +59,7 @@ export const PresetDraftEditor = memo(function PresetDraftEditor({
   const draft = useMemo<PresetDraft>(
     () => ({
       dirty,
+      saved: null,
       status: '',
       renaming: false,
       nameDraft: '',
