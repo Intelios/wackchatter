@@ -106,10 +106,11 @@ export function agoInWords(then: number, now: number = Date.now()): string {
 }
 
 /**
- * The pull-quote: the character's last reply as plain text, cut at a word with "…".
+ * The pull-quote: the first thing the character says aloud in their last reply, taken from
+ * inside its quotation marks and cut at a word with "…". Narration, stage directions and
+ * out-of-character labels like "[Scene]:" are never quoted, so a reply with no spoken line
+ * has no quote at all. Speech inside an *action* does not count either.
  *
- * Actions in asterisks are dropped (they are stage directions, and the quote is their
- * voice), unless that leaves nothing. Quote marks go, because the cover sets its own.
  * `{{char}}` and `{{user}}` read as names; any other macro is dropped rather than shown raw.
  */
 export function quoteOf(
@@ -120,17 +121,17 @@ export function quoteOf(
   const named = text
     .replace(/\{\{char\}\}/gi, names.char)
     .replace(/\{\{user\}\}/gi, names.user)
-    .replace(/\{\{[^}]*\}\}/g, '');
-  const spoken = named.replace(/\*[^*\n]*\*/g, ' ');
-  const base = /[\p{L}\p{N}]/u.test(spoken) ? spoken : named;
-  const plain = base
+    .replace(/\{\{[^}]*\}\}/g, '')
+    .replace(/\*[^*\n]*\*/g, ' ');
+  const spoken = /"([^"\n]+)"|\u201c([^\u201d\n]+)\u201d|«([^»\n]+)»/.exec(named);
+  const line = (spoken?.[1] ?? spoken?.[2] ?? spoken?.[3] ?? '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/[*_`#~>]/g, '')
-    .replace(/["“”«»]/g, '')
+    .replace(/[*_`#~]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (plain.length <= max) return plain;
-  const cut = plain.slice(0, max);
+  if (!/[\p{L}\p{N}]/u.test(line)) return '';
+  if (line.length <= max) return line;
+  const cut = line.slice(0, max);
   const space = cut.lastIndexOf(' ');
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.!?…-]+$/, '')}…`;
 }

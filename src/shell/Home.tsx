@@ -53,7 +53,7 @@ import { PersonaPane, RestPane, type SearchItem, SearchPane } from './IslandPane
 import { Icon } from './icons.tsx';
 import { MarginTool, TOOLS, type ToolId, toolSubtitle } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
-import { useAura } from './useAura.ts';
+import { initialAuraStyle, useAura } from './useAura.ts';
 
 /** The wings at home: everything that does not need a chat open. */
 const HOME_LEFT: ToolId[] = ['characters', 'lorebooks', 'personas'];
@@ -61,6 +61,9 @@ const HOME_RIGHT: ToolId[] = ['prompts', 'generation', 'settings'];
 
 /** The app's own colour, for a library with nobody in it yet and for Create | Arena. */
 const LIME = '#c2ee4a';
+
+/** How long a name must stay under the mouse before the cover turns to it. */
+const SETTLE_MS = 110;
 
 type Screen = 'loading' | 'home' | 'cast' | 'empty' | 'refused';
 
@@ -196,12 +199,23 @@ export function HomeShell({
   const lead = entries[0] ?? null;
   // The stack leads with the chat you were last in, so the mouse can always get back to it.
   const stack = entries.slice(0, STACK_SIZE + 1);
-  const shown = stack[picked] ?? lead;
+
+  // The stack lights the name under the mouse at once, but the cover and the colour follow
+  // only once you rest on one: passing over names, or wavering between two, never starts a
+  // swap for each name crossed.
+  const [settled, setSettled] = useState(0);
+  useEffect(() => {
+    if (picked === settled) return;
+    const timer = setTimeout(() => setSettled(picked), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [picked, settled]);
+  const shown = stack[settled] ?? lead;
 
   // A stale pick (the list changed under it) falls back to the last chat.
   useEffect(() => {
     if (picked >= stack.length) setPicked(0);
-  }, [picked, stack.length]);
+    if (settled >= stack.length) setSettled(0);
+  }, [picked, settled, stack.length]);
 
   // --- Colour -------------------------------------------------------------------------------
 
@@ -260,6 +274,7 @@ export function HomeShell({
 
   // Hovering re-tints without the wash a character switch sends: it is a preview, not a move.
   useAura(rootRef, washRef, coverColor, personaColor, 'home');
+  const [firstAura] = useState(() => initialAuraStyle(coverColor, personaColor));
 
   // --- Going places ---------------------------------------------------------------------------
 
@@ -308,12 +323,12 @@ export function HomeShell({
         setPicked(0);
       } else if (event.key === 'Enter' && !target?.closest('button, a')) {
         event.preventDefault();
-        openEntry(shown);
+        openEntry(stack[picked] ?? shown);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opened, tool, screen, stack.length, openEntry, shown]);
+  }, [opened, tool, screen, stack, picked, openEntry, shown]);
 
   // Scrolling to Create | Arena hands over at a third of the way: the cover lifts away, the
   // words slide in and the colour cools to lime, each on its own transition. State, not a
@@ -426,6 +441,7 @@ export function HomeShell({
         onDrop={onDrop}
         style={
           {
+            ...firstAura,
             '--w3-bg-blur': `${prefs.backdrop.blur}px`,
             '--w3-bg-dim': prefs.backdrop.dim,
           } as CSSProperties

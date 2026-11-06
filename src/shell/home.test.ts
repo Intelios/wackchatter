@@ -53,12 +53,19 @@ describe('agoInWords', () => {
 describe('quoteOf', () => {
   const names = { char: 'Mika', user: 'Rowan' };
 
-  test('drops actions and quote marks, keeps the voice', () => {
-    expect(quoteOf('*She yawns.* "You\'re still awake?"', names)).toBe("You're still awake?");
+  test('the first line they speak, from inside its quotation marks', () => {
+    expect(quoteOf('[Scene]: The officer sighs. "Fine. You don\'t." Then: "Go home."', names)).toBe(
+      "Fine. You don't.",
+    );
   });
 
-  test('a reply that is all action keeps the action rather than nothing', () => {
-    expect(quoteOf('*She nods slowly.*', names)).toBe('She nods slowly.');
+  test('curly and guillemet quotes count, actions in asterisks never do', () => {
+    expect(quoteOf('*She yawns.* \u201cStill awake?\u201d', names)).toBe('Still awake?');
+    expect(quoteOf('*"not this"* «Bonjour.»', names)).toBe('Bonjour.');
+  });
+
+  test('a reply with nothing in quotes has no quote', () => {
+    expect(quoteOf('[Scene]: She nods slowly and leaves.', names)).toBe('');
   });
 
   test('names resolve, other macros never show raw', () => {
@@ -67,7 +74,7 @@ describe('quoteOf', () => {
     );
   });
 
-  test('a long reply is cut at a word with an ellipsis', () => {
+  test('a long line is cut at a word with an ellipsis', () => {
     const quote = quoteOf(`"${'word '.repeat(60)}"`, names, 40);
     expect(quote.endsWith('word…')).toBe(true);
     expect(quote.length).toBeLessThanOrEqual(41);

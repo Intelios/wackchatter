@@ -55,7 +55,7 @@ import {
   toolSubtitle,
 } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
-import { replay, useAura } from './useAura.ts';
+import { initialAuraStyle, replay, useAura } from './useAura.ts';
 
 export function Shell({
   controller,
@@ -64,30 +64,53 @@ export function Shell({
   controller: AppController;
   onUiChoice: (choice: UiChoice) => void;
 }) {
-  // No character open: the home screen. Everything else the shell does not draw yet (Studio,
-  // the Co-Creators, Arena, Stats) still goes through the 2.x one.
-  if (controller.view === 'app' && !controller.active) {
-    return <HomeShell controller={controller} onUiChoice={onUiChoice} />;
+  /*
+   * Picking a character clears the old card before the new one arrives. Through that gap
+   * the screen you were on stays: the last chat (its own character and card together, never
+   * mixed with the next one's), or home when there was no chat. Nothing flashes between.
+   */
+  const shown = useRef<{ active: CharacterSummary; character: CardData } | null>(null);
+  const { view, active, character } = controller;
+  if (view === 'app' && active && character) shown.current = { active, character };
+  if (view === 'app' && !active) shown.current = null;
+
+  if (view === 'app' && active && character) {
+    return (
+      <ChatShell
+        controller={controller}
+        active={active}
+        character={character}
+        onUiChoice={onUiChoice}
+      />
+    );
   }
-  if (controller.view !== 'app' || !controller.active || !controller.character) {
-    return <LegacyShell controller={controller} />;
+  if (view === 'app' && shown.current) {
+    return <ChatShell controller={controller} {...shown.current} onUiChoice={onUiChoice} />;
   }
-  return <ChatShell controller={controller} onUiChoice={onUiChoice} />;
+  if (view === 'app') return <HomeShell controller={controller} onUiChoice={onUiChoice} />;
+  // Everything else the shell does not draw yet (Studio, the Co-Creators, Arena, Stats) still
+  // goes through the 2.x one.
+  return <LegacyShell controller={controller} />;
 }
+
+/** The open character's card, as the controller holds it. */
+type CardData = NonNullable<AppController['character']>;
 
 const BUSY = 'Wait for the current reply to finish.';
 
 function ChatShell({
   controller,
+  active,
+  character,
   onUiChoice,
 }: {
   controller: AppController;
+  active: CharacterSummary;
+  character: CardData;
   onUiChoice: (choice: UiChoice) => void;
 }) {
   const { app, library, backups, chat } = controller;
   const { settings, view: prefs, models } = app;
-  const active = controller.active!;
-  const character = controller.character!;
   const { state } = chat;
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -152,6 +175,7 @@ function ChatShell({
   const personaColor = resolveDialogueColor(true, personaOverride, personaAuto).color;
 
   useAura(rootRef, washRef, auraColor, personaColor, active.avatar);
+  const [firstAura] = useState(() => initialAuraStyle(auraColor, personaColor));
 
   // --- Generating ----------------------------------------------------------------------
 
@@ -422,6 +446,7 @@ function ChatShell({
         data-generating={generating || undefined}
         style={
           {
+            ...firstAura,
             '--w3-bg-blur': `${prefs.backdrop.blur}px`,
             '--w3-bg-dim': prefs.backdrop.dim,
           } as CSSProperties

@@ -17,6 +17,12 @@ interface Bucket {
 const CONTRAST_BACKGROUND = '#2b2b2d';
 const COLOR_CACHE_LIMIT = 50;
 const colorCache = new Map<string, Promise<string | null>>();
+/**
+ * The same colours once worked out, readable without waiting. A view that mounts on an
+ * image whose colour is already known starts in that colour instead of passing through
+ * "none" for a frame, which in the 3.0 shell is the whole app flashing neutral.
+ */
+const resolvedColors = new Map<string, string | null>();
 
 function rgbToHsl(r: number, g: number, b: number): Hsl {
   const red = r / 255;
@@ -155,23 +161,43 @@ async function extractAvatarColor(url: string): Promise<string | null> {
 export function cachedAvatarColor(url: string): Promise<string | null> {
   const existing = colorCache.get(url);
   if (existing) return existing;
-  const pending = extractAvatarColor(url).catch(() => null);
+  const pending = extractAvatarColor(url)
+    .catch(() => null)
+    .then((color) => {
+      resolvedColors.set(url, color);
+      if (resolvedColors.size > COLOR_CACHE_LIMIT)
+        resolvedColors.delete(resolvedColors.keys().next().value!);
+      return color;
+    });
   colorCache.set(url, pending);
   if (colorCache.size > COLOR_CACHE_LIMIT) colorCache.delete(colorCache.keys().next().value!);
   return pending;
 }
 
 export function useAvatarColor(url: string | null): string | null {
-  const [color, setColor] = useState<string | null>(null);
+  const [state, setState] = useState<{ url: string | null; color: string | null }>(() => ({
+    url,
+    color: url ? (resolvedColors.get(url) ?? null) : null,
+  }));
   useEffect(() => {
     let cancelled = false;
-    setColor(null);
-    if (url) void cachedAvatarColor(url).then((next) => !cancelled && setColor(next));
+    if (!url) {
+      setState({ url, color: null });
+      return;
+    }
+    const known = resolvedColors.get(url);
+    if (known !== undefined) {
+      setState({ url, color: known });
+      return;
+    }
+    void cachedAvatarColor(url).then((color) => !cancelled && setState({ url, color }));
     return () => {
       cancelled = true;
     };
   }, [url]);
-  return color;
+  // A colour for a different image than the one asked about is never returned.
+  if (state.url === url) return state.color;
+  return url ? (resolvedColors.get(url) ?? null) : null;
 }
 
 export function resolveDialogueColor(

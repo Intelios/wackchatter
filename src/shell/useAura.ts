@@ -8,7 +8,10 @@
  */
 
 import { type RefObject, useLayoutEffect, useRef } from 'react';
-import { auraFromColor, nearestHue } from './aura.ts';
+import { auraFromColor, NEUTRAL_AURA, nearestHue } from './aura.ts';
+
+/** The persona hue the stylesheet starts from (`--w3-ph`'s initial value in shell.css). */
+const PERSONA_START_HUE = 160;
 
 export function useAura(
   root: RefObject<HTMLElement | null>,
@@ -26,7 +29,8 @@ export function useAura(
     const element = root.current;
     if (!element) return;
     const aura = auraFromColor(characterColor);
-    const next = hue.current === null ? aura.hue : nearestHue(hue.current, aura.hue);
+    // Even the first colour steps from where the stylesheet starts, so it never laps the wheel.
+    const next = nearestHue(hue.current ?? NEUTRAL_AURA.hue, aura.hue);
     hue.current = next;
     element.style.setProperty('--w3-h', String(next));
     element.style.setProperty('--w3-c', String(aura.chroma));
@@ -48,11 +52,31 @@ export function useAura(
     const element = root.current;
     if (!element) return;
     const aura = auraFromColor(personaColor);
-    const next = personaHue.current === null ? aura.hue : nearestHue(personaHue.current, aura.hue);
+    const next = nearestHue(personaHue.current ?? PERSONA_START_HUE, aura.hue);
     personaHue.current = next;
     element.style.setProperty('--w3-ph', String(next));
     element.style.setProperty('--w3-pc', String(aura.chroma));
   }, [root, personaColor]);
+}
+
+/**
+ * The Aura as inline style for a shell's first render, so the very first style the browser
+ * computes is already the character's colour. Set later, the colour would animate in from
+ * the stylesheet's default the moment anything measured the page. Read once: `useAura`
+ * owns every change after that.
+ */
+export function initialAuraStyle(
+  characterColor: string | null,
+  personaColor: string | null,
+): Record<string, string> {
+  const aura = auraFromColor(characterColor);
+  const persona = auraFromColor(personaColor);
+  return {
+    '--w3-h': String(nearestHue(NEUTRAL_AURA.hue, aura.hue)),
+    '--w3-c': String(aura.chroma),
+    '--w3-ph': String(nearestHue(PERSONA_START_HUE, persona.hue)),
+    '--w3-pc': String(persona.chroma),
+  };
 }
 
 /** Replays a one-shot `data-go` animation on an element. */
