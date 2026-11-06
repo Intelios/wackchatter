@@ -32,7 +32,11 @@ import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  cachedAvatarColor,
+  resolveDialogueColor,
+  useAvatarColor,
+} from '../features/chat/avatarColor.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { characterApi, chatApi, personaApi, type VersionInfo, versionApi } from '../lib/api.ts';
 import {
@@ -91,7 +95,8 @@ export function HomeShell({
 
   const [recent, setRecent] = useState<ChatSummary[] | null>(null);
   const [version, setVersion] = useState<VersionInfo | null>(null);
-  const [hover, setHover] = useState(-1);
+  /** Which name in the stack the cover shows; 0 is the chat you were last in. */
+  const [picked, setPicked] = useState(0);
   const [tool, setTool] = useState<ToolId | null>(null);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
@@ -189,13 +194,14 @@ export function HomeShell({
           : 'empty';
   const entries = screen === 'home' ? fromChats : screen === 'cast' ? fromCast : [];
   const lead = entries[0] ?? null;
-  const others = entries.slice(1, STACK_SIZE + 1);
-  const shown = (hover >= 0 ? others[hover] : null) ?? lead;
+  // The stack leads with the chat you were last in, so the mouse can always get back to it.
+  const stack = entries.slice(0, STACK_SIZE + 1);
+  const shown = stack[picked] ?? lead;
 
-  // A stale hover (the list changed under it) falls back to the cover.
+  // A stale pick (the list changed under it) falls back to the last chat.
   useEffect(() => {
-    if (hover >= others.length) setHover(-1);
-  }, [hover, others.length]);
+    if (picked >= stack.length) setPicked(0);
+  }, [picked, stack.length]);
 
   // --- Colour -------------------------------------------------------------------------------
 
@@ -203,15 +209,46 @@ export function HomeShell({
     (avatar: string) => characterApi.imageUrl(avatar, library.characterAvatarVersions[avatar]),
     [library.characterAvatarVersions],
   );
-  const shownUrl = shown ? avatarUrlOf(shown.avatar) : null;
-  const shownOverride = shown ? prefs.dialogueColors.characters[shown.avatar] : undefined;
-  const shownAuto = useAvatarColor(shownOverride == null ? shownUrl : null);
-  const coverColor =
+  // Every stacked character's colour, worked out once and kept: a name's colour must be
+  // known before it is hovered, or the page would flash neutral on the way to it. Their
+  // portraits are fetched up front for the same reason.
+  const [colors, setColors] = useState<Readonly<Record<string, string | null>>>({});
+  useEffect(() => {
+    let live = true;
+    for (const entry of stack) {
+      const url = avatarUrlOf(entry.avatar);
+      new Image().src = url;
+      void cachedAvatarColor(url).then((color) => {
+        if (!live) return;
+        setColors((current) =>
+          current[entry.avatar] === color ? current : { ...current, [entry.avatar]: color },
+        );
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [stack, avatarUrlOf]);
+  const colorOf = useCallback(
+    (avatar: string) => {
+      const override = prefs.dialogueColors.characters[avatar];
+      return override === undefined ? colors[avatar] : override;
+    },
+    [colors, prefs.dialogueColors.characters],
+  );
+
+  // Until a colour is known, the last one stays: never a flash of neutral in between.
+  const lastColor = useRef<string | null>(null);
+  const wanted =
     screen === 'empty' || onApps
       ? LIME
       : screen === 'refused'
         ? null
-        : (shownOverride ?? shownAuto);
+        : shown
+          ? colorOf(shown.avatar)
+          : undefined;
+  if (wanted !== undefined) lastColor.current = wanted;
+  const coverColor = wanted === undefined ? lastColor.current : wanted;
 
   const persona = library.personas.find((entry) => entry.id === settings?.personaId) ?? null;
   const personaAvatarUrl = persona?.avatar
@@ -264,11 +301,11 @@ export function HomeShell({
       if (screen !== 'home' && screen !== 'cast') return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
-        setHover((current) =>
-          stepStack(current, others.length, event.key === 'ArrowDown' ? 1 : -1),
+        setPicked((current) =>
+          Math.max(0, stepStack(current, stack.length, event.key === 'ArrowDown' ? 1 : -1)),
         );
       } else if (event.key === 'Escape') {
-        setHover(-1);
+        setPicked(0);
       } else if (event.key === 'Enter' && !target?.closest('button, a')) {
         event.preventDefault();
         openEntry(shown);
@@ -276,16 +313,16 @@ export function HomeShell({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opened, tool, screen, others.length, openEntry, shown]);
+  }, [opened, tool, screen, stack.length, openEntry, shown]);
 
-  // Scrolling to Create | Arena fades the cover, slides the words in and cools to lime.
+  // Scrolling to Create | Arena hands over at a third of the way: the cover lifts away, the
+  // words slide in and the colour cools to lime, each on its own transition. State, not a
+  // per-frame style write, so nothing can leave the panel half-drawn.
   const onScroll = useCallback(() => {
     const viewport = viewportRef.current;
-    const root = rootRef.current;
-    if (!viewport || !root) return;
-    const progress = Math.min(1, Math.max(0, viewport.scrollTop / viewport.clientHeight));
-    root.style.setProperty('--home-p', String(progress));
-    setOnApps(progress > 0.5);
+    if (!viewport) return;
+    const progress = viewport.scrollTop / Math.max(1, viewport.clientHeight);
+    setOnApps((current) => (current ? progress > 0.2 : progress > 0.35));
   }, []);
 
   // --- Importing: the empty screen's first button, or a card dropped anywhere ---------------
@@ -383,6 +420,7 @@ export function HomeShell({
         data-margin={side ?? undefined}
         data-image={Boolean(backdropUrl)}
         data-dropping={dropping || undefined}
+        data-apps={onApps || undefined}
         onDragOver={onDragOver}
         onDragLeave={() => setDropping(false)}
         onDrop={onDrop}
@@ -408,7 +446,7 @@ export function HomeShell({
             onScroll={screen === 'refused' ? undefined : onScroll}
           >
             <section className="w3-home__panel" aria-label="Home">
-              <ErrorBoundary where="the home screen" resetKeys={[screen, shown?.key]}>
+              <ErrorBoundary where="the home screen" resetKeys={[screen]}>
                 {screen === 'home' || screen === 'cast' ? (
                   shown ? (
                     <Cover
@@ -432,13 +470,11 @@ export function HomeShell({
 
                 {screen === 'home' || screen === 'cast' ? (
                   <Stack
-                    entries={others}
-                    focused={hover}
+                    entries={stack}
+                    picked={picked}
                     cast={screen === 'cast'}
-                    avatarUrlOf={avatarUrlOf}
-                    overrides={prefs.dialogueColors.characters}
-                    onFocus={setHover}
-                    onLeave={() => setHover(-1)}
+                    colorOf={colorOf}
+                    onPick={setPicked}
                     onOpen={openEntry}
                   />
                 ) : null}
@@ -698,12 +734,39 @@ function Headline({ text, share, split = true }: { text: string; share: number; 
   );
 }
 
+/** How long the old cover takes to leave before the new one is set in. */
+const SWAP_OUT_MS = 150;
+
+/**
+ * Holds what the cover shows a beat behind what was asked for: the old cover fades out, the
+ * new one is set while invisible, then fades in. Moving quickly across the stack only ever
+ * lands on the last name; the ones skipped past are never drawn.
+ */
+function useSwap<T extends { key: string }>(next: T): { shown: T; out: boolean } {
+  const [shown, setShown] = useState(next);
+  const [out, setOut] = useState(false);
+  useEffect(() => {
+    if (next.key === shown.key) {
+      setShown(next);
+      setOut(false);
+      return;
+    }
+    setOut(true);
+    const timer = setTimeout(() => {
+      setShown(next);
+      setOut(false);
+    }, SWAP_OUT_MS);
+    return () => clearTimeout(timer);
+  }, [next, shown.key]);
+  return { shown, out };
+}
+
 function Cover({
-  entry,
+  entry: asked,
   isLead,
   cast,
   castSize,
-  imageUrl,
+  imageUrl: askedUrl,
   personaName,
   onOpen,
 }: {
@@ -715,16 +778,22 @@ function Cover({
   personaName: string;
   onOpen: () => void;
 }) {
+  const target = useMemo(
+    () => ({ key: asked.key, entry: asked, isLead, imageUrl: askedUrl }),
+    [asked, isLead, askedUrl],
+  );
+  const { shown, out } = useSwap(target);
+  const { entry, imageUrl } = shown;
   const [broken, setBroken] = useState<string | null>(null);
   const hasImage = broken !== imageUrl;
   const quote = quoteOf(entry.reply, { char: entry.name, user: personaName });
   const kicker = cast
     ? `Your cast · ${plural(castSize, 'character')}`
-    : `${isLead ? 'Where you left off' : 'From your recents'} · ${agoInWords(entry.modified)}`;
+    : `${shown.isLead ? 'Where you left off' : 'From your recents'} · ${agoInWords(entry.modified)}`;
   const coverLine = cast ? 'Not met yet.' : (entry.title ?? whenInWords(entry.modified));
 
   return (
-    <div className="w3-home__cover" key={entry.key}>
+    <div className="w3-home__cover" data-out={out || undefined}>
       <div className="w3-home__portrait" aria-hidden="true">
         {hasImage ? (
           <img src={imageUrl} alt="" draggable={false} onError={() => setBroken(imageUrl)} />
@@ -733,14 +802,18 @@ function Cover({
         )}
       </div>
       <div className="w3-home__left">
-        <span className="w3-home__kicker">{kicker}</span>
-        {quote ? <p className="w3-home__quote">{quote}</p> : <span className="w3-home__spacer" />}
-        <p className="w3-home__dek">{coverLine}</p>
+        <span className="w3-home__kicker w3-home__swap">{kicker}</span>
+        {quote ? (
+          <p className="w3-home__quote w3-home__swap">{quote}</p>
+        ) : (
+          <span className="w3-home__spacer" />
+        )}
+        <p className="w3-home__dek w3-home__swap">{coverLine}</p>
         <button
           type="button"
-          className="w3-home__headline"
+          className="w3-home__headline w3-home__swap"
           onClick={onOpen}
-          aria-label={`${cast ? 'Start a chat with' : 'Continue with'} ${entry.name}`}
+          aria-label={`${cast ? 'Start a chat with' : 'Continue with'} ${asked.name}`}
         >
           <Headline text={entry.name} share={0.58} />
         </button>
@@ -748,7 +821,7 @@ function Cover({
           <button type="button" className="w3-home__go" onClick={onOpen}>
             {cast ? 'Start a chat' : 'Continue'} <kbd className="w3-kbd">↵</kbd>
           </button>
-          <span className="w3-home__mono">
+          <span className="w3-home__mono w3-home__swap">
             {cast ? 'Opens with their greeting' : plural(entry.messageCount, 'message')}
           </span>
         </div>
@@ -761,21 +834,17 @@ function Cover({
 
 function Stack({
   entries,
-  focused,
+  picked,
   cast,
-  avatarUrlOf,
-  overrides,
-  onFocus,
-  onLeave,
+  colorOf,
+  onPick,
   onOpen,
 }: {
   entries: readonly Entry[];
-  focused: number;
+  picked: number;
   cast: boolean;
-  avatarUrlOf: (avatar: string) => string;
-  overrides: Readonly<Record<string, string | null | undefined>>;
-  onFocus: (index: number) => void;
-  onLeave: () => void;
+  colorOf: (avatar: string) => string | null | undefined;
+  onPick: (index: number) => void;
   onOpen: (entry: Entry) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -801,62 +870,38 @@ function Stack({
 
   // The walked-to name stays in view when the stack scrolls.
   useEffect(() => {
-    if (focused < 0) return;
-    ref.current?.children[focused]?.scrollIntoView({ block: 'nearest' });
-  }, [focused]);
+    ref.current?.children[picked]?.scrollIntoView({ block: 'nearest' });
+  }, [picked]);
 
   if (!entries.length) return null;
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: leaving the stack only ends a hover preview
-    <div className="w3-home__stack" ref={ref} onMouseLeave={onLeave}>
-      {entries.map((entry, index) => (
-        <StackName
-          key={entry.key}
-          entry={entry}
-          focused={index === focused}
-          cast={cast}
-          url={avatarUrlOf(entry.avatar)}
-          override={overrides[entry.avatar]}
-          onFocus={() => onFocus(index)}
-          onOpen={() => onOpen(entry)}
-        />
-      ))}
+    <div className="w3-home__stack" ref={ref}>
+      {entries.map((entry, index) => {
+        const color = colorOf(entry.avatar);
+        return (
+          <button
+            key={entry.key}
+            type="button"
+            className="w3-home__entry"
+            data-picked={index === picked || undefined}
+            data-lead={index === 0 || undefined}
+            style={color ? ({ '--home-c': color } as CSSProperties) : undefined}
+            onMouseEnter={() => onPick(index)}
+            onFocus={() => onPick(index)}
+            onClick={() => onOpen(entry)}
+          >
+            <b>{entry.name}</b>
+            <span>
+              {index === 0 && !cast
+                ? `Where you left off · ${agoInWords(entry.modified)}`
+                : cast
+                  ? 'Never chatted'
+                  : agoInWords(entry.modified)}
+            </span>
+          </button>
+        );
+      })}
     </div>
-  );
-}
-
-function StackName({
-  entry,
-  focused,
-  cast,
-  url,
-  override,
-  onFocus,
-  onOpen,
-}: {
-  entry: Entry;
-  focused: boolean;
-  cast: boolean;
-  url: string;
-  override: string | null | undefined;
-  onFocus: () => void;
-  onOpen: () => void;
-}) {
-  const auto = useAvatarColor(override == null ? url : null);
-  const color = override ?? auto;
-  return (
-    <button
-      type="button"
-      className="w3-home__entry"
-      data-focus={focused || undefined}
-      style={color ? ({ '--home-c': color } as CSSProperties) : undefined}
-      onMouseEnter={onFocus}
-      onFocus={onFocus}
-      onClick={onOpen}
-    >
-      <b>{entry.name}</b>
-      <span>{cast ? 'Never chatted' : agoInWords(entry.modified)}</span>
-    </button>
   );
 }
 

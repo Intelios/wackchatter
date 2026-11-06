@@ -151,7 +151,8 @@ async function extractAvatarColor(url: string): Promise<string | null> {
   return selectAvatarColor(context.getImageData(0, 0, canvas.width, canvas.height).data);
 }
 
-function cachedAvatarColor(url: string): Promise<string | null> {
+/** The avatar colour for an image URL, worked out once per URL and cached. */
+export function cachedAvatarColor(url: string): Promise<string | null> {
   const existing = colorCache.get(url);
   if (existing) return existing;
   const pending = extractAvatarColor(url).catch(() => null);

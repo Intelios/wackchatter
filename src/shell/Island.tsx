@@ -229,11 +229,14 @@ export function WingButton({
   icon,
   label,
   pressed,
+  disabledReason,
   onClick,
 }: {
   icon: IconName;
   label: string;
   pressed: boolean;
+  /** Disabled beats refused: say why on hover instead of ignoring the click. */
+  disabledReason?: string;
   onClick: () => void;
 }) {
   return (
@@ -242,7 +245,9 @@ export function WingButton({
       className="w3-wing__btn"
       aria-label={label}
       aria-pressed={pressed}
-      data-tip={label}
+      data-tip={disabledReason ?? label}
+      disabled={Boolean(disabledReason)}
+      title={disabledReason}
       onClick={onClick}
     >
       <Icon name={icon} />

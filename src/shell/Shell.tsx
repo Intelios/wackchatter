@@ -493,15 +493,27 @@ function ChatShell({
           notice={notice}
           onDismissNotice={dismissNotice}
           wingsPinned={Boolean(tool)}
-          wingLeft={LEFT_TOOLS.map((id) => (
-            <WingButton
-              key={id}
-              icon={TOOLS[id].icon}
-              label={TOOLS[id].title}
-              pressed={tool === id}
-              onClick={() => openTool(id)}
-            />
-          ))}
+          wingLeft={
+            <>
+              {/* Home first, where the way out of a place is expected to be. */}
+              <WingButton
+                icon="home"
+                label="Home"
+                pressed={false}
+                disabledReason={busy ? BUSY : undefined}
+                onClick={() => void controller.closeChat()}
+              />
+              {LEFT_TOOLS.map((id) => (
+                <WingButton
+                  key={id}
+                  icon={TOOLS[id].icon}
+                  label={TOOLS[id].title}
+                  pressed={tool === id}
+                  onClick={() => openTool(id)}
+                />
+              ))}
+            </>
+          }
           wingRight={RIGHT_TOOLS.map((id) => (
             <WingButton
               key={id}

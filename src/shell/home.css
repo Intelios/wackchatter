@@ -9,8 +9,6 @@
 .w3-home {
   --w3-font-serif: "Bodoni Moda Variable", "Didot", "Bodoni 72", Georgia, serif;
   --w3-font-label: "Martian Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  /* 0 on the cover, 1 on Create | Arena; written by the scroll handler. */
-  --home-p: 0;
 }
 
 .w3-home[data-dropping]::after {
@@ -54,19 +52,34 @@
 
 /* ---------- The cover ---------- */
 
+/*
+ * Leaving for Create | Arena: the cover and the stack lift and blur away together. Hand-off
+ * is a state with transitions (data-apps), not a value written every scroll frame.
+ */
+.w3-home__cover,
+.w3-home__stack {
+  transition:
+    transform 0.7s var(--w3-out),
+    opacity 0.5s var(--w3-out),
+    filter 0.5s var(--w3-out);
+}
+
 .w3-home__cover {
   position: absolute;
   inset: 0;
-  animation: w3-home-in 0.45s var(--w3-out);
-  transform: translateY(calc(var(--home-p) * -14%));
-  opacity: calc(1 - var(--home-p) * 0.85);
-  filter: blur(calc(var(--home-p) * 6px));
+  animation: w3-home-in 0.6s var(--w3-out);
+}
+
+.w3-home[data-apps] :is(.w3-home__cover, .w3-home__stack) {
+  transform: translateY(-14%);
+  opacity: 0.15;
+  filter: blur(6px);
 }
 
 @keyframes w3-home-in {
   from {
     opacity: 0;
-    filter: blur(5px);
+    transform: translateY(12px);
   }
 }
 
@@ -79,6 +92,36 @@
   mask:
     linear-gradient(to right, transparent 0, #000 32%, #000 70%, transparent 100%) intersect,
     linear-gradient(to top, transparent 0, #000 30%);
+}
+
+/*
+ * Swapping covers: the old one fades and blurs down, the new one is set while invisible and
+ * rises back in. The portrait goes with it, a touch slower, so the page never blinks.
+ */
+.w3-home__swap,
+.w3-home__portrait {
+  transition:
+    opacity 0.3s var(--w3-out),
+    transform 0.5s var(--w3-out),
+    filter 0.3s var(--w3-out);
+}
+
+.w3-home__portrait {
+  transition-duration: 0.45s, 0.7s, 0.45s;
+}
+
+.w3-home__cover[data-out] .w3-home__swap {
+  opacity: 0;
+  transform: translateY(10px);
+  filter: blur(5px);
+  transition-duration: 0.15s;
+}
+
+.w3-home__cover[data-out] .w3-home__portrait {
+  opacity: 0;
+  transform: scale(1.015);
+  filter: blur(4px);
+  transition-duration: 0.15s;
 }
 
 .w3-home__portrait img {
@@ -288,8 +331,6 @@
   scrollbar-width: none;
   text-align: right;
   mask: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
-  transform: translateY(calc(var(--home-p) * -14%));
-  opacity: calc(1 - var(--home-p) * 0.85);
 }
 
 .w3-home__stack::-webkit-scrollbar {
@@ -343,14 +384,26 @@
     margin 0.35s;
 }
 
+/* The chat you were last in, marked so the way back to it is always visible. */
+.w3-home__entry[data-lead] b::before {
+  content: "";
+  display: inline-block;
+  width: 0.22em;
+  height: 0.22em;
+  margin-right: 0.3em;
+  border-radius: 50%;
+  vertical-align: 0.24em;
+  background: var(--home-c);
+}
+
 .w3-home__entry:hover b,
-.w3-home__entry[data-focus] b {
+.w3-home__entry[data-picked] b {
   color: var(--home-c);
   transform: translateX(-8px);
 }
 
 .w3-home__entry:hover span,
-.w3-home__entry[data-focus] span {
+.w3-home__entry[data-picked] span {
   max-height: 20px;
   margin-top: 4px;
   opacity: 1;
@@ -375,7 +428,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--w3-faint);
-  opacity: calc(1 - var(--home-p) * 3);
+  transition: opacity 0.3s var(--w3-out);
 }
 
 .w3-home__version i {
@@ -396,6 +449,11 @@
   font-family: inherit;
   text-transform: none;
   color: var(--w3-accent);
+}
+
+.w3-home[data-apps] :is(.w3-home__version, .w3-home__cue) {
+  opacity: 0;
+  pointer-events: none;
 }
 
 @keyframes w3-home-pulse {
@@ -420,7 +478,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--w3-muted);
-  opacity: calc(1 - var(--home-p) * 3);
+  transition: opacity 0.3s var(--w3-out);
 }
 
 .w3-home__cue:hover {
@@ -469,8 +527,11 @@
   letter-spacing: -0.06em;
   text-transform: uppercase;
   color: var(--w3-text);
-  opacity: var(--home-p);
-  transition: color var(--w3-quick);
+  opacity: 0;
+  transition:
+    color var(--w3-quick),
+    opacity 0.5s var(--w3-out),
+    transform 0.8s var(--w3-out);
 }
 
 .w3-home__app:hover {
@@ -478,11 +539,16 @@
 }
 
 .w3-home__half--l .w3-home__app {
-  transform: translateX(calc((1 - var(--home-p)) * -60%));
+  transform: translateX(-60%);
 }
 
 .w3-home__half--r .w3-home__app {
-  transform: translateX(calc((1 - var(--home-p)) * 60%));
+  transform: translateX(60%);
+}
+
+.w3-home[data-apps] .w3-home__app {
+  opacity: 1;
+  transform: none;
 }
 
 .w3-home__italic {
@@ -492,7 +558,6 @@
   font-weight: 500;
   font-size: clamp(22px, 2.6vw, 38px);
   color: var(--w3-accent);
-  opacity: calc(var(--home-p) * 1.4 - 0.4);
 }
 
 .w3-home__desc {
@@ -500,14 +565,12 @@
   max-width: 36ch;
   font-size: 16px;
   color: var(--w3-soft);
-  opacity: calc(var(--home-p) * 1.6 - 0.6);
 }
 
 .w3-home__links {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  opacity: calc(var(--home-p) * 1.8 - 0.8);
 }
 
 .w3-home__links button {
@@ -528,6 +591,32 @@
   border-color: var(--w3-accent-line);
   background: var(--w3-accent-soft);
   color: var(--w3-text);
+}
+
+/* The lines under each word follow it in, one after another. */
+:is(.w3-home__italic, .w3-home__desc, .w3-home__links) {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.45s var(--w3-out),
+    transform 0.6s var(--w3-out);
+}
+
+.w3-home[data-apps] :is(.w3-home__italic, .w3-home__desc, .w3-home__links) {
+  opacity: 1;
+  transform: none;
+}
+
+.w3-home[data-apps] .w3-home__italic {
+  transition-delay: 0.15s;
+}
+
+.w3-home[data-apps] .w3-home__desc {
+  transition-delay: 0.25s;
+}
+
+.w3-home[data-apps] .w3-home__links {
+  transition-delay: 0.35s;
 }
 
 /* ---------- Island at home ---------- */
