@@ -33,6 +33,17 @@ export interface AppSettings {
    * Convenience only, like `recentPersonaIds`: it heads the model picker.
    */
   recentModels: ModelRef[];
+  /**
+   * Starred models, in the order they were starred. They head the model picker above the
+   * recents, so a model used often never needs a search. Refs to a deleted connection go
+   * with it, like recents.
+   */
+  favoriteModels: ModelRef[];
+  /**
+   * Which model picker groups are open, by group key (`pickerLogic.ts`). Only groups someone
+   * toggled are stored; the rest keep their default.
+   */
+  modelPickerGroups: Record<string, boolean>;
   /** UI refresh rate during streaming. */
   streamingFps: number;
   /**
@@ -419,6 +430,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   connections: [{ ...DEFAULT_CONNECTION, id: DEFAULT_CONNECTION_ID, name: PROVIDERS.custom.label }],
   models: { ...DEFAULT_MODEL_SLOTS },
   recentModels: [],
+  favoriteModels: [],
+  modelPickerGroups: {},
   streamingFps: 30,
   personaId: null,
   recentPersonaIds: [],

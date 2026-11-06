@@ -186,6 +186,19 @@ describe('mergeSettings', () => {
     );
   });
 
+  test('favourites are deduped and kept; picker groups keep booleans only', () => {
+    const ref = (n: number) => ({ connectionId: DEFAULT_CONNECTION_ID, modelId: `m${n}` });
+    const next = mergeSettings(base(), {
+      favoriteModels: [ref(1), ref(2), ref(1), { connectionId: 'missing', modelId: 'x' }],
+      modelPickerGroups: { 'conn:default': false, junk: 'no' as never },
+    });
+    expect(next.favoriteModels).toEqual([ref(1), ref(2)]);
+    expect(next.modelPickerGroups).toEqual({ 'conn:default': false });
+    const untouched = mergeSettings(next, { streamingFps: 60 });
+    expect(untouched.favoriteModels).toEqual(next.favoriteModels);
+    expect(untouched.modelPickerGroups).toEqual(next.modelPickerGroups);
+  });
+
   test('unknown keys survive, so a newer build cannot be downgraded into data loss', () => {
     const current = { ...base(), futureKey: 'kept' };
     expect(mergeSettings(current, { streamingFps: 60 }).futureKey).toBe('kept');
@@ -1026,6 +1039,10 @@ describe('dropConnection', () => {
       { connectionId: 'b', modelId: 'memory' },
       { connectionId: 'a', modelId: 'chat' },
     ],
+    favoriteModels: [
+      { connectionId: 'a', modelId: 'chat' },
+      { connectionId: 'b', modelId: 'memory' },
+    ],
   });
 
   test('every slot and recent pick on the dropped connection goes with it', () => {
@@ -1034,6 +1051,7 @@ describe('dropConnection', () => {
     expect(next?.models.chat).toEqual({ connectionId: 'a', modelId: 'chat' });
     expect(next?.models.nexus).toBeNull();
     expect(next?.recentModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
+    expect(next?.favoriteModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
   });
 
   test('dropping the only connection empties everything', () => {

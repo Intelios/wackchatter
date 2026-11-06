@@ -1,7 +1,7 @@
 /**
  * What every model picker needs and no feature should have to thread: the saved
- * connections, the recent picks, each connection's model catalogue, and a way to record a
- * pick as recent.
+ * connections, the recent picks and favourites, which groups are folded, each connection's
+ * model catalogue, and ways to record a pick, a star and a fold.
  *
  * Catalogues are fetched when a picker opens, once per connection endpoint, and kept for the
  * session: a model list changes on the scale of weeks, and refetching on every open would
@@ -10,7 +10,7 @@
  * refresh.
  */
 
-import { type ModelRef, pushRecentModel } from '@shared/models/slots.ts';
+import { type ModelRef, pushRecentModel, toggleFavoriteModel } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import {
   createContext,
@@ -35,6 +35,13 @@ export interface ModelsContextValue {
   loadCatalogs: (force?: boolean) => void;
   /** Put a pick at the head of the recents. */
   rememberModel: (ref: ModelRef) => void;
+  /** Starred models, in star order. */
+  favoriteModels: readonly ModelRef[];
+  /** Star or unstar a model. */
+  toggleFavorite: (ref: ModelRef) => void;
+  /** Remembered open/closed picker groups (only the toggled ones). */
+  pickerGroups: Readonly<Record<string, boolean>>;
+  setGroupOpen: (key: string, open: boolean) => void;
 }
 
 const ModelsContext = createContext<ModelsContextValue | null>(null);
@@ -55,6 +62,10 @@ export function ModelsProvider({
   recentModels,
   chatModel,
   onRecentModels,
+  favoriteModels,
+  onFavoriteModels,
+  pickerGroups,
+  onPickerGroups,
   children,
 }: {
   connections: readonly Connection[];
@@ -62,6 +73,12 @@ export function ModelsProvider({
   chatModel: ModelRef | null;
   /** Persist the new recents. */
   onRecentModels: (next: ModelRef[]) => void;
+  favoriteModels: readonly ModelRef[];
+  /** Persist the new favourites. */
+  onFavoriteModels: (next: ModelRef[]) => void;
+  pickerGroups: Readonly<Record<string, boolean>>;
+  /** Persist the new open/closed map. */
+  onPickerGroups: (next: Record<string, boolean>) => void;
   children: ReactNode;
 }) {
   const [catalogs, setCatalogs] = useState<Catalogs>({});
@@ -121,9 +138,54 @@ export function ModelsProvider({
     [onRecentModels],
   );
 
+  // Same through-a-ref rule: two quick stars must not both build on one stale list.
+  const favoritesRef = useRef(favoriteModels);
+  favoritesRef.current = favoriteModels;
+  const toggleFavorite = useCallback(
+    (ref: ModelRef) => {
+      const next = toggleFavoriteModel(favoritesRef.current, ref);
+      favoritesRef.current = next;
+      onFavoriteModels(next);
+    },
+    [onFavoriteModels],
+  );
+
+  const groupsRef = useRef(pickerGroups);
+  groupsRef.current = pickerGroups;
+  const setGroupOpen = useCallback(
+    (key: string, open: boolean) => {
+      const next = { ...groupsRef.current, [key]: open };
+      groupsRef.current = next;
+      onPickerGroups(next);
+    },
+    [onPickerGroups],
+  );
+
   const value = useMemo(
-    () => ({ connections, recentModels, chatModel, catalogs, loadCatalogs, rememberModel }),
-    [connections, recentModels, chatModel, catalogs, loadCatalogs, rememberModel],
+    () => ({
+      connections,
+      recentModels,
+      chatModel,
+      catalogs,
+      loadCatalogs,
+      rememberModel,
+      favoriteModels,
+      toggleFavorite,
+      pickerGroups,
+      setGroupOpen,
+    }),
+    [
+      connections,
+      recentModels,
+      chatModel,
+      catalogs,
+      loadCatalogs,
+      rememberModel,
+      favoriteModels,
+      toggleFavorite,
+      pickerGroups,
+      setGroupOpen,
+    ],
   );
   return <ModelsContext.Provider value={value}>{children}</ModelsContext.Provider>;
 }

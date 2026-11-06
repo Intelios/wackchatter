@@ -32,7 +32,14 @@ import { LeftPanel } from '../layout/LeftPanel.tsx';
 import { LEFT_PANELS, RIGHT_PANELS } from '../layout/panels.tsx';
 import type { AppController } from './useAppController.ts';
 
-export function LegacyShell({ controller }: { controller: AppController }) {
+export function LegacyShell({
+  controller,
+  onUseNewInterface,
+}: {
+  controller: AppController;
+  /** Set only when the 2.x interface is the chosen one, so Settings offers the way back. */
+  onUseNewInterface?: () => void;
+}) {
   const { app, library, backups, chat, lore, preview, presetDraft } = controller;
   const { settings, view: prefs, models, patchSettings } = app;
   const { characters, personas, books, presets, presetId, preset } = library;
@@ -53,6 +60,10 @@ export function LegacyShell({ controller }: { controller: AppController }) {
       recentModels={settings?.recentModels ?? []}
       chatModel={models.slots.chat}
       onRecentModels={app.rememberModels}
+      favoriteModels={settings?.favoriteModels ?? []}
+      onFavoriteModels={app.setFavoriteModels}
+      pickerGroups={settings?.modelPickerGroups ?? {}}
+      onPickerGroups={app.setModelPickerGroups}
     >
       {node}
     </ModelsProvider>
@@ -343,6 +354,7 @@ export function LegacyShell({ controller }: { controller: AppController }) {
                   onRestoreBackup={(backupId) => void backups.restoreBackup(backupId)}
                   onPurgeBackup={(backupId) => void backups.purgeBackup(backupId)}
                   onPurgeAllBackups={() => void backups.purgeAllBackups()}
+                  onUseNewInterface={onUseNewInterface}
                 />
               ) : null}
             </Panel>

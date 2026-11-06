@@ -493,6 +493,10 @@ function ChatShell({
       recentModels={settings?.recentModels ?? []}
       chatModel={models.slots.chat}
       onRecentModels={app.rememberModels}
+      favoriteModels={settings?.favoriteModels ?? []}
+      onFavoriteModels={app.setFavoriteModels}
+      pickerGroups={settings?.modelPickerGroups ?? {}}
+      onPickerGroups={app.setModelPickerGroups}
     >
       <div
         ref={rootRef}

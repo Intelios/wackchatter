@@ -1,9 +1,10 @@
 /**
  * Pick a model, not a connection.
  *
- * One searchable list across every saved connection: recent picks first, then each
- * connection's catalogue under its name, then — once something is typed — that text as a
- * raw model id on each connection, for endpoints that list nothing. A pick is a whole
+ * One searchable list across every saved connection: starred favourites first, then recent
+ * picks, then each connection's catalogue under its name — a big catalogue split by vendor —
+ * then, once something is typed, that text as a raw model id on each connection, for
+ * endpoints that list nothing. Group headings fold, and the picker remembers which. A pick is a whole
  * `ModelRef`, so there is no connection to choose first and nothing to spring back.
  *
  * Functional rather than final: the 3.0 interface designs the real picker. This one replaces
@@ -17,6 +18,7 @@
 import type { ModelRef } from '@shared/models/slots.ts';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -24,9 +26,15 @@ import {
   useState,
 } from 'react';
 import { Popover, type PopoverTriggerProps } from '../../components/Popover.tsx';
-import { ChevronIcon } from '../../layout/icons.tsx';
+import { ChevronIcon, StarIcon } from '../../layout/icons.tsx';
 import { useModels } from './ModelsContext.tsx';
-import { describeRef, isCurrent, type PickerOption, pickerSections } from './pickerLogic.ts';
+import {
+  describeRef,
+  isCurrent,
+  type PickerOption,
+  type PickerSection,
+  pickerSections,
+} from './pickerLogic.ts';
 import './ModelPicker.css';
 
 export interface ModelPickerProps {
@@ -56,15 +64,35 @@ export function ModelPicker({
   disabled,
   disabledReason,
 }: ModelPickerProps) {
-  const { connections, recentModels, catalogs, loadCatalogs, rememberModel } = useModels();
+  const {
+    connections,
+    recentModels,
+    catalogs,
+    loadCatalogs,
+    rememberModel,
+    favoriteModels,
+    toggleFavorite,
+    pickerGroups,
+    setGroupOpen,
+  } = useModels();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
   const sections = useMemo(
-    () => (open ? pickerSections({ connections, recent: recentModels, catalogs, query }) : []),
-    [open, connections, recentModels, catalogs, query],
+    () =>
+      open
+        ? pickerSections({
+            connections,
+            recent: recentModels,
+            favorites: favoriteModels,
+            groups: pickerGroups,
+            catalogs,
+            query,
+          })
+        : [],
+    [open, connections, recentModels, favoriteModels, pickerGroups, catalogs, query],
   );
 
   const handleOpenChange = useCallback(
@@ -151,23 +179,67 @@ export function ModelPicker({
   );
 
   const renderOption = (option: PickerOption) => (
-    <button
-      type="button"
+    <div
       key={option.key}
-      role="option"
-      className="model-picker__option"
-      aria-selected={isCurrent(option, value)}
-      data-active={isCurrent(option, value) || undefined}
-      tabIndex={-1}
-      onClick={() => pick(option.ref)}
+      className="model-picker__row"
+      data-favorite={option.favorite || undefined}
     >
-      <span className="model-picker__option-name">{option.name}</span>
-      <span className="model-picker__option-meta">
-        {option.hint ? `${option.hint} · ` : ''}
-        {option.connectionName}
-      </span>
-    </button>
+      <button
+        type="button"
+        role="option"
+        className="model-picker__option"
+        aria-selected={isCurrent(option, value)}
+        data-active={isCurrent(option, value) || undefined}
+        tabIndex={-1}
+        onClick={() => pick(option.ref)}
+      >
+        <span className="model-picker__option-name">{option.name}</span>
+        <span className="model-picker__option-meta">
+          {option.hint ? `${option.hint} · ` : ''}
+          {option.connectionName}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="model-picker__star"
+        aria-pressed={option.favorite}
+        aria-label={option.favorite ? `Unstar ${option.name}` : `Star ${option.name}`}
+        title={option.favorite ? 'Remove from favourites' : 'Add to favourites'}
+        onClick={() => toggleFavorite(option.ref)}
+      >
+        <StarIcon filled={option.favorite} />
+      </button>
+    </div>
   );
+
+  const renderSection = (section: PickerSection, depth = 0): ReactNode => {
+    const body = section.open ? (
+      <>
+        {section.note ? <div className="model-picker__note">{section.note}</div> : null}
+        {section.options.map(renderOption)}
+        {section.groups?.map((group) => renderSection(group, depth + 1))}
+      </>
+    ) : null;
+    return (
+      <div key={section.key} className="model-picker__section" data-depth={depth || undefined}>
+        {section.collapsible ? (
+          <button
+            type="button"
+            className="model-picker__section-title model-picker__fold"
+            aria-expanded={section.open}
+            onClick={() => setGroupOpen(section.key, !section.open)}
+          >
+            <ChevronIcon className="model-picker__fold-chevron" />
+            <span>{section.title}</span>
+            <span className="model-picker__count">{section.count}</span>
+          </button>
+        ) : (
+          <div className="model-picker__section-title">{section.title}</div>
+        )}
+        {body}
+      </div>
+    );
+  };
 
   return (
     <Popover
@@ -224,13 +296,7 @@ export function ModelPicker({
             ) : null}
           </button>
         ) : null}
-        {sections.map((section) => (
-          <div key={section.key} className="model-picker__section">
-            <div className="model-picker__section-title">{section.title}</div>
-            {section.note ? <div className="model-picker__note">{section.note}</div> : null}
-            {section.options.map(renderOption)}
-          </div>
-        ))}
+        {sections.map((section) => renderSection(section))}
         {!connections.length ? (
           <div className="model-picker__note">Add a connection in Connections first.</div>
         ) : null}

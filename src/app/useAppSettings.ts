@@ -143,6 +143,16 @@ export function useAppSettings(onError: (message: string) => void) {
     [patchSettings],
   );
 
+  const setFavoriteModels = useCallback(
+    (favoriteModels: ModelRef[]) => void patchSettings({ favoriteModels }),
+    [patchSettings],
+  );
+
+  const setModelPickerGroups = useCallback(
+    (modelPickerGroups: Record<string, boolean>) => void patchSettings({ modelPickerGroups }),
+    [patchSettings],
+  );
+
   const { dialogueColors, characterRatings } = view;
 
   const patchCharacterDialogueColor = useCallback(
@@ -245,6 +255,8 @@ export function useAppSettings(onError: (message: string) => void) {
     patchChatConnection,
     setModelSlot,
     rememberModels,
+    setFavoriteModels,
+    setModelPickerGroups,
     patchCharacterDialogueColor,
     patchPersonaDialogueColor,
     patchCharacterRating,

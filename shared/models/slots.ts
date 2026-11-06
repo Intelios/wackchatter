@@ -53,6 +53,12 @@ export const SLOT_NOUNS: Readonly<Record<ModelSlot, string>> = {
 /** How many entries `AppSettings.recentModels` keeps. */
 export const MAX_RECENT_MODELS = 8 as const;
 
+/** A sanity cap on `AppSettings.favoriteModels`; nobody stars this many on purpose. */
+export const MAX_FAVORITE_MODELS = 200 as const;
+
+/** A sanity cap on `AppSettings.modelPickerGroups`, which only grows as groups are toggled. */
+export const MAX_PICKER_GROUPS = 500 as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -106,6 +112,47 @@ export function normalizeRecentModels(
     if (recent.length === MAX_RECENT_MODELS) break;
   }
   return recent;
+}
+
+/** Deduplicated, in the order starred, and only refs to connections that still exist. */
+export function normalizeFavoriteModels(
+  value: unknown,
+  connections: readonly Pick<Connection, 'id'>[],
+): ModelRef[] {
+  if (!Array.isArray(value)) return [];
+  const favorites: ModelRef[] = [];
+  for (const entry of value) {
+    const ref = normalizeModelRef(entry, connections);
+    if (!ref || favorites.some((seen) => sameModelRef(seen, ref))) continue;
+    favorites.push(ref);
+    if (favorites.length === MAX_FAVORITE_MODELS) break;
+  }
+  return favorites;
+}
+
+/** Star `ref` (appended, so favourites keep the order they were starred in) or unstar it. */
+export function toggleFavoriteModel(favorites: readonly ModelRef[], ref: ModelRef): ModelRef[] {
+  return favorites.some((entry) => sameModelRef(entry, ref))
+    ? favorites.filter((entry) => !sameModelRef(entry, ref))
+    : [...favorites, { connectionId: ref.connectionId, modelId: ref.modelId }];
+}
+
+/**
+ * The model picker's remembered open/closed groups: group key to open. Only explicit
+ * toggles are stored, so a group nobody touched keeps its default. Keys for deleted
+ * connections are inert and harmless.
+ */
+export function normalizePickerGroups(value: unknown): Record<string, boolean> {
+  if (!isRecord(value)) return {};
+  const groups: Record<string, boolean> = {};
+  let count = 0;
+  for (const [key, open] of Object.entries(value)) {
+    if (typeof open !== 'boolean' || !key || key.length > 300) continue;
+    groups[key] = open;
+    count += 1;
+    if (count === MAX_PICKER_GROUPS) break;
+  }
+  return groups;
 }
 
 /** `ref` moved to the front of the recents. */

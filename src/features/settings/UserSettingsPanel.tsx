@@ -27,6 +27,8 @@ interface UserSettingsPanelProps {
   onRestoreBackup: (backupId: string) => void;
   onPurgeBackup: (backupId: string) => void;
   onPurgeAllBackups?: () => void;
+  /** The way back to the 3.0 shell, shown only while the 2.x interface is the chosen one. */
+  onUseNewInterface?: () => void;
 }
 
 /** App-level settings: how the app looks, where data lives, and the knobs with no better home. */
@@ -39,6 +41,7 @@ export function UserSettingsPanel({
   onRestoreBackup,
   onPurgeBackup,
   onPurgeAllBackups,
+  onUseNewInterface,
 }: UserSettingsPanelProps) {
   const [uploads, setUploads] = useState<BackgroundSummary[]>([]);
   const [status, setStatus] = useState('');
@@ -125,6 +128,18 @@ export function UserSettingsPanel({
 
   return (
     <div className="user-settings">
+      {onUseNewInterface ? (
+        <Section title="Interface">
+          <p className="wc-hint">
+            You're on the 2.x interface. Ctrl+Shift+U also switches between the two. The start
+            screen looks the same in both until the 3.0 welcome screen is built; open a chat to
+            see the difference.
+          </p>
+          <button type="button" className="wc-button" onClick={onUseNewInterface}>
+            Use the 3.0 interface
+          </button>
+        </Section>
+      ) : null}
       <Section title="Background">
         <div className="user-settings__grid">
           <button

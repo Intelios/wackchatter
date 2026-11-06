@@ -14,6 +14,8 @@ import { Shell } from './shell/Shell.tsx';
 export function App() {
   const controller = useAppController();
   const [ui, choose] = useUiChoice();
-  if (ui === 'legacy') return <LegacyShell controller={controller} />;
+  if (ui === 'legacy') {
+    return <LegacyShell controller={controller} onUseNewInterface={() => choose('3')} />;
+  }
   return <Shell controller={controller} onUiChoice={choose} />;
 }

@@ -18,8 +18,10 @@ import {
 } from '../../shared/composer/layout.ts';
 import {
   type ModelSlots,
+  normalizeFavoriteModels,
   normalizeModelRef,
   normalizeModelSlots,
+  normalizePickerGroups,
   normalizeRecentModels,
 } from '../../shared/models/slots.ts';
 import { normalizeNexusSettings } from '../../shared/nexus/settings.ts';
@@ -602,6 +604,8 @@ export function getSettings(): AppSettings {
     connections,
     models: normalizeModelSlots(stored.models, connections),
     recentModels: normalizeRecentModels(stored.recentModels, connections),
+    favoriteModels: normalizeFavoriteModels(stored.favoriteModels, connections),
+    modelPickerGroups: normalizePickerGroups(stored.modelPickerGroups),
     worldInfo: normalizeWorldInfo(stored.worldInfo),
     variables: normalizeVariables(stored.variables),
     guidance: normalizeGuidance(stored.guidance),
@@ -666,6 +670,13 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     recentModels: Array.isArray(patch.recentModels)
       ? normalizeRecentModels(patch.recentModels, current.connections)
       : current.recentModels,
+    favoriteModels: Array.isArray(patch.favoriteModels)
+      ? normalizeFavoriteModels(patch.favoriteModels, current.connections)
+      : current.favoriteModels,
+    modelPickerGroups:
+      patch.modelPickerGroups === undefined
+        ? current.modelPickerGroups
+        : normalizePickerGroups(patch.modelPickerGroups),
     worldInfo: patch.worldInfo
       ? normalizeWorldInfo({ ...current.worldInfo, ...patch.worldInfo })
       : current.worldInfo,
@@ -870,9 +881,9 @@ export function applyConnectionPatch(
  * when resolved, so nothing changes model behind anyone's back.
  */
 export function dropConnection(
-  settings: Pick<AppSettings, 'connections' | 'models' | 'recentModels'>,
+  settings: Pick<AppSettings, 'connections' | 'models' | 'recentModels' | 'favoriteModels'>,
   id: string,
-): Pick<AppSettings, 'connections' | 'models' | 'recentModels'> | null {
+): Pick<AppSettings, 'connections' | 'models' | 'recentModels' | 'favoriteModels'> | null {
   if (!settings.connections.some((connection) => connection.id === id)) return null;
 
   const connections = settings.connections.filter((connection) => connection.id !== id);
@@ -881,6 +892,7 @@ export function dropConnection(
     connections,
     models,
     recentModels: normalizeRecentModels(settings.recentModels, connections),
+    favoriteModels: normalizeFavoriteModels(settings.favoriteModels, connections),
   };
 }
 

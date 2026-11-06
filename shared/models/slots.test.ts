@@ -3,13 +3,16 @@ import type { Connection } from '../providers/types.ts';
 import {
   DEFAULT_MODEL_SLOTS,
   MAX_RECENT_MODELS,
+  normalizeFavoriteModels,
   normalizeModelRef,
   normalizeModelSlots,
+  normalizePickerGroups,
   normalizeRecentModels,
   pushRecentModel,
   resolveModelRef,
   resolveSlot,
   slotRef,
+  toggleFavoriteModel,
 } from './slots.ts';
 
 const connection = (id: string, baseUrl = 'https://example.test/v1'): Connection => ({
@@ -120,5 +123,36 @@ describe('resolving', () => {
 
     const bare = resolveModelRef(connections, { connectionId: 'bare', modelId: 'm' }, 'chat');
     expect(!bare.ok && bare.reason).toContain('no endpoint');
+  });
+});
+
+describe('favourite models', () => {
+  const ref = (connectionId: string, modelId: string) => ({ connectionId, modelId });
+
+  test('normalising dedupes, keeps star order and drops refs to missing connections', () => {
+    expect(
+      normalizeFavoriteModels(
+        [ref('b', 'x'), ref('a', 'y'), ref('b', 'x'), ref('gone', 'z'), 'junk'],
+        connections,
+      ),
+    ).toEqual([ref('b', 'x'), ref('a', 'y')]);
+    expect(normalizeFavoriteModels(null, connections)).toEqual([]);
+  });
+
+  test('toggling appends a new star and removes an existing one', () => {
+    const one = toggleFavoriteModel([], ref('a', 'x'));
+    const two = toggleFavoriteModel(one, ref('b', 'y'));
+    expect(two).toEqual([ref('a', 'x'), ref('b', 'y')]);
+    expect(toggleFavoriteModel(two, ref('a', 'x'))).toEqual([ref('b', 'y')]);
+  });
+});
+
+describe('normalizePickerGroups', () => {
+  test('keeps boolean entries only', () => {
+    expect(normalizePickerGroups({ 'conn:a': false, 'vendor:a:openai': true, bad: 'yes' })).toEqual(
+      { 'conn:a': false, 'vendor:a:openai': true },
+    );
+    expect(normalizePickerGroups([])).toEqual({});
+    expect(normalizePickerGroups(undefined)).toEqual({});
   });
 });
