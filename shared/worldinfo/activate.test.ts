@@ -535,3 +535,47 @@ describe('determinism', () => {
     expect(uids(second)).toEqual(uids(first));
   });
 });
+
+describe('what set an entry off', () => {
+  test('a keyword entry names the first key that matched and the message it was in', () => {
+    const tavern = entry({ key: ['inn', 'tavern', 'Gilded Rose'] });
+    const rose = entry({ key: ['inn', 'Gilded Rose'] });
+    const result = activate(
+      [tavern, rose],
+      [
+        message('We could visit the tavern.'),
+        message('Sure, the Gilded Rose.', { name: 'Mika', is_user: false }),
+        message('Lead the way.'),
+      ],
+      { settings: { ...DEFAULT_WI_SETTINGS, depth: 3 } },
+    );
+    expect(result.activated.find((e) => e.uid === rose.uid)).toMatchObject({
+      matchedKey: 'Gilded Rose',
+      matchedIn: { back: 1, isUser: false, name: 'Mika' },
+    });
+    expect(result.activated.find((e) => e.uid === tavern.uid)).toMatchObject({
+      reason: 'keyword',
+      matchedKey: 'tavern',
+      // `inn` is first in the list but absent; `tavern` is next, in the oldest message.
+      matchedIn: { back: 2, isUser: true, name: 'User' },
+    });
+  });
+
+  test('the newest message holding the key wins', () => {
+    const fog = entry({ key: ['fog'] });
+    const result = activate([fog], [message('Fog again.'), message('More fog today.')], {
+      settings: { ...DEFAULT_WI_SETTINGS, depth: 2 },
+    });
+    expect(result.activated[0]!.matchedIn).toEqual({ back: 0, isUser: true, name: 'User' });
+  });
+
+  test('a constant entry has no key; a recursive one has a key but no message', () => {
+    const always = entry({ constant: true, content: 'The harbour smells of salt.' });
+    const salt = entry({ key: ['salt'], content: 'Salt is taxed.' });
+    const result = activate([always, salt], [message('hello')]);
+    const byUid = new Map(result.activated.map((e) => [e.uid, e]));
+    expect(byUid.get(always.uid)?.matchedKey).toBeUndefined();
+    expect(byUid.get(salt.uid)).toMatchObject({ reason: 'recursion', matchedKey: 'salt' });
+    expect(byUid.get(salt.uid)?.matchedIn).toBeUndefined();
+  });
+});

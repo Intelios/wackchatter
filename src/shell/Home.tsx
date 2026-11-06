@@ -101,14 +101,15 @@ export function HomeShell({
   /** Which name in the stack the cover shows; 0 is the chat you were last in. */
   const [picked, setPicked] = useState(0);
   const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet, setPersonaPage, setPresetPrompt } = controller;
+  const { setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage } = controller;
   // A character's sheet and a persona's page belong to their tools: leaving the tool goes
   // back to its list.
   useEffect(() => {
     if (tool !== 'characters') setCharacterSheet(null);
     if (tool !== 'personas') setPersonaPage(null);
     if (tool !== 'preset') setPresetPrompt(null);
-  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt]);
+    if (tool !== 'lorebooks') setLorePage(null);
+  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const [onApps, setOnApps] = useState(false);
@@ -441,7 +442,12 @@ export function HomeShell({
         data-overlay-root
         data-screen={screen}
         data-margin={side ?? undefined}
-        data-wide={tool === 'preset' && controller.presetPrompt ? '' : undefined}
+        data-wide={
+          (tool === 'preset' && controller.presetPrompt) ||
+          (tool === 'lorebooks' && controller.lorePage?.entry != null)
+            ? ''
+            : undefined
+        }
         data-image={Boolean(backdropUrl)}
         data-dropping={dropping || undefined}
         data-apps={onApps || undefined}
@@ -597,6 +603,7 @@ export function HomeShell({
                   controller.characterSheet,
                   controller.personaPage,
                   controller.presetPrompt,
+                  controller.lorePage?.book,
                 ]}
               >
                 <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />

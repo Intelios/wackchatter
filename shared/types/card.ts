@@ -132,6 +132,8 @@ export interface CharacterSummary {
   tags: string[];
   character_version: string;
   hasLorebook: boolean;
+  /** The standalone lorebook the card links to by name (`extensions.world`), when it does. */
+  linkedBook?: string;
   /** The start of the first greeting, macros unresolved, for the home screen. */
   greeting?: string;
   /** ms epoch, from file mtime. */

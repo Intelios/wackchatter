@@ -147,4 +147,13 @@ describe('listing', () => {
     expect(greeting.startsWith('"Hello."')).toBe(true);
     expect(greeting.length).toBe(600);
   });
+
+  test('a summary names the lorebook the card links to, and only when it links one', async () => {
+    await create('Alice');
+    await create('Bob');
+    await updateCharacter('Alice.png', { extensions: { world: 'Harbor Town' } });
+    const byAvatar = new Map(listCharacters().map((c) => [c.avatar, c]));
+    expect(byAvatar.get('Alice.png')?.linkedBook).toBe('Harbor Town');
+    expect('linkedBook' in (byAvatar.get('Bob.png') ?? {})).toBe(false);
+  });
 });

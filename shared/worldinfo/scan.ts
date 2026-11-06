@@ -41,12 +41,30 @@ export interface ScanBufferOptions {
  * Blank messages are dropped so an in-flight placeholder doesn't occupy a depth slot.
  */
 export function scanLines(messages: ChatMessage[], options: ScanBufferOptions = {}): string[] {
-  const lines: string[] = [];
+  return scanMessages(messages, options).map((line) => line.text);
+}
+
+/** Who wrote a scanned line, for saying where a key was found. */
+export interface ScanSpeaker {
+  name: string;
+  isUser: boolean;
+}
+
+/** `scanLines` with each line's speaker kept beside it, newest first. */
+function scanMessages(
+  messages: ChatMessage[],
+  options: ScanBufferOptions,
+): Array<{ text: string } & ScanSpeaker> {
+  const lines: Array<{ text: string } & ScanSpeaker> = [];
   for (const message of messages) {
     if (message.is_system) continue;
     const text = message.mes?.trim();
     if (!text) continue;
-    lines.push(options.includeNames ? `${message.name}: ${text}` : text);
+    lines.push({
+      text: options.includeNames ? `${message.name}: ${text}` : text,
+      name: message.name,
+      isUser: Boolean(message.is_user),
+    });
   }
   return lines.reverse();
 }
@@ -61,15 +79,38 @@ export function scanLines(messages: ChatMessage[], options: ScanBufferOptions = 
  */
 export class ScanBuffer {
   readonly #lines: string[];
+  readonly #speakers: ScanSpeaker[];
   readonly #recursed: string[] = [];
   readonly #cache = new Map<number, string>();
 
-  constructor(lines: string[]) {
+  constructor(lines: string[], speakers: ScanSpeaker[] = []) {
     this.#lines = lines;
+    this.#speakers = speakers;
   }
 
   static fromMessages(messages: ChatMessage[], options: ScanBufferOptions = {}): ScanBuffer {
-    return new ScanBuffer(scanLines(messages, options));
+    const scanned = scanMessages(messages, options);
+    return new ScanBuffer(
+      scanned.map((line) => line.text),
+      scanned.map(({ name, isUser }) => ({ name, isUser })),
+    );
+  }
+
+  /**
+   * The newest message within `depth` that `test` accepts: how far back it is (0 is the
+   * newest) and who wrote it. Null when only text admitted by recursion matched.
+   */
+  findMessage(
+    depth: number,
+    test: (line: string) => boolean,
+  ): ({ back: number } & ScanSpeaker) | null {
+    const limit = Math.min(Math.floor(depth), MAX_SCAN_DEPTH, this.#lines.length);
+    for (let back = 0; back < limit; back++) {
+      if (!test(SENTINEL + this.#lines[back]!)) continue;
+      const speaker = this.#speakers[back];
+      return speaker ? { back, ...speaker } : null;
+    }
+    return null;
   }
 
   /** Text admitted on an earlier pass, which later passes may match against. */

@@ -1,0 +1,494 @@
+/* ---------- The Lorebooks tool ---------- */
+/* Switches, chips, tags, folds and the widened split come from preset.css. */
+
+.w3-lore {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding-bottom: 28px;
+}
+
+.w3-lore .w3-sheet__label small {
+  order: 3;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.w3-lore__group {
+  display: grid;
+  gap: 8px;
+}
+
+.w3-books {
+  display: grid;
+  gap: 2px;
+}
+
+.w3-book {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: background var(--w3-quick) ease;
+}
+
+.w3-book:hover {
+  background: var(--w3-hover);
+}
+
+.w3-book__faces {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.w3-book__faces img,
+.w3-book__faces i {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  object-fit: cover;
+  object-position: 50% 20%;
+  box-shadow: 0 0 0 2px var(--w3-island);
+}
+
+.w3-book__faces img:first-child {
+  left: 0;
+  top: 0;
+}
+
+.w3-book__faces img:nth-child(2) {
+  left: 9px;
+  top: 9px;
+}
+
+.w3-book__faces i {
+  left: 4px;
+  top: 4px;
+  display: grid;
+  place-items: center;
+  background: var(--w3-raised);
+  color: var(--w3-faint);
+}
+
+.w3-book__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.w3-book__text b {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.w3-book__text > span {
+  font-size: 12px;
+  color: var(--w3-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The last reply: green for what went in, amber for what matched and was left out. */
+.w3-fired {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--w3-lore-soft);
+  color: var(--w3-lore);
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+}
+
+.w3-fired::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--w3-lore);
+}
+
+.w3-lore__set {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 10px;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--w3-soft);
+}
+
+.w3-lore__set span {
+  display: grid;
+  gap: 1px;
+}
+
+.w3-lore__set small {
+  font-size: 11.5px;
+  color: var(--w3-faint);
+}
+
+.w3-lore__set input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: 0;
+  background: var(--w3-raised);
+  color: var(--w3-text);
+  font-family: var(--w3-font-mono);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.w3-lore__set input:focus {
+  border-color: var(--w3-accent-line);
+}
+
+/* ---------- A book ---------- */
+
+.w3-lore__book {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  animation: w3-sheet-in 0.35s var(--w3-out) both;
+}
+
+.w3-lore__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.w3-lore__name {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  outline: 0;
+  background: none;
+  color: var(--w3-text);
+  font-family: var(--w3-font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.w3-lore__name:hover,
+.w3-lore__name:focus {
+  background: var(--w3-raised);
+}
+
+.w3-lore__studio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  font-size: 12.5px;
+  color: var(--w3-muted);
+}
+
+.w3-lore__studio button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.w3-lore__filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.w3-lore__add {
+  margin-left: auto;
+}
+
+.w3-ents {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.w3-ent {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px 5px 2px;
+  border-radius: 12px;
+  transition: background var(--w3-quick) ease;
+}
+
+.w3-ent:hover {
+  background: var(--w3-hover);
+}
+
+.w3-ent[data-open] {
+  background: var(--w3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.w3-ent[data-dragging] {
+  z-index: 2;
+  background: var(--w3-raised);
+  box-shadow: var(--w3-shadow);
+}
+
+.w3-ent:hover .w3-prompt__grip {
+  opacity: 0.8;
+}
+
+/* A stripe in the gutter for the last reply, readable at a glance down the list. */
+.w3-ent[data-mark]::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--w3-lore);
+}
+
+.w3-ent[data-mark="skipped"]::before {
+  background: var(--w3-lore-skip);
+}
+
+.w3-ent[data-off] .w3-ent__main {
+  opacity: 0.45;
+}
+
+.w3-ent__main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--w3-text);
+  font: inherit;
+  text-align: left;
+}
+
+.w3-ent__name {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+.w3-ent__name b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.w3-ent__mark {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--w3-lore-soft);
+  color: var(--w3-lore);
+  font-family: var(--w3-font-mono);
+  font-size: 9.5px;
+}
+
+.w3-ent__mark[data-mark="skipped"] {
+  background: var(--w3-lore-skip-soft);
+  color: var(--w3-lore-skip);
+}
+
+.w3-ent__keys {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  color: var(--w3-faint);
+}
+
+.w3-ent__keys em {
+  font-style: normal;
+  color: var(--w3-lore);
+}
+
+.w3-ent__order {
+  flex: none;
+  min-width: 26px;
+  text-align: right;
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  color: var(--w3-faint);
+}
+
+.w3-ents[data-rail] .w3-ent__keys,
+.w3-ents[data-rail] .w3-ent__order,
+.w3-ents[data-rail] .w3-tag,
+.w3-ents[data-rail] .w3-prompt__grip {
+  display: none;
+}
+
+/* ---------- An entry ---------- */
+
+.w3-lore__why {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  color: var(--w3-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.w3-lore__why small {
+  font-family: var(--w3-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.w3-lore__why[data-mark="fired"] {
+  background: var(--w3-lore-soft);
+  color: var(--w3-lore);
+}
+
+.w3-lore__why[data-mark="skipped"] {
+  background: var(--w3-lore-skip-soft);
+  color: var(--w3-lore-skip);
+}
+
+.w3-lore__word {
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: var(--w3-raised);
+  color: var(--w3-text);
+  font-weight: 600;
+}
+
+.w3-lore__keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.w3-lore__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px 0 10px;
+  border-radius: 8px;
+  background: var(--w3-raised);
+  font-family: var(--w3-font-mono);
+  font-size: 11.5px;
+  color: var(--w3-text);
+}
+
+.w3-lore__key[data-hit] {
+  background: var(--w3-lore-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-lore-line);
+}
+
+.w3-lore__key button {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--w3-faint);
+}
+
+.w3-lore__key button:hover {
+  color: var(--w3-text);
+}
+
+.w3-lore__keys input {
+  width: 120px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px dashed var(--w3-line-strong);
+  border-radius: 8px;
+  outline: 0;
+  background: none;
+  color: var(--w3-text);
+  font-family: var(--w3-font-mono);
+  font-size: 11.5px;
+}
+
+.w3-lore__keys input:focus {
+  border-style: solid;
+  border-color: var(--w3-accent-line);
+}
+
+.w3-lore__text,
+.w3-lore__read {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36vh;
+  padding: 14px 16px;
+  border: 1px solid var(--w3-line);
+  border-radius: 14px;
+  outline: 0;
+  background: oklch(0.1 0.015 var(--w3-h) / 0.6);
+  color: var(--w3-soft);
+  font-family: var(--w3-font-mono);
+  font-size: 12.5px;
+  line-height: 1.75;
+  resize: vertical;
+}
+
+.w3-lore__read {
+  min-height: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.w3-lore__text:focus {
+  border-color: var(--w3-accent-line);
+}

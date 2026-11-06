@@ -128,7 +128,17 @@ export function matchAny(
   settings: MatchSettings,
   cache?: RegexCache,
 ): boolean {
-  return keys.some((key) => matchKey(haystack, key, settings, cache));
+  return firstMatchingKey(haystack, keys, settings, cache) !== null;
+}
+
+/** The first key, in the entry's own order, that matches; null when none does. */
+export function firstMatchingKey(
+  haystack: string,
+  keys: string[],
+  settings: MatchSettings,
+  cache?: RegexCache,
+): string | null {
+  return keys.find((key) => matchKey(haystack, key, settings, cache)) ?? null;
 }
 
 /**

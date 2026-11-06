@@ -12,11 +12,12 @@ import type { AppController } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
 import { InspectPanel } from '../features/chat/InspectPanel.tsx';
 import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
-import { LorePanel } from '../features/lore/LorePanel.tsx';
 import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
 import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
 import { CharacterSheet } from './CharacterSheet.tsx';
 import type { IconName } from './icons.tsx';
+import { LoreTool } from './LoreTool.tsx';
+import { CARD_BOOK } from './lore.ts';
 import { PersonaTool } from './PersonaTool.tsx';
 import { PresetSwitcher, PresetTool } from './PresetTool.tsx';
 
@@ -62,6 +63,14 @@ export function toolTitle(id: ToolId, controller: AppController): string {
   if (id === 'characters' && controller.characterSheet) {
     return sheetCharacter(controller)?.name ?? 'Character';
   }
+  if (id === 'lorebooks' && controller.lorePage) {
+    const { book } = controller.lorePage;
+    if (book !== CARD_BOOK) return book;
+    return (
+      controller.character?.character_book?.name ||
+      `${controller.active?.name ?? 'The card'}’s book`
+    );
+  }
   if (id === 'personas' && controller.personaPage) {
     const page = controller.personaPage;
     if (page.kind === 'from') return 'From a character';
@@ -106,8 +115,18 @@ export function toolSubtitle(id: ToolId, controller: AppController): string {
       }
       return `${library.characters.length.toLocaleString()} in your library`;
     }
-    case 'lorebooks':
-      return 'World info for this chat and every chat';
+    case 'lorebooks': {
+      const page = controller.lorePage;
+      if (page?.book === CARD_BOOK) return 'Inside the card';
+      if (page) {
+        const linked = library.characters.filter((c) => c.linkedBook === page.book);
+        return linked.length
+          ? `Linked to ${linked.map((c) => c.name).join(', ')}`
+          : 'Not linked to a card';
+      }
+      const count = library.books.length;
+      return `${count} ${count === 1 ? 'book' : 'books'} · what each reply drew on`;
+    }
     case 'personas': {
       const page = controller.personaPage;
       if (page?.kind === 'from') return 'A persona drafted from a card';
@@ -199,17 +218,25 @@ export function MarginTool({
     }
     case 'lorebooks':
       return (
-        <LorePanel
+        <LoreTool
+          page={controller.lorePage}
+          setPage={controller.setLorePage}
           books={books}
+          characters={characters}
+          characterAvatarVersions={library.characterAvatarVersions}
+          sources={lore.sourcesForPersona(chat.persona?.lorebookId ?? undefined)}
+          lastReply={chat.worldInfo}
           settings={prefs.worldInfo}
+          onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
           onBooksChanged={() => {
             void library.refreshBooks();
             void library.refreshPersonas();
           }}
-          onSettingsChange={(patch) => void patchSettings({ worldInfo: patch })}
-          activeBooks={lore.activeForPersona(chat.persona?.lorebookId ?? undefined)}
           onBookEdited={lore.invalidate}
           registerPersistence={controller.registerPersistence('lore')}
+          countTokens={app.countTokens}
+          cardAvatar={controller.active?.avatar ?? null}
+          onOpenStudio={(avatar) => void controller.enterStudioOn(avatar)}
         />
       );
     case 'personas':

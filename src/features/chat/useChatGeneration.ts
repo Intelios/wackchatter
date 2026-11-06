@@ -112,7 +112,11 @@ export function useChatGeneration(options: ChatGenerationOptions) {
   const { preview: prepareNexus, setRecall: setNexusRecall, consume: consumeNexus } = nexus;
   const { stageForSend } = nexus;
 
-  const [worldInfo, setWorldInfo] = useState<ActivationResult | null>(null);
+  /** The last generation's lore, with the chat it belongs to, so another chat never shows it. */
+  const [worldInfo, setWorldInfo] = useState<{
+    chatId: string | null;
+    result: ActivationResult;
+  } | null>(null);
 
   /**
    * Run one generation.
@@ -200,7 +204,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
           // The same memoised counter assembly gets, or every entry is tokenised twice.
           countTokens,
         });
-        setWorldInfo(lore);
+        setWorldInfo(lore ? { chatId: started.chatId ?? null, result: lore } : null);
 
         // Recall runs over the same post-fold transcript, so a record keyed on a word in the
         // message just typed fires for the reply it triggered rather than the next one.

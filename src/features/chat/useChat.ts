@@ -287,7 +287,10 @@ export function useChat(options: UseChatOptions): UseChat {
     impersonate: generation.impersonate,
     recap: generation.recap,
     abort: generation.abort,
-    worldInfo: generation.worldInfo,
+    worldInfo:
+      generation.worldInfo && generation.worldInfo.chatId === state.chatId
+        ? generation.worldInfo.result
+        : null,
 
     summaryStatus: summary.summaryStatus,
     summaryPending: summary.summaryPending,

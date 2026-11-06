@@ -98,6 +98,8 @@ export function GenPane({
   detail,
   stopLabel = 'Stop',
   onStop,
+  lore,
+  onOpenLore,
 }: {
   who: Face;
   isPersona?: boolean;
@@ -111,7 +113,14 @@ export function GenPane({
   detail?: string;
   stopLabel?: string;
   onStop: () => void;
+  /**
+   * The lore this reply fired, once the request is built. A new one unfurls its names
+   * across the island for a moment, then folds to a small book with the count.
+   */
+  lore?: LoreMomentInfo | null;
+  onOpenLore?: () => void;
 }) {
+  const unfurled = useUnfurl(lore ?? null);
   const snapshot = useSyncExternalStore(
     (listener) => (live ? stream.subscribe(listener) : () => {}),
     () => (live ? stream.getSnapshot() : IDLE),
@@ -149,16 +158,66 @@ export function GenPane({
         <i />
         <i />
       </span>
-      <span className="w3-isl-stack" role="status">
-        <span className="w3-gen-label">{thinking && thinkingLabel ? thinkingLabel : label}</span>
-        <span className="w3-gen-count">{count}</span>
-      </span>
+      {lore && unfurled ? (
+        <button
+          type="button"
+          className="w3-lore-unfurl"
+          onClick={onOpenLore}
+          title="Open Lorebooks on what fired"
+        >
+          <Icon name="book" size="sm" />
+          <b>{lore.count} lore</b>
+          <span>{lore.names.join(', ')}</span>
+          {lore.more ? <em>+{lore.more}</em> : null}
+        </button>
+      ) : (
+        <span className="w3-isl-stack" role="status">
+          <span className="w3-gen-label">{thinking && thinkingLabel ? thinkingLabel : label}</span>
+          <span className="w3-gen-count">{count}</span>
+        </span>
+      )}
+      {lore && !unfurled ? (
+        <button
+          type="button"
+          className="w3-lore-chip"
+          onClick={onOpenLore}
+          title={`${lore.count} lore ${lore.count === 1 ? 'entry' : 'entries'} fired. Open Lorebooks`}
+          aria-label={`${lore.count} lore entries fired. Open Lorebooks`}
+        >
+          <Icon name="book" size="xs" />
+          {lore.count}
+        </button>
+      ) : null}
       <button type="button" className="w3-isl-stop" onClick={onStop}>
         <Icon name="stop" />
         {stopLabel}
       </button>
     </>
   );
+}
+
+export interface LoreMomentInfo {
+  /** Changes with each reply's lore; a new one unfurls again. */
+  key: object;
+  count: number;
+  names: string[];
+  more: number;
+}
+
+/** How long the names stay spelled out before folding to the book. */
+const UNFURL_MS = 2200;
+
+/** True for a moment after a new reply's lore arrives. */
+function useUnfurl(lore: LoreMomentInfo | null): boolean {
+  const [shown, setShown] = useState<object | null>(null);
+  const key = lore?.key ?? null;
+  useEffect(() => {
+    if (!key) return;
+    setShown(key);
+    const timer = setTimeout(() => setShown(null), UNFURL_MS);
+    return () => clearTimeout(timer);
+  }, [key]);
+  return Boolean(key) && shown === key;
 }
 
 function countWords(text: string): number {

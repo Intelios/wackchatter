@@ -25,6 +25,19 @@ import { useAppSettings } from './useAppSettings.ts';
 import { useBackups } from './useBackups.ts';
 import { useLibrary } from './useLibrary.ts';
 
+/** Which entries a book in the Lorebooks tool lists: all, or only the last reply's. */
+export type LoreFilter = 'all' | 'fired' | 'skipped';
+
+/**
+ * The Lorebooks tool's page over its list: one book (by id, or `CARD_BOOK` from
+ * `shell/lore.ts` for the open chat's card's own book), with an entry open in the editor or not.
+ */
+export interface LorePage {
+  book: string;
+  entry: number | null;
+  filter: LoreFilter;
+}
+
 /** The Personas tool's page over its list. */
 export type PersonaPage = { kind: 'edit'; id: string } | { kind: 'from' };
 export type AppView = 'app' | 'studio' | 'cocreator' | 'tokentrail' | 'arena';
@@ -88,6 +101,7 @@ export function useAppController() {
    * because the shell widens the margin while one is open.
    */
   const [presetPrompt, setPresetPrompt] = useState<string | null>(null);
+  const [lorePage, setLorePage] = useState<LorePage | null>(null);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((message: string) => setError(message), []);
@@ -702,6 +716,8 @@ export function useAppController() {
     setPersonaPage,
     presetPrompt,
     setPresetPrompt,
+    lorePage,
+    setLorePage,
     ready,
     error,
     showError,

@@ -7,25 +7,17 @@
  * the content box isn't one request per keystroke.
  */
 
-import type {
-  LorebookSummary,
-  WorldInfoBook,
-  WorldInfoEntry,
-  WorldInfoSettings,
-} from '@shared/types/worldinfo.ts';
-import { createWorldInfoEntry } from '@shared/types/worldinfo.ts';
-import { bookEntries, nextUid, removeEntry } from '@shared/worldinfo/convert.ts';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
+import { useState } from 'react';
 import { NumberField, TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { Select } from '../../components/Select.tsx';
 import { lorebookApi } from '../../lib/api.ts';
-import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
+import type { PersistenceControls } from '../../lib/autosave.ts';
 import { LorebookEditor } from './LorebookEditor.tsx';
 import type { ActiveBook } from './useLorebooks.ts';
+import { useLorebookWorkbench } from './useLorebookWorkbench.ts';
 import './LorePanel.css';
-
-const SAVE_DELAY = 600;
 
 /**
  * The book's name, which is also its filename.
@@ -74,131 +66,27 @@ export function LorePanel({
   registerPersistence,
 }: LorePanelProps) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [book, setBook] = useState<WorldInfoBook | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  // Stable refs so the long-lived queue's callbacks read the current props.
-  const onBookEditedRef = useRef(onBookEdited);
-  onBookEditedRef.current = onBookEdited;
-  const onBooksChangedRef = useRef(onBooksChanged);
-  onBooksChangedRef.current = onBooksChanged;
-
-  // One queue shared by every book, but keyed per book: editing book B schedules under B's
-  // id and can no longer cancel a pending write for book A. Writes to one book are
-  // serialized; a failed write is retained for retry rather than dropped.
-  const queueRef = useRef<AutosaveQueue<WorldInfoBook> | null>(null);
-  if (!queueRef.current) {
-    queueRef.current = new AutosaveQueue((id, next) => lorebookApi.save(id, next), SAVE_DELAY, {
-      onSaved: (id) => {
-        setError(null);
-        onBookEditedRef.current(id);
-        onBooksChangedRef.current();
-      },
-      onFailed: (_id, err) => setError(err.message),
-    });
-  }
-  const queue = queueRef.current;
-
-  useEffect(() => {
-    registerPersistence?.({
-      flush: () => queue.flushAll(),
-      retry: () => queue.flushAll(),
-    });
-    return () => registerPersistence?.(null);
-  }, [queue, registerPersistence]);
-
-  useEffect(() => {
-    if (!selected) {
-      setBook(null);
-      return;
-    }
-
-    let cancelled = false;
-    lorebookApi
-      .get(selected)
-      .then((loaded) => {
-        if (!cancelled) setBook(loaded);
-      })
-      .catch((err) => {
-        if (!cancelled) setError((err as Error).message);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selected]);
-
-  // Flush every pending write on unmount, or the last edit before closing the panel is lost.
-  useEffect(() => {
-    return () => {
-      void queue.flushAll().catch(() => {});
-    };
-  }, [queue]);
-
-  const persist = useCallback(
-    (id: string, next: WorldInfoBook) => {
-      setBook(next);
-      queue.schedule(id, queue.nextRevision(id), next);
-    },
-    [queue],
-  );
-
-  const entries = useMemo(() => (book ? bookEntries(book) : []), [book]);
-
-  async function selectBook(next: string | null): Promise<boolean> {
-    if (selected && selected !== next) {
-      try {
-        await queue.flush(selected);
-      } catch (err) {
-        setError((err as Error).message);
-        return false;
-      }
-    }
-    setSelected(next);
-    return true;
-  }
-
-  const update = useCallback(
-    (mutate: (current: WorldInfoBook) => WorldInfoBook) => {
-      if (!selected || !book) return;
-      persist(selected, mutate(book));
-    },
-    [selected, book, persist],
-  );
+  const bench = useLorebookWorkbench({
+    selected,
+    setSelected,
+    onBooksChanged,
+    onBookEdited,
+    registerPersistence,
+  });
+  const { book, entries, error, selectBook } = bench;
 
   async function handleCreate() {
-    try {
-      const created = await lorebookApi.create('New Lorebook');
-      onBooksChanged();
-      await selectBook(created.id);
-    } catch (err) {
-      setError((err as Error).message);
-    }
+    await bench.create();
   }
 
   async function handleDelete() {
-    if (!selected) return;
-    try {
-      const id = selected;
-      await queue.runSerialized(id, () => lorebookApi.remove(id));
-      queue.discard(id);
-      setSelected(null);
-      setConfirmDelete(false);
-      onBooksChanged();
-    } catch (err) {
-      setError((err as Error).message);
-    }
+    await bench.remove();
+    setConfirmDelete(false);
   }
 
   async function handleImport(file: File) {
-    try {
-      const imported = await lorebookApi.import(file);
-      onBooksChanged();
-      await selectBook(imported.id);
-    } catch (err) {
-      setError((err as Error).message);
-    }
+    await bench.importFile(file);
   }
 
   return (
@@ -331,11 +219,7 @@ export function LorePanel({
         <p className="lore-panel__error">
           {error}{' '}
           {selected ? (
-            <button
-              type="button"
-              className="wc-button wc-button--ghost"
-              onClick={() => void queue.retry(selected).catch(() => {})}
-            >
+            <button type="button" className="wc-button wc-button--ghost" onClick={bench.retry}>
               Retry save
             </button>
           ) : null}
@@ -347,52 +231,15 @@ export function LorePanel({
           key={selected}
           entries={entries}
           globals={settings}
-          onAddEntry={() =>
-            update((current) => {
-              const uid = nextUid(current);
-              const entry = createWorldInfoEntry(uid);
-              entry.displayIndex = bookEntries(current).length;
-              entry.content = 'New entry.';
-              return { ...current, entries: { ...current.entries, [String(uid)]: entry } };
-            })
-          }
-          onUpdateEntry={(uid, patch) =>
-            update((current) => {
-              const existing = current.entries[String(uid)];
-              if (!existing) return current;
-              const next: WorldInfoEntry = { ...existing, ...patch, uid };
-              return { ...current, entries: { ...current.entries, [String(uid)]: next } };
-            })
-          }
-          onDeleteEntry={(uid) => update((current) => removeEntry(current, uid))}
-          onReorder={(uids) =>
-            update((current) => {
-              const next = { ...current.entries };
-              uids.forEach((uid, index) => {
-                const entry = next[String(uid)];
-                if (entry) next[String(uid)] = { ...entry, displayIndex: index };
-              });
-              return { ...current, entries: next };
-            })
-          }
+          onAddEntry={() => void bench.addEntry()}
+          onUpdateEntry={bench.updateEntry}
+          onDeleteEntry={bench.deleteEntry}
+          onReorder={bench.reorder}
           bookFields={
             <RenameField
               key={selected}
               name={selected}
-              onRename={async (name) => {
-                try {
-                  const oldId = selected;
-                  const renamed = await queue.runSerialized(oldId, () =>
-                    lorebookApi.rename(oldId, name),
-                  );
-                  queue.discard(oldId);
-                  onBooksChanged();
-                  setSelected(renamed.id);
-                  setError(null);
-                } catch (err) {
-                  setError((err as Error).message);
-                }
-              }}
+              onRename={(name) => void bench.rename(name)}
             />
           }
         />

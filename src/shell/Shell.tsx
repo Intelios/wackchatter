@@ -17,6 +17,7 @@ import './stage.css';
 import { greetingTexts } from '@shared/chat/message.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
+import type { ActivationResult } from '@shared/worldinfo/activate.ts';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LegacyShell } from '../app/LegacyShell.tsx';
 import type { UiChoice } from '../app/uiChoice.ts';
@@ -46,6 +47,7 @@ import {
 import { Icon } from './icons.tsx';
 import { introLine } from './intro.ts';
 import type { LineHandle } from './LineComposer.tsx';
+import { busiestBook, loreMoment } from './lore.ts';
 import {
   LEFT_TOOLS,
   MarginTool,
@@ -121,14 +123,15 @@ function ChatShell({
   const importRef = useRef<HTMLInputElement>(null);
 
   const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet, setPersonaPage, setPresetPrompt } = controller;
+  const { setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage } = controller;
   // A character's sheet and a persona's page belong to their tools: leaving the tool goes
   // back to its list.
   useEffect(() => {
     if (tool !== 'characters') setCharacterSheet(null);
     if (tool !== 'personas') setPersonaPage(null);
     if (tool !== 'preset') setPresetPrompt(null);
-  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt]);
+    if (tool !== 'lorebooks') setLorePage(null);
+  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const noticeId = useRef(0);
@@ -422,6 +425,28 @@ function ChatShell({
   const side = tool ? TOOLS[tool].side : null;
   const chooseModel = useCallback(() => openTool('preset'), [openTool]);
 
+  /*
+   * The lore this reply fired, for the island. Only a result that arrived after the reply
+   * began counts: until the request is built, the last reply's lore is still the newest.
+   */
+  // Updated only while idle, so it still holds the previous reply's lore on the render where
+  // a new reply starts, even when the new lore lands in that same render.
+  const loreAtStart = useRef<ActivationResult | null>(null);
+  if (!generating) loreAtStart.current = chat.worldInfo;
+  const replyLore = useMemo(() => {
+    if (!generating || summarising || !chat.worldInfo) return null;
+    if (chat.worldInfo === loreAtStart.current) return null;
+    const moment = loreMoment(chat.worldInfo);
+    return moment ? { key: chat.worldInfo, ...moment } : null;
+  }, [generating, summarising, chat.worldInfo]);
+  const openReplyLore = useCallback(() => {
+    const book = busiestBook(chat.worldInfo);
+    if (!book) return;
+    setOpened(null);
+    setLorePage({ book, entry: null, filter: 'fired' });
+    setTool('lorebooks');
+  }, [chat.worldInfo, setLorePage]);
+
   const bloom = useCallback(() => replay(bloomRef.current), []);
   const onCopied = useCallback(
     (ok: boolean) =>
@@ -451,7 +476,12 @@ function ChatShell({
         className="wc3"
         data-overlay-root
         data-margin={side ?? undefined}
-        data-wide={tool === 'preset' && controller.presetPrompt ? '' : undefined}
+        data-wide={
+          (tool === 'preset' && controller.presetPrompt) ||
+          (tool === 'lorebooks' && controller.lorePage?.entry != null)
+            ? ''
+            : undefined
+        }
         data-image={Boolean(backdropUrl)}
         data-generating={generating || undefined}
         style={
@@ -514,6 +544,7 @@ function ChatShell({
                   controller.characterSheet,
                   controller.personaPage,
                   controller.presetPrompt,
+                  controller.lorePage?.book,
                   controller.selected,
                 ]}
               >
@@ -591,6 +622,8 @@ function ChatShell({
                     : undefined
                 }
                 onStop={summarising ? chat.cancelSummary : chat.abort}
+                lore={replyLore}
+                onOpenLore={openReplyLore}
               />
             ),
             cast: (
