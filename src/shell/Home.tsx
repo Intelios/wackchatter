@@ -750,39 +750,29 @@ function Headline({ text, share, split = true }: { text: string; share: number; 
   );
 }
 
-/** How long the old cover takes to leave before the new one is set in. */
-const SWAP_OUT_MS = 150;
-
-/**
- * Holds what the cover shows a beat behind what was asked for: the old cover fades out, the
- * new one is set while invisible, then fades in. Moving quickly across the stack only ever
- * lands on the last name; the ones skipped past are never drawn.
- */
-function useSwap<T extends { key: string }>(next: T): { shown: T; out: boolean } {
-  const [shown, setShown] = useState(next);
-  const [out, setOut] = useState(false);
-  useEffect(() => {
-    if (next.key === shown.key) {
-      setShown(next);
-      setOut(false);
-      return;
-    }
-    setOut(true);
-    const timer = setTimeout(() => {
-      setShown(next);
-      setOut(false);
-    }, SWAP_OUT_MS);
-    return () => clearTimeout(timer);
-  }, [next, shown.key]);
-  return { shown, out };
+/** One cover in the stack of covers that cross-fade into each other. */
+interface Page {
+  id: number;
+  entry: Entry;
+  isLead: boolean;
+  imageUrl: string;
 }
 
+/** How long a new cover may wait for its portrait to decode before it fades in anyway. */
+const DECODE_WAIT_MS = 250;
+
+/**
+ * The cover, swapped as one piece. A new cover (portrait and text together) fades in over
+ * the old one once its portrait has decoded; the old portrait stays solid underneath while
+ * the old text fades out, and the old cover is removed once the new one is fully in. The
+ * page never dips to dark, and portrait and words always change together.
+ */
 function Cover({
   entry: asked,
   isLead,
   cast,
   castSize,
-  imageUrl: askedUrl,
+  imageUrl,
   personaName,
   onOpen,
 }: {
@@ -794,50 +784,132 @@ function Cover({
   personaName: string;
   onOpen: () => void;
 }) {
-  const target = useMemo(
-    () => ({ key: asked.key, entry: asked, isLead, imageUrl: askedUrl }),
-    [asked, isLead, askedUrl],
+  const nextId = useRef(1);
+  const [pages, setPages] = useState<Page[]>(() => [{ id: 0, entry: asked, isLead, imageUrl }]);
+
+  // Which cover is on top, read inside the effect without making it a trigger.
+  const topKey = useRef(asked.key);
+  topKey.current = pages.at(-1)?.entry.key ?? '';
+
+  useEffect(() => {
+    let live = true;
+    const add = () => {
+      if (!live) return;
+      setPages((current) => {
+        const top = current.at(-1);
+        if (top?.entry.key === asked.key) {
+          // Same cover, fresher data (a new reply, a rename): update in place.
+          return top.entry === asked && top.isLead === isLead
+            ? current
+            : [...current.slice(0, -1), { ...top, entry: asked, isLead, imageUrl }];
+        }
+        const id = nextId.current++;
+        return [...current, { id, entry: asked, isLead, imageUrl }];
+      });
+    };
+    if (topKey.current === asked.key) {
+      add();
+      return;
+    }
+    const image = new Image();
+    image.src = imageUrl;
+    const timer = setTimeout(add, DECODE_WAIT_MS);
+    image.decode().then(add, add);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [asked, isLead, imageUrl]);
+
+  const top = pages.length - 1;
+  return (
+    <div className="w3-home__cover">
+      {pages.map((page, index) => (
+        <CoverPage
+          key={page.id}
+          page={page}
+          arriving={index === top && pages.length > 1}
+          leaving={index < top}
+          cast={cast}
+          castSize={castSize}
+          personaName={personaName}
+          onOpen={onOpen}
+          onArrived={() =>
+            setPages((current) => current.slice(current.findIndex((p) => p.id === page.id)))
+          }
+        />
+      ))}
+    </div>
   );
-  const { shown, out } = useSwap(target);
-  const { entry, imageUrl } = shown;
-  const [broken, setBroken] = useState<string | null>(null);
-  const hasImage = broken !== imageUrl;
+}
+
+function CoverPage({
+  page,
+  arriving,
+  leaving,
+  cast,
+  castSize,
+  personaName,
+  onOpen,
+  onArrived,
+}: {
+  page: Page;
+  arriving: boolean;
+  leaving: boolean;
+  cast: boolean;
+  castSize: number;
+  personaName: string;
+  onOpen: () => void;
+  onArrived: () => void;
+}) {
+  const { entry, imageUrl } = page;
+  const [broken, setBroken] = useState(false);
   const quote = quoteOf(entry.reply, { char: entry.name, user: personaName });
   const kicker = cast
     ? `Your cast · ${plural(castSize, 'character')}`
-    : `${shown.isLead ? 'Where you left off' : 'From your recents'} · ${agoInWords(entry.modified)}`;
+    : `${page.isLead ? 'Where you left off' : 'From your recents'} · ${agoInWords(entry.modified)}`;
   const coverLine = cast ? 'Not met yet.' : (entry.title ?? whenInWords(entry.modified));
 
   return (
-    <div className="w3-home__cover" data-out={out || undefined}>
+    <div
+      className="w3-home__page"
+      data-arriving={arriving || undefined}
+      data-leaving={leaving || undefined}
+      aria-hidden={leaving || undefined}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && arriving) onArrived();
+      }}
+    >
       <div className="w3-home__portrait" aria-hidden="true">
-        {hasImage ? (
-          <img src={imageUrl} alt="" draggable={false} onError={() => setBroken(imageUrl)} />
-        ) : (
+        {broken ? (
           <span className="w3-home__initial">{[...entry.name.trim()][0]?.toUpperCase()}</span>
+        ) : (
+          <img src={imageUrl} alt="" draggable={false} onError={() => setBroken(true)} />
         )}
       </div>
       <div className="w3-home__left">
-        <span className="w3-home__kicker w3-home__swap">{kicker}</span>
-        {quote ? (
-          <p className="w3-home__quote w3-home__swap">{quote}</p>
-        ) : (
-          <span className="w3-home__spacer" />
-        )}
-        <p className="w3-home__dek w3-home__swap">{coverLine}</p>
+        <span className="w3-home__kicker">{kicker}</span>
+        {quote ? <p className="w3-home__quote">{quote}</p> : <span className="w3-home__spacer" />}
+        <p className="w3-home__dek">{coverLine}</p>
         <button
           type="button"
-          className="w3-home__headline w3-home__swap"
+          className="w3-home__headline"
           onClick={onOpen}
-          aria-label={`${cast ? 'Start a chat with' : 'Continue with'} ${asked.name}`}
+          tabIndex={leaving ? -1 : undefined}
+          aria-label={`${cast ? 'Start a chat with' : 'Continue with'} ${entry.name}`}
         >
           <Headline text={entry.name} share={0.58} />
         </button>
         <div className="w3-home__actions">
-          <button type="button" className="w3-home__go" onClick={onOpen}>
+          <button
+            type="button"
+            className="w3-home__go"
+            onClick={onOpen}
+            tabIndex={leaving ? -1 : undefined}
+          >
             {cast ? 'Start a chat' : 'Continue'} <kbd className="w3-kbd">↵</kbd>
           </button>
-          <span className="w3-home__mono w3-home__swap">
+          <span className="w3-home__mono">
             {cast ? 'Opens with their greeting' : plural(entry.messageCount, 'message')}
           </span>
         </div>

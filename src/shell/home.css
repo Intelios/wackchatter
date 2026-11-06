@@ -95,33 +95,26 @@
 }
 
 /*
- * Swapping covers: the old one fades and blurs down, the new one is set while invisible and
- * rises back in. The portrait goes with it, a touch slower, so the page never blinks.
+ * Swapping covers, as whole pages: the new page fades in over the old one; the old
+ * portrait stays solid beneath it while the old words fade out. Nothing dips to dark.
  */
-.w3-home__swap,
-.w3-home__portrait {
-  transition:
-    opacity 0.3s var(--w3-out),
-    transform 0.5s var(--w3-out),
-    filter 0.3s var(--w3-out);
+.w3-home__page {
+  position: absolute;
+  inset: 0;
 }
 
-.w3-home__portrait {
-  transition-duration: 0.45s, 0.7s, 0.45s;
+.w3-home__page[data-arriving] {
+  animation: w3-home-page-in 0.4s var(--w3-out) both;
 }
 
-.w3-home__cover[data-out] .w3-home__swap {
-  opacity: 0;
-  transform: translateY(10px);
-  filter: blur(5px);
-  transition-duration: 0.15s;
+@keyframes w3-home-page-in {
+  from {
+    opacity: 0;
+  }
 }
 
-.w3-home__cover[data-out] .w3-home__portrait {
-  opacity: 0;
-  transform: scale(1.015);
-  filter: blur(4px);
-  transition-duration: 0.15s;
+.w3-home__page[data-leaving] {
+  pointer-events: none;
 }
 
 .w3-home__portrait img {
@@ -166,6 +159,11 @@
   flex-direction: column;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.w3-home__page[data-leaving] .w3-home__left {
+  opacity: 0;
+  transition: opacity 0.25s var(--w3-out);
 }
 
 .w3-home__kicker {
