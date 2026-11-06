@@ -96,13 +96,18 @@
 
 /*
  * Swapping covers: the old one fades and blurs down, the new one is set while invisible and
- * rises back in. The portrait cross-fades on its own layers (Portraits in Home.tsx).
+ * rises back in. The portrait goes with it, a touch slower, so the page never blinks.
  */
-.w3-home__swap {
+.w3-home__swap,
+.w3-home__portrait {
   transition:
     opacity 0.3s var(--w3-out),
     transform 0.5s var(--w3-out),
     filter 0.3s var(--w3-out);
+}
+
+.w3-home__portrait {
+  transition-duration: 0.45s, 0.7s, 0.45s;
 }
 
 .w3-home__cover[data-out] .w3-home__swap {
@@ -112,20 +117,11 @@
   transition-duration: 0.15s;
 }
 
-.w3-home__layer {
-  position: absolute;
-  inset: 0;
-}
-
-.w3-home__layer[data-arriving] {
-  animation: w3-home-portrait-in 0.55s var(--w3-out) both;
-}
-
-@keyframes w3-home-portrait-in {
-  from {
-    opacity: 0;
-    transform: scale(1.02);
-  }
+.w3-home__cover[data-out] .w3-home__portrait {
+  opacity: 0;
+  transform: scale(1.015);
+  filter: blur(4px);
+  transition-duration: 0.15s;
 }
 
 .w3-home__portrait img {
