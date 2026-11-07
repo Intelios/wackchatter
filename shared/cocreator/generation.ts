@@ -30,9 +30,7 @@ export function cocreatorBudget(options: {
     !Number.isSafeInteger(contextTokens) ||
     contextTokens <= outputTokens + 128
   ) {
-    throw new Error(
-      'Co-Creator context size must leave room for the reply and its prompt. Raise the context size in setup.',
-    );
+    throw new Error("This model's context is too small to leave room for a reply.");
   }
   const replyTokens = thinkingMaxTokens({
     outputTokens,

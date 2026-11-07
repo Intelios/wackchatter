@@ -67,6 +67,12 @@ Stop. The side chat's model is its own (the session's pick, else the `sideChat` 
 borrows another: missing configuration blocks sends. Opening, reopening and resetting never generate; reset keeps side settings and filed cards,
 including side-chat provenance.
 
+**The Character Co-Creator** sizes every request, main and side, from its model's catalogue
+context (`models/modelContext.ts`), never a setting. Filing never overwrites blind: a block into
+a field that already holds something goes through the compare first. **Finish on a session
+started from a card updates that card** (`finishPlan`: rename if the name changed, then patch
+what the stash holds); only a new session, or one whose card is gone, creates a card.
+
 ## The data directory moves
 
 `<repo>/data` is only the default; the user can relocate the library from User Settings and the

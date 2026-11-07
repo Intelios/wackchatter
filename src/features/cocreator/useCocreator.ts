@@ -36,6 +36,7 @@ import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
+import { resolveModelContext } from '../models/modelContext.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
 import { buildDesignGeneration } from './generation.ts';
 import { renderSeedTurn, seedStash } from './seed.ts';
@@ -319,13 +320,27 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     return null;
   }, [resolved.model, preset]);
 
+  // The side model's context, for showing what the side chat carries. Unknown until the
+  // catalogue answers; requests resolve it again for themselves.
+  const [sideModelContext, setSideModelContext] = useState<number | null>(null);
+  useEffect(() => {
+    if (!sideConnection) return;
+    let live = true;
+    void resolveModelContext(sideConnection).then((tokens) => {
+      if (live) setSideModelContext(tokens);
+    });
+    return () => {
+      live = false;
+    };
+  }, [sideConnection]);
+
   const sideContext = useMemo(() => {
-    if (!state.sideChat || !preset || !sideConnection) return null;
+    if (!state.sideChat || !preset || !sideConnection || !sideModelContext) return null;
     try {
       const budget = cocreatorBudget({
         preset,
         outputTokens: sideSettings.outputTokens,
-        contextTokens: sideSettings.contextTokens,
+        contextTokens: sideModelContext,
         connection: sideConnection,
         stream: streaming,
       });
@@ -338,7 +353,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       return {
         ...prompt,
         error: prompt.fixedOverflow
-          ? 'The frozen instructions and examples exceed the side context budget. Raise it or start fresh with fewer examples.'
+          ? "The frozen instructions and examples don't fit the side chat's model. Start it fresh with fewer examples."
           : null,
       };
     } catch (error) {
@@ -349,7 +364,15 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         error: (error as Error).message,
       };
     }
-  }, [state.sideChat, preset, sideSettings, sideConnection, sideCountTokens, streaming]);
+  }, [
+    state.sideChat,
+    preset,
+    sideSettings,
+    sideConnection,
+    sideModelContext,
+    sideCountTokens,
+    streaming,
+  ]);
   const sideBlockedReason = !sideSettings.model.ok
     ? sideSettings.model.reason
     : !preset
@@ -468,6 +491,10 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       settleForNavigationRef.current = settleForNavigation;
 
       try {
+        // Sized from the model's own context, never a setting: a request that would not fit
+        // is the model's limit, not something to tune by hand.
+        const contextTokens = await resolveModelContext(requestConnection);
+        if (!ensureActive()) return;
         const { body } = buildDesignGeneration({
           mode,
           messages:
@@ -480,11 +507,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
           connection: requestConnection,
           settings:
             target === 'side'
-              ? {
-                  outputTokens: sideSettings.outputTokens,
-                  contextTokens: sideSettings.contextTokens,
-                }
-              : current.settings,
+              ? { outputTokens: sideSettings.outputTokens, contextTokens }
+              : { ...current.settings, contextTokens },
           systemPrompt,
           exampleBlock: exampleBlockRef.current,
           countTokens: counter,

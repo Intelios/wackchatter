@@ -62,8 +62,8 @@ export function buildDesignGeneration(input: {
   if (prompt.fixedOverflow) {
     throw new Error(
       input.sideSnapshot
-        ? 'The frozen instructions and examples exceed the side-chat context budget. Raise the side context size or start fresh with fewer examples.'
-        : 'The system prompt and attached examples alone exceed the Co-Creator context budget. Detach an example, turn off some example fields, or raise the context size in setup.',
+        ? "The frozen instructions and examples don't fit the side chat's model. Start the side chat fresh with fewer examples."
+        : "The instructions and examples alone don't fit this model. Remove an example or turn off some example fields.",
     );
   }
   const visibleCount = promptMessages.filter((message) => currentText(message).trim()).length;
@@ -72,8 +72,8 @@ export function buildDesignGeneration(input: {
   if (dropped > visibleCount - (mode === 'continue' ? 2 : 1)) {
     throw new Error(
       input.sideSnapshot
-        ? 'The latest side message cannot fit in the side-chat context budget. Raise the context size or lower the output limit.'
-        : 'The latest message cannot fit in the Co-Creator context budget. Raise the context size or lower the output limit in setup.',
+        ? "The latest side message doesn't fit the side chat's model."
+        : "The latest message doesn't fit this model.",
     );
   }
   return {

@@ -1,76 +1,61 @@
 import { describe, expect, test } from 'bun:test';
-import { toCardPatch } from '@shared/cocreator/stash.ts';
-import type { CardDataV2, TavernCard } from '@shared/types/card.ts';
-import { seedCarryOver } from './finish.ts';
+import { emptyStash } from '@shared/cocreator/stash.ts';
+import type { CharacterDetail } from '@shared/types/card.ts';
+import type { CardStash } from '@shared/types/cocreator.ts';
+import { finishPlan } from './finish.ts';
 
-function card(overrides: Partial<CardDataV2> = {}): TavernCard {
+const at = { messageId: 'm', swipeIndex: 0, at: '', source: 'block' as const };
+
+function stash(name: string, description: string): CardStash {
   return {
-    spec: 'chara_card_v2',
-    data: {
-      name: 'Seraphina',
-      description: 'A healer of the deep wood.',
-      personality: '',
-      scenario: '',
-      first_mes: '',
-      mes_example: '',
-      creator_notes: '',
-      system_prompt: '',
-      post_history_instructions: '',
-      alternate_greetings: [],
-      tags: [],
-      creator: 'Wren',
-      character_version: '2.1',
-      extensions: { world: 'Seraphina Lore', talkativeness: 0.4, fav: true },
-      nickname: 'Sera',
-      source: ['wackchatter'],
-      group_only_greetings: ['Welcome, travelers.'],
-      ...overrides,
-    },
+    ...emptyStash(),
+    name: { id: 'n', text: name, provenance: at },
+    description: { id: 'd', text: description, provenance: at },
   };
 }
 
-describe('the seed carry-over', () => {
-  test('carries the book, extensions and identity fields the stash cannot hold', () => {
-    const carry = seedCarryOver(card());
+function seed(name: string): CharacterDetail {
+  return {
+    avatar: `${name}.png`,
+    folder: '',
+    name,
+    description: '',
+    creator: '',
+    tags: [],
+    character_version: '',
+    hasLorebook: false,
+    modified: 0,
+    card: { spec: 'chara_card_v2', spec_version: '2.0', data: { name } },
+  } as unknown as CharacterDetail;
+}
 
-    expect(carry).toEqual({
-      extensions: { world: 'Seraphina Lore', talkativeness: 0.4, fav: false },
-      creator: 'Wren',
-      character_version: '2.1',
-      nickname: 'Sera',
-      source: ['wackchatter'],
-      group_only_greetings: ['Welcome, travelers.'],
+describe('Finish', () => {
+  test('a new session makes a new card', () => {
+    const plan = finishPlan(stash('Hana', 'A barista.'), null);
+    expect(plan).toEqual({ kind: 'create', name: 'Hana', patch: { description: 'A barista.' } });
+  });
+
+  test('a nameless stash still makes a card', () => {
+    expect(finishPlan(stash('  ', 'x'), null)).toMatchObject({ name: 'Untitled Character' });
+  });
+
+  test('a session started from a card updates that card', () => {
+    expect(finishPlan(stash('Mika', 'Rewritten.'), seed('Mika'))).toEqual({
+      kind: 'update',
+      avatar: 'Mika.png',
+      rename: null,
+      patch: { description: 'Rewritten.' },
     });
   });
 
-  test('a favourite is reset, not inherited — a variant starts unfaved', () => {
-    expect(seedCarryOver(card()).extensions?.fav).toBe(false);
+  test('a new name renames the card it updates', () => {
+    expect(finishPlan(stash('Mika Asagiri', 'x'), seed('Mika'))).toMatchObject({
+      kind: 'update',
+      rename: 'Mika Asagiri',
+    });
   });
 
-  test('the carry-over is disjoint from every key a stash patch can emit', () => {
-    const carry = seedCarryOver(card({ character_book: { extensions: {}, entries: [] } }));
-
-    expect(Object.keys(carry)).toEqual([
-      'character_book',
-      'extensions',
-      'creator',
-      'character_version',
-      'nickname',
-      'source',
-      'group_only_greetings',
-    ]);
-    expect(Object.keys(carry)).not.toContain('description');
-    expect(Object.keys(toCardPatch({ alternate_greetings: [], tags: [] }))).toEqual([]);
-  });
-
-  test('empty identity fields are omitted, so they cannot blank the fresh card', () => {
-    const carry = seedCarryOver(card({ creator: '  ', character_version: '' }));
-
-    expect(carry).not.toHaveProperty('creator');
-    expect(carry).not.toHaveProperty('character_version');
-  });
-
-  test('empty extensions are omitted entirely', () => {
-    expect(seedCarryOver(card({ extensions: {} }))).not.toHaveProperty('extensions');
+  test('the name never travels in the patch', () => {
+    expect(finishPlan(stash('Hana', 'x'), null).patch).not.toHaveProperty('name');
   });
 });
