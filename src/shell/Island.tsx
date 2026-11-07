@@ -14,7 +14,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from './icons.tsx';
 
-export type IslandMode = 'rest' | 'gen' | 'cast' | 'persona' | 'search' | 'recap';
+export type IslandMode = 'rest' | 'gen' | 'cast' | 'persona' | 'search' | 'recap' | 'changes';
 
 export interface IslandNotice {
   id: number;
@@ -43,7 +43,13 @@ interface IslandProps {
   onCollapse: () => void;
 }
 
-const OPEN_MODES: ReadonlySet<IslandMode> = new Set(['cast', 'persona', 'search', 'recap']);
+const OPEN_MODES: ReadonlySet<IslandMode> = new Set([
+  'cast',
+  'persona',
+  'search',
+  'recap',
+  'changes',
+]);
 
 export function Island({
   mode,

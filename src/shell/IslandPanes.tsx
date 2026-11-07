@@ -533,10 +533,12 @@ export function SearchPane({
   active,
   items,
   onRun,
+  placeholder = 'Jump to a character, chat, persona, tool or app',
 }: {
   active: boolean;
   items: SearchItem[];
   onRun: (item: SearchItem) => void;
+  placeholder?: string;
 }) {
   const [query, setQuery] = useState('');
   const [hot, setHot] = useState(0);
@@ -598,7 +600,7 @@ export function SearchPane({
             setHot(0);
           }}
           onKeyDown={onKey}
-          placeholder="Jump to a character, chat, persona, tool or app"
+          placeholder={placeholder}
           aria-label="Search everything"
           aria-controls="w3-search-results"
         />

@@ -3,8 +3,8 @@
  *
  * Markup over the app controller, like `LegacyShell`, so it inherits every behaviour
  * unchanged. It covers the chat for now: the island and its wings, the margin, the
- * transcript and the Line, and the home screen. Everything it does not draw yet (Studio,
- * the Co-Creators, Arena, Stats) still renders through the 2.x shell, so nothing is out of
+ * transcript and the Line, the home screen and the Studio. Everything it does not draw yet
+ * (the Co-Creators, Arena, Stats) still renders through the 2.x shell, so nothing is out of
  * reach while the rebuild catches up.
  */
 
@@ -57,6 +57,7 @@ import {
   type ToolId,
   toolSubtitle,
 } from './MarginTools.tsx';
+import { Studio } from './Studio.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, replay, useAura } from './useAura.ts';
 
@@ -91,8 +92,9 @@ export function Shell({
     return <ChatShell controller={controller} {...shown.current} onUiChoice={onUiChoice} />;
   }
   if (view === 'app') return <HomeShell controller={controller} onUiChoice={onUiChoice} />;
-  // Everything else the shell does not draw yet (Studio, the Co-Creators, Arena, Stats) still
-  // goes through the 2.x one.
+  if (view === 'studio') return <Studio controller={controller} />;
+  // Everything else the shell does not draw yet (the Co-Creators, Arena, Stats) still goes
+  // through the 2.x one.
   return <LegacyShell controller={controller} />;
 }
 

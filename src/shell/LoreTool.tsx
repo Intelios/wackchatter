@@ -553,7 +553,7 @@ function BookTools({
   );
 }
 
-function EntryList({
+export function EntryList({
   entries,
   marks,
   open,
@@ -727,7 +727,7 @@ const PLACEMENTS: readonly { value: WiPosition; label: string }[] = [
   { value: WI_POSITION.outlet, label: 'to an outlet (as before)' },
 ];
 
-function EntryEditor({
+export function EntryEditor({
   entry,
   mark,
   readOnly,
@@ -736,6 +736,7 @@ function EntryEditor({
   onChange,
   onDelete,
   onClose,
+  when,
 }: {
   entry: WorldInfoEntry;
   mark: ReplyMark | undefined;
@@ -745,10 +746,12 @@ function EntryEditor({
   onChange: (patch: Partial<WorldInfoEntry>) => void;
   onDelete: () => void;
   onClose: () => void;
+  /** In place of the last reply's line, where there is no chat to point at (the Studio). */
+  when?: string;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newKey, setNewKey] = useState('');
-  const why = whyLine(mark, entry, settings.depth);
+  const why = when ?? whyLine(mark, entry, settings.depth);
   const matched = mark?.state === 'fired' ? mark.entry.matchedKey : undefined;
   const depth = entry.scanDepth ?? settings.depth;
   const word = <T,>(
@@ -808,7 +811,7 @@ function EntryEditor({
       </div>
 
       <div className="w3-lore__why" data-mark={mark?.state ?? 'quiet'}>
-        <small>Last reply</small>
+        <small>{when ? 'When' : 'Last reply'}</small>
         {why}
       </div>
 
