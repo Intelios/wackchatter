@@ -177,7 +177,9 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
   only set the default for new chats. Summary and Nexus never inject together.
 - **The classic summary is its own request** (`summary/request.ts`): its instructions, the card
   and persona descriptions, the memory so far and the new chat as a transcript. No preset, lore
-  or chat samplers; its samplers and context are `SummarySettings`. Coverage is **message
+  or chat samplers; its samplers are `SummarySettings`, and how much a request carries is the
+  model's own context length (`summary/modelContext.ts`, 128k when unknown), never a setting.
+  Defaults stay generous: update every 80, keep 200 when hiding. Coverage is **message
   fingerprints** (`StorySummary.covered`), never ids; an id `checkpointMessageId` is read, not
   written. Each run puts the old text in `history` once. The automatic run starts only on growth
   seen in the open chat, never on opening one, and a failure never retries by itself.

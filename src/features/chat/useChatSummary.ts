@@ -22,15 +22,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type GenerationSlot, runGeneration } from '../../lib/generation.ts';
 import {
   messagesToHide,
+  restoredSummary,
   summarisable,
   summaryCoverage,
   undoneSummary,
   withHistory,
   writtenSummary,
 } from '../summary/coverage.ts';
+import { modelContextLength } from '../summary/modelContext.ts';
 import {
   linesThatFit,
   summaryCast,
+  summaryContext,
   summaryInstructions,
   summaryMessages,
   summaryPreset,
@@ -160,6 +163,16 @@ export function useChatSummary(options: ChatSummaryOptions) {
     if (undone) void commitSummary(undone);
   }, [slot, stateRef, commitSummary]);
 
+  /** Bring back version `index` of the history; the current one goes into history. */
+  const restoreSummary = useCallback(
+    (index: number) => {
+      if (slot.busy) return;
+      const restored = restoredSummary(stateRef.current.metadata.summary, index);
+      if (restored) void commitSummary(restored);
+    },
+    [slot, stateRef, commitSummary],
+  );
+
   const cancelSummary = useCallback(() => slot.abort(), [slot]);
 
   const summarize = useCallback(
@@ -217,7 +230,10 @@ export function useChatSummary(options: ChatSummaryOptions) {
         fail('The summary prompt is empty.', todo.length);
         return;
       }
-      const budget = settings.contextTokens - summaryReserve(settings);
+      // As much as the model takes: the whole backlog goes in one request when it fits.
+      const context = summaryContext(await modelContextLength(summaryConnection));
+      if (slot.busy || stateRef.current.chatId !== chatId) return;
+      const budget = context - summaryReserve(settings);
       const entries = transcriptLines(
         todo.map((message) =>
           message.id === greeting?.id && greetingText ? { ...message, mes: greetingText } : message,
@@ -253,7 +269,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
             });
             if (take === 0) {
               throw new Error(
-                `The next message doesn’t fit with the memory so far in ${settings.contextTokens.toLocaleString()} tokens. Raise the summary’s context size, or lower its length.`,
+                `The next message doesn’t fit beside the memory so far in the model’s ${context.toLocaleString()} tokens. Lower the summary’s length.`,
               );
             }
           }
@@ -270,7 +286,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
           if (take > 0) {
             const body = buildRequestBody({
               messages: build(remaining.slice(0, take).map((entry) => entry.line)),
-              preset: summaryPreset(settings),
+              preset: summaryPreset(settings, context),
               connection: summaryConnection,
               stream: false,
               maxTokens: null,
@@ -315,7 +331,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
           const ids = messagesToHide(
             toChatMessages(stateRef.current),
             covered,
-            settings.keepRecent,
+            settings.keepMessages,
           );
           if (ids.length) {
             const action: ChatAction = { type: 'message/hideForSummary', ids };
@@ -377,7 +393,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
    * run by itself, and a failure waits for a click rather than retrying.
    */
   const lastIdle = useRef<{ chatId: string; count: number } | null>(null);
-  const autoEvery = summarySettings?.autoEvery ?? 0;
+  const autoAfter = summarySettings?.auto ? summarySettings.autoAfter : 0;
   const pending = coverage.backlog.length;
   useEffect(() => {
     const chatId = state.chatId;
@@ -385,7 +401,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
     const seen = lastIdle.current;
     lastIdle.current = { chatId, count: messages.length };
     if (!seen || seen.chatId !== chatId || messages.length <= seen.count) return;
-    if (memoryMode !== 'classic' || autoEvery <= 0 || pending < autoEvery) return;
+    if (memoryMode !== 'classic' || autoAfter <= 0 || pending < autoAfter) return;
     if (slot.busy || autoFailed.current === chatId || !summaryConnection) return;
     void summarize(undefined, 'update', true);
   }, [
@@ -393,7 +409,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
     state.status,
     messages.length,
     memoryMode,
-    autoEvery,
+    autoAfter,
     pending,
     slot,
     summaryConnection,
@@ -421,6 +437,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
     summaryCanUndo: Boolean(state.metadata.summary?.history?.length),
     summarize,
     undoSummary,
+    restoreSummary,
     cancelSummary,
     editSummary,
     onChatChanged,

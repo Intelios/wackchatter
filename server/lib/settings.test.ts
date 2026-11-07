@@ -284,13 +284,15 @@ describe('mergeSettings', () => {
     expect(legacy.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
     expect(legacy.summary.targetWords).toBe(DEFAULT_SUMMARY.targetWords);
     const mine = mergeSettings(base(), {
-      summary: { prompt: 'My own.', targetWords: 200, temperature: 9, autoEvery: 12 } as never,
+      summary: { prompt: 'My own.', targetWords: 200, temperature: 9, autoAfter: 120 } as never,
     });
     expect(mine.summary.prompt).toBe('My own.');
     expect(mine.summary.targetWords).toBe(200);
     expect(mine.summary.temperature).toBe(2);
-    expect(mine.summary.autoEvery).toBe(12);
+    expect(mine.summary.autoAfter).toBe(120);
     expect(mine.summary.hideCovered).toBe(false);
+    // Generous by default: it runs by itself every 80 and, once hiding is on, keeps 200.
+    expect([mine.summary.auto, mine.summary.keepMessages]).toEqual([true, 200]);
   });
 
   test('the memory mode defaults to the summary, and an unknown mode falls back to it', () => {

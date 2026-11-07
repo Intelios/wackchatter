@@ -159,6 +159,8 @@ export interface UseChat {
   summaryCanUndo: boolean;
   summarize(settingsOverride?: SummarySettings, mode?: SummaryMode): Promise<void>;
   undoSummary(): void;
+  /** Bring back an earlier version from the summary's history. */
+  restoreSummary(index: number): void;
   cancelSummary(): void;
   editSummary(text: string): void;
 
@@ -304,6 +306,7 @@ export function useChat(options: UseChatOptions): UseChat {
     summaryCanUndo: summary.summaryCanUndo,
     summarize: summary.summarize,
     undoSummary: summary.undoSummary,
+    restoreSummary: summary.restoreSummary,
     cancelSummary: summary.cancelSummary,
     editSummary: summary.editSummary,
 

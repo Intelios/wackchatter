@@ -231,13 +231,11 @@ function normalizeSummary(value: unknown): SummarySettings {
     targetWords,
     temperature: number('temperature', DEFAULT_SUMMARY.temperature, 0, 2),
     topP: number('topP', DEFAULT_SUMMARY.topP, 0, 1),
-    contextTokens: Math.round(
-      number('contextTokens', DEFAULT_SUMMARY.contextTokens, 2000, 2_000_000),
-    ),
-    autoEvery: Math.round(number('autoEvery', DEFAULT_SUMMARY.autoEvery, 0, 1000)),
+    auto: typeof stored.auto === 'boolean' ? stored.auto : DEFAULT_SUMMARY.auto,
+    autoAfter: Math.round(number('autoAfter', DEFAULT_SUMMARY.autoAfter, 1, 10_000)),
     hideCovered:
       typeof stored.hideCovered === 'boolean' ? stored.hideCovered : DEFAULT_SUMMARY.hideCovered,
-    keepRecent: Math.round(number('keepRecent', DEFAULT_SUMMARY.keepRecent, 0, 1000)),
+    keepMessages: Math.round(number('keepMessages', DEFAULT_SUMMARY.keepMessages, 0, 100_000)),
     template: typeof stored.template === 'string' ? stored.template : DEFAULT_SUMMARY.template,
     position: SUMMARY_POSITIONS.includes(stored.position as SummarySettings['position'])
       ? (stored.position as SummarySettings['position'])

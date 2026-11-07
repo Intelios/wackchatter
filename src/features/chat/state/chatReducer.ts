@@ -612,7 +612,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 }
 
 /** The transcript in storage/wire form. Also what assemblePrompt consumes. */
-export function toChatMessages(state: ChatState): ChatMessage[] {
+export function toChatMessages(state: Pick<ChatState, 'messages'>): ChatMessage[] {
   return state.messages.map(toChatMessage);
 }
 

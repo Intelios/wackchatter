@@ -11,7 +11,6 @@ import { useMemo } from 'react';
 import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
-import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
 import { characterApi } from '../lib/api.ts';
 import { CharacterSheet } from './CharacterSheet.tsx';
 import { InspectTool } from './InspectTool.tsx';
@@ -19,6 +18,7 @@ import type { IconName } from './icons.tsx';
 import { chatTurns } from './inspect.ts';
 import { LoreTool } from './LoreTool.tsx';
 import { CARD_BOOK } from './lore.ts';
+import { MemoryTool } from './MemoryTool.tsx';
 import { PersonaTool } from './PersonaTool.tsx';
 import { PresetSwitcher, PresetTool } from './PresetTool.tsx';
 import { SettingsTool } from './SettingsTool.tsx';
@@ -298,27 +298,7 @@ export function MarginTool({
         />
       );
     case 'memory':
-      return (
-        <MemoryPanel
-          chat={chat}
-          mode={chat.memoryMode}
-          onModeChange={chat.nexus.setMode}
-          defaultMode={prefs.memoryMode}
-          onDefaultChange={(memoryMode) => void patchSettings({ memoryMode })}
-          settings={prefs.nexus}
-          onSettingsChange={(patch) => void patchSettings({ nexus: { ...prefs.nexus, ...patch } })}
-          summarySettings={prefs.summary}
-          onSummarySettingsChange={(patch) =>
-            void patchSettings({ summary: { ...prefs.summary, ...patch } })
-          }
-          model={models.slots.nexus}
-          onModelChange={(ref) => app.setModelSlot('nexus', ref)}
-          blockedReason={models.nexus.blockedReason}
-          summaryModel={models.slots.summary}
-          onSummaryModelChange={(ref) => app.setModelSlot('summary', ref)}
-          summaryBlockedReason={models.summary.blockedReason}
-        />
-      );
+      return <MemoryTool controller={controller} />;
     case 'settings':
       return <SettingsTool controller={controller} onUiChoice={onUiChoice} />;
     case 'inspect':

@@ -3,6 +3,7 @@ import { messageFingerprint } from '@shared/nexus/state.ts';
 import type { ChatMessage } from '@shared/types/chat.ts';
 import {
   messagesToHide,
+  restoredSummary,
   SUMMARY_HIDDEN,
   summarisable,
   summaryCoverage,
@@ -85,6 +86,29 @@ describe('versions', () => {
     expect(undone?.history).toBeUndefined();
     expect(undoneSummary(first)).toBeNull();
   });
+});
+
+test('restoring a version keeps the one it replaces, so it can be undone', () => {
+  const first = writtenSummary(undefined, 'one', [], chat.slice(0, 2), now);
+  const second = writtenSummary(
+    withHistory(first),
+    'two',
+    first.covered ?? [],
+    chat.slice(2, 3),
+    now,
+  );
+  const third = writtenSummary(
+    withHistory(second),
+    'three',
+    second.covered ?? [],
+    chat.slice(3, 4),
+    now,
+  );
+  const back = restoredSummary(third, 1);
+  expect(back?.text).toBe('one');
+  expect(back?.covered).toEqual(prints(chat.slice(0, 2)));
+  expect(back?.history?.map((v) => v.text)).toEqual(['three', 'two']);
+  expect(restoredSummary(third, 5)).toBeNull();
 });
 
 test('hiding keeps the newest messages in the prompt', () => {

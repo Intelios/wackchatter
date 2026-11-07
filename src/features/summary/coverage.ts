@@ -126,17 +126,32 @@ export function undoneSummary(summary: StorySummary | undefined): StorySummary |
 }
 
 /**
+ * Bring back an earlier version: it becomes the summary, and the one it replaces goes into
+ * history, so a restore can itself be undone.
+ */
+export function restoredSummary(
+  summary: StorySummary | undefined,
+  index: number,
+): StorySummary | null {
+  const version = summary?.history?.[index];
+  if (!summary || !version) return null;
+  const rest = summary.history?.filter((_, at) => at !== index) ?? [];
+  const kept = withHistory({ ...summary, history: rest });
+  return { ...version, ...(kept?.history?.length ? { history: kept.history } : {}) };
+}
+
+/**
  * Which messages to hide once they are summarised: every covered one that is still in the
- * prompt, except the newest `keepRecent` of the chat, which stay for continuity.
+ * prompt, except the newest `keep` of the chat, which stay for continuity.
  */
 export function messagesToHide(
   messages: readonly ChatMessage[],
   covered: readonly string[],
-  keepRecent: number,
+  keep: number,
 ): string[] {
   const set = new Set(covered);
   const visible = messages.filter((message) => !message.is_system && message.mes.trim());
-  const kept = new Set(visible.slice(Math.max(0, visible.length - keepRecent)).map((m) => m.id));
+  const kept = new Set(visible.slice(Math.max(0, visible.length - keep)).map((m) => m.id));
   return visible
     .filter(
       (message) =>

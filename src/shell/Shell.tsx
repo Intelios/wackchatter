@@ -242,8 +242,22 @@ function ChatShell({
           tone: 'bad',
           sticky: true,
         });
-      else if (status.total)
-        say({ icon: 'memory', title: 'Memory', text: 'the summary is up to date' });
+      else if (status.processed)
+        say({
+          icon: 'memory',
+          title: status.mode === 'rewrite' ? 'Memory rewritten' : `Memory +${status.processed}`,
+          text:
+            status.mode === 'rewrite'
+              ? `from ${status.processed} messages`
+              : `${status.processed === 1 ? 'message' : 'messages'} folded in`,
+          action: {
+            label: 'Open',
+            run: () => {
+              setOpened(null);
+              setTool('memory');
+            },
+          },
+        });
     }
     wasSummarising.current = summarising;
   }, [summarising, chat.summaryStatus, say]);
@@ -494,6 +508,7 @@ function ChatShell({
         data-wide={
           tool === 'inspect' ||
           (tool === 'preset' && controller.presetPrompt) ||
+          (tool === 'memory' && controller.memoryPrompt) ||
           (tool === 'lorebooks' && controller.lorePage?.entry != null)
             ? ''
             : undefined
@@ -627,7 +642,7 @@ function ChatShell({
                 isPersona={impersonating}
                 label={
                   summarising
-                    ? 'Writing the summary'
+                    ? 'Remembering'
                     : recapping
                       ? 'Writing the recap'
                       : impersonating

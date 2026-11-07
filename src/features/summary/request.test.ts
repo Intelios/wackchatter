@@ -6,10 +6,12 @@ import { DEFAULT_SUMMARY } from '@shared/types/settings.ts';
 import {
   linesThatFit,
   summaryCast,
+  summaryContext,
   summaryInstructions,
   summaryMessages,
   summaryPreset,
   transcriptLines,
+  UNKNOWN_MODEL_CONTEXT,
 } from './request.ts';
 
 const words = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0);
@@ -100,15 +102,13 @@ describe('the summary request', () => {
     expect(linesThatFit({ lines, budget: fixed, counter, build })).toBe(0);
   });
 
-  test('its samplers are its own', () => {
-    const preset = summaryPreset({
-      ...DEFAULT_SUMMARY,
-      temperature: 0.2,
-      topP: 0.9,
-      contextTokens: 16000,
-    });
+  test('its samplers are its own; its context is the model’s', () => {
+    const preset = summaryPreset({ ...DEFAULT_SUMMARY, temperature: 0.2, topP: 0.9 }, 1_000_000);
     expect([preset.temperature, preset.top_p, preset.openai_max_context]).toEqual([
-      0.2, 0.9, 16000,
+      0.2, 0.9, 1_000_000,
     ]);
+    expect(summaryContext(200_000)).toBe(200_000);
+    expect(summaryContext(null)).toBe(UNKNOWN_MODEL_CONTEXT);
+    expect(summaryContext(0)).toBe(UNKNOWN_MODEL_CONTEXT);
   });
 });

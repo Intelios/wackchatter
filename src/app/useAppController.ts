@@ -114,6 +114,8 @@ export function useAppController() {
    */
   const [presetPrompt, setPresetPrompt] = useState<string | null>(null);
   const [lorePage, setLorePage] = useState<LorePage | null>(null);
+  /** The Memory tool's prompt editor is open: the shell widens the margin for it. */
+  const [memoryPrompt, setMemoryPrompt] = useState(false);
   const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
@@ -729,6 +731,8 @@ export function useAppController() {
     setPersonaPage,
     presetPrompt,
     setPresetPrompt,
+    memoryPrompt,
+    setMemoryPrompt,
     lorePage,
     setLorePage,
     settingsPage,

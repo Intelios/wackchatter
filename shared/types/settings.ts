@@ -304,13 +304,15 @@ export interface SummarySettings extends StoryMemoryPlacement {
   /** The summary's own samplers. Nothing about it comes from the chat's preset. */
   temperature: number;
   topP: number;
-  /** How much of the chat one request may carry; a longer backlog goes in several. */
-  contextTokens: number;
-  /** Summarise by itself once this many new messages are waiting. 0 is off. */
-  autoEvery: number;
-  /** Hide summarised messages from the prompt, all but the newest `keepRecent`. */
+  /**
+   * Update by itself, right after a reply, once `autoAfter` new messages wait. How much one
+   * request carries is never set: it comes from the model's own context length.
+   */
+  auto: boolean;
+  autoAfter: number;
+  /** Hide summarised messages from the prompt, all but the newest `keepMessages`. */
   hideCovered: boolean;
-  keepRecent: number;
+  keepMessages: number;
 }
 
 /**
@@ -358,10 +360,10 @@ export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
   targetWords: 700,
   temperature: 0.3,
   topP: 1,
-  contextTokens: 32000,
-  autoEvery: 0,
+  auto: true,
+  autoAfter: 80,
   hideCovered: false,
-  keepRecent: 25,
+  keepMessages: 200,
   template: '[Summary: {{summary}}]',
   position: 'afterMain',
   depth: 2,

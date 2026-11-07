@@ -144,13 +144,22 @@ export function linesThatFit(options: {
   return count;
 }
 
-/** The summary's samplers and context as a preset for the request body: nothing else in it. */
-export function summaryPreset(settings: SummarySettings): Preset {
+/**
+ * The context one request may fill, from the model's catalogue. A model that doesn't say
+ * gets a generous size every current model takes.
+ */
+export const UNKNOWN_MODEL_CONTEXT = 128_000;
+export function summaryContext(known: number | null | undefined): number {
+  return known && Number.isFinite(known) && known > 0 ? Math.floor(known) : UNKNOWN_MODEL_CONTEXT;
+}
+
+/** The summary's samplers and the model's context as a preset for the request body. */
+export function summaryPreset(settings: SummarySettings, context: number): Preset {
   return {
     ...createDefaultPreset(),
     temperature: settings.temperature,
     top_p: settings.topP,
-    openai_max_context: settings.contextTokens,
+    openai_max_context: context,
     stream_openai: false,
   };
 }

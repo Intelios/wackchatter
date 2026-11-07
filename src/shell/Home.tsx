@@ -450,6 +450,7 @@ export function HomeShell({
         data-margin={side ?? undefined}
         data-wide={
           (tool === 'preset' && controller.presetPrompt) ||
+          (tool === 'memory' && controller.memoryPrompt) ||
           (tool === 'lorebooks' && controller.lorePage?.entry != null)
             ? ''
             : undefined
