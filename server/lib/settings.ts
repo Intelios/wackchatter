@@ -639,6 +639,7 @@ export function getSettings(): AppSettings {
     // Pinned rather than spread, because this one gates a write outside the library: a
     // hand-edited `"usageLog": "yes"` must not read as consent.
     usageLog: stored.usageLog === undefined ? true : stored.usageLog === true,
+    lastBackupAt: normalizeTimestamp(stored.lastBackupAt),
     // Pinned to the two legal values, the `characterListSort` shape: anything else is a
     // stale or hand-edited file, and behind is the default.
     backgroundEffectLayer: stored.backgroundEffectLayer === 'front' ? 'front' : 'behind',
@@ -824,13 +825,29 @@ export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>)
     hiddenTags: Array.isArray(patch.hiddenTags)
       ? normalizeHiddenTags(patch.hiddenTags)
       : current.hiddenTags,
+    // PINNED, like `connections`: only `recordBackupMade` writes it, so a stale tab sending
+    // the settings it loaded can never wind the last backup back.
+    lastBackupAt: current.lastBackupAt,
   };
+}
+
+/** An ISO time that parses, or null. */
+function normalizeTimestamp(value: unknown): string | null {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
 /** Merge a partial update and persist. */
 export function saveSettings(patch: Partial<AppSettings>): AppSettings {
   const next = mergeSettings(getSettings(), patch);
 
+  atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
+  cache = next;
+  return next;
+}
+
+/** Note that a library backup was just built. Called by the export route alone. */
+export function recordBackupMade(at = new Date()): AppSettings {
+  const next = { ...getSettings(), lastBackupAt: at.toISOString() };
   atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
   cache = next;
   return next;

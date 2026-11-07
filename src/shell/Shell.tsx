@@ -404,6 +404,11 @@ function ChatShell({
     setOpened(null);
     setTool((current) => (current === id ? null : id));
   }, []);
+  // Search opens a tool onto something; it never closes the one already open.
+  const showTool = useCallback((id: ToolId) => {
+    setOpened(null);
+    setTool(id);
+  }, []);
 
   const searchItems = useMemo<SearchItem[]>(
     () =>
@@ -415,9 +420,19 @@ function ChatShell({
         avatarUrlOf,
         tools: [...LEFT_TOOLS, ...RIGHT_TOOLS],
         openTool,
+        showTool,
         onOpenChat: (id) => void chat.openChat(id),
       }),
-    [recentCharacters, chat.chats, chat.openChat, characterName, avatarUrlOf, controller, openTool],
+    [
+      recentCharacters,
+      chat.chats,
+      chat.openChat,
+      characterName,
+      avatarUrlOf,
+      controller,
+      openTool,
+      showTool,
+    ],
   );
 
   // --- Margin ----------------------------------------------------------------------------

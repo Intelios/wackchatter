@@ -38,6 +38,18 @@ export interface LorePage {
   filter: LoreFilter;
 }
 
+/** The Settings tool's chapters, in the order they are shown. */
+export type SettingsChapter = 'connections' | 'look' | 'text' | 'library' | 'hood';
+
+/**
+ * Where the Settings tool is open: a chapter, and a setting to bring into view and light
+ * up for a moment (the island's search opens straight onto one), or none.
+ */
+export interface SettingsPage {
+  chapter: SettingsChapter;
+  focus: string | null;
+}
+
 /** The Personas tool's page over its list. */
 export type PersonaPage = { kind: 'edit'; id: string } | { kind: 'from' };
 export type AppView = 'app' | 'studio' | 'cocreator' | 'tokentrail' | 'arena';
@@ -102,6 +114,7 @@ export function useAppController() {
    */
   const [presetPrompt, setPresetPrompt] = useState<string | null>(null);
   const [lorePage, setLorePage] = useState<LorePage | null>(null);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((message: string) => setError(message), []);
@@ -718,6 +731,8 @@ export function useAppController() {
     setPresetPrompt,
     lorePage,
     setLorePage,
+    settingsPage,
+    setSettingsPage,
     ready,
     error,
     showError,

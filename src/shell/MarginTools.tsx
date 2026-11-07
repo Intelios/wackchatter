@@ -11,9 +11,7 @@ import { useMemo } from 'react';
 import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
-import { ConnectionPanel } from '../features/connection/ConnectionPanel.tsx';
 import { MemoryPanel } from '../features/memory/MemoryPanel.tsx';
-import { UserSettingsPanel } from '../features/settings/UserSettingsPanel.tsx';
 import { characterApi } from '../lib/api.ts';
 import { CharacterSheet } from './CharacterSheet.tsx';
 import { InspectTool } from './InspectTool.tsx';
@@ -23,6 +21,7 @@ import { LoreTool } from './LoreTool.tsx';
 import { CARD_BOOK } from './lore.ts';
 import { PersonaTool } from './PersonaTool.tsx';
 import { PresetSwitcher, PresetTool } from './PresetTool.tsx';
+import { SettingsTool } from './SettingsTool.tsx';
 
 export type ToolId =
   | 'characters'
@@ -151,7 +150,7 @@ export function toolSubtitle(id: ToolId, controller: AppController): string {
     case 'memory':
       return chat.state.chatId ? `Story memory for “${chat.state.title}”` : 'Story memory';
     case 'settings':
-      return 'How the app looks and behaves';
+      return 'Connections, the look, and your library';
     case 'inspect': {
       if (!chat.state.chatId) return 'Every reply, timed, and what it sent';
       const count = chatTurns(
@@ -176,7 +175,7 @@ export function MarginTool({
   /** Move the margin to another tool, for links between them. */
   onOpenTool?: (id: ToolId) => void;
 }) {
-  const { app, library, backups, chat, lore, preview, presetDraft } = controller;
+  const { app, library, chat, lore, preview, presetDraft } = controller;
   const { settings, view: prefs, models, patchSettings } = app;
   const { characters, personas, books, presets, presetId, preset } = library;
   const connection = models.chat.model;
@@ -321,33 +320,7 @@ export function MarginTool({
         />
       );
     case 'settings':
-      return (
-        <>
-          <div className="w3-margin__note">
-            <span>
-              WackChatter 3.0 is being rebuilt. The 2.x interface is one keypress away
-              (Ctrl+Shift+U) while the new one catches up.
-            </span>
-            <button type="button" className="w3-pill" onClick={() => onUiChoice('legacy')}>
-              Use the 2.x interface
-            </button>
-          </div>
-          <section className="w3-margin__section" aria-label="Connections">
-            <h3 className="w3-sheet__label">Connections</h3>
-            <ConnectionPanel settings={settings} onChange={app.setSettings} showChatModel={false} />
-          </section>
-          <UserSettingsPanel
-            settings={settings}
-            onPatch={app.patchUserSettings}
-            unsavedPreset={presetDraft.dirty}
-            backups={backups.backups}
-            characters={characters}
-            onRestoreBackup={(backupId) => void backups.restoreBackup(backupId)}
-            onPurgeBackup={(backupId) => void backups.purgeBackup(backupId)}
-            onPurgeAllBackups={() => void backups.purgeAllBackups()}
-          />
-        </>
-      );
+      return <SettingsTool controller={controller} onUiChoice={onUiChoice} />;
     case 'inspect':
       return <InspectMargin controller={controller} onOpenTool={onOpenTool} />;
   }

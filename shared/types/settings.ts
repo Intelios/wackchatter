@@ -84,6 +84,11 @@ export interface AppSettings {
    * log, and nothing about it is specific to one consumer.
    */
   usageLog: boolean;
+  /**
+   * When the server last finished building a library backup (ISO), or null for never.
+   * Written by the export route, not the client: it's when one was made, not downloaded.
+   */
+  lastBackupAt: string | null;
   /** The preset selected on startup. Null means "first alphabetically". */
   presetId: string | null;
   /**
@@ -452,6 +457,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
   usageLog: true,
+  lastBackupAt: null,
   presetId: null,
   background: null,
   backgroundBlur: 8,

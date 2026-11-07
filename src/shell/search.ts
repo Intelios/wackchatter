@@ -6,11 +6,12 @@
 
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
-import type { AppController } from '../app/useAppController.ts';
+import type { AppController, SettingsChapter } from '../app/useAppController.ts';
 import { personaApi } from '../lib/api.ts';
 import type { SearchItem } from './IslandPanes.tsx';
 import { introLine } from './intro.ts';
 import { TOOLS, type ToolId } from './MarginTools.tsx';
+import { SETTING_INDEX, SETTINGS_CHAPTERS } from './settings.ts';
 
 export function buildSearchItems(options: {
   controller: AppController;
@@ -22,6 +23,8 @@ export function buildSearchItems(options: {
   avatarUrlOf: (avatar: string) => string;
   tools: readonly ToolId[];
   openTool: (id: ToolId) => void;
+  /** Opens a tool without toggling it shut when it is already open. */
+  showTool?: (id: ToolId) => void;
   onOpenChat: (id: string) => void;
 }): SearchItem[] {
   const { controller, recentCharacters, avatarUrlOf } = options;
@@ -92,6 +95,35 @@ export function buildSearchItems(options: {
       run: () => void controller.enterStats(),
     },
   );
+  // Settings, found by name: they open the Settings tool on their chapter, lit up.
+  if (options.tools.includes('settings')) {
+    const openSetting = (chapter: SettingsChapter, focus: string | null) => {
+      controller.setSettingsPage({ chapter, focus });
+      (options.showTool ?? options.openTool)('settings');
+    };
+    for (const entry of SETTING_INDEX) {
+      const chapter = SETTINGS_CHAPTERS.find((c) => c.id === entry.chapter);
+      items.push({
+        key: `s:${entry.key}`,
+        kind: 'Setting',
+        label: entry.label,
+        sub: `Settings · ${chapter?.title ?? ''}`,
+        terms: entry.words,
+        icon: chapter?.icon ?? 'gear',
+        run: () => openSetting(entry.chapter, entry.key),
+      });
+    }
+    for (const connection of controller.app.settings?.connections ?? []) {
+      items.push({
+        key: `s:conn:${connection.id}`,
+        kind: 'Setting',
+        label: connection.name,
+        sub: 'Settings · Connections',
+        icon: 'plug',
+        run: () => openSetting('connections', null),
+      });
+    }
+  }
   for (const p of library.personas) {
     items.push({
       key: `p:${p.id}`,

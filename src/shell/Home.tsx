@@ -300,6 +300,11 @@ export function HomeShell({
     setOpened(null);
     setTool((current) => (current === id ? null : id));
   }, []);
+  // Search opens a tool onto something; it never closes the one already open.
+  const showTool = useCallback((id: ToolId) => {
+    setOpened(null);
+    setTool(id);
+  }, []);
 
   const collapse = useCallback(() => setOpened(null), []);
   const openPane = useCallback((next: IslandMode) => {
@@ -414,9 +419,10 @@ export function HomeShell({
         avatarUrlOf,
         tools: [...HOME_LEFT, ...HOME_RIGHT],
         openTool,
+        showTool,
         onOpenChat: () => {},
       }),
-    [controller, recentCharacters, avatarUrlOf, openTool],
+    [controller, recentCharacters, avatarUrlOf, openTool, showTool],
   );
 
   const personaFace = persona ? { name: persona.name, url: personaAvatarUrl } : null;

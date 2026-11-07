@@ -63,6 +63,17 @@ function base(): AppSettings {
 }
 
 describe('mergeSettings', () => {
+  test('the last backup time is the server’s to write, never a patch’s', () => {
+    const current = { ...base(), lastBackupAt: '2026-11-07T10:00:00.000Z' };
+    expect(mergeSettings(current, { lastBackupAt: '2020-01-01T00:00:00.000Z' }).lastBackupAt).toBe(
+      '2026-11-07T10:00:00.000Z',
+    );
+    expect(mergeSettings(current, { lastBackupAt: null }).lastBackupAt).toBe(
+      '2026-11-07T10:00:00.000Z',
+    );
+    expect(DEFAULT_SETTINGS.lastBackupAt).toBeNull();
+  });
+
   test('collapsed chat-menu families round-trip and default to open', () => {
     // The collapsed set, not the expanded one: an empty default means a family added by a
     // later build arrives visible rather than pre-collapsed.

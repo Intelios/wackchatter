@@ -522,6 +522,8 @@ export interface SearchItem {
   kind: string;
   label: string;
   sub?: string;
+  /** More words it answers to, never shown. */
+  terms?: string;
   icon?: IconName;
   face?: Face & { me?: boolean };
   run: () => void;
@@ -553,9 +555,16 @@ export function SearchPane({
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items.filter((item) => item.kind !== 'Persona').slice(0, 9);
+    if (!q) {
+      // Personas and settings wait to be asked for by name.
+      return items.filter((item) => item.kind !== 'Persona' && item.kind !== 'Setting').slice(0, 9);
+    }
     return items
-      .filter((item) => `${item.label} ${item.sub ?? ''} ${item.kind}`.toLowerCase().includes(q))
+      .filter((item) =>
+        `${item.label} ${item.sub ?? ''} ${item.terms ?? ''} ${item.kind}`
+          .toLowerCase()
+          .includes(q),
+      )
       .slice(0, 9);
   }, [items, query]);
 

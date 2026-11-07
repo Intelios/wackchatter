@@ -1,12 +1,12 @@
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatBackupSummary } from '@shared/types/chat.ts';
 import { DEFAULT_DIALOGUE_COLORS, type SettingsResponse } from '@shared/types/settings.ts';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { CheckField, NumberField, SelectField, TagField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { Slider } from '../../components/Slider.tsx';
 import { TrashIcon, UploadIcon } from '../../layout/icons.tsx';
-import { type BackgroundSummary, backgroundApi } from '../../lib/api.ts';
+import { backgroundApi } from '../../lib/api.ts';
 import { EFFECTS } from '../backgrounds/effects.ts';
 import { pairBackgroundEffect } from '../backgrounds/resolve.ts';
 import { RegexScriptSection } from '../regex/RegexScriptList.tsx';
@@ -14,6 +14,7 @@ import { BackupSection } from './BackupSection.tsx';
 import { BUILTIN_BACKGROUNDS } from './backgrounds.ts';
 import { DataLocationSection } from './DataLocationSection.tsx';
 import { RecentlyDeletedSection } from './RecentlyDeletedSection.tsx';
+import { useBackgrounds } from './useBackgrounds.ts';
 import './UserSettingsPanel.css';
 
 interface UserSettingsPanelProps {
@@ -43,26 +44,18 @@ export function UserSettingsPanel({
   onPurgeAllBackups,
   onUseNewInterface,
 }: UserSettingsPanelProps) {
-  const [uploads, setUploads] = useState<BackgroundSummary[]>([]);
-  const [status, setStatus] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [confirmShutdown, setConfirmShutdown] = useState(false);
   const [shutdownStatus, setShutdownStatus] = useState('');
 
-  const refresh = useCallback(async () => {
-    try {
-      setUploads(await backgroundApi.list());
-    } catch (err) {
-      setStatus((err as Error).message);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
   const selected = typeof settings?.background === 'string' ? settings.background : null;
+  const backgrounds = useBackgrounds({
+    selected,
+    onPick: (background) => onPatch({ background }),
+  });
+  const uploads = backgrounds.uploads;
+  const status = backgrounds.status;
   // Normalised server-side; the fallback only covers the pre-load render.
   const effectMap: Record<string, string> = settings?.backgroundEffects ?? {};
   const selectedEffect = selected !== null ? (effectMap[selected] ?? 'none') : 'none';
@@ -73,43 +66,9 @@ export function UserSettingsPanel({
       : (BUILTIN_BACKGROUNDS.find((entry) => `builtin:${entry.id}` === selected)?.label ??
         selected.replace(/^user:/, ''));
 
-  async function handleUpload(file: File | undefined) {
-    if (!file) return;
-    try {
-      const saved = await backgroundApi.upload(file);
-      await refresh();
-      onPatch({ background: `user:${saved.name}` });
-      setStatus('');
-    } catch (err) {
-      setStatus((err as Error).message);
-    }
-  }
-
   async function handleDelete(name: string) {
-    try {
-      await backgroundApi.remove(name);
-      // Clearing the selection in the same action, or the app shows a broken image.
-      if (selected === `user:${name}`) onPatch({ background: null });
-      setConfirmDelete(null);
-      await refresh();
-    } catch (err) {
-      setStatus((err as Error).message);
-    }
-  }
-
-  async function handleImport() {
-    setStatus('Importing…');
-    try {
-      const result = await backgroundApi.importFromSillyTavern();
-      await refresh();
-      setStatus(
-        result.imported.length === 0
-          ? `Nothing new to import — all ${result.skipped.length} already here.`
-          : `Imported ${result.imported.length}, skipped ${result.skipped.length} already here.`,
-      );
-    } catch (err) {
-      setStatus((err as Error).message);
-    }
+    await backgrounds.remove(name);
+    setConfirmDelete(null);
   }
 
   async function handleShutdown() {
@@ -132,8 +91,8 @@ export function UserSettingsPanel({
         <Section title="Interface">
           <p className="wc-hint">
             You're on the 2.x interface. Ctrl+Shift+U also switches between the two. The start
-            screen looks the same in both until the 3.0 welcome screen is built; open a chat to
-            see the difference.
+            screen looks the same in both until the 3.0 welcome screen is built; open a chat to see
+            the difference.
           </p>
           <button type="button" className="wc-button" onClick={onUseNewInterface}>
             Use the 3.0 interface
@@ -219,7 +178,7 @@ export function UserSettingsPanel({
           <button
             type="button"
             className="wc-button wc-button--ghost"
-            onClick={() => void handleImport()}
+            onClick={() => void backgrounds.importFromSillyTavern()}
           >
             Import from SillyTavern
           </button>
@@ -229,7 +188,7 @@ export function UserSettingsPanel({
             accept="image/png,image/jpeg,image/gif,image/webp"
             className="wc-visually-hidden"
             onChange={(e) => {
-              void handleUpload(e.target.files?.[0]);
+              void backgrounds.upload(e.target.files?.[0]);
               e.target.value = '';
             }}
           />

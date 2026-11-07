@@ -1,5 +1,5 @@
 import type { LocationInfo, LocationVerdict } from '@shared/types/location.ts';
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { TextField } from '../../components/Field.tsx';
 import { Section } from '../../components/Section.tsx';
 import { locationApi } from '../../lib/api.ts';
@@ -9,6 +9,8 @@ import './DataLocationSection.css';
 interface DataLocationSectionProps {
   /** The preset draft is the one thing that could be lost to the reload after a move. */
   unsavedPreset?: boolean;
+  /** No fold of its own: the 3.0 Settings tool gives it a place in a chapter. */
+  bare?: boolean;
 }
 
 /**
@@ -18,7 +20,12 @@ interface DataLocationSectionProps {
  * something, and you relocate your data about once. This is the same reasoning that put the
  * tokenizer and streaming rate under Advanced.
  */
-export function DataLocationSection({ unsavedPreset = false }: DataLocationSectionProps) {
+export function DataLocationSection({
+  unsavedPreset = false,
+  bare = false,
+}: DataLocationSectionProps) {
+  // The 3.0 Settings tool places it in its own chapter, without the 2.x fold.
+  const Frame = bare ? BareFrame : Section;
   const [info, setInfo] = useState<LocationInfo | null>(null);
   const [draft, setDraft] = useState('');
   const [verdict, setVerdict] = useState<LocationVerdict | null>(null);
@@ -106,7 +113,7 @@ export function DataLocationSection({ unsavedPreset = false }: DataLocationSecti
   const canMove = Boolean(description && !description.disabledReason);
 
   return (
-    <Section title="Data location">
+    <Frame title="Data location">
       <div className="data-location__current">
         <code className="data-location__path">{info.root}</code>
         <p className="wc-hint">{describeCurrent(info).join(' · ')}</p>
@@ -204,6 +211,10 @@ export function DataLocationSection({ unsavedPreset = false }: DataLocationSecti
       </div>
 
       {status ? <p className="wc-hint">{status}</p> : null}
-    </Section>
+    </Frame>
   );
+}
+
+function BareFrame({ children }: { title: string; children: ReactNode }) {
+  return <div className="data-location--bare">{children}</div>;
 }

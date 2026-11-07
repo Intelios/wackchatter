@@ -202,6 +202,39 @@ const PATHS = {
       <path d="M6 9.5V20h12V9.5" />
     </>
   ),
+  plug: (
+    <>
+      <path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0z" />
+      <path d="M12 16v5" />
+    </>
+  ),
+  brush: (
+    <>
+      <path d="M14 4l6 6-8 8H6v-6z" />
+      <path d="M4 20l2-2" />
+    </>
+  ),
+  lines: <path d="M5 6h14M5 12h10M5 18h14" />,
+  box: (
+    <>
+      <path d="M4 8l8-4 8 4v8l-8 4-8-4z" />
+      <path d="M4 8l8 4 8-4M12 12v8" />
+    </>
+  ),
+  power: (
+    <>
+      <path d="M12 4v8" />
+      <path d="M7 7a7 7 0 1 0 10 0" />
+    </>
+  ),
+  restore: (
+    <>
+      <path d="M4 12a8 8 0 1 0 3-6.2" />
+      <path d="M4 4v4h4" />
+    </>
+  ),
+  bolt: <path d="M13 3 5 14h6l-1 7 8-11h-6z" />,
+  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;
