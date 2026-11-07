@@ -59,14 +59,6 @@ export function NexusSettings({
         onChange={(budgetTokens) => patch({ budgetTokens })}
         hint="Shared by pins, selected findings, and automatic recall. Separate from lorebooks."
       />
-      <NumberField
-        label="Memory model context (tokens)"
-        value={settings.inputTokens}
-        min={2048}
-        step={1024}
-        onChange={(inputTokens) => patch({ inputTokens })}
-        hint="Match the model's real context — modern models take 200K to 1M."
-      />
       <SelectField<ReasoningEffort>
         label="Reasoning effort"
         value={settings.reasoningEffort}

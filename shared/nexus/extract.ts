@@ -11,13 +11,7 @@ import {
   pendingMessages,
   textKey,
 } from './state.ts';
-import type {
-  NexusEvidence,
-  NexusNodeKind,
-  NexusRevision,
-  NexusSettings,
-  NexusState,
-} from './types.ts';
+import type { NexusEvidence, NexusNodeKind, NexusRevision, NexusRun, NexusState } from './types.ts';
 
 export const CONTRACT = `Return only a JSON object: {"nodes":[],"records":[]}.
 nodes: {"ref":"local-identifier-or-existing-node-id","name":"Joe","kind":"person|place|object|event|group|concept","aliases":[],"sources":[0]}.
@@ -56,7 +50,7 @@ export interface ParsedExtraction {
 export function buildNexusExtraction(
   nexus: NexusState,
   messages: ChatMessage[],
-  config: NexusSettings,
+  config: NexusRun,
   counter: TokenCounter,
   profile: string,
 ): ExtractionBatch {
@@ -88,7 +82,7 @@ export function buildNexusExtraction(
       content: `Profiles for interpretation, not evidence:\n${profile.slice(0, 3000)}\n\nExisting records (read-only context; preserve manual edits):\n${JSON.stringify({ nodes, records })}`,
     },
   ];
-  const limit = config.inputTokens - config.outputTokens - 128;
+  const limit = config.contextTokens - config.outputTokens - 128;
   const items: WindowItem[] = [];
   const progress: Record<string, string> = {};
   const render = (lines: WindowItem[]) => [

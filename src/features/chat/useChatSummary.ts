@@ -20,6 +20,7 @@ import type { RegexScript } from '@shared/types/regex.ts';
 import type { MemoryMode, SummarySettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type GenerationSlot, runGeneration } from '../../lib/generation.ts';
+import { resolveModelContext } from '../models/modelContext.ts';
 import {
   messagesToHide,
   restoredSummary,
@@ -29,11 +30,9 @@ import {
   withHistory,
   writtenSummary,
 } from '../summary/coverage.ts';
-import { modelContextLength } from '../summary/modelContext.ts';
 import {
   linesThatFit,
   summaryCast,
-  summaryContext,
   summaryInstructions,
   summaryMessages,
   summaryPreset,
@@ -231,7 +230,7 @@ export function useChatSummary(options: ChatSummaryOptions) {
         return;
       }
       // As much as the model takes: the whole backlog goes in one request when it fits.
-      const context = summaryContext(await modelContextLength(summaryConnection));
+      const context = await resolveModelContext(summaryConnection);
       if (slot.busy || stateRef.current.chatId !== chatId) return;
       const budget = context - summaryReserve(settings);
       const entries = transcriptLines(

@@ -1,7 +1,7 @@
 import { createDefaultPreset } from '../prompt/defaults.ts';
 import type { StreamState } from '../providers/sse.ts';
 import type { Preset } from '../types/preset.ts';
-import type { NexusSettings } from './types.ts';
+import type { NexusRun } from './types.ts';
 
 /**
  * The synthetic preset every Nexus model call runs on. Nexus deliberately shares nothing
@@ -13,10 +13,10 @@ import type { NexusSettings } from './types.ts';
  * is only the room kept free for it while packing. Auto resolves to "send nothing" for
  * endpoints that reject the field.
  */
-export function nexusPreset(settings: NexusSettings): Preset {
+export function nexusPreset(settings: NexusRun): Preset {
   const preset = createDefaultPreset();
   preset.temperature = settings.temperature;
-  preset.openai_max_context = settings.inputTokens;
+  preset.openai_max_context = settings.contextTokens;
   preset.openai_max_tokens = settings.outputTokens;
   preset.reasoning_effort = settings.reasoningEffort;
   preset.top_p = 1;

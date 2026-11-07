@@ -1,4 +1,5 @@
 import type { ChatSaveRecord } from '@shared/chat/save.ts';
+import { contextOrDefault } from '@shared/models/context.ts';
 import { applyExtraction, buildNexusExtraction, parseExtraction } from '@shared/nexus/extract.ts';
 import { filterRecallFindings, recallSearchMessages } from '@shared/nexus/findings.ts';
 import { nexusPreset, nexusRequestError } from '@shared/nexus/generate.ts';
@@ -22,6 +23,7 @@ import type {
   NexusFinding,
   NexusRecall,
   NexusRevision,
+  NexusRun,
   NexusSettings,
   NexusState,
 } from '@shared/nexus/types.ts';
@@ -46,6 +48,7 @@ import {
   chatReducer,
   toChatMessages,
 } from '../chat/state/chatReducer.ts';
+import { resolveModelContext } from '../models/modelContext.ts';
 import { embed, embedDocument, loadIndex, saveIndex } from './embeddings.ts';
 
 interface Options {
@@ -337,34 +340,46 @@ export function useNexus(options: Options) {
     [],
   );
 
-  const request = useCallback(async (apiMessages: ApiMessage[], controller: AbortController) => {
-    const o = opts.current;
-    const connection = o.connection;
-    if (!connection?.baseUrl || !connection.model)
-      throw new Error('Choose a Nexus model in Nexus settings.');
-    const preset = nexusPreset(o.settings);
-    const body = buildRequestBody({
-      messages: apiMessages,
-      preset,
-      connection: { ...connection, showReasoning: false },
-      stream: false,
-    });
-    const result = await runGeneration({
-      model: connection,
-      body,
-      signal: controller.signal,
-      usage: {
-        feature: 'memory',
-        sessionId: o.stateRef.current.chatId ?? undefined,
-        character: o.stateRef.current.characterId ?? undefined,
-        countText: o.counter.countText,
-      },
-      onTick: () => {},
-    });
-    const failure = nexusRequestError(result);
-    if (failure) throw new Error(failure);
-    return result;
+  /** The live settings for one run, with the context its model takes. */
+  const runConfig = useCallback(async (): Promise<NexusRun> => {
+    const connection = opts.current.connection;
+    const contextTokens = connection
+      ? await resolveModelContext(connection)
+      : contextOrDefault(null);
+    return { ...opts.current.settings, contextTokens };
   }, []);
+
+  const request = useCallback(
+    async (apiMessages: ApiMessage[], controller: AbortController) => {
+      const o = opts.current;
+      const connection = o.connection;
+      if (!connection?.baseUrl || !connection.model)
+        throw new Error('Choose a Nexus model in Nexus settings.');
+      const preset = nexusPreset(await runConfig());
+      const body = buildRequestBody({
+        messages: apiMessages,
+        preset,
+        connection: { ...connection, showReasoning: false },
+        stream: false,
+      });
+      const result = await runGeneration({
+        model: connection,
+        body,
+        signal: controller.signal,
+        usage: {
+          feature: 'memory',
+          sessionId: o.stateRef.current.chatId ?? undefined,
+          character: o.stateRef.current.characterId ?? undefined,
+          countText: o.counter.countText,
+        },
+        onTick: () => {},
+      });
+      const failure = nexusRequestError(result);
+      if (failure) throw new Error(failure);
+      return result;
+    },
+    [runConfig],
+  );
   const collect = useCallback(
     async (all = false) => {
       if (abort.current) return;
@@ -389,7 +404,7 @@ export function useNexus(options: Options) {
           const batch = buildNexusExtraction(
             snapshot,
             history,
-            opts.current.settings,
+            await runConfig(),
             opts.current.counter,
             opts.current.profile,
           );
@@ -427,7 +442,7 @@ export function useNexus(options: Options) {
         }
       }
     },
-    [request, update],
+    [request, update, runConfig],
   );
 
   const build = useCallback(() => {
@@ -519,6 +534,8 @@ export function useNexus(options: Options) {
         const includedRecords = current.records.filter((r) =>
           autoHits.some((h) => h.recordId === r.id),
         );
+        const config = await runConfig();
+        if (controller.signal.aborted) return;
         const selected: typeof ranked = [];
         const make = (): ApiMessage[] =>
           recallSearchMessages(
@@ -528,10 +545,7 @@ export function useNexus(options: Options) {
           );
         for (const r of ranked) {
           selected.push(r);
-          if (
-            o.counter.countChat(make()) >
-            o.settings.inputTokens - o.settings.outputTokens - 128
-          ) {
+          if (o.counter.countChat(make()) > config.contextTokens - config.outputTokens - 128) {
             selected.pop();
             break;
           }
@@ -602,7 +616,7 @@ export function useNexus(options: Options) {
         }
       }
     },
-    [request],
+    [request, runConfig],
   );
   const saveFinding = useCallback(
     (finding: NexusFinding) => {

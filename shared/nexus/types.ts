@@ -55,12 +55,16 @@ export interface NexusState {
   initialized: boolean;
   paused: boolean;
 }
+/**
+ * One Nexus run: its settings plus the context its model takes, looked up from the model's
+ * catalogue when the run starts (never a setting).
+ */
+export type NexusRun = NexusSettings & { contextTokens: number };
+
 /** Nexus's model is the `nexus` slot in `AppSettings.models`. */
 export interface NexusSettings extends StoryMemoryPlacement {
   extractPrompt: string;
   autoInterval: number;
-  /** The memory model's context: the packing target for transcript windows. Not capped. */
-  inputTokens: number;
   /**
    * Room kept free in the context for the JSON while packing. Never sent as a cap, and no
    * longer shown in settings; a stored value still sizes the reserve.
@@ -125,7 +129,6 @@ Use the supplied existing IDs when the evidence clearly identifies the same enti
 export const DEFAULT_NEXUS: Readonly<NexusSettings> = {
   extractPrompt: NEXUS_PROMPT,
   autoInterval: 12,
-  inputTokens: 8192,
   outputTokens: 2048,
   budgetTokens: 1200,
   temperature: 0.2,

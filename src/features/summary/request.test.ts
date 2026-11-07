@@ -6,12 +6,10 @@ import { DEFAULT_SUMMARY } from '@shared/types/settings.ts';
 import {
   linesThatFit,
   summaryCast,
-  summaryContext,
   summaryInstructions,
   summaryMessages,
   summaryPreset,
   transcriptLines,
-  UNKNOWN_MODEL_CONTEXT,
 } from './request.ts';
 
 const words = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0);
@@ -107,8 +105,5 @@ describe('the summary request', () => {
     expect([preset.temperature, preset.top_p, preset.openai_max_context]).toEqual([
       0.2, 0.9, 1_000_000,
     ]);
-    expect(summaryContext(200_000)).toBe(200_000);
-    expect(summaryContext(null)).toBe(UNKNOWN_MODEL_CONTEXT);
-    expect(summaryContext(0)).toBe(UNKNOWN_MODEL_CONTEXT);
   });
 });

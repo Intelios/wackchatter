@@ -5,14 +5,14 @@ import { DEFAULT_NEXUS } from './types.ts';
 
 describe('nexusPreset', () => {
   test('sends no reply cap', () => {
-    expect(responseCap(nexusPreset(DEFAULT_NEXUS))).toBeNull();
+    expect(responseCap(nexusPreset({ ...DEFAULT_NEXUS, contextTokens: 8192 }))).toBeNull();
   });
 
   test('carries the Nexus settings onto the synthetic preset', () => {
     const preset = nexusPreset({
       ...DEFAULT_NEXUS,
       temperature: 0.7,
-      inputTokens: 4096,
+      contextTokens: 4096,
       outputTokens: 1024,
       reasoningEffort: 'medium',
     });
@@ -27,7 +27,7 @@ describe('nexusPreset', () => {
   });
 
   test('the default effort is low, so reasoning is asked for explicitly and kept small', () => {
-    expect(nexusPreset(DEFAULT_NEXUS).reasoning_effort).toBe('low');
+    expect(nexusPreset({ ...DEFAULT_NEXUS, contextTokens: 8192 }).reasoning_effort).toBe('low');
   });
 });
 

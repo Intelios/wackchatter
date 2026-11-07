@@ -178,7 +178,7 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
 - **The classic summary is its own request** (`summary/request.ts`): its instructions, the card
   and persona descriptions, the memory so far and the new chat as a transcript. No preset, lore
   or chat samplers; its samplers are `SummarySettings`, and how much a request carries is the
-  model's own context length (`summary/modelContext.ts`, 128k when unknown), never a setting.
+  model's own context length (`models/modelContext.ts`, 128k when unknown), never a setting.
   Defaults stay generous: update every 80, keep 200 when hiding. Coverage is **message
   fingerprints** (`StorySummary.covered`), never ids; an id `checkpointMessageId` is read, not
   written. Each run puts the old text in `history` once. The automatic run starts only on growth
@@ -191,6 +191,8 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
   the copied prefix and remaps ids. Reviewed findings are one-request context, consumed on
   dispatch, never transcript messages.
 - **The memory model is independent:** its own `nexus` slot and samplers, fixed JSON contract.
+  Like the summary, each run packs to its model's own context (`NexusRun.contextTokens`), never
+  a setting.
   Missing configuration pauses paid work; errors stop, never retry automatically, and extraction
   never changes transcript visibility. Embeddings are a disposable local cache
   (`nexus_embeddings`) sharing the library lifecycle; the worker never fetches models remotely.

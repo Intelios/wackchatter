@@ -1146,19 +1146,6 @@ function NexusSettingsBody({
           tokens
         </span>
       </Row>
-      <Row title="Model context">
-        <span className="w3-mem__ctl">
-          <NumberInput
-            label="Memory model context"
-            value={settings.inputTokens}
-            min={2048}
-            max={2_000_000}
-            wide
-            onChange={(inputTokens) => onChange({ inputTokens })}
-          />
-          tokens
-        </span>
-      </Row>
       <Row title="Reasoning">
         <Segments
           label="Reasoning effort"
