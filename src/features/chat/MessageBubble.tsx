@@ -283,9 +283,11 @@ export const MessageBubble = memo(function MessageBubble({
               <span
                 className="message__badge"
                 title={
-                  message.hiddenBy
-                    ? 'Hidden by a memory. Deleting or revealing that memory brings it back.'
-                    : 'Hidden from the prompt by hand, shown here'
+                  message.hiddenBy === 'summary'
+                    ? 'Hidden because the summary covers it. Reveal it to send it again.'
+                    : message.hiddenBy
+                      ? 'Hidden by a memory. Deleting or revealing that memory brings it back.'
+                      : 'Hidden from the prompt by hand, shown here'
                 }
               >
                 hidden

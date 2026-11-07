@@ -1,47 +1,66 @@
 /**
- * The Classic rolling summary: the backlog it owes, the paid loop that writes it chunk by
- * chunk, and manual edits.
+ * The classic summary: what it owes, the paid loop that writes it chunk by chunk, rewrites,
+ * undo, the automatic run, and hiding what it covers.
  *
- * It runs on its own `GenerationSlot`, apart from replies: a summary is not the chat model
- * and has its own Stop, but the two never run at once — each refuses while the other is in
- * flight. What a chunk is sent with is pure (`summary/summaryPrompt.ts`).
+ * It runs on its own `GenerationSlot`, apart from replies: a summary has its own model and
+ * Stop, but the two never run at once — each refuses while the other is in flight. What a
+ * request carries is pure (`summary/request.ts`); what is covered is pure too
+ * (`summary/coverage.ts`).
  */
 
+import { DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import { responseReserve } from '@shared/providers/responseLength.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import type { ChatMessage, MacroVariableMap } from '@shared/types/chat.ts';
+import type { MacroVariableMap, StorySummary } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
-import type { GuidanceSettings, SummarySettings } from '@shared/types/settings.ts';
-import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
-import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
-import type { WorldInfoSource } from '@shared/worldinfo/activate.ts';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import type { MemoryMode, SummarySettings } from '@shared/types/settings.ts';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type GenerationSlot, runGeneration } from '../../lib/generation.ts';
-import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import {
-  packClassicSummaryChunk,
-  resolveSummaryPrompt,
-  summaryBacklog,
+  messagesToHide,
+  summarisable,
+  summaryCoverage,
+  undoneSummary,
+  withHistory,
+  writtenSummary,
+} from '../summary/coverage.ts';
+import {
+  linesThatFit,
+  summaryCast,
+  summaryInstructions,
   summaryMessages,
-  yieldToMain,
-} from '../summary/summary.ts';
-import { assembleSummaryPrompt, summaryMessageCost } from '../summary/summaryPrompt.ts';
+  summaryPreset,
+  summaryReserve,
+  transcriptLines,
+} from '../summary/request.ts';
 import { type ChatAction, chatReducer, toChatMessages } from './state/chatReducer.ts';
 import type { ChatSession } from './useChatSession.ts';
+
+/** Update folds in what's new; rewrite starts over from the first message. */
+export type SummaryMode = 'update' | 'rewrite';
 
 export interface SummaryRunStatus {
   running: boolean;
   processed: number;
   total: number;
   error: string | null;
+  mode: SummaryMode;
+  /** Started by itself, after a reply, rather than by a click. */
+  auto: boolean;
 }
 
-const IDLE: SummaryRunStatus = { running: false, processed: 0, total: 0, error: null };
+const IDLE: SummaryRunStatus = {
+  running: false,
+  processed: 0,
+  total: 0,
+  error: null,
+  mode: 'update',
+  auto: false,
+};
 
 export interface ChatSummaryOptions {
   session: ChatSession;
@@ -49,6 +68,7 @@ export interface ChatSummaryOptions {
   slot: GenerationSlot;
   characterId: string | null;
   character: CardDataV2 | null;
+  /** Only to resolve the greeting's macros as the chat shows them. Never sent. */
   preset: Preset | null;
   /** The `summary` slot's model, or null when it cannot run. */
   summaryConnection?: ResolvedModel | null;
@@ -56,13 +76,10 @@ export interface ChatSummaryOptions {
   summaryBlockedReason?: string | null;
   summarySettings?: SummarySettings;
   summaryCountTokens?: TokenCounter;
-  worldInfoSources?: WorldInfoSource[];
-  resolveWorldInfoSources?: (personaLorebookId?: string) => WorldInfoSource[];
-  worldInfoSettings?: WorldInfoSettings;
-  guidanceSettings?: GuidanceSettings;
   globalVariables: MacroVariableMap;
   regexScripts?: readonly RegexScript[];
-  onGlobalVariablesChange: (variables: MacroVariableMap) => Promise<void>;
+  /** The chat's memory: the automatic run only works for the classic summary. */
+  memoryMode: MemoryMode;
 }
 
 export function useChatSummary(options: ChatSummaryOptions) {
@@ -76,13 +93,9 @@ export function useChatSummary(options: ChatSummaryOptions) {
     summaryBlockedReason,
     summarySettings,
     summaryCountTokens,
-    worldInfoSources,
-    resolveWorldInfoSources,
-    worldInfoSettings,
-    guidanceSettings,
     globalVariables,
     regexScripts,
-    onGlobalVariablesChange,
+    memoryMode,
   } = options;
   const { state, dispatch, stateRef, messages, persona, captureSnapshot, persistence } = session;
   const { refreshChats } = session;
@@ -90,10 +103,29 @@ export function useChatSummary(options: ChatSummaryOptions) {
   const [summaryStatus, setSummaryStatus] = useState<SummaryRunStatus>(IDLE);
   /** Which chat the run in flight belongs to: a switch to another chat stops it. */
   const runningChatId = useRef<string | null>(null);
+  /** A chat whose automatic run failed: it never retries by itself. */
+  const autoFailed = useRef<string | null>(null);
 
-  const summaryPending = useMemo(
-    () => summaryBacklog(summaryMessages(messages), state.metadata.summary).length,
+  const coverage = useMemo(
+    () => summaryCoverage(summarisable(messages), state.metadata.summary),
     [messages, state.metadata.summary],
+  );
+
+  /** Write the summary into the chat now, and make it durable before anything else is paid. */
+  const commitSummary = useCallback(
+    async (summary: StorySummary | undefined) => {
+      const action: ChatAction = { type: 'chat/metadata', patch: { summary } };
+      // Folded from the freshest state, so chat activity during a request is kept.
+      const next = chatReducer(stateRef.current, action);
+      stateRef.current = next;
+      dispatch(action);
+      const snapshot = captureSnapshot(next);
+      if (snapshot) {
+        persistence.schedule(snapshot);
+        await persistence.flush(snapshot.chatId);
+      }
+    },
+    [dispatch, stateRef, captureSnapshot, persistence],
   );
 
   const editSummary = useCallback(
@@ -101,227 +133,219 @@ export function useChatSummary(options: ChatSummaryOptions) {
       const current = stateRef.current;
       if (!current.chatId) return;
       const existing = current.metadata.summary;
-      const trimmed = text.trim();
-      const checkpointMessageId = trimmed
-        ? (existing?.checkpointMessageId ?? summaryMessages(toChatMessages(current)).at(-1)?.id)
-        : undefined;
+      // Written by hand over a summary that covered nothing yet: take it as covering the
+      // chat as it stands, the way the old checkpoint did.
+      const covered =
+        existing?.covered ??
+        summaryCoverage(summarisable(toChatMessages(current)), existing).fingerprints;
+      const fresh = covered.length
+        ? covered
+        : writtenSummary(undefined, text, [], summarisable(toChatMessages(current)), new Date())
+            .covered;
       dispatch({
         type: 'chat/metadata',
-        patch: { summary: { text, ...(checkpointMessageId ? { checkpointMessageId } : {}) } },
+        patch: {
+          summary: text.trim()
+            ? { ...existing, text, covered: fresh, checkpointMessageId: undefined }
+            : { ...existing, text: '' },
+        },
       });
     },
     [dispatch, stateRef],
   );
 
+  const undoSummary = useCallback(() => {
+    if (slot.busy) return;
+    const undone = undoneSummary(stateRef.current.metadata.summary);
+    if (undone) void commitSummary(undone);
+  }, [slot, stateRef, commitSummary]);
+
   const cancelSummary = useCallback(() => slot.abort(), [slot]);
 
   const summarize = useCallback(
-    async (settingsOverride?: SummarySettings) => {
+    async (settingsOverride?: SummarySettings, mode: SummaryMode = 'update', auto = false) => {
       if (slot.busy) return;
       const current = stateRef.current;
-      if (
-        !current.chatId ||
-        current.status !== 'idle' ||
-        !character ||
-        !preset ||
-        !summarySettings ||
-        !summaryCountTokens
-      ) {
-        return;
-      }
+      if (!current.chatId || current.status !== 'idle' || !character || !summarySettings) return;
+      if (!summaryCountTokens) return;
       if (!summaryConnection) {
-        setSummaryStatus({ ...IDLE, error: summaryBlockedReason ?? 'Choose a summary model.' });
+        setSummaryStatus({
+          ...IDLE,
+          mode,
+          error: summaryBlockedReason ?? 'Choose a summary model.',
+        });
         return;
       }
+      if (!auto) autoFailed.current = null;
       const chatId = current.chatId;
+      const settings = settingsOverride ?? summarySettings;
+      const counter = summaryCountTokens;
+      const fail = (error: string, total = 0) => {
+        if (auto) autoFailed.current = chatId;
+        setSummaryStatus({ ...IDLE, mode, auto, total, error });
+      };
 
-      const rawMessages = toChatMessages(current);
-      if (rawMessages[0] && !rawMessages[0].is_user) {
-        rawMessages[0] = {
-          ...rawMessages[0],
-          mes: resolveGreetingMacros(rawMessages[0].mes, {
+      // Coverage is the stored text; the greeting is sent as the chat shows it, macros
+      // filled in, but fingerprinted as stored so it matches everywhere else.
+      const raw = toChatMessages(current);
+      const all = summarisable(raw);
+      const greeting = raw[0] && !raw[0].is_user && preset ? raw[0] : null;
+      const greetingText = greeting
+        ? resolveGreetingMacros(greeting.mes, {
             character,
-            preset,
+            preset: preset as Preset,
             persona,
-            messages: rawMessages,
+            messages: raw,
             metadata: current.metadata,
             globalVariables,
             seed: chatId,
-          }),
-        };
-      }
-
-      const backlog = summaryBacklog(summaryMessages(rawMessages), current.metadata.summary);
-      if (!backlog.length) {
-        setSummaryStatus({ ...IDLE, error: 'No new chat messages need summarizing.' });
+          }).trim()
+        : '';
+      const existing = current.metadata.summary;
+      const start = summaryCoverage(all, existing);
+      const todo = mode === 'rewrite' ? all : start.backlog;
+      if (!todo.length) {
+        fail(
+          mode === 'rewrite' ? 'There is nothing to summarise yet.' : 'Nothing new to summarise.',
+        );
         return;
       }
 
-      const effective = settingsOverride ?? summarySettings;
-      const systemPrompt = resolveSummaryPrompt(effective.prompt, effective.targetWords);
-      if (!systemPrompt.trim()) {
-        setSummaryStatus({ ...IDLE, total: backlog.length, error: 'The summary prompt is empty.' });
+      const cast = summaryCast(character, persona, DEFAULT_USER_NAME);
+      const instructions = summaryInstructions(settings.prompt, settings.targetWords, cast);
+      if (!instructions.trim()) {
+        fail('The summary prompt is empty.', todo.length);
         return;
       }
+      const budget = settings.contextTokens - summaryReserve(settings);
+      const entries = transcriptLines(
+        todo.map((message) =>
+          message.id === greeting?.id && greetingText ? { ...message, mes: greetingText } : message,
+        ),
+        regexScripts,
+      );
+      const position = new Map(todo.map((message, index) => [message.id, index]));
 
       const claim = slot.claim();
       runningChatId.current = chatId;
       const stopped = () => claim.signal.aborted || stateRef.current.chatId !== chatId;
       let processed = 0;
-      let remaining = backlog;
-      let rollingSummary = current.metadata.summary?.text ?? '';
-      let runLocalVariables = { ...(current.metadata.variables ?? {}) };
-      let runGlobalVariables = { ...globalVariables };
-      // Room kept free in the context for the summary while packing turns. Never sent as a
-      // cap: a thinking model spends tokens before writing, and a cap cut summaries short.
-      const maxTokens = Math.max(Math.ceil(effective.targetWords * 2), responseReserve(preset));
-      const sources =
-        resolveWorldInfoSources?.(persona?.lorebookId ?? undefined) ?? worldInfoSources ?? [];
-
-      const assemble = (candidate: ChatMessage[], baseSummary: string) =>
-        assembleSummaryPrompt({
-          chatId,
-          preset,
-          character,
-          persona,
-          metadata: current.metadata,
-          candidate,
-          baseSummary,
-          systemPrompt,
-          lore: worldInfoForChat({
-            sources,
-            messages: candidate,
-            settings: worldInfoSettings ?? DEFAULT_WI_SETTINGS,
-            preset,
-            chatId,
-            countTokens: summaryCountTokens,
-          }),
-          guidanceSettings,
-          localVariables: runLocalVariables,
-          globalVariables: runGlobalVariables,
-          countTokens: summaryCountTokens,
-          maxTokens,
-          regexScripts,
-        });
-
-      setSummaryStatus({ running: true, processed: 0, total: backlog.length, error: null });
-      // Let the progress UI paint before the synchronous pack work begins.
-      await yieldToMain();
+      // The version this run replaces goes into history once, before the first chunk.
+      let summary = withHistory(existing);
+      let memory = mode === 'rewrite' ? '' : (existing?.text ?? '');
+      let covered: string[] = mode === 'rewrite' ? [] : start.fingerprints;
+      let entryAt = 0;
+      let messageAt = 0;
+      setSummaryStatus({ ...IDLE, running: true, total: todo.length, mode, auto });
 
       try {
-        const maxPromptTokens = (preset.openai_max_context ?? 4095) - maxTokens;
-        const messageCost = summaryMessageCost(summaryCountTokens, preset);
-
-        while (remaining.length > 0) {
-          const fixed = assemble([], '');
-          if (!fixed.ok) {
-            throw new Error(
-              `The fixed Classic prompt and summary instruction need ${fixed.error.requiredPromptTokens} tokens, but only ${fixed.error.maxContext - fixed.error.reservedCompletionTokens} are available. Increase the preset context limit or shorten enabled prompt content.`,
-            );
-          }
-          let fixedTokens = fixed.totalTokens;
-          if (rollingSummary.trim()) {
-            const withBase = assemble([], rollingSummary);
-            if (!withBase.ok) {
+        while (messageAt < todo.length) {
+          const remaining = entries.slice(entryAt);
+          const build = (lines: readonly string[]) =>
+            summaryMessages({ instructions, cast, memory, lines });
+          let take = 0;
+          if (remaining.length) {
+            take = linesThatFit({
+              lines: remaining.map((entry) => entry.line),
+              budget,
+              counter,
+              build,
+            });
+            if (take === 0) {
               throw new Error(
-                'The existing rolling summary does not fit alongside the Classic prompt. Increase the preset context limit, reduce the target length, or shorten the current summary.',
+                `The next message doesn’t fit with the memory so far in ${settings.contextTokens.toLocaleString()} tokens. Raise the summary’s context size, or lower its length.`,
               );
             }
-            fixedTokens = withBase.totalTokens;
           }
+          // The chunk runs through the last message it sends; messages a regex script emptied
+          // ride along with their neighbours, and the last chunk takes any left at the end.
+          const last = remaining[take - 1];
+          const through =
+            entryAt + take >= entries.length
+              ? todo.length
+              : (position.get(last?.message.id ?? '') ?? messageAt) + 1;
+          const chunk = todo.slice(messageAt, through);
 
-          const chunk = await packClassicSummaryChunk({
-            messages: remaining,
-            maxPromptTokens,
-            fixedTokens,
-            messageCost,
-            assemble: (candidate) => assemble(candidate, rollingSummary),
-          });
-          if (!chunk) {
-            throw new Error(
-              'The next individual chat turn cannot fit alongside the Classic prompt and rolling summary. Increase the preset context limit, reduce the target length, shorten the current summary, or shorten that turn.',
-            );
-          }
-
-          const assembled = chunk.assembled;
-          if (assembled.variableUpdates.localChanged) {
-            runLocalVariables = assembled.variableUpdates.local;
-            const action: ChatAction = {
-              type: 'chat/metadata',
-              patch: { variables: runLocalVariables },
-            };
-            stateRef.current = chatReducer(stateRef.current, action);
-            dispatch(action);
-          }
-          if (assembled.variableUpdates.globalChanged) {
-            runGlobalVariables = assembled.variableUpdates.global;
-            await onGlobalVariablesChange(runGlobalVariables);
+          let text = memory;
+          if (take > 0) {
+            const body = buildRequestBody({
+              messages: build(remaining.slice(0, take).map((entry) => entry.line)),
+              preset: summaryPreset(settings),
+              connection: summaryConnection,
+              stream: false,
+              maxTokens: null,
+              completions: 1,
+            });
+            const result = await runGeneration({
+              model: summaryConnection,
+              body,
+              signal: claim.signal,
+              usage: {
+                feature: 'summary',
+                sessionId: chatId,
+                ...(characterId ? { character: characterId } : {}),
+                countText: counter.countText,
+              },
+              onTick: () => {},
+            });
+            text = result.content.trim();
+            if (!text) throw new Error('The summary model sent back nothing.');
           }
           if (stopped()) return;
 
-          const body = buildRequestBody({
-            messages: assembled.messages,
-            preset,
-            connection: summaryConnection,
-            stream: false,
-            maxTokens: null,
-          });
-          const result = await runGeneration({
-            model: summaryConnection,
-            body,
-            signal: claim.signal,
-            usage: {
-              feature: 'summary',
-              sessionId: chatId,
-              ...(characterId ? { character: characterId } : {}),
-              countText: summaryCountTokens.countText,
-            },
-            onTick: () => {},
-          });
-          const nextSummary = result.content.trim();
-          if (!nextSummary) throw new Error('The summary model returned an empty response.');
-          if (stopped()) return;
-
-          const checkpointMessageId = chunk.messages.at(-1)!.id;
-          rollingSummary = nextSummary;
-          processed += chunk.messages.length;
-          remaining = remaining.slice(chunk.messages.length);
-          const action: ChatAction = {
-            type: 'chat/metadata',
-            patch: { summary: { text: nextSummary, checkpointMessageId } },
-          };
-          // A completed chunk is a durable checkpoint before another paid request begins.
-          // Fold from the freshest state so chat activity that happened during the request is
-          // included in the same snapshot rather than overwritten by the captured input.
-          const nextState = chatReducer(stateRef.current, action);
-          stateRef.current = nextState;
-          dispatch(action);
-          const snapshot = captureSnapshot(nextState);
-          if (snapshot) {
-            persistence.schedule(snapshot);
-            await persistence.flush(snapshot.chatId);
-          }
+          summary = writtenSummary(summary, text, covered, chunk, new Date());
+          covered = summary.covered ?? [];
+          memory = text;
+          entryAt += take;
+          messageAt = through;
+          processed += chunk.length;
+          await commitSummary(summary);
           setSummaryStatus({
-            running: remaining.length > 0,
+            ...IDLE,
+            running: messageAt < todo.length,
             processed,
-            total: backlog.length,
-            error: null,
+            total: todo.length,
+            mode,
+            auto,
           });
+        }
+
+        // Once covered, older messages can leave the prompt: the summary stands in for them.
+        if (settings.hideCovered && !stopped()) {
+          const ids = messagesToHide(
+            toChatMessages(stateRef.current),
+            covered,
+            settings.keepRecent,
+          );
+          if (ids.length) {
+            const action: ChatAction = { type: 'message/hideForSummary', ids };
+            const next = chatReducer(stateRef.current, action);
+            stateRef.current = next;
+            dispatch(action);
+            const snapshot = captureSnapshot(next);
+            if (snapshot) {
+              persistence.schedule(snapshot);
+              await persistence.flush(snapshot.chatId);
+            }
+          }
         }
       } catch (error) {
         if (!claim.signal.aborted) {
+          if (auto) autoFailed.current = chatId;
           setSummaryStatus({
-            running: false,
+            ...IDLE,
             processed,
-            total: backlog.length,
+            total: todo.length,
             error: (error as Error).message,
+            mode,
+            auto,
           });
         }
       } finally {
         claim.release();
         if (runningChatId.current === chatId) runningChatId.current = null;
         if (claim.signal.aborted) {
-          setSummaryStatus({ running: false, processed, total: backlog.length, error: null });
+          setSummaryStatus({ ...IDLE, processed, total: todo.length, mode, auto });
         }
         void refreshChats();
       }
@@ -338,18 +362,43 @@ export function useChatSummary(options: ChatSummaryOptions) {
       summaryCountTokens,
       globalVariables,
       regexScripts,
-      worldInfoSources,
-      resolveWorldInfoSources,
-      worldInfoSettings,
-      guidanceSettings,
-      onGlobalVariablesChange,
       captureSnapshot,
       persistence,
       refreshChats,
       dispatch,
       stateRef,
+      commitSummary,
     ],
   );
+
+  /*
+   * The automatic run: once enough new messages wait, right after a reply settles. Only on
+   * growth seen in this chat, so opening an old chat with a long backlog never starts a paid
+   * run by itself, and a failure waits for a click rather than retrying.
+   */
+  const lastIdle = useRef<{ chatId: string; count: number } | null>(null);
+  const autoEvery = summarySettings?.autoEvery ?? 0;
+  const pending = coverage.backlog.length;
+  useEffect(() => {
+    const chatId = state.chatId;
+    if (!chatId || state.status !== 'idle') return;
+    const seen = lastIdle.current;
+    lastIdle.current = { chatId, count: messages.length };
+    if (!seen || seen.chatId !== chatId || messages.length <= seen.count) return;
+    if (memoryMode !== 'classic' || autoEvery <= 0 || pending < autoEvery) return;
+    if (slot.busy || autoFailed.current === chatId || !summaryConnection) return;
+    void summarize(undefined, 'update', true);
+  }, [
+    state.chatId,
+    state.status,
+    messages.length,
+    memoryMode,
+    autoEvery,
+    pending,
+    slot,
+    summaryConnection,
+    summarize,
+  ]);
 
   /**
    * A different chat is now open: stop a run that belongs to another one, and clear the
@@ -363,7 +412,19 @@ export function useChatSummary(options: ChatSummaryOptions) {
     [slot],
   );
 
-  return { summaryStatus, summaryPending, summarize, cancelSummary, editSummary, onChatChanged };
+  return {
+    summaryStatus,
+    summaryPending: coverage.backlog.length,
+    /** Summarised messages that have changed since: edited, re-swiped or added between. */
+    summaryChanged: coverage.changed,
+    summaryCovered: coverage.covered,
+    summaryCanUndo: Boolean(state.metadata.summary?.history?.length),
+    summarize,
+    undoSummary,
+    cancelSummary,
+    editSummary,
+    onChatChanged,
+  };
 }
 
 export type ChatSummaryControls = ReturnType<typeof useChatSummary>;

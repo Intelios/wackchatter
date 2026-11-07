@@ -53,6 +53,8 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
   isMemoryMode,
+  LEGACY_SUMMARY_PROMPT,
+  LEGACY_SUMMARY_WORDS,
   MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import type { WorldInfoSettings } from '../../shared/types/worldinfo.ts';
@@ -210,23 +212,37 @@ const SUMMARY_POSITIONS: SummarySettings['position'][] = [
 /** Coerce summary preferences. */
 function normalizeSummary(value: unknown): SummarySettings {
   const stored = isRecord(value) ? value : {};
+  // Still holding 2.x's one-line default means it was never customised: take the new one.
+  const legacyPrompt = stored.prompt === LEGACY_SUMMARY_PROMPT;
+  const number = (key: string, fallback: number, min: number, max: number, step = 0) => {
+    const raw = stored[key];
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback;
+    const stepped = step ? Math.round(raw / step) * step : raw;
+    return Math.min(max, Math.max(min, stepped));
+  };
   const targetWords =
-    typeof stored.targetWords === 'number' && Number.isFinite(stored.targetWords)
-      ? Math.min(1000, Math.max(25, Math.round(stored.targetWords / 25) * 25))
-      : DEFAULT_SUMMARY.targetWords;
-  const depth =
-    typeof stored.depth === 'number' && Number.isFinite(stored.depth)
-      ? Math.max(0, Math.floor(stored.depth))
-      : DEFAULT_SUMMARY.depth;
+    legacyPrompt && stored.targetWords === LEGACY_SUMMARY_WORDS
+      ? DEFAULT_SUMMARY.targetWords
+      : number('targetWords', DEFAULT_SUMMARY.targetWords, 25, 3000, 25);
 
   return {
-    prompt: typeof stored.prompt === 'string' ? stored.prompt : DEFAULT_SUMMARY.prompt,
+    prompt:
+      typeof stored.prompt === 'string' && !legacyPrompt ? stored.prompt : DEFAULT_SUMMARY.prompt,
     targetWords,
+    temperature: number('temperature', DEFAULT_SUMMARY.temperature, 0, 2),
+    topP: number('topP', DEFAULT_SUMMARY.topP, 0, 1),
+    contextTokens: Math.round(
+      number('contextTokens', DEFAULT_SUMMARY.contextTokens, 2000, 2_000_000),
+    ),
+    autoEvery: Math.round(number('autoEvery', DEFAULT_SUMMARY.autoEvery, 0, 1000)),
+    hideCovered:
+      typeof stored.hideCovered === 'boolean' ? stored.hideCovered : DEFAULT_SUMMARY.hideCovered,
+    keepRecent: Math.round(number('keepRecent', DEFAULT_SUMMARY.keepRecent, 0, 1000)),
     template: typeof stored.template === 'string' ? stored.template : DEFAULT_SUMMARY.template,
     position: SUMMARY_POSITIONS.includes(stored.position as SummarySettings['position'])
       ? (stored.position as SummarySettings['position'])
       : DEFAULT_SUMMARY.position,
-    depth,
+    depth: Math.floor(number('depth', DEFAULT_SUMMARY.depth, 0, 10000)),
     role: normalizeRole(stored.role, DEFAULT_SUMMARY.role),
   };
 }

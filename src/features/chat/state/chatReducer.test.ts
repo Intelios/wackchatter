@@ -849,6 +849,29 @@ describe('editing the transcript', () => {
     expect(three.messages.map((m) => m.is_system)).toEqual([true, true, false]);
   });
 
+  test('the summary hides with its stamp, leaves a message you hid alone, and revealing clears it', () => {
+    const state = run(
+      initialChatState,
+      {
+        type: 'chat/loaded',
+        chat: chat([
+          { id: 'm0', name: 'S', is_user: false, is_system: false, mes: 'a', send_date: '1' },
+          { id: 'm1', name: 'S', is_user: false, is_system: true, mes: 'b', send_date: '2' },
+        ]),
+      },
+      { type: 'message/hideForSummary', ids: ['m0', 'm1'] },
+    );
+    expect(state.messages.map((m) => [m.is_system, m.hiddenBy])).toEqual([
+      [true, 'summary'],
+      [true, undefined],
+    ]);
+    const revealed = run(state, { type: 'message/setHidden', ids: ['m0'], hidden: false });
+    expect([revealed.messages[0]!.is_system, revealed.messages[0]!.hiddenBy]).toEqual([
+      false,
+      undefined,
+    ]);
+  });
+
   test('re-hiding an already hidden range is a no-op that leaves the revision alone', () => {
     const hidden = run(
       loaded(),

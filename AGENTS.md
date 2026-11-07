@@ -160,7 +160,8 @@ committed runtime per request**, `greeting.ts` uses a **fresh runtime per call, 
 - Only `$N` and `$<name>` are captures; `trimStrings` apply to captures only. Depth bounds are
   inclusive, 0 is newest, `null` unlimited; `is_system` holds no depth slot.
 - Runs **after** macros; an empty replacement drops the message from packing. Every
-  `assemblePrompt` caller, summary packers included, passes the same list.
+  `assemblePrompt` caller passes the same list, and the classic summary runs it over its
+  transcript too.
 - Not wired: `SLASH_COMMAND` / `WORLD_INFO` placements, card-embedded scripts, mid-stream.
   Never enable `rehype-raw` in `Markdown.tsx`.
 
@@ -174,6 +175,12 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
 **Story memory** (`shared/nexus/`, `src/features/{nexus,summary}/`)
 - **One slot per chat:** `ChatMetadata.memoryMode` is `classic`, `nexus` or `off`; app settings
   only set the default for new chats. Summary and Nexus never inject together.
+- **The classic summary is its own request** (`summary/request.ts`): its instructions, the card
+  and persona descriptions, the memory so far and the new chat as a transcript. No preset, lore
+  or chat samplers; its samplers and context are `SummarySettings`. Coverage is **message
+  fingerprints** (`StorySummary.covered`), never ids; an id `checkpointMessageId` is read, not
+  written. Each run puts the old text in `history` once. The automatic run starts only on growth
+  seen in the open chat, never on opening one, and a failure never retries by itself.
 - **Canon is `ChatMetadata.nexus`**, saved through the revision queue: opaque node ids, versioned
   names, append-only revisions with source fingerprints. Tombstones, disabled records and manual
   edits survive extraction; equal names never merge.
@@ -195,8 +202,9 @@ transcript]`, no card, persona, lore, memory or macros, single chat only.
 - A user message's `persona_id` records its persona — `null` none, missing not recorded (an
   import from an old export; the 3.0 conversion stamped the library). NULL and `''` must not
   collapse. Chats arriving from a file get their missing mode and persona in `arrivingMetadata`.
-- `hiddenBy` is a stamp the pre-Nexus memory system left; nothing writes one now, and a person
-  hiding or revealing a message clears it.
+- `hiddenBy` marks a message a memory hid. The classic summary writes `'summary'` when it hides
+  what it covers (its rewrite still reads those; it never touches a message you hid), older
+  stamps are the pre-Nexus system's, and a person hiding or revealing a message clears it.
 - A placeholder starts **empty**, excluding the generating message from its own prompt.
 - **Regenerate ≠ swipe:** regenerate replaces and drops alternates; overswipe appends and keeps
   them; in-array swiping is cached. A failed generation undoes exactly what starting it did.
@@ -264,7 +272,7 @@ does — settings (`useAppSettings`, defaults and slot resolution in the pure `s
 the library, the trash bin, navigation — and `src/app/LegacyShell.tsx` is markup over it. The
 3.0 shell replaces `LegacyShell` in `App.tsx`. `useChat` is likewise a composer over
 `useChatSession`, `useChatGeneration`, `useChatSummary` and `useChatLifecycle`, with the pure parts
-in `chatRequest.ts` and `summary/summaryPrompt.ts`. Every navigation that leaves the chat stops
+in `chatRequest.ts` and `summary/request.ts` / `summary/coverage.ts`. Every navigation that leaves the chat stops
 generation, flushes saves, and refuses to move if a flush fails.
 
 

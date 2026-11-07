@@ -298,16 +298,70 @@ export interface StoryMemoryPlacement {
 
 /** The summary's model is the `summary` slot in `AppSettings.models`. */
 export interface SummarySettings extends StoryMemoryPlacement {
+  /** The summarizer's instructions. `{{words}}`, `{{char}}` and `{{user}}` are filled in. */
   prompt: string;
   targetWords: number;
+  /** The summary's own samplers. Nothing about it comes from the chat's preset. */
+  temperature: number;
+  topP: number;
+  /** How much of the chat one request may carry; a longer backlog goes in several. */
+  contextTokens: number;
+  /** Summarise by itself once this many new messages are waiting. 0 is off. */
+  autoEvery: number;
+  /** Hide summarised messages from the prompt, all but the newest `keepRecent`. */
+  hideCovered: boolean;
+  keepRecent: number;
 }
 
-export const DEFAULT_SUMMARY_PROMPT =
+/**
+ * The default instructions: written for a roleplay, a back-and-forth between two sides
+ * rather than a book, kept in fixed sections so an update rewrites each one instead of
+ * squeezing the oldest facts out of a single paragraph.
+ */
+export const DEFAULT_SUMMARY_PROMPT = `You keep the memory for an ongoing roleplay between {{user}} and {{char}}. It is a back-and-forth chat: {{user}}'s messages are their own words and actions, and {{char}}'s replies answer them. It is not a novel, so don't retell it as one.
+
+You get who the characters are, the memory so far (when there is one) and the newest part of the chat. Write the updated memory: everything from the memory so far that still matters, with the new part folded in. Never drop an earlier fact just because the new part doesn't mention it.
+
+Write it in these sections, as short bullet points:
+
+## Who's who
+Everyone who has appeared: who they are, how they stand with {{user}} and with each other, and how that has changed.
+
+## Where things stand
+The scene right now: where and when it is, what is happening, and anything about what each character is doing, wearing or holding that matters.
+
+## What happened
+The key events in order, oldest first. Compress older events harder than recent ones.
+
+## Promises, plans and open threads
+What is still owed: promises, plans, secrets, unanswered questions, unresolved tension.
+
+## Facts to keep
+Details that must stay consistent: names, places, objects, how the world works, and what {{user}} or {{char}} revealed about themselves.
+
+Rules:
+- Only what the chat shows. Don't invent, guess at motives or fill gaps.
+- Keep who said or believes what: a suspicion or a lie is not a fact.
+- Name people. Never write "the user" or "the AI".
+- Plain, specific wording, and no comments about the memory itself.
+- Stay under {{words}} words. When space runs short, compress the oldest events first, never the current scene or open threads.
+
+Reply with the memory only, starting at the first heading.`;
+
+/** What 2.x shipped as the default. A library still holding it gets the new one. */
+export const LEGACY_SUMMARY_PROMPT =
   'Ignore previous instructions. Summarize the most important facts and events in the story so far. If a summary already exists in your memory, use that as a base and expand with new facts. Limit the summary to {{words}} words or less. Your response should include nothing but the summary.';
+export const LEGACY_SUMMARY_WORDS = 200;
 
 export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
   prompt: DEFAULT_SUMMARY_PROMPT,
-  targetWords: 200,
+  targetWords: 700,
+  temperature: 0.3,
+  topP: 1,
+  contextTokens: 32000,
+  autoEvery: 0,
+  hideCovered: false,
+  keepRecent: 25,
   template: '[Summary: {{summary}}]',
   position: 'afterMain',
   depth: 2,

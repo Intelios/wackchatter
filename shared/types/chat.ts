@@ -167,8 +167,25 @@ export interface BranchOrigin {
 
 export interface StorySummary {
   text: string;
-  /** Missing means the current text has no generated/transcript checkpoint yet. */
+  /**
+   * The messages the text covers, as fingerprints (`messageFingerprint`), oldest first.
+   * Content rather than ids, so an edited or re-swiped message reads as changed, and a
+   * deleted one never loses the summary its place.
+   */
+  covered?: string[];
+  /** A summary from before fingerprints: the last message it covered. Read, never written. */
   checkpointMessageId?: string;
+  /** When the text was last written, ISO. */
+  updatedAt?: string;
+  /** Earlier versions, newest first, for undo. */
+  history?: StorySummaryVersion[];
+}
+
+export interface StorySummaryVersion {
+  text: string;
+  covered?: string[];
+  checkpointMessageId?: string;
+  updatedAt?: string;
 }
 
 /**

@@ -232,9 +232,11 @@ export const Message = memo(function Message({
                 <span
                   className="w3-msg__flag"
                   title={
-                    message.hiddenBy
-                      ? 'Hidden by a memory. Deleting or revealing that memory brings it back.'
-                      : 'Hidden from the prompt by hand, shown here'
+                    message.hiddenBy === 'summary'
+                      ? 'Hidden because the summary covers it. Reveal it to send it again.'
+                      : message.hiddenBy
+                        ? 'Hidden by a memory. Deleting or revealing that memory brings it back.'
+                        : 'Hidden from the prompt by hand, shown here'
                   }
                 >
                   <Icon name="eyeOff" size="xs" />

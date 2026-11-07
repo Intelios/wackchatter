@@ -12,6 +12,7 @@ import {
   DEFAULT_GUIDANCE,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
+  LEGACY_SUMMARY_PROMPT,
   MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
@@ -274,6 +275,22 @@ describe('mergeSettings', () => {
     expect(selected.summary.depth).toBe(0);
     expect(selected.summary.role).toBe(DEFAULT_SUMMARY.role);
     expect(selected.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
+  });
+
+  test('a summary still on the 2.x default takes the new one; a customised one stays', () => {
+    const legacy = mergeSettings(base(), {
+      summary: { prompt: LEGACY_SUMMARY_PROMPT, targetWords: 200 } as never,
+    });
+    expect(legacy.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
+    expect(legacy.summary.targetWords).toBe(DEFAULT_SUMMARY.targetWords);
+    const mine = mergeSettings(base(), {
+      summary: { prompt: 'My own.', targetWords: 200, temperature: 9, autoEvery: 12 } as never,
+    });
+    expect(mine.summary.prompt).toBe('My own.');
+    expect(mine.summary.targetWords).toBe(200);
+    expect(mine.summary.temperature).toBe(2);
+    expect(mine.summary.autoEvery).toBe(12);
+    expect(mine.summary.hideCovered).toBe(false);
   });
 
   test('the memory mode defaults to the summary, and an unknown mode falls back to it', () => {

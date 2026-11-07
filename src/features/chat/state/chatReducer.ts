@@ -164,6 +164,8 @@ export type ChatAction =
       ids: string[];
       hidden: boolean;
     }
+  /** The summary hides what it covers, stamped so a rewrite can still read it. */
+  | { type: 'message/hideForSummary'; ids: string[] }
   | { type: 'swipe/select'; id: string; index: number }
   | { type: 'gen/started'; mode: GenMode; newId: string; name: string }
   | { type: 'gen/inspected'; inspection: PromptInspection }
@@ -433,6 +435,19 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         const next = { ...message, is_system: action.hidden };
         delete next.hiddenBy;
         return next;
+      });
+      if (!changed) return state;
+      return { ...state, messages, revision: state.revision + 1 };
+    }
+
+    case 'message/hideForSummary': {
+      // Only messages still in the prompt: one you hid stays yours, unstamped.
+      const target = new Set(action.ids);
+      let changed = false;
+      const messages = state.messages.map((message) => {
+        if (!target.has(message.id) || message.is_system) return message;
+        changed = true;
+        return { ...message, is_system: true, hiddenBy: 'summary' };
       });
       if (!changed) return state;
       return { ...state, messages, revision: state.revision + 1 };

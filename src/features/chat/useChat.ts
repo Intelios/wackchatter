@@ -40,9 +40,9 @@ import { createStreamStore, type StreamStore } from './state/streamStore.ts';
 import { type RecapHandlers, useChatGeneration } from './useChatGeneration.ts';
 import { useChatLifecycle } from './useChatLifecycle.ts';
 import { useChatSession } from './useChatSession.ts';
-import { type SummaryRunStatus, useChatSummary } from './useChatSummary.ts';
+import { type SummaryMode, type SummaryRunStatus, useChatSummary } from './useChatSummary.ts';
 
-export type { RecapHandlers, SummaryRunStatus };
+export type { RecapHandlers, SummaryMode, SummaryRunStatus };
 
 export interface UseChatOptions {
   characterId: string | null;
@@ -153,7 +153,12 @@ export interface UseChat {
 
   summaryStatus: SummaryRunStatus;
   summaryPending: number;
-  summarize(settingsOverride?: SummarySettings): Promise<void>;
+  /** Summarised messages that have changed since they were summarised. */
+  summaryChanged: number;
+  summaryCovered: number;
+  summaryCanUndo: boolean;
+  summarize(settingsOverride?: SummarySettings, mode?: SummaryMode): Promise<void>;
+  undoSummary(): void;
   cancelSummary(): void;
   editSummary(text: string): void;
 
@@ -244,7 +249,7 @@ export function useChat(options: UseChatOptions): UseChat {
     nexusSettings,
   });
 
-  const summary = useChatSummary({ ...options, session, slot: summarySlot });
+  const summary = useChatSummary({ ...options, session, slot: summarySlot, memoryMode });
 
   const lifecycle = useChatLifecycle({
     session,
@@ -294,7 +299,11 @@ export function useChat(options: UseChatOptions): UseChat {
 
     summaryStatus: summary.summaryStatus,
     summaryPending: summary.summaryPending,
+    summaryChanged: summary.summaryChanged,
+    summaryCovered: summary.summaryCovered,
+    summaryCanUndo: summary.summaryCanUndo,
     summarize: summary.summarize,
+    undoSummary: summary.undoSummary,
     cancelSummary: summary.cancelSummary,
     editSummary: summary.editSummary,
 
