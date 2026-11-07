@@ -5,7 +5,6 @@
  */
 
 import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
-import { slotRef } from '@shared/models/slots.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import {
   type CoCreatorSettings,
@@ -97,7 +96,6 @@ export function CoCreatorSetup({
   const [scope, setScope] = useState<Scope>('session');
   const [prompt, setPrompt] = useState<'system' | 'analysis' | null>(null);
   const settings = design.state.settings;
-  const side = design.state.sideChat?.settings ?? {};
   const disabled = design.busy;
   const disabledReason = 'Stop the current reply first.';
   const activeName = presets.find((p) => p.id === activePresetId)?.name;
@@ -150,34 +148,6 @@ export function CoCreatorSetup({
         />
         {scope === 'session' ? (
           <>
-            <div className="w3-co-setup__field">
-              <span>Model</span>
-              <ModelPicker
-                label="Model for this session"
-                value={settings.model}
-                onChange={(ref) =>
-                  design.dispatch({ type: 'settings/patch', patch: { model: ref ?? undefined } })
-                }
-                emptyLabel="The Co-Creator's"
-                emptyFollows={slotRef(models, 'cocreator')}
-                disabled={disabled}
-                disabledReason={disabledReason}
-              />
-            </div>
-            <div className="w3-co-setup__field">
-              <span>Side chat model</span>
-              <ModelPicker
-                label="Side chat model for this session"
-                value={side.model}
-                onChange={(ref) =>
-                  design.dispatch({ type: 'side/settings', patch: { model: ref ?? undefined } })
-                }
-                emptyLabel="The side chat's"
-                emptyFollows={models.sideChat}
-                disabled={disabled || !design.state.sideChat}
-                disabledReason={disabled ? disabledReason : 'Open the side chat first.'}
-              />
-            </div>
             <div className="w3-co-setup__field">
               <span>Samplers</span>
               <Select

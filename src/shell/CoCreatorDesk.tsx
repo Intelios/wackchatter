@@ -25,6 +25,7 @@ import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import {
   forwardRef,
+  type MutableRefObject,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -62,6 +63,19 @@ export interface DeskReport {
   filled: number;
   saving: boolean;
   saveError: string | null;
+  /** The session's own pick, or undefined while it follows the Co-Creator's. */
+  model: ModelRef | undefined;
+  /** What writes now, by name. */
+  modelName: string | null;
+  /** The side chat's, once it exists. */
+  sideReady: boolean;
+  sideModel: ModelRef | undefined;
+  sideModelName: string | null;
+}
+
+/** What the island can ask of the session. */
+export interface DeskHandle {
+  setModel: (target: 'main' | 'side', ref: ModelRef | null) => void;
 }
 
 // ---------- The composer ----------
@@ -442,6 +456,7 @@ export function CoCreatorDesk({
   characters,
   streamingFps,
   registerPersistence,
+  handle,
   onReport,
   onFinished,
   onError,
@@ -462,6 +477,7 @@ export function CoCreatorDesk({
   characters: readonly CharacterSummary[];
   streamingFps: number;
   registerPersistence: (controls: PersistenceControls | null) => void;
+  handle: MutableRefObject<DeskHandle | null>;
   onReport: (report: DeskReport) => void;
   onFinished: (avatar: string) => void;
   onError: (message: string) => void;
@@ -508,9 +524,43 @@ export function CoCreatorDesk({
 
   const name = state.stash.name?.text.trim() || session.title;
   const filled = filledCount(state.stash);
+  const model = state.settings.model;
+  const modelName = design.connection?.model ?? null;
+  const sideReady = Boolean(state.sideChat);
+  const sideModel = state.sideChat?.settings.model;
+  const sideModelName = design.sideConnection?.model ?? null;
   useEffect(() => {
-    onReport({ name, filled, saving: design.saving, saveError: design.saveError });
-  }, [onReport, name, filled, design.saving, design.saveError]);
+    onReport({
+      name,
+      filled,
+      saving: design.saving,
+      saveError: design.saveError,
+      model,
+      modelName,
+      sideReady,
+      sideModel,
+      sideModelName,
+    });
+  }, [
+    onReport,
+    name,
+    filled,
+    design.saving,
+    design.saveError,
+    model,
+    modelName,
+    sideReady,
+    sideModel,
+    sideModelName,
+  ]);
+  handle.current = {
+    setModel: (target, ref) =>
+      design.dispatch(
+        target === 'main'
+          ? { type: 'settings/patch', patch: { model: ref ?? undefined } }
+          : { type: 'side/settings', patch: { model: ref ?? undefined } },
+      ),
+  };
 
   // Opening the side chat never snapshots examples that are still loading.
   useEffect(() => {

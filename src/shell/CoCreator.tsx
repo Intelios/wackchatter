@@ -12,6 +12,7 @@
 import './studio.css';
 import './cocreator.css';
 
+import { slotRef } from '@shared/models/slots.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { CocreatorSession, CocreatorSessionSummary } from '@shared/types/cocreator.ts';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,15 +24,22 @@ import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { characterApi, cocreatorApi, personaApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { Avatar } from './Avatar.tsx';
-import { CoCreatorDesk, type DeskReport } from './CoCreatorDesk.tsx';
+import { CoCreatorDesk, type DeskHandle, type DeskReport } from './CoCreatorDesk.tsx';
 import { MAIN_FIELD_COUNT } from './cocreator.ts';
 import { Island, type IslandMode, type IslandNotice } from './Island.tsx';
 import { type SearchItem, SearchPane } from './IslandPanes.tsx';
 import { Icon } from './icons.tsx';
+import { ModelPane } from './ModelPane.tsx';
 import { editedWhen } from './studio.ts';
 import { initialAuraStyle, useAura } from './useAura.ts';
 
 const LIME = '#c2ee4a';
+
+/** A model id as a short name: the part after the vendor, e.g. "GLM-5.3-Flash". */
+function modelLabel(id: string | null | undefined): string | null {
+  if (!id) return null;
+  return id.split('/').pop() ?? id;
+}
 
 export function CoCreator({ controller }: { controller: AppController }) {
   const { app, library } = controller;
@@ -47,6 +55,8 @@ export function CoCreator({ controller }: { controller: AppController }) {
   const noticeId = useRef(0);
   const persistence = useRef<PersistenceControls | null>(null);
   const seededFrom = useRef<string | null>(null);
+  const deskRef = useRef<DeskHandle | null>(null);
+  const [modelFor, setModelFor] = useState<'main' | 'side'>('main');
   const rootRef = useRef<HTMLDivElement>(null);
   const washRef = useRef<HTMLDivElement>(null);
 
@@ -240,6 +250,25 @@ export function CoCreator({ controller }: { controller: AppController }) {
       <span className="w3-isl-sep" aria-hidden="true" />
       <button
         type="button"
+        className="w3-isl-btn w3-co-isl-model"
+        aria-label={`Model: ${report?.modelName ?? 'none'}. Change it`}
+        title="The model writing this card"
+        onClick={() => {
+          setModelFor('main');
+          setMode('model');
+        }}
+      >
+        <span className="w3-isl-stack">
+          <span className="w3-co-isl-model__name">
+            {modelLabel(report?.modelName) ?? 'Choose a model'}
+          </span>
+          <span className="w3-who-sub">{report?.model ? 'This session' : 'The Co-Creator’s'}</span>
+        </span>
+        <Icon name="chevronDown" size="sm" />
+      </button>
+      <span className="w3-isl-sep" aria-hidden="true" />
+      <button
+        type="button"
         className="w3-isl-search"
         aria-label="Find a session"
         onClick={() => setMode('search')}
@@ -346,6 +375,42 @@ export function CoCreator({ controller }: { controller: AppController }) {
                 }}
               />
             ),
+            model: session ? (
+              <ModelPane
+                active={islandMode === 'model'}
+                value={modelFor === 'main' ? report?.model : report?.sideModel}
+                emptyLabel={modelFor === 'main' ? 'The Co-Creator’s' : 'The side chat’s'}
+                emptyFollows={
+                  modelFor === 'main' ? slotRef(models.slots, 'cocreator') : models.slots.sideChat
+                }
+                head={
+                  report?.sideReady ? (
+                    <div className="w3-co-mpfor">
+                      <button
+                        type="button"
+                        aria-pressed={modelFor === 'main'}
+                        onClick={() => setModelFor('main')}
+                      >
+                        The conversation
+                        <small>{modelLabel(report.modelName) ?? 'None'}</small>
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={modelFor === 'side'}
+                        onClick={() => setModelFor('side')}
+                      >
+                        The side chat
+                        <small>{modelLabel(report.sideModelName) ?? 'None'}</small>
+                      </button>
+                    </div>
+                  ) : null
+                }
+                onPick={(ref) => {
+                  deskRef.current?.setModel(modelFor, ref);
+                  setMode(null);
+                }}
+              />
+            ) : null,
           }}
         />
 
@@ -369,6 +434,7 @@ export function CoCreator({ controller }: { controller: AppController }) {
                 characters={library.characters}
                 streamingFps={prefs.streamingFps}
                 registerPersistence={register}
+                handle={deskRef}
                 onReport={setReport}
                 onFinished={controller.finishCoCreator}
                 onError={fail}
