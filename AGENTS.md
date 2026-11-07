@@ -73,6 +73,14 @@ a field that already holds something goes through the compare first. **Finish on
 started from a card updates that card** (`finishPlan`: rename if the name changed, then patch
 what the stash holds); only a new session, or one whose card is gone, creates a card.
 
+**The Preset Co-Creator** (`src/shell/PresetCoCreator.tsx`) is the loop ask → edit → test →
+send back, laid out as the Co-Creator, the preset rail and the bench. Its assistant is sized
+from its model's catalogue context too. **Nothing on the bench spends money on its own:** after
+an edit a test only reports that its reply ran on an older revision (`staleRevision`); Rerun is a
+click, and makes a swipe beside the old reply so before and after read side by side
+(`rerunPair`, derived from the swipes' evidence). The session's cost is the recorded token
+counts (assistant `usage`, test evidence) at the catalogue's prices, never an estimate.
+
 ## The data directory moves
 
 `<repo>/data` is only the default; the user can relocate the library from User Settings and the

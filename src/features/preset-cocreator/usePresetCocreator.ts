@@ -20,6 +20,7 @@ import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
+import { resolveModelContext } from '../models/modelContext.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantResponseMessage,
@@ -39,6 +40,24 @@ import {
   buildPresetTestBatch,
   reportConversationMessage,
 } from './testing.ts';
+
+/** What a reply used, for the session's cost: the provider's count when it gave one. */
+function messageUsage(
+  state: StreamState,
+  model: { id: string; model: string },
+): Pick<PresetCocreatorMessage, 'usage'> {
+  const input = state.usage?.prompt_tokens;
+  const output = state.usage?.completion_tokens;
+  if (typeof input !== 'number' && typeof output !== 'number') return {};
+  return {
+    usage: {
+      connectionId: model.id,
+      model: state.model ?? model.model,
+      inputTokens: input ?? 0,
+      outputTokens: output ?? 0,
+    },
+  };
+}
 
 interface DocumentSnapshot {
   document: PresetCocreatorDocument;
@@ -278,11 +297,12 @@ export function usePresetCocreator({
           utilityPreset.reasoning_effort = generation.reasoningEffort;
           utilityPreset.stream_openai = true;
 
+          // Sized from the model's own context, like every other Co-Creator request.
           const budget = cocreatorBudget({
             preset: utilityPreset,
             connection: assistantConnection,
             outputTokens: generation.maxTokens,
-            contextTokens: generation.contextTokens,
+            contextTokens: await resolveModelContext(assistantConnection),
           });
           const body = buildRequestBody({
             messages: [],
@@ -311,7 +331,7 @@ export function usePresetCocreator({
             (body.tools ? countTokens.countText(JSON.stringify(body.tools)) : 0);
           if (inputTokens > budget.promptTokens) {
             throw new Error(
-              'The assistant conversation exceeds its context budget. Raise Context size or lower the output limit in assistant settings.',
+              "The conversation is longer than this model's context. Start a new session, or pick a model with a longer context.",
             );
           }
 
@@ -339,12 +359,13 @@ export function usePresetCocreator({
           partial = final;
           if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-          const assistantMessage = {
+          const assistantMessage: PresetCocreatorMessage = {
             ...assistantResponseMessage(
               final,
               mode === 'comparison' && final.toolCalls?.length ? 'error' : undefined,
             ),
             ...(mode === 'comparison' ? { analysisOnly: true } : {}),
+            ...messageUsage(final, assistantConnection),
           };
           partial = null;
           messages = [...messages, assistantMessage];
@@ -355,9 +376,7 @@ export function usePresetCocreator({
 
           if (mode === 'comparison') rejectComparisonToolCalls(final.toolCalls);
           if (assistantMessage.incomplete) {
-            setError(
-              'The assistant reached its output limit. Received output has been saved. Use Continue reply to request the rest, or raise the output limit in assistant settings.',
-            );
+            setError('The reply was cut off. What arrived is saved: use Continue to get the rest.');
             await flush();
             return;
           }
@@ -417,10 +436,10 @@ export function usePresetCocreator({
       } catch (failure) {
         // A Stop or a broken stream still costs tokens. Preserve its latest snapshot.
         if (partial) {
-          const received = assistantResponseMessage(
-            partial,
-            controller.signal.aborted ? 'stopped' : 'error',
-          );
+          const received = {
+            ...assistantResponseMessage(partial, controller.signal.aborted ? 'stopped' : 'error'),
+            ...messageUsage(partial, assistantConnection),
+          };
           if (received.content || received.reasoning || received.incompleteToolCalls?.length) {
             messages = [
               ...messages,

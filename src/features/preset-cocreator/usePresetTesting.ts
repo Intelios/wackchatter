@@ -459,6 +459,14 @@ export function usePresetTesting({
     [activeTest, busy, generate, saveTest],
   );
 
+  /**
+   * The latest reply again on the current preset, as a new swipe beside the old one, so
+   * the two can be read side by side. Only ever on a click: it costs money.
+   */
+  const rerun = useCallback(async () => {
+    if (activeTest && !busy) await generate('swipe', activeTest);
+  }, [activeTest, busy, generate]);
+
   const editMessage = useCallback(
     (id: string, text: string) => {
       if (activeTest && !busy) saveTest(editPresetTestMessage(activeTest, id, text));
@@ -605,6 +613,7 @@ export function usePresetTesting({
       send,
       regenerate,
       swipe,
+      rerun,
       editMessage,
       stop,
       dismissProposal,
@@ -633,6 +642,7 @@ export function usePresetTesting({
       send,
       regenerate,
       swipe,
+      rerun,
       editMessage,
       stop,
       dismissProposal,

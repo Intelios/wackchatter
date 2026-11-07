@@ -26,6 +26,8 @@ export interface PresetCocreatorMessage {
   report?: PresetTestReport;
   batch?: PresetTestBatch;
   comparison?: PresetComparison;
+  /** The provider's token count for this reply, kept for the session's cost. */
+  usage?: { connectionId: string; model: string; inputTokens: number; outputTokens: number };
 }
 
 export type PresetComparisonSource =

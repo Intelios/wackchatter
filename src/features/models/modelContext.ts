@@ -5,18 +5,24 @@
  */
 
 import { contextOrDefault } from '@shared/models/context.ts';
-import type { ResolvedModel } from '@shared/providers/types.ts';
+import type { ProviderModel, ResolvedModel } from '@shared/providers/types.ts';
 import { settingsApi } from '../../lib/api.ts';
 
-const known = new Map<string, Promise<number | null>>();
+const known = new Map<string, Promise<ProviderModel | null>>();
 
-export function modelContextLength(model: ResolvedModel): Promise<number | null> {
+/**
+ * One model's catalogue entry, from its connection's list. Only that connection is asked,
+ * once per endpoint and model; a failed lookup is forgotten so the next one asks again.
+ */
+export function modelCatalogueEntry(
+  model: Pick<ResolvedModel, 'id' | 'model'> & Partial<Pick<ResolvedModel, 'provider' | 'baseUrl'>>,
+): Promise<ProviderModel | null> {
   const key = [model.id, model.provider, model.baseUrl, model.model].join('|');
   let pending = known.get(key);
   if (!pending) {
     pending = settingsApi
       .models(model.id)
-      .then(({ models }) => models.find((entry) => entry.id === model.model)?.contextLength ?? null)
+      .then(({ models }) => models.find((entry) => entry.id === model.model) ?? null)
       .catch(() => {
         known.delete(key);
         return null;
@@ -24,6 +30,10 @@ export function modelContextLength(model: ResolvedModel): Promise<number | null>
     known.set(key, pending);
   }
   return pending;
+}
+
+export async function modelContextLength(model: ResolvedModel): Promise<number | null> {
+  return (await modelCatalogueEntry(model))?.contextLength ?? null;
 }
 
 /** The context a request to `model` may fill. */

@@ -58,6 +58,7 @@ import {
   type ToolId,
   toolSubtitle,
 } from './MarginTools.tsx';
+import { PresetCoCreator } from './PresetCoCreator.tsx';
 import { Studio } from './Studio.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, replay, useAura } from './useAura.ts';
@@ -94,11 +95,11 @@ export function Shell({
   }
   if (view === 'app') return <HomeShell controller={controller} onUiChoice={onUiChoice} />;
   if (view === 'studio') return <Studio controller={controller} />;
-  if (view === 'cocreator' && controller.coCreatorMode !== 'preset') {
-    return <CoCreator controller={controller} />;
+  if (view === 'cocreator' && controller.coCreatorMode === 'preset') {
+    return <PresetCoCreator controller={controller} />;
   }
-  // Everything else the shell does not draw yet (the Preset Co-Creator, Arena, Stats) still
-  // goes through the 2.x one.
+  if (view === 'cocreator') return <CoCreator controller={controller} />;
+  // Everything else the shell does not draw yet (Arena, Stats) still goes through the 2.x one.
   return <LegacyShell controller={controller} />;
 }
 
