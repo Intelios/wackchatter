@@ -7,6 +7,7 @@ import type { CharacterSummary } from '@shared/types/card.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import type {
   PresetCocreatorMessage,
+  PresetCocreatorModelSettings,
   PresetComparisonSource,
   PresetDraftRevision,
   PresetTestReport,
@@ -39,7 +40,18 @@ import type { PresetCocreatorController } from '../features/preset-cocreator/use
 import type { PresetTestingController } from '../features/preset-cocreator/usePresetTesting.ts';
 import { characterApi } from '../lib/api.ts';
 import { Avatar } from './Avatar.tsx';
+import { Range, Segments } from './controls.tsx';
 import { Icon } from './icons.tsx';
+
+type Effort = PresetCocreatorModelSettings['reasoningEffort'];
+const EFFORTS: [Effort, string][] = [
+  ['auto', 'Auto'],
+  ['min', 'Min'],
+  ['low', 'Low'],
+  ['medium', 'Medium'],
+  ['high', 'High'],
+  ['max', 'Max'],
+];
 
 export function PresetTalk({
   controller,
@@ -71,6 +83,12 @@ export function PresetTalk({
   const history = session.history;
   const last = messages.at(-1);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const assistant = session.document.settings.assistant;
+  const patchAssistant = (patch: Partial<typeof assistant>) =>
+    controller.updateDocument((current) => ({
+      ...current,
+      settings: { ...current.settings, assistant: { ...current.settings.assistant, ...patch } },
+    }));
 
   return (
     <section className="w3-pc-col w3-pc-talk" aria-label="Co-Creator">
@@ -79,7 +97,7 @@ export function PresetTalk({
         <small>{modelName ?? 'No model'}</small>
         <span className="w3-co-gap" />
         <Popover
-          label="Instructions for this session"
+          label="How the Co-Creator works in this session"
           icon={null}
           open={instructionsOpen}
           onOpenChange={setInstructionsOpen}
@@ -91,29 +109,48 @@ export function PresetTalk({
               {...trigger}
               type="button"
               className="w3-pc-headbtn"
-              aria-pressed={Boolean(session.document.settings.assistantInstructions.trim())}
-              title="Instructions the Co-Creator follows in this session"
+              title="Temperature, reasoning and instructions for this session"
               onClick={() => setInstructionsOpen(!instructionsOpen)}
             >
-              <Icon name="pencil" size="xs" />
-              Instructions
+              <Icon name="gear" size="xs" />
+              Setup
             </button>
           )}
         >
-          <textarea
-            className="w3-pc-instr__text"
-            rows={6}
-            value={session.document.settings.assistantInstructions}
-            placeholder="What the Co-Creator should keep in mind in this session"
-            aria-label="Instructions for this session"
-            onChange={(event) => {
-              const assistantInstructions = event.target.value;
-              controller.updateDocument((current) => ({
-                ...current,
-                settings: { ...current.settings, assistantInstructions },
-              }));
-            }}
-          />
+          <div className="w3-pc-instr__body">
+            <Range
+              label="Temperature"
+              value={assistant.temperature}
+              min={0}
+              max={2}
+              step={0.05}
+              shown={assistant.temperature.toFixed(2)}
+              onChange={(temperature) => patchAssistant({ temperature })}
+            />
+            <div className="w3-pc-instr__row">
+              <span>Reasoning</span>
+              <Segments
+                label="Reasoning effort"
+                value={assistant.reasoningEffort}
+                options={EFFORTS}
+                onChange={(reasoningEffort) => patchAssistant({ reasoningEffort })}
+              />
+            </div>
+            <textarea
+              className="w3-pc-instr__text"
+              rows={6}
+              value={session.document.settings.assistantInstructions}
+              placeholder="Instructions it keeps in mind in this session"
+              aria-label="Instructions for this session"
+              onChange={(event) => {
+                const assistantInstructions = event.target.value;
+                controller.updateDocument((current) => ({
+                  ...current,
+                  settings: { ...current.settings, assistantInstructions },
+                }));
+              }}
+            />
+          </div>
         </Popover>
       </div>
       <div className="w3-co-scroll" ref={scrollRef}>
@@ -133,6 +170,7 @@ export function PresetTalk({
               isLast={message === last}
               busy={controller.busy}
               onContinue={() => void controller.continueReply()}
+              onEdit={controller.editMessage}
               onShowRevision={onShowRevision}
               onShowTest={(testId) => testing.setActive(testId)}
             />
@@ -149,6 +187,7 @@ export function PresetTalk({
       ) : null}
       <Composer
         controller={controller}
+        testing={testing}
         presets={presets}
         references={references}
         history={history}
@@ -167,6 +206,7 @@ const TalkMessage = memo(function TalkMessage({
   isLast,
   busy,
   onContinue,
+  onEdit,
   onShowRevision,
   onShowTest,
 }: {
@@ -177,9 +217,57 @@ const TalkMessage = memo(function TalkMessage({
   isLast: boolean;
   busy: boolean;
   onContinue: () => void;
+  onEdit: (id: string, text: string) => void;
   onShowRevision: (revision: number) => void;
   onShowTest: (testId: string) => void;
 }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const editor =
+    editing !== null ? (
+      <div className="w3-pc-msgedit">
+        <textarea
+          value={editing}
+          aria-label="Edit the message"
+          // biome-ignore lint/a11y/noAutofocus: opened by asking to edit
+          autoFocus
+          onChange={(event) => setEditing(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setEditing(null);
+          }}
+        />
+        <div className="w3-pc-msgedit__acts">
+          <button
+            type="button"
+            className="w3-st-ghost w3-st-ghost--sm"
+            onClick={() => setEditing(null)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="w3-st-pill w3-co-pill w3-pc-pill--sm"
+            disabled={busy || !editing.trim()}
+            onClick={() => {
+              onEdit(message.id, editing);
+              setEditing(null);
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    ) : null;
+  const editButton = (
+    <button
+      type="button"
+      disabled={busy}
+      title="Change what it says. The next turn reads the new text."
+      onClick={() => setEditing(message.content)}
+    >
+      <Icon name="pencil" size="xs" />
+      Edit
+    </button>
+  );
   if (message.role === 'tool') {
     return exchange ? (
       <ToolLine exchange={exchange} history={history} onShowRevision={onShowRevision} />
@@ -194,7 +282,10 @@ const TalkMessage = memo(function TalkMessage({
         <div className="w3-co-msg" data-me>
           <div className="w3-pc-report">
             <div className="w3-pc-report__head">
-              <b>Sent back {message.batch.reports.length} replies</b>
+              <b>
+                Sent back {message.batch.reports.length}{' '}
+                {message.batch.reports.length === 1 ? 'reply' : 'replies'}
+              </b>
             </div>
             {message.batch.note ? (
               <div className="w3-pc-report__note">{message.batch.note}</div>
@@ -226,9 +317,14 @@ const TalkMessage = memo(function TalkMessage({
     if (isContinueRequest(message.content)) return null;
     return (
       <div className="w3-co-msg" data-me>
-        <div className="w3-co-msg__bubble">
-          <Markdown text={message.content} />
-        </div>
+        {editor ?? (
+          <>
+            <div className="w3-co-msg__bubble">
+              <Markdown text={message.content} />
+            </div>
+            <div className="w3-co-msg__tools">{editButton}</div>
+          </>
+        )}
       </div>
     );
   }
@@ -246,16 +342,19 @@ const TalkMessage = memo(function TalkMessage({
       </div>
       <div className="w3-co-msg__body">
         {message.reasoning ? <Reasoning text={message.reasoning} /> : null}
-        {message.content.trim() ? <Markdown text={message.content} /> : null}
+        {editor ?? (message.content.trim() ? <Markdown text={message.content} /> : null)}
       </div>
-      {message.incomplete && isLast ? (
+      {editor ? null : (
         <div className="w3-co-msg__tools">
-          <button type="button" disabled={busy} onClick={onContinue}>
-            <Icon name="forward" size="xs" />
-            Continue
-          </button>
+          {message.incomplete && isLast ? (
+            <button type="button" disabled={busy} onClick={onContinue}>
+              <Icon name="forward" size="xs" />
+              Continue
+            </button>
+          ) : null}
+          {message.content.trim() ? editButton : null}
         </div>
-      ) : null}
+      )}
     </div>
   );
 });
@@ -553,11 +652,13 @@ function Streaming({
 
 function Composer({
   controller,
+  testing,
   presets,
   references,
   history,
 }: {
   controller: PresetCocreatorController;
+  testing: PresetTestingController;
   presets: readonly PresetSummary[];
   references: readonly ReferencePresetSummary[];
   history: readonly PresetDraftRevision[];
@@ -591,8 +692,18 @@ function Composer({
     textRef.current?.focus({ preventScroll: true });
   };
 
+  const queue = controller.session.document.batchQueue;
+  const batching = queue.items.length > 0 && !comparison;
+
   const send = () => {
     if (controller.busy) return;
+    if (batching) {
+      const note = draft.trim();
+      testing.updateBatch((current) => ({ ...current, note }));
+      setDraft('');
+      void controller.sendBatch().catch(() => {});
+      return;
+    }
     if (comparison) {
       const focus = draft;
       setComparison(null);
@@ -637,6 +748,71 @@ function Composer({
           </button>
         </div>
       ) : null}
+      {batching ? (
+        <div className="w3-pc-batch">
+          <div className="w3-pc-batch__head">
+            <Icon name="forward" size="xs" />
+            <b>
+              {queue.items.length} {queue.items.length === 1 ? 'reply' : 'replies'} to send back
+            </b>
+            <span className="w3-co-gap" />
+            <button
+              type="button"
+              className="w3-pc-incl"
+              aria-pressed={queue.includePrompt}
+              onClick={() =>
+                testing.updateBatch((q) => ({ ...q, includePrompt: !q.includePrompt }))
+              }
+            >
+              Prompt
+            </button>
+            <button
+              type="button"
+              className="w3-pc-incl"
+              aria-pressed={queue.includeDiagnostics}
+              onClick={() =>
+                testing.updateBatch((q) => ({ ...q, includeDiagnostics: !q.includeDiagnostics }))
+              }
+            >
+              Diagnostics
+            </button>
+            <button
+              type="button"
+              className="w3-pc-incl"
+              aria-pressed={queue.includeTranscript}
+              onClick={() =>
+                testing.updateBatch((q) => ({ ...q, includeTranscript: !q.includeTranscript }))
+              }
+            >
+              Whole conversation
+            </button>
+          </div>
+          {queue.items.map((item) => (
+            <div key={item.id} className="w3-pc-batch__item">
+              <span className="w3-pc-batch__who">
+                {item.characterName ?? 'Test'}
+                {typeof item.presetUsed?.revision === 'number'
+                  ? ` · revision ${item.presetUsed.revision}`
+                  : ''}
+              </span>
+              <input
+                value={item.note}
+                placeholder={(item.replyText ?? '').slice(0, 80) || 'A note on this one (optional)'}
+                aria-label={`A note on ${item.characterName ?? 'this reply'}`}
+                onChange={(event) => testing.setBatchItemNote(item.id, event.target.value)}
+              />
+              <button
+                type="button"
+                className="w3-pc-x"
+                aria-label="Take it out of the batch"
+                onClick={() => testing.removeBatchItem(item.id)}
+              >
+                <Icon name="close" size="xs" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {problem ? <p className="w3-pc-problem">{problem}</p> : null}
       <div className="w3-co-box">
         <Popover
@@ -663,7 +839,9 @@ function Composer({
               placeholder={
                 comparison
                   ? 'What to look at (optional)'
-                  : 'Ask for a change, or /compare with another preset'
+                  : batching
+                    ? 'What should it look at across them? (optional)'
+                    : 'Ask for a change, or /compare with another preset'
               }
               onChange={(event) => {
                 setDraft(event.target.value);
@@ -740,7 +918,7 @@ function Composer({
               type="button"
               className="w3-co-send"
               aria-label="Send"
-              disabled={Boolean(blocked) || (!comparison && !draft.trim())}
+              disabled={Boolean(blocked) || (!comparison && !batching && !draft.trim())}
               title={blocked ?? undefined}
               onClick={send}
             >

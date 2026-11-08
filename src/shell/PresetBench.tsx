@@ -45,6 +45,7 @@ import { Avatar } from './Avatar.tsx';
 import { Switch } from './controls.tsx';
 import { Icon } from './icons.tsx';
 import type { PromptSheet } from './PresetRail.tsx';
+import { CompareSheet, InspectSheet } from './PresetSheets.tsx';
 import {
   formatUsd,
   latestReply,
@@ -62,6 +63,7 @@ export interface PresetBenchProps {
   controller: PresetCocreatorController;
   testing: PresetTestingController;
   sheet: PromptSheet | null;
+  onOpenSheet: (sheet: PromptSheet) => void;
   onCloseSheet: () => void;
   presets: readonly PresetSummary[];
   references: readonly ReferencePresetSummary[];
@@ -94,7 +96,25 @@ export function PresetBench(props: PresetBenchProps) {
         <h3>Bench</h3>
         <small>{props.modelName ?? 'No model'}</small>
       </div>
-      {props.sheet ? (
+      {props.sheet?.kind === 'inspect' ? (
+        <InspectSheet
+          key={props.sheet.evidenceId}
+          {...inspected(tests, props.sheet.testId, props.sheet.evidenceId)}
+          nameOf={(identifier) =>
+            session.current.preset.prompts?.find((p) => p.identifier === identifier)?.name ||
+            identifier
+          }
+          onClose={props.onCloseSheet}
+        />
+      ) : props.sheet?.kind === 'compare' ? (
+        <CompareSheet
+          label={props.sheet.label}
+          here={props.sheet.here}
+          there={props.sheet.there}
+          revision={props.sheet.revision}
+          onClose={props.onCloseSheet}
+        />
+      ) : props.sheet ? (
         <PromptEditor
           key={props.sheet.kind === 'prompt' ? props.sheet.identifier : 'json'}
           sheet={props.sheet}
@@ -139,6 +159,13 @@ export function PresetBench(props: PresetBenchProps) {
       )}
     </section>
   );
+}
+
+function inspected(tests: readonly PresetTest[], testId: string, evidenceId: string) {
+  const test = tests.find((entry) => entry.id === testId);
+  const evidence = test?.evidence.find((entry) => entry.id === evidenceId) ?? null;
+  const name = test?.scenario.character.name || NO_CARD_DEFAULT_NAME;
+  return { evidence, title: `${name}’s reply` };
 }
 
 // ---------- Tests ----------
@@ -766,7 +793,8 @@ const TestMessage = memo(function TestMessage(
         {greeting ? (
           <span className="w3-pc-rev">greeting</span>
         ) : evidence ? (
-          <span
+          <button
+            type="button"
             className="w3-pc-rev"
             data-old={
               test.presetSource.kind === 'draft' &&
@@ -774,12 +802,16 @@ const TestMessage = memo(function TestMessage(
                 ? true
                 : undefined
             }
-            title={evidence.status === 'complete' ? `${evidence.model}` : evidence.error}
+            title="See the prompt and request this reply went out with"
+            onClick={() =>
+              props.onOpenSheet({ kind: 'inspect', testId: test.id, evidenceId: evidence.id })
+            }
           >
             {evidence.presetUsed?.source.kind && evidence.presetUsed.source.kind !== 'draft'
               ? evidence.presetUsed.label
               : `revision ${evidence.draftRevision}`}
-          </span>
+            <Icon name="inspect" size="xs" />
+          </button>
         ) : null}
       </div>
       {reasoning && !pair ? <Reasoning text={reasoning} /> : null}
@@ -825,6 +857,12 @@ function ReplyActions(
   const [diagnostics, setDiagnostics] = useState(true);
   const [transcript, setTranscript] = useState(false);
   const sent = wasSentBack(controller.session.document.messages, test.id, message);
+  const queued = controller.session.document.batchQueue.items.some(
+    (item) =>
+      item.testId === test.id &&
+      item.throughMessageId === message.id &&
+      item.replyText === message.mes,
+  );
   const blocked = props.coCreatorBlocked ?? (testing.busy ? 'Wait for the reply to finish.' : null);
   const at = (message.swipe_id ?? 0) + 1;
 
@@ -874,6 +912,26 @@ function ReplyActions(
           Regenerate
         </button>
         <span className="w3-co-gap" />
+        {queued ? (
+          <span
+            className="w3-pc-act w3-pc-act--sent"
+            title="Goes with the next message to the Co-Creator"
+          >
+            <Icon name="check" size="xs" />
+            In the batch
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="w3-pc-act"
+            disabled={testing.busy}
+            title="Send it back together with others: it waits in the Co-Creator's box"
+            onClick={() => testing.queueReply(message.id)}
+          >
+            <Icon name="plus" size="xs" />
+            Batch
+          </button>
+        )}
         {sent && !open ? (
           <span className="w3-pc-act w3-pc-act--sent">
             <Icon name="check" size="xs" />
@@ -995,7 +1053,7 @@ function PromptEditor({
   onApply,
   onClose,
 }: {
-  sheet: PromptSheet;
+  sheet: Extract<PromptSheet, { kind: 'prompt' | 'json' }>;
   preset: Preset;
   busy: boolean;
   onApply: (preset: Preset, summary: string) => Promise<void>;

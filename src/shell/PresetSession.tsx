@@ -441,6 +441,7 @@ export function PresetSession(props: PresetSessionProps) {
             controller={controller}
             testing={testing}
             sheet={sheet}
+            onOpenSheet={setSheet}
             onCloseSheet={() => setSheet(null)}
             presets={props.presets}
             references={props.references}

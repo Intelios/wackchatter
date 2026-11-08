@@ -23,7 +23,13 @@ import { Icon } from './icons.tsx';
 import { type CompareLens, compareLens, litPrompts, railRows } from './presetcc.ts';
 import { kTokens } from './studio.ts';
 
-export type PromptSheet = { kind: 'prompt'; identifier: string } | { kind: 'json' };
+export type PromptSheet =
+  | { kind: 'prompt'; identifier: string }
+  | { kind: 'json' }
+  /** One test reply's evidence: the prompt and request it went out with, and its counts. */
+  | { kind: 'inspect'; testId: string; evidenceId: string }
+  /** The preset and another, prompt by prompt. */
+  | { kind: 'compare'; label: string; here: Preset; there: Preset; revision: number };
 
 type Lens = { source: PresetComparisonSource; label: string };
 
@@ -313,15 +319,34 @@ export function PresetRail({
                 ? ` · settings: ${marks.settings.slice(0, 3).join(', ')}${marks.settings.length > 3 ? '…' : ''}`
                 : ''}
             </span>
-            <button
-              type="button"
-              className="w3-pc-link"
-              disabled={Boolean(askBlocked)}
-              title={askBlocked ?? 'Ask the Co-Creator what the differences do'}
-              onClick={() => onAsk(lens.source, lens.label)}
-            >
-              Ask the Co-Creator
-            </button>
+            <span className="w3-pc-lensbar__acts">
+              <button
+                type="button"
+                className="w3-pc-link"
+                disabled={!other}
+                onClick={() =>
+                  other &&
+                  onOpen({
+                    kind: 'compare',
+                    label: lens.label,
+                    here: preset,
+                    there: other,
+                    revision: shown.revision,
+                  })
+                }
+              >
+                Side by side
+              </button>
+              <button
+                type="button"
+                className="w3-pc-link"
+                disabled={Boolean(askBlocked)}
+                title={askBlocked ?? 'Ask the Co-Creator what the differences do'}
+                onClick={() => onAsk(lens.source, lens.label)}
+              >
+                Ask the Co-Creator
+              </button>
+            </span>
           </div>
         ) : null}
 
