@@ -7,12 +7,17 @@
 
 import type { Persona } from '@shared/types/chat.ts';
 import type {
+  DialogueColorOverride,
   DialogueColorSettings,
   GuidanceSettings,
   QuickCommand,
 } from '@shared/types/settings.ts';
 import { memo, type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  needsPortrait,
+  resolveDialogueColor,
+  useAvatarPalette,
+} from '../features/chat/avatarColor.ts';
 import type { UseChat } from '../features/chat/useChat.ts';
 import type { ChatSurface } from '../features/chat/useChatSurface.ts';
 import { personaApi } from '../lib/api.ts';
@@ -213,6 +218,7 @@ export function ChatStage({
                 avatarUrl={characterAvatarUrl}
                 dialogueActive={characterDialogue.active}
                 dialogueColor={characterDialogue.color}
+                dialogueGradient={characterDialogue.gradient}
               />
             );
           })}
@@ -308,12 +314,12 @@ function Problem({
 
 type UserMessageProps = Omit<
   Parameters<typeof Message>[0],
-  'avatarUrl' | 'dialogueActive' | 'dialogueColor'
+  'avatarUrl' | 'dialogueActive' | 'dialogueColor' | 'dialogueGradient'
 > & {
   persona: Persona | null;
   avatarVersion: number | undefined;
   dialogueEnabled: boolean;
-  override: string | null | undefined;
+  override: DialogueColorOverride | undefined;
 };
 
 /** A user row with its own speaker's face and colour, resolved per message. */
@@ -327,7 +333,7 @@ const UserMessage = memo(function UserMessage({
   const avatarUrl = persona?.avatar
     ? personaApi.avatarUrl(persona.id, avatarVersion ?? persona.avatar)
     : null;
-  const autoColor = useAvatarColor(dialogueEnabled && override === undefined ? avatarUrl : null);
+  const autoColor = useAvatarPalette(dialogueEnabled && needsPortrait(override) ? avatarUrl : null);
   const dialogue = resolveDialogueColor(dialogueEnabled, override, autoColor);
   return (
     <Message
@@ -335,6 +341,7 @@ const UserMessage = memo(function UserMessage({
       avatarUrl={avatarUrl}
       dialogueActive={dialogue.active}
       dialogueColor={dialogue.color}
+      dialogueGradient={dialogue.gradient}
     />
   );
 });

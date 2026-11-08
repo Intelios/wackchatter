@@ -331,6 +331,32 @@ function normalizeDialogueColorMap(value: unknown): Record<string, DialogueColor
     if (candidate === null) entries.push([id, null]);
     else if (typeof candidate === 'string' && HEX_COLOR.test(candidate)) {
       entries.push([id, candidate.toLowerCase()]);
+    } else if (
+      isRecord(candidate) &&
+      (candidate.aura === 'single' || candidate.aura === 'gradient') &&
+      (candidate.dialogue === 'solid' ||
+        candidate.dialogue === 'gradient' ||
+        candidate.dialogue === 'off')
+    ) {
+      const treatment = { aura: candidate.aura, dialogue: candidate.dialogue } as const;
+      if (candidate.source === 'portrait') {
+        entries.push([id, { source: 'portrait', ...treatment }]);
+      } else if (
+        candidate.source === 'custom' &&
+        Array.isArray(candidate.colors) &&
+        candidate.colors.length >= 1 &&
+        candidate.colors.length <= 3 &&
+        candidate.colors.every((color) => typeof color === 'string' && HEX_COLOR.test(color))
+      ) {
+        entries.push([
+          id,
+          {
+            source: 'custom',
+            colors: candidate.colors.map((color: string) => color.toLowerCase()),
+            ...treatment,
+          },
+        ]);
+      }
     }
   }
   return Object.fromEntries(entries);

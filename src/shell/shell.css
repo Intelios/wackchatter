@@ -21,6 +21,26 @@
   inherits: true;
   initial-value: 0.12;
 }
+@property --w3-h2 {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 299;
+}
+@property --w3-c2 {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.12;
+}
+@property --w3-h3 {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 237;
+}
+@property --w3-c3 {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.12;
+}
 @property --w3-ph {
   syntax: "<number>";
   inherits: true;
@@ -236,21 +256,34 @@
   transition:
     --w3-h 1000ms var(--w3-out),
     --w3-c 1000ms var(--w3-out),
+    --w3-h2 1000ms var(--w3-out),
+    --w3-c2 1000ms var(--w3-out),
+    --w3-h3 1000ms var(--w3-out),
+    --w3-c3 1000ms var(--w3-out),
     --w3-tint 600ms var(--w3-out);
   background:
     radial-gradient(
       360px 340px at 120px 60px,
-      oklch(0.62 calc(0.19 * var(--w3-c)) var(--w3-h) / calc(0.3 * var(--w3-tint))),
+      oklch(
+        var(--wc-aura-l1) calc(var(--wc-aura-c1) * var(--w3-c)) var(--w3-h) /
+        calc(var(--wc-aura-a1) * var(--w3-tint))
+      ),
       transparent
     ),
     radial-gradient(
       320px 310px at calc(100% - 80px) 390px,
-      oklch(0.56 calc(0.17 * var(--w3-c)) calc(var(--w3-h) + 34) / calc(0.22 * var(--w3-tint))),
+      oklch(
+        var(--wc-aura-l2) calc(var(--wc-aura-c2) * var(--w3-c2)) var(--w3-h2) /
+        calc(var(--wc-aura-a2) * var(--w3-tint))
+      ),
       transparent
     ),
     radial-gradient(
       430px 270px at 50% 100%,
-      oklch(0.52 calc(0.16 * var(--w3-c)) calc(var(--w3-h) - 28) / calc(0.22 * var(--w3-tint))),
+      oklch(
+        var(--wc-aura-l3) calc(var(--wc-aura-c3) * var(--w3-c3)) var(--w3-h3) /
+        calc(var(--wc-aura-a3) * var(--w3-tint))
+      ),
       transparent
     );
 }
@@ -388,6 +421,11 @@
  * covers every morph; the ambient animations are switched off by name.
  */
 @media (prefers-reduced-motion: reduce) {
+  .wc3 .w3-aura,
+  .wc3 .w3-line {
+    transition: none;
+  }
+
   .wc3 {
     --w3-morph: 1ms;
     --w3-quick: 1ms;

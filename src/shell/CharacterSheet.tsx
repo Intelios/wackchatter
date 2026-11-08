@@ -15,8 +15,8 @@ import {
   type DialogueColorOverride,
 } from '@shared/types/settings.ts';
 import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { DIALOGUE_COLOR_PRESETS } from '../components/DialogueColorField.tsx';
-import { useAvatarColor } from '../features/chat/avatarColor.ts';
+import { DialogueColorField as ColourSwatches } from '../components/DialogueColorField.tsx';
+import { useAvatarPalette } from '../features/chat/avatarColor.ts';
 import { Markdown } from '../features/chat/Markdown.tsx';
 import { StarIcon } from '../layout/icons.tsx';
 import { characterApi } from '../lib/api.ts';
@@ -31,7 +31,7 @@ import {
 } from './sheet.ts';
 import './sheet.css';
 
-const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+export { ColourSwatches };
 
 export interface CharacterSheetProps {
   avatar: string;
@@ -60,7 +60,11 @@ export interface CharacterSheetProps {
 export function useHeld<T>(saved: T): [T, (value: T) => void] {
   const [held, setHeld] = useState<{ value: T } | null>(null);
   useEffect(() => {
-    if (held && Object.is(held.value, saved)) setHeld(null);
+    if (
+      held &&
+      (Object.is(held.value, saved) || JSON.stringify(held.value) === JSON.stringify(saved))
+    )
+      setHeld(null);
   }, [held, saved]);
   return [held ? held.value : saved, (value: T) => setHeld({ value })];
 }
@@ -106,7 +110,7 @@ export function CharacterSheet({
 
   const name = detail?.name ?? summary?.name ?? avatar.replace(/\.png$/i, '');
   const imageUrl = characterApi.imageUrl(avatar, avatarVersion ?? modified);
-  const autoColor = useAvatarColor(imageUrl);
+  const autoColor = useAvatarPalette(imageUrl);
   const data = detail?.card.data;
   const names = { char: name, user: userName };
 
@@ -161,11 +165,11 @@ export function CharacterSheet({
             }}
           />
         </div>
-        <div className="w3-sheet__field">
+        <div className="w3-sheet__field w3-sheet__field--colour">
           <span>Colour</span>
           <ColourSwatches
             value={color}
-            autoColor={autoColor}
+            autoPalette={autoColor}
             onChange={(value) => {
               holdColor(value);
               onDialogueColor(value);
@@ -370,108 +374,6 @@ function RatingStars({
         );
       })}
       <small>{value === undefined ? 'Unrated' : `${value} of ${CHARACTER_RATING_MAX}`}</small>
-    </div>
-  );
-}
-
-/**
- * The dialogue colour: from the portrait (the default), one of the presets, your own, or
- * off for this speaker. The open chat's Aura follows the pick, shifting over a second.
- */
-export function ColourSwatches({
-  value,
-  autoColor,
-  onChange,
-}: {
-  value: DialogueColorOverride | undefined;
-  autoColor: string | null;
-  onChange: (value: DialogueColorOverride | undefined) => void;
-}) {
-  const [custom, setCustom] = useState<string | null>(null);
-  const isPreset = DIALOGUE_COLOR_PRESETS.some(
-    (preset) => typeof value === 'string' && preset.value.toLowerCase() === value.toLowerCase(),
-  );
-  const ownColour = typeof value === 'string' && !isPreset ? value : null;
-
-  return (
-    <div className="w3-sheet__swatches">
-      <button
-        type="button"
-        className="w3-sheet__chip"
-        aria-pressed={value === undefined}
-        onClick={() => onChange(undefined)}
-      >
-        <i style={{ background: autoColor ?? 'var(--w3-faint)' }} />
-        From portrait
-      </button>
-      {DIALOGUE_COLOR_PRESETS.map((preset) => (
-        <button
-          key={preset.value}
-          type="button"
-          className="w3-sheet__swatch"
-          style={{ '--sw': preset.value } as React.CSSProperties}
-          aria-pressed={
-            typeof value === 'string' && preset.value.toLowerCase() === value.toLowerCase()
-          }
-          aria-label={preset.label}
-          title={preset.label}
-          onClick={() => onChange(preset.value)}
-        />
-      ))}
-      {ownColour ? (
-        <button
-          type="button"
-          className="w3-sheet__swatch"
-          style={{ '--sw': ownColour } as React.CSSProperties}
-          aria-pressed
-          aria-label={`Your colour ${ownColour}`}
-          title={ownColour}
-          onClick={() => setCustom(ownColour)}
-        />
-      ) : null}
-      {custom === null ? (
-        <button
-          type="button"
-          className="w3-sheet__chip"
-          onClick={() => setCustom(ownColour ?? autoColor ?? '#')}
-          title="Type your own colour"
-        >
-          <Icon name="plus" size="xs" />
-          Own
-        </button>
-      ) : (
-        <input
-          className="w3-sheet__hex"
-          // biome-ignore lint/a11y/noAutofocus: opened by a click on "Own", to type into at once
-          autoFocus
-          value={custom}
-          aria-label="Your colour, as #rrggbb"
-          spellCheck={false}
-          onChange={(event) => setCustom(event.target.value)}
-          onBlur={() => setCustom(null)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              // Closes the field, not the whole tool.
-              event.preventDefault();
-              setCustom(null);
-            }
-            if (event.key === 'Enter' && HEX_COLOR.test(custom.trim())) {
-              onChange(custom.trim().toLowerCase());
-              setCustom(null);
-            }
-          }}
-          data-invalid={!HEX_COLOR.test(custom.trim()) || undefined}
-        />
-      )}
-      <button
-        type="button"
-        className="w3-sheet__chip"
-        aria-pressed={value === null}
-        onClick={() => onChange(null)}
-        title="No dialogue colour for this character"
-      >
-        Off
-      </button>
     </div>
   );
 }

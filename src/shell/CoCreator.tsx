@@ -19,7 +19,11 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import type { AppController } from '../app/useAppController.ts';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 import { Popover } from '../components/Popover.tsx';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  needsPortrait,
+  resolveSpeakerColors,
+  useAvatarPalette,
+} from '../features/chat/avatarColor.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { characterApi, cocreatorApi, personaApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
@@ -181,8 +185,8 @@ export function CoCreator({ controller }: { controller: AppController }) {
     ? personaApi.avatarUrl(persona.id, library.personaAvatarVersions[persona.id] ?? persona.avatar)
     : null;
   const personaOverride = persona ? prefs.dialogueColors.personas[persona.id] : undefined;
-  const personaAuto = useAvatarColor(personaOverride == null ? personaUrl : null);
-  const personaColor = resolveDialogueColor(true, personaOverride, personaAuto).color;
+  const personaAuto = useAvatarPalette(needsPortrait(personaOverride) ? personaUrl : null);
+  const personaColor = resolveSpeakerColors(true, personaOverride, personaAuto).aura;
   useAura(rootRef, washRef, LIME, personaColor, 'cocreator');
   const [firstAura] = useState(() => initialAuraStyle(LIME, personaColor));
 

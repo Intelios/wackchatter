@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { rehypeDialogue } from './dialogue.ts';
+import './dialogueGradient.css';
 
 const PLUGINS = [remarkGfm, remarkBreaks];
 const REHYPE_PLUGINS = [rehypeDialogue];

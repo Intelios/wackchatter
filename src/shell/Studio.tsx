@@ -14,7 +14,11 @@ import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppController } from '../app/useAppController.ts';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  needsPortrait,
+  resolveSpeakerColors,
+  useAvatarPalette,
+} from '../features/chat/avatarColor.ts';
 import { characterApi, personaApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { downloadUrl } from '../lib/download.ts';
@@ -221,17 +225,17 @@ export function Studio({ controller }: { controller: AppController }) {
           (detail?.avatar === focus ? detail.modified : (focusCard?.modified ?? 0)),
       )
     : null;
-  const autoColor = useAvatarColor(focusUrl);
+  const autoColor = useAvatarPalette(focusUrl);
   const override = focus ? prefs.dialogueColors.characters[focus] : undefined;
-  const cardColor = resolveDialogueColor(true, override, autoColor).color;
+  const cardColor = resolveSpeakerColors(true, override, autoColor).aura;
 
   const persona = library.personas.find((entry) => entry.id === settings?.personaId) ?? null;
   const personaUrl = persona?.avatar
     ? personaApi.avatarUrl(persona.id, library.personaAvatarVersions[persona.id] ?? persona.avatar)
     : null;
   const personaOverride = persona ? prefs.dialogueColors.personas[persona.id] : undefined;
-  const personaAuto = useAvatarColor(personaOverride == null ? personaUrl : null);
-  const personaColor = resolveDialogueColor(true, personaOverride, personaAuto).color;
+  const personaAuto = useAvatarPalette(needsPortrait(personaOverride) ? personaUrl : null);
+  const personaColor = resolveSpeakerColors(true, personaOverride, personaAuto).aura;
 
   useAura(rootRef, washRef, cardColor, personaColor, detail?.avatar ?? 'studio');
   const [firstAura] = useState(() => initialAuraStyle(cardColor, personaColor));

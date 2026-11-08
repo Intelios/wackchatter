@@ -21,7 +21,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi } from '../../lib/api.ts';
 import { matchPersonaByName, personaDisplayName } from '../persona/personaRoster.ts';
-import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
+import { needsPortrait, resolveDialogueColor, useAvatarPalette } from './avatarColor.ts';
 import type { CardReaderInit } from './CardReader.tsx';
 import type { RecapMeta, RecapViewState } from './RecapOverlay.tsx';
 import { parseSlashCommand, type SlashCommand } from './slashCommands.ts';
@@ -101,8 +101,8 @@ export function useChatSurface({
   const characterAvatarUrl = avatar ? characterApi.imageUrl(avatar, characterAvatarVersion) : null;
 
   const characterOverride = avatar ? dialogueColors.characters[avatar] : undefined;
-  const characterAutoColor = useAvatarColor(
-    dialogueColors.enabled && characterOverride === undefined ? characterAvatarUrl : null,
+  const characterAutoColor = useAvatarPalette(
+    dialogueColors.enabled && needsPortrait(characterOverride) ? characterAvatarUrl : null,
   );
   const characterDialogue = resolveDialogueColor(
     dialogueColors.enabled,

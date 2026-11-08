@@ -11,7 +11,7 @@ import { DownloadIcon, StarIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { downloadUrl } from '../../lib/download.ts';
-import { useAvatarColor } from '../chat/avatarColor.ts';
+import { useAvatarPalette } from '../chat/avatarColor.ts';
 import { useCardDraft } from '../studio/useCardDraft.ts';
 import { EmbeddedBook } from './EmbeddedBook.tsx';
 import './CharacterEditor.css';
@@ -68,7 +68,7 @@ export function CharacterEditor({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
   const avatarUrl = characterApi.imageUrl(avatar, avatarVersion);
-  const autoDialogueColor = useAvatarColor(dialogueColor === undefined ? avatarUrl : null);
+  const autoDialogueColor = useAvatarPalette(avatarUrl);
 
   async function handleImageChange(file: File | undefined) {
     if (!file) return;
@@ -236,7 +236,7 @@ export function CharacterEditor({
       <Section title="Appearance">
         <DialogueColorField
           value={dialogueColor}
-          autoColor={autoDialogueColor}
+          autoPalette={autoDialogueColor}
           globallyEnabled={dialogueColorsEnabled}
           onChange={onDialogueColorChange}
         />

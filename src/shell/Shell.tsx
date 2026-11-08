@@ -24,7 +24,11 @@ import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  needsPortrait,
+  resolveSpeakerColors,
+  useAvatarPalette,
+} from '../features/chat/avatarColor.ts';
 import { useChatSurface } from '../features/chat/useChatSurface.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { NexusExplorer } from '../features/nexus/NexusExplorer.tsx';
@@ -185,18 +189,18 @@ function ChatShell({
   // The theme follows the character's colour even when dialogue colouring is switched off:
   // that setting is about quoted speech, not the app.
   const characterOverride = prefs.dialogueColors.characters[active.avatar];
-  const characterAuto = useAvatarColor(
-    characterOverride == null ? surface.characterAvatarUrl : null,
+  const characterAuto = useAvatarPalette(
+    needsPortrait(characterOverride) ? surface.characterAvatarUrl : null,
   );
-  const auraColor = characterOverride ?? characterAuto ?? null;
+  const auraColor = resolveSpeakerColors(true, characterOverride, characterAuto).aura;
 
   const persona = chat.persona;
   const personaAvatarUrl = persona?.avatar
     ? personaApi.avatarUrl(persona.id, library.personaAvatarVersions[persona.id] ?? persona.avatar)
     : null;
   const personaOverride = persona ? prefs.dialogueColors.personas[persona.id] : undefined;
-  const personaAuto = useAvatarColor(personaOverride == null ? personaAvatarUrl : null);
-  const personaColor = resolveDialogueColor(true, personaOverride, personaAuto).color;
+  const personaAuto = useAvatarPalette(needsPortrait(personaOverride) ? personaAvatarUrl : null);
+  const personaColor = resolveSpeakerColors(true, personaOverride, personaAuto).aura;
 
   useAura(rootRef, washRef, auraColor, personaColor, active.avatar);
   const [firstAura] = useState(() => initialAuraStyle(auraColor, personaColor));

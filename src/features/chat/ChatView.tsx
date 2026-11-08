@@ -28,7 +28,7 @@ import type { RightPanelId } from '../../layout/panels.tsx';
 import { chatApi, personaApi } from '../../lib/api.ts';
 import { downloadUrl } from '../../lib/download.ts';
 import { PersonaChip } from '../persona/PersonaChip.tsx';
-import { resolveDialogueColor, useAvatarColor } from './avatarColor.ts';
+import { needsPortrait, resolveDialogueColor, useAvatarPalette } from './avatarColor.ts';
 import { BranchTree } from './BranchTree.tsx';
 import { CardReader } from './CardReader.tsx';
 import { ChatMenu } from './ChatMenu.tsx';
@@ -304,6 +304,7 @@ export function ChatView({
                   avatarUrl={characterAvatarUrl}
                   dialogueActive={characterDialogue.active}
                   dialogueColor={characterDialogue.color}
+                  dialogueGradient={characterDialogue.gradient}
                   // Character rows only. A persona has no card, so a user row's avatar
                   // stays a picture rather than becoming a control that opens someone
                   // else's description.
@@ -669,7 +670,7 @@ export function ChatView({
 
 type UserMessageBubbleProps = Omit<
   ComponentProps<typeof MessageBubble>,
-  'avatarUrl' | 'dialogueActive' | 'dialogueColor'
+  'avatarUrl' | 'dialogueActive' | 'dialogueColor' | 'dialogueGradient'
 > & {
   /** The persona this message was sent as, already resolved from its recorded id. */
   persona: Persona | null;
@@ -698,7 +699,7 @@ const UserMessageBubble = memo(function UserMessageBubble({
   const avatarUrl = persona?.avatar
     ? personaApi.avatarUrl(persona.id, avatarVersion ?? persona.avatar)
     : null;
-  const autoColor = useAvatarColor(dialogueEnabled && override === undefined ? avatarUrl : null);
+  const autoColor = useAvatarPalette(dialogueEnabled && needsPortrait(override) ? avatarUrl : null);
   const dialogue = resolveDialogueColor(dialogueEnabled, override, autoColor);
 
   return (
@@ -707,6 +708,7 @@ const UserMessageBubble = memo(function UserMessageBubble({
       avatarUrl={avatarUrl}
       dialogueActive={dialogue.active}
       dialogueColor={dialogue.color}
+      dialogueGradient={dialogue.gradient}
     />
   );
 });

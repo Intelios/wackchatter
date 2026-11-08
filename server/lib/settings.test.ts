@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '../../shared/composer/layout.ts';
 import type { Connection } from '../../shared/providers/types.ts';
-import type { AppSettings } from '../../shared/types/settings.ts';
+import type { AppSettings, SpeakerPaletteOverride } from '../../shared/types/settings.ts';
 import {
   DEFAULT_COCREATOR,
   DEFAULT_CONNECTION_ID,
@@ -337,6 +337,64 @@ describe('mergeSettings', () => {
 
     expect(next.dialogueColors.characters).toEqual({ good: '#abcdef', off: null });
     expect(next.dialogueColors.personas).toEqual({ old: '#abcdef' });
+  });
+
+  test('portrait treatments and pinned palettes round-trip beside legacy colours', () => {
+    const portrait: SpeakerPaletteOverride = {
+      source: 'portrait',
+      aura: 'gradient',
+      dialogue: 'solid',
+    };
+    const pinned: SpeakerPaletteOverride = {
+      source: 'custom',
+      colors: ['#123ABC', '#F0D080', '#AABBCC'],
+      aura: 'single',
+      dialogue: 'gradient',
+    };
+    const next = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { auto: portrait, pinned, legacy: '#ABCDEF', off: null },
+        personas: { you: { ...portrait, dialogue: 'off' } },
+      } as never,
+    });
+    expect(next.dialogueColors.characters).toEqual({
+      auto: portrait,
+      pinned: { ...pinned, colors: ['#123abc', '#f0d080', '#aabbcc'] },
+      legacy: '#abcdef',
+      off: null,
+    });
+    const reloaded = mergeSettings(base(), JSON.parse(JSON.stringify(next)));
+    expect(reloaded.dialogueColors).toEqual(next.dialogueColors);
+    const toggled = mergeSettings(next, { dialogueColors: { enabled: false } as never });
+    expect(toggled.dialogueColors.characters).toEqual(next.dialogueColors.characters);
+    expect(toggled.dialogueColors.personas).toEqual(next.dialogueColors.personas);
+  });
+
+  test('malformed palette overrides cannot reach the renderer', () => {
+    const palette: SpeakerPaletteOverride = {
+      source: 'custom',
+      colors: ['#123456'],
+      aura: 'single',
+      dialogue: 'off',
+    };
+    const next = mergeSettings(base(), {
+      dialogueColors: {
+        characters: {
+          valid: palette,
+          empty: { ...palette, colors: [] },
+          long: { ...palette, colors: Array(4).fill('#123456') },
+          css: { ...palette, colors: ['red'] },
+          mixed: { ...palette, colors: ['#123456', null] },
+          source: { ...palette, source: 'random' },
+          aura: { ...palette, aura: 'rainbow' },
+          dialogue: { ...palette, dialogue: 'rainbow' },
+          array: [],
+        },
+      } as never,
+    });
+    expect(next.dialogueColors.characters).toEqual({ valid: palette });
+    expect(next.dialogueColors.personas).toEqual({});
   });
 
   test('quick commands replace wholesale, an empty list clearing them all', () => {
@@ -932,6 +990,30 @@ describe('example set character identity changes', () => {
 });
 
 describe('dialogue colour identity changes', () => {
+  test('structured palettes follow identities on rename and deletion', () => {
+    const pinned: SpeakerPaletteOverride = {
+      source: 'custom',
+      colors: ['#123456', '#abcdef'],
+      aura: 'gradient',
+      dialogue: 'off',
+    };
+    const current = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { 'Old.png': pinned, kept: '#123456' },
+        personas: { you: pinned, kept: null },
+      } as never,
+    });
+    const renamed = reassignCharacterDialogueColor(current, 'Old.png', 'New.png')!;
+    expect(renamed.dialogueColors.characters).toEqual({ 'New.png': pinned, kept: '#123456' });
+    expect(
+      reassignCharacterDialogueColor(renamed, 'New.png', null)?.dialogueColors.characters,
+    ).toEqual({ kept: '#123456' });
+    expect(removePersonaDialogueColor(renamed, 'you')?.dialogueColors.personas).toEqual({
+      kept: null,
+    });
+  });
+
   test('a character rename re-keys its override without disturbing the rest', () => {
     const current = mergeSettings(base(), {
       dialogueColors: {

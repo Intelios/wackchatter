@@ -39,7 +39,11 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { Popover } from '../components/Popover.tsx';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  needsPortrait,
+  resolveDialogueColor,
+  useAvatarPalette,
+} from '../features/chat/avatarColor.ts';
 import { Markdown } from '../features/chat/Markdown.tsx';
 import { Reasoning } from '../features/chat/Reasoning.tsx';
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
@@ -800,7 +804,7 @@ const TestMessage = memo(function TestMessage(
     : test.scenario.characterId
       ? colours.characters[test.scenario.characterId]
       : undefined;
-  const autoColour = useAvatarColor(override == null ? url : null);
+  const autoColour = useAvatarPalette(needsPortrait(override) ? url : null);
   const dialogue = resolveDialogueColor(colours.enabled, override, autoColour);
   const evidence = !message.is_user ? swipeEvidence(test, message) : null;
   const greeting = !message.is_user && test.messages.indexOf(message) === 0 && !evidence;
@@ -812,7 +816,13 @@ const TestMessage = memo(function TestMessage(
       className="w3-pc-cm"
       data-me={message.is_user || undefined}
       data-dialogue={dialogue.active || undefined}
-      style={dialogue.color ? ({ '--w3-say': dialogue.color } as CSSProperties) : undefined}
+      data-dialogue-gradient={!!dialogue.gradient || undefined}
+      style={
+        {
+          '--w3-say': dialogue.color ?? 'var(--w3-dialogue)',
+          '--dialogue-gradient': dialogue.gradient ?? 'none',
+        } as CSSProperties
+      }
     >
       <div className="w3-pc-cm__who">
         <Avatar url={url} name={name} size="xs" who={message.is_user ? 'me' : 'char'} />

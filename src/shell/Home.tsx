@@ -33,12 +33,16 @@ import type { AppController } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 import {
-  cachedAvatarColor,
-  resolveDialogueColor,
-  useAvatarColor,
+  cachedAvatarPalette,
+  needsPortrait,
+  type PortraitPalette,
+  peekAvatarPalette,
+  resolveSpeakerColors,
+  useAvatarPalette,
 } from '../features/chat/avatarColor.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { characterApi, chatApi, personaApi, type VersionInfo, versionApi } from '../lib/api.ts';
+import type { AuraInput } from './aura.ts';
 import { useArm } from './controls.tsx';
 import {
   agoInWords,
@@ -236,16 +240,20 @@ export function HomeShell({
   // Every stacked character's colour, worked out once and kept: a name's colour must be
   // known before it is hovered, or the page would flash neutral on the way to it. Their
   // portraits are fetched up front for the same reason.
-  const [colors, setColors] = useState<Readonly<Record<string, string | null>>>({});
+  const [palettes, setPalettes] = useState<
+    Readonly<Record<string, { url: string; palette: PortraitPalette | null }>>
+  >({});
   useEffect(() => {
     let live = true;
     for (const entry of stack) {
       const url = avatarUrlOf(entry.avatar);
       void preloadPortrait(url);
-      void cachedAvatarColor(url).then((color) => {
+      void cachedAvatarPalette(url).then((palette) => {
         if (!live) return;
-        setColors((current) =>
-          current[entry.avatar] === color ? current : { ...current, [entry.avatar]: color },
+        setPalettes((current) =>
+          current[entry.avatar]?.url === url && current[entry.avatar]?.palette === palette
+            ? current
+            : { ...current, [entry.avatar]: { url, palette } },
         );
       });
     }
@@ -253,23 +261,39 @@ export function HomeShell({
       live = false;
     };
   }, [stack, avatarUrlOf]);
+  const paletteOf = useCallback(
+    (avatar: string) => {
+      const url = avatarUrlOf(avatar);
+      const known = palettes[avatar];
+      return known?.url === url ? known.palette : peekAvatarPalette(url);
+    },
+    [palettes, avatarUrlOf],
+  );
   const colorOf = useCallback(
     (avatar: string) => {
       const override = prefs.dialogueColors.characters[avatar];
-      return override === undefined ? colors[avatar] : override;
+      const known = paletteOf(avatar);
+      if (needsPortrait(override) && known === undefined) return undefined;
+      return resolveSpeakerColors(true, override, known ?? null).accent;
     },
-    [colors, prefs.dialogueColors.characters],
+    [paletteOf, prefs.dialogueColors.characters],
   );
+  const auraOf = (avatar: string) => {
+    const override = prefs.dialogueColors.characters[avatar];
+    const known = paletteOf(avatar);
+    if (needsPortrait(override) && known === undefined) return undefined;
+    return resolveSpeakerColors(true, override, known ?? null).aura;
+  };
 
   // Until a colour is known, the last one stays: never a flash of neutral in between.
-  const lastColor = useRef<string | null>(null);
+  const lastColor = useRef<AuraInput>(null);
   const wanted =
     screen === 'empty' || onApps
       ? LIME
       : screen === 'refused'
         ? null
         : shown
-          ? colorOf(shown.avatar)
+          ? auraOf(shown.avatar)
           : undefined;
   if (wanted !== undefined) lastColor.current = wanted;
   const coverColor = wanted === undefined ? lastColor.current : wanted;
@@ -279,8 +303,8 @@ export function HomeShell({
     ? personaApi.avatarUrl(persona.id, library.personaAvatarVersions[persona.id] ?? persona.avatar)
     : null;
   const personaOverride = persona ? prefs.dialogueColors.personas[persona.id] : undefined;
-  const personaAuto = useAvatarColor(personaOverride == null ? personaAvatarUrl : null);
-  const personaColor = resolveDialogueColor(true, personaOverride, personaAuto).color;
+  const personaAuto = useAvatarPalette(needsPortrait(personaOverride) ? personaAvatarUrl : null);
+  const personaColor = resolveSpeakerColors(true, personaOverride, personaAuto).aura;
 
   // Hovering re-tints without the wash a character switch sends: it is a preview, not a move.
   useAura(rootRef, washRef, coverColor, personaColor, 'home');

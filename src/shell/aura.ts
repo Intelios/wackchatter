@@ -1,6 +1,6 @@
 /**
- * Aura: the open character's dialogue colour, turned into the two numbers the whole 3.0
- * theme is derived from.
+ * Aura: original speaker colours turned into the hue/chroma pairs used by the 3.0 theme.
+ * The primary themes the interface; supporting colours belong to the ambient pools.
  *
  * The stylesheet builds every colour in OKLCH from a hue (`--h`) and a chroma factor (`--c`,
  * 0–1), so each surface keeps the same lightness whatever the character's colour is. That
@@ -11,14 +11,11 @@
  * Pure, so the conversion is pinned by tests rather than by eye.
  */
 
-export interface Oklch {
-  /** Perceived lightness, 0–1. */
-  l: number;
-  /** Chroma, 0 to roughly 0.37 for sRGB. */
-  c: number;
-  /** Hue in degrees, 0–360. Meaningless when chroma is ~0. */
-  h: number;
-}
+import { hexToOklch } from '@shared/colors/color.ts';
+
+export { hexToOklch, type Oklch } from '@shared/colors/color.ts';
+
+export type AuraInput = string | readonly string[] | null;
 
 export interface Aura {
   /** Hue in degrees. */
@@ -27,53 +24,16 @@ export interface Aura {
   chroma: number;
 }
 
-/** No colour to go on (dialogue colours off, or not worked out yet): a quiet neutral. */
+/** No portrait or pinned colour available: a quiet neutral. */
 export const NEUTRAL_AURA: Readonly<Aura> = { hue: 265, chroma: 0.12 };
 
 /**
- * The OKLCH chroma at which the theme is fully tinted. Dialogue colours are lifted for
- * legibility on a dark surface, which keeps most of them between 0.08 and 0.2; anything
- * from here up counts as fully vivid.
+ * The OKLCH chroma at which the theme is fully tinted. Aura receives the original
+ * portrait palette, independently of any lightness adjustment made for speech.
  */
 const FULL_CHROMA = 0.12;
 
-function parseHex(hex: string): [number, number, number] | null {
-  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
-  if (!match) return null;
-  let digits = match[1]!;
-  if (digits.length === 3) digits = [...digits].map((d) => d + d).join('');
-  return [0, 2, 4].map((i) => Number.parseInt(digits.slice(i, i + 2), 16) / 255) as [
-    number,
-    number,
-    number,
-  ];
-}
-
-const toLinear = (channel: number) =>
-  channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-
-/** sRGB hex to OKLCH (Björn Ottosson's OKLab, in polar form). Null for anything unparseable. */
-export function hexToOklch(hex: string): Oklch | null {
-  const rgb = parseHex(hex);
-  if (!rgb) return null;
-  const [r, g, b] = rgb.map(toLinear) as [number, number, number];
-
-  const lms = [
-    0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b,
-    0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b,
-    0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b,
-  ].map(Math.cbrt) as [number, number, number];
-
-  const L = 0.2104542553 * lms[0] + 0.793617785 * lms[1] - 0.0040720468 * lms[2];
-  const a = 1.9779984951 * lms[0] - 2.428592205 * lms[1] + 0.4505937099 * lms[2];
-  const bb = 0.0259040371 * lms[0] + 0.7827717662 * lms[1] - 0.808675766 * lms[2];
-
-  const c = Math.hypot(a, bb);
-  const h = ((Math.atan2(bb, a) * 180) / Math.PI + 360) % 360;
-  return { l: L, c, h };
-}
-
-/** The aura for a dialogue colour, or the neutral one when there is none to read. */
+/** Aura from an original palette colour, or the neutral one when none is available. */
 export function auraFromColor(hex: string | null | undefined): Aura {
   if (!hex) return { ...NEUTRAL_AURA };
   const lch = hexToOklch(hex);
@@ -92,4 +52,13 @@ export function auraFromColor(hex: string | null | undefined): Aura {
 export function nearestHue(from: number, to: number): number {
   const delta = ((((to - from) % 360) + 540) % 360) - 180;
   return from + delta;
+}
+
+/** Single-colour retains its gentle hue offsets; gradients use actual supporting colours. */
+export function auraPalette(input: AuraInput): [Aura, Aura, Aura] {
+  const colors = typeof input === 'string' ? [input] : (input ?? []);
+  const primary = auraFromColor(colors[0]);
+  if (colors.length < 2)
+    return [primary, { ...primary, hue: primary.hue + 34 }, { ...primary, hue: primary.hue - 28 }];
+  return [primary, auraFromColor(colors[1]), auraFromColor(colors[2] ?? colors[0])];
 }

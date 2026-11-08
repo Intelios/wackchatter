@@ -1,14 +1,14 @@
 /**
  * Applies the character's and the persona's colours to the shell root as Aura numbers.
  *
- * Written straight to the element's style rather than through React state: the hue is a
- * registered custom property that transitions on its own, so all a change needs is the new
- * target, and every surface follows through `var()`. The hue is unwrapped against the last
- * one set, so going from pink to red is a short step rather than a lap of the wheel.
+ * Written straight to the element's style rather than through React state. Surfaces take
+ * their new hue immediately; only the flat ambient layer transitions its registered
+ * properties. Each hue is unwrapped against the last value, so pink to red takes a short
+ * step rather than a lap of the wheel.
  */
 
 import { type RefObject, useLayoutEffect, useRef } from 'react';
-import { auraFromColor, NEUTRAL_AURA, nearestHue } from './aura.ts';
+import { type AuraInput, auraPalette, NEUTRAL_AURA, nearestHue } from './aura.ts';
 
 /** The persona hue the stylesheet starts from (`--w3-ph`'s initial value in shell.css). */
 const PERSONA_START_HUE = 160;
@@ -16,24 +16,33 @@ const PERSONA_START_HUE = 160;
 export function useAura(
   root: RefObject<HTMLElement | null>,
   wash: RefObject<HTMLElement | null>,
-  characterColor: string | null,
-  personaColor: string | null,
+  characterColor: AuraInput,
+  personaColor: AuraInput,
   /** Who the colour belongs to: a change of character sends a wash, a recolour does not. */
   characterKey: string | null,
 ) {
-  const hue = useRef<number | null>(null);
-  const personaHue = useRef<number | null>(null);
+  const hue = useRef<number[]>([]);
+  const personaHue = useRef<number[]>([]);
   const lastKey = useRef<string | null>(null);
+  // Arrays returned by the resolver can be new references with the same palette.
+  const characterKeyColors =
+    typeof characterColor === 'string' ? characterColor : (characterColor?.join(',') ?? '');
+  const personaKeyColors =
+    typeof personaColor === 'string' ? personaColor : (personaColor?.join(',') ?? '');
 
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
-    const aura = auraFromColor(characterColor);
+    const palette = auraPalette(characterKeyColors ? characterKeyColors.split(',') : null);
+    const aura = palette[0];
     // Even the first colour steps from where the stylesheet starts, so it never laps the wheel.
-    const next = nearestHue(hue.current ?? NEUTRAL_AURA.hue, aura.hue);
-    hue.current = next;
-    element.style.setProperty('--w3-h', String(next));
-    element.style.setProperty('--w3-c', String(aura.chroma));
+    palette.forEach((color, index) => {
+      const suffix = index ? String(index + 1) : '';
+      const next = nearestHue(hue.current[index] ?? NEUTRAL_AURA.hue, color.hue);
+      hue.current[index] = next;
+      element.style.setProperty(`--w3-h${suffix}`, String(next));
+      element.style.setProperty(`--w3-c${suffix}`, String(color.chroma));
+    });
 
     const switched = lastKey.current !== null && characterKey !== lastKey.current;
     lastKey.current = characterKey;
@@ -46,17 +55,21 @@ export function useAura(
       void washEl.offsetWidth;
       washEl.dataset.go = '';
     }
-  }, [root, wash, characterColor, characterKey]);
+  }, [root, wash, characterKeyColors, characterKey]);
 
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
-    const aura = auraFromColor(personaColor);
-    const next = nearestHue(personaHue.current ?? PERSONA_START_HUE, aura.hue);
-    personaHue.current = next;
-    element.style.setProperty('--w3-ph', String(next));
-    element.style.setProperty('--w3-pc', String(aura.chroma));
-  }, [root, personaColor]);
+    const colors = personaKeyColors ? personaKeyColors.split(',') : [];
+    auraPalette(colors).forEach((color, index) => {
+      const suffix = index ? String(index + 1) : '';
+      const next = nearestHue(personaHue.current[index] ?? PERSONA_START_HUE, color.hue);
+      personaHue.current[index] = next;
+      element.style.setProperty(`--w3-ph${suffix}`, String(next));
+      element.style.setProperty(`--w3-pc${suffix}`, String(color.chroma));
+    });
+    element.toggleAttribute('data-persona-gradient', colors.length > 1);
+  }, [root, personaKeyColors]);
 }
 
 /**
@@ -66,17 +79,21 @@ export function useAura(
  * owns every change after that.
  */
 export function initialAuraStyle(
-  characterColor: string | null,
-  personaColor: string | null,
+  characterColor: AuraInput,
+  personaColor: AuraInput,
 ): Record<string, string> {
-  const aura = auraFromColor(characterColor);
-  const persona = auraFromColor(personaColor);
-  return {
-    '--w3-h': String(nearestHue(NEUTRAL_AURA.hue, aura.hue)),
-    '--w3-c': String(aura.chroma),
-    '--w3-ph': String(nearestHue(PERSONA_START_HUE, persona.hue)),
-    '--w3-pc': String(persona.chroma),
-  };
+  const style: Record<string, string> = {};
+  for (const [input, prefix, start] of [
+    [characterColor, '--w3-', NEUTRAL_AURA.hue],
+    [personaColor, '--w3-p', PERSONA_START_HUE],
+  ] as const) {
+    auraPalette(input).forEach((color, index) => {
+      const suffix = index ? String(index + 1) : '';
+      style[`${prefix}h${suffix}`] = String(nearestHue(start, color.hue));
+      style[`${prefix}c${suffix}`] = String(color.chroma);
+    });
+  }
+  return style;
 }
 
 /** Replays a one-shot `data-go` animation on an element. */

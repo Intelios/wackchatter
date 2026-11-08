@@ -26,15 +26,16 @@ describe('selectAvatarColor', () => {
     expect(blue).toBeGreaterThan(red);
   });
 
-  test('ignores transparent pixels and returns null for a grayscale fallback', () => {
-    expect(
-      selectAvatarColor(
-        pixels([
-          { rgb: [255, 0, 0], count: 50, alpha: 0 },
-          { rgb: [120, 120, 120], count: 50 },
-        ]),
-      ),
-    ).toBeNull();
+  test('ignores transparent pixels and retains grayscale without inventing a hue', () => {
+    const selected = selectAvatarColor(
+      pixels([
+        { rgb: [255, 0, 0], count: 50, alpha: 0 },
+        { rgb: [120, 120, 120], count: 50 },
+      ]),
+    );
+    expect(selected).toMatch(/^#[0-9a-f]{6}$/);
+    expect(selected!.slice(1, 3)).toBe(selected!.slice(3, 5));
+    expect(selected!.slice(3, 5)).toBe(selected!.slice(5, 7));
   });
 
   test('lifts a dark avatar accent to readable transcript contrast', () => {
@@ -57,19 +58,30 @@ describe('resolveDialogueColor', () => {
     expect(resolveDialogueColor(false, '#abcdef', '#123456')).toEqual({
       active: false,
       color: null,
+      gradient: null,
     });
-    expect(resolveDialogueColor(true, null, '#123456')).toEqual({ active: false, color: null });
+    expect(resolveDialogueColor(true, null, '#123456')).toEqual({
+      active: false,
+      color: null,
+      gradient: null,
+    });
   });
 
   test('custom wins and missing override uses avatar or token fallback', () => {
     expect(resolveDialogueColor(true, '#abcdef', '#123456')).toEqual({
       active: true,
       color: '#abcdef',
+      gradient: null,
     });
     expect(resolveDialogueColor(true, undefined, '#123456')).toEqual({
       active: true,
       color: '#123456',
+      gradient: null,
     });
-    expect(resolveDialogueColor(true, undefined, null)).toEqual({ active: true, color: null });
+    expect(resolveDialogueColor(true, undefined, null)).toEqual({
+      active: true,
+      color: null,
+      gradient: null,
+    });
   });
 });

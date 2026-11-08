@@ -1,0 +1,47 @@
+/* One paint treatment for streamed speech, Markdown speech, the bench and the preview. */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  :is(
+      .message[data-dialogue-colored],
+      .w3-msg[data-dialogue],
+      .w3-pc-cm[data-dialogue]
+    )[data-dialogue-gradient]
+    .message__text
+    .message__dialogue:not(.w3-reason__text *),
+  .dialogue-color-field__quote[data-gradient] {
+    background-image: var(--dialogue-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  :is(
+      .message[data-dialogue-colored],
+      .w3-msg[data-dialogue],
+      .w3-pc-cm[data-dialogue]
+    )[data-dialogue-gradient]
+    .message__text
+    .message__dialogue:not(.w3-reason__text *)::selection,
+  .dialogue-color-field__quote[data-gradient]::selection {
+    background: var(--wc-accent-selection);
+    color: var(--wc-text);
+    -webkit-text-fill-color: var(--wc-text);
+  }
+}
+
+@media (forced-colors: active) {
+  :is(
+      .message[data-dialogue-colored],
+      .w3-msg[data-dialogue],
+      .w3-pc-cm[data-dialogue]
+    )[data-dialogue-gradient]
+    .message__text
+    .message__dialogue:not(.w3-reason__text *),
+  .dialogue-color-field__quote[data-gradient] {
+    background: none;
+    color: CanvasText;
+    -webkit-text-fill-color: CanvasText;
+  }
+}

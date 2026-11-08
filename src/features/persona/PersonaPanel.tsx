@@ -30,7 +30,7 @@ import {
 } from '../../layout/icons.tsx';
 import { personaApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
-import { useAvatarColor } from '../chat/avatarColor.ts';
+import { useAvatarPalette } from '../chat/avatarColor.ts';
 import { PersonaConverter } from './PersonaConverter.tsx';
 import {
   matchesPersonaQuery,
@@ -141,9 +141,7 @@ export function PersonaPanel({
     ? personaApi.avatarUrl(draft.id, avatarVersions[draft.id] ?? draft.avatar)
     : null;
   const draftDialogueColor = draft ? dialogueColors.personas[draft.id] : undefined;
-  const autoDialogueColor = useAvatarColor(
-    draft && draftDialogueColor === undefined ? draftAvatarUrl : null,
-  );
+  const autoDialogueColor = useAvatarPalette(draftAvatarUrl);
 
   // Opening another persona disarms the two-click confirms.
   const openId = draft?.id ?? null;
@@ -598,7 +596,7 @@ export function PersonaPanel({
 
             <DialogueColorField
               value={draftDialogueColor}
-              autoColor={autoDialogueColor}
+              autoPalette={autoDialogueColor}
               globallyEnabled={dialogueColors.enabled}
               onChange={(value) => onDialogueColorChange(draft.id, value)}
             />

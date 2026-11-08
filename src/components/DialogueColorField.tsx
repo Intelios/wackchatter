@@ -1,17 +1,20 @@
+import { HEX_COLOR, minimumGradientContrast, paletteGradient } from '@shared/colors/color.ts';
 import type { DialogueColorOverride } from '@shared/types/settings.ts';
-import { useEffect, useId, useState } from 'react';
-import { contrastRatio } from '../features/chat/avatarColor.ts';
-import { SelectField } from './Field.tsx';
+import { type CSSProperties, useEffect, useId, useState } from 'react';
+import {
+  type PortraitPalette,
+  paletteConfiguration,
+  portraitSuggestions,
+  resolveSpeakerColors,
+  withPaletteColors,
+  withPaletteTreatment,
+} from '../features/chat/portraitPalette.ts';
+import { initialAuraStyle } from '../shell/useAura.ts';
 import './DialogueColorField.css';
+import '../features/chat/dialogueGradient.css';
 
-const HEX_COLOR = /^#[0-9a-f]{6}$/i;
-const FALLBACK_COLOR = '#e18a24';
+const FALLBACK_COLOR = '#a3a3a3';
 
-/**
- * One-click dialogue colours for the custom mode. Every value passes the same 4.5:1
- * contrast check the field warns about, so no preset ships a colour the editor would
- * flag on its own input.
- */
 export const DIALOGUE_COLOR_PRESETS = [
   { label: 'Orange', value: '#e18a24' },
   { label: 'Red', value: '#ff6b6b' },
@@ -25,140 +28,275 @@ export const DIALOGUE_COLOR_PRESETS = [
 
 interface DialogueColorFieldProps {
   value: DialogueColorOverride | undefined;
-  autoColor: string | null;
-  globallyEnabled: boolean;
+  autoPalette: PortraitPalette | null;
+  globallyEnabled?: boolean;
   onChange: (value: DialogueColorOverride | undefined) => void;
 }
 
-/** Shared by character and persona editors so their three-state semantics cannot drift. */
+/** One editor for characters and personas in both shells. Changes autosave as before. */
 export function DialogueColorField({
   value,
-  autoColor,
-  globallyEnabled,
+  autoPalette,
+  globallyEnabled = true,
   onChange,
 }: DialogueColorFieldProps) {
-  const id = useId();
-  const mode = value === undefined ? 'auto' : value === null ? 'off' : 'custom';
-  const [draft, setDraft] = useState(
-    typeof value === 'string' ? value : (autoColor ?? FALLBACK_COLOR),
-  );
-
-  useEffect(() => {
-    if (typeof value === 'string') setDraft(value);
-    else if (mode === 'auto') setDraft(autoColor ?? FALLBACK_COLOR);
-  }, [autoColor, mode, value]);
-
-  const customValid = HEX_COLOR.test(draft);
-  const preview = mode === 'custom' && customValid ? draft : autoColor;
-  const lowContrast = mode === 'custom' && customValid && contrastRatio(draft, '#2b2b2d') < 4.5;
+  const config = paletteConfiguration(value);
+  const resolved = resolveSpeakerColors(true, value, autoPalette);
+  const colors = resolved.colors.length ? resolved.colors : [FALLBACK_COLOR];
+  const suggestions = portraitSuggestions(autoPalette);
+  const lowContrast =
+    config.source === 'custom' &&
+    config.dialogue !== 'off' &&
+    minimumGradientContrast(config.dialogue === 'gradient' ? colors : colors.slice(0, 1)) < 4.5;
+  const pin = (next: string[]) => onChange(withPaletteColors(value, next));
+  const needsMore =
+    new Set(colors).size < 2 && (config.aura === 'gradient' || config.dialogue === 'gradient');
 
   return (
     <div className="dialogue-color-field">
-      <SelectField<'auto' | 'custom' | 'off'>
-        label="Dialogue colour"
-        value={mode}
-        options={[
-          { label: 'Auto — from avatar', value: 'auto' },
-          { label: 'Custom', value: 'custom' },
-          { label: 'Off for this speaker', value: 'off' },
-        ]}
-        onChange={(next) => {
-          if (next === 'auto') onChange(undefined);
-          else if (next === 'off') onChange(null);
-          else {
-            const color = autoColor ?? FALLBACK_COLOR;
-            setDraft(color);
-            onChange(color);
+      <fieldset className="dialogue-color-field__sources" aria-label="Palette source">
+        <button
+          type="button"
+          aria-pressed={config.source === 'portrait'}
+          onClick={() =>
+            onChange({ source: 'portrait', aura: config.aura, dialogue: config.dialogue })
+          }
+        >
+          From portrait
+        </button>
+        <button
+          type="button"
+          aria-pressed={config.source === 'custom'}
+          onClick={() => pin([...colors])}
+        >
+          Custom
+        </button>
+      </fieldset>
+
+      {suggestions.length > 0 ? (
+        <fieldset className="dialogue-color-field__suggestions">
+          <legend>
+            Portrait picks <span>— choosing one keeps its colours</span>
+          </legend>
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={suggestion.join(',')}
+              type="button"
+              aria-label={`Keep portrait palette ${index + 1}: ${suggestion.join(', ')}`}
+              title={`Keep ${suggestion.join(' → ')}`}
+              aria-pressed={
+                config.source === 'custom' && config.colors.join(',') === suggestion.join(',')
+              }
+              onClick={() => pin(suggestion)}
+            >
+              <i style={{ background: paletteGradient(suggestion) ?? suggestion[0] }} />
+              {index + 1}
+            </button>
+          ))}
+        </fieldset>
+      ) : null}
+
+      <fieldset className="dialogue-color-field__presets">
+        <legend>Solid colours</legend>
+        {DIALOGUE_COLOR_PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            type="button"
+            className="dialogue-color-field__preset"
+            style={{ background: preset.value }}
+            title={preset.label}
+            aria-label={`Use ${preset.label} colour`}
+            aria-pressed={
+              config.source === 'custom' &&
+              config.colors.length === 1 &&
+              config.colors[0] === preset.value
+            }
+            onClick={() => pin([preset.value])}
+          />
+        ))}
+      </fieldset>
+
+      {config.source === 'custom' ? (
+        <div className="dialogue-color-field__stops">
+          {config.colors.map((color, index) => (
+            <ColorStop
+              // biome-ignore lint/suspicious/noArrayIndexKey: stops are numbered positions; editing a hex must not remount the focused input
+              key={index}
+              value={color}
+              index={index}
+              count={config.colors.length}
+              onChange={(next) => pin(config.colors.map((old, i) => (i === index ? next : old)))}
+              onRemove={() => pin(config.colors.filter((_, i) => i !== index))}
+              onMove={(direction) => {
+                const next = [...config.colors];
+                const target = index + direction;
+                [next[index], next[target]] = [next[target]!, next[index]!];
+                pin(next);
+              }}
+            />
+          ))}
+          {config.colors.length < 3 ? (
+            <button
+              type="button"
+              className="dialogue-color-field__add"
+              onClick={() =>
+                pin([
+                  ...config.colors,
+                  autoPalette?.candidates.find((color) => !config.colors.includes(color)) ??
+                    config.colors[0]!,
+                ])
+              }
+            >
+              + Add colour
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="dialogue-color-field__treatments">
+        <fieldset>
+          <legend>Aura</legend>
+          {(['single', 'gradient'] as const).map((treatment) => (
+            <button
+              key={treatment}
+              type="button"
+              aria-pressed={config.aura === treatment}
+              onClick={() => onChange(withPaletteTreatment(value, 'aura', treatment))}
+            >
+              {treatment === 'single' ? 'Single' : 'Gradient'}
+            </button>
+          ))}
+        </fieldset>
+        <fieldset>
+          <legend>Dialogue</legend>
+          {(['solid', 'gradient', 'off'] as const).map((treatment) => (
+            <button
+              key={treatment}
+              type="button"
+              aria-pressed={config.dialogue === treatment}
+              onClick={() => onChange(withPaletteTreatment(value, 'dialogue', treatment))}
+            >
+              {treatment === 'solid' ? 'Solid' : treatment === 'gradient' ? 'Gradient' : 'Off'}
+            </button>
+          ))}
+        </fieldset>
+      </div>
+
+      <div
+        className="dialogue-color-field__preview"
+        style={
+          {
+            ...initialAuraStyle(resolved.aura, null),
+            '--wc-dialogue-color': resolved.dialogue.color ?? 'var(--wc-text)',
+            '--dialogue-gradient': resolved.dialogue.gradient ?? 'none',
+          } as CSSProperties
+        }
+      >
+        <span className="dialogue-color-field__preview-label">Preview</span>
+        <p>
+          <q
+            className="dialogue-color-field__quote"
+            data-gradient={!!resolved.dialogue.gradient || undefined}
+          >
+            “Shall we see where this leads?”
+          </q>{' '}
+          they ask.
+        </p>
+      </div>
+      {needsMore ? (
+        <p className="wc-hint">
+          A gradient needs two different colours. Until then, it uses a single colour.
+        </p>
+      ) : null}
+      {lowContrast ? (
+        <p className="wc-hint dialogue-color-field__warning">
+          This colour or part of the blend may be difficult to read on message bubbles. Your colours
+          are kept exactly as entered.
+        </p>
+      ) : null}
+      {!globallyEnabled ? (
+        <p className="wc-hint">
+          Dialogue colours are switched off in Settings. Aura still follows this palette.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ColorStop({
+  value,
+  index,
+  count,
+  onChange,
+  onRemove,
+  onMove,
+}: {
+  value: string;
+  index: number;
+  count: number;
+  onChange: (color: string) => void;
+  onRemove: () => void;
+  onMove: (direction: -1 | 1) => void;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <div className="dialogue-color-field__stop">
+      <label htmlFor={id}>{index === 0 ? 'Main' : `Colour ${index + 1}`}</label>
+      <input
+        type="color"
+        value={value}
+        aria-label={`Pick colour ${index + 1}`}
+        onChange={(event) => onChange(event.target.value.toLowerCase())}
+      />
+      <input
+        id={id}
+        className="wc-input"
+        value={draft}
+        spellCheck={false}
+        maxLength={7}
+        aria-label={`Colour ${index + 1} hex`}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (HEX_COLOR.test(next)) onChange(next.toLowerCase());
+        }}
+        onBlur={() => setDraft(value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setDraft(value);
           }
         }}
-        hint={
-          globallyEnabled
-            ? 'Colours completed dialogue in straight or curly double quotes.'
-            : 'Saved, but the global dialogue-colouring switch is currently off.'
-        }
       />
-
-      {mode !== 'off' ? (
-        <div className="dialogue-color-field__preview-row">
-          <span
-            className="dialogue-color-field__swatch"
-            style={preview ? { backgroundColor: preview } : undefined}
-            title={preview ?? 'Default dialogue colour'}
-            aria-hidden="true"
-          />
-          <span className="wc-hint">
-            {mode === 'auto'
-              ? autoColor
-                ? `Avatar colour ${autoColor}`
-                : 'Using the default orange until an avatar colour is available.'
-              : 'Custom colour is used exactly as entered.'}
-          </span>
-        </div>
-      ) : null}
-
-      {mode === 'custom' ? (
-        <div className="field">
-          <label className="wc-label" htmlFor={id}>
-            Custom colour
-          </label>
-          <div className="dialogue-color-field__custom">
-            <input
-              className="dialogue-color-field__picker"
-              type="color"
-              value={customValid ? draft : FALLBACK_COLOR}
-              aria-label="Pick dialogue colour"
-              onChange={(event) => {
-                const color = event.target.value.toLowerCase();
-                setDraft(color);
-                onChange(color);
-              }}
-            />
-            <input
-              id={id}
-              className="wc-input"
-              value={draft}
-              spellCheck={false}
-              onChange={(event) => {
-                const next = event.target.value;
-                setDraft(next);
-                if (HEX_COLOR.test(next)) onChange(next.toLowerCase());
-              }}
-              onBlur={() => {
-                if (!customValid) setDraft(typeof value === 'string' ? value : FALLBACK_COLOR);
-              }}
-            />
-          </div>
-          <fieldset className="dialogue-color-field__presets">
-            <legend className="wc-label">Preset colours</legend>
-            {DIALOGUE_COLOR_PRESETS.map((preset) => {
-              const selected = preset.value === draft;
-              return (
-                <button
-                  key={preset.value}
-                  type="button"
-                  className="dialogue-color-field__preset"
-                  style={{ backgroundColor: preset.value }}
-                  title={`${preset.label} — ${preset.value}`}
-                  aria-label={`Use ${preset.label} dialogue colour`}
-                  aria-pressed={selected}
-                  onClick={() => {
-                    setDraft(preset.value);
-                    onChange(preset.value);
-                  }}
-                />
-              );
-            })}
-          </fieldset>
-          {!customValid ? (
-            <p className="wc-hint">Enter a six-digit hex colour such as #e18a24.</p>
-          ) : null}
-          {lowContrast ? (
-            <p className="wc-hint dialogue-color-field__warning">
-              This colour may be difficult to read on message bubbles.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+      <button
+        type="button"
+        aria-label={`Move colour ${index + 1} earlier`}
+        title={index ? 'Move earlier' : 'Already first'}
+        disabled={index === 0}
+        onClick={() => onMove(-1)}
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        aria-label={`Move colour ${index + 1} later`}
+        title={index < count - 1 ? 'Move later' : 'Already last'}
+        disabled={index === count - 1}
+        onClick={() => onMove(1)}
+      >
+        ↓
+      </button>
+      <button
+        type="button"
+        aria-label={`Remove colour ${index + 1}`}
+        title={count > 1 ? 'Remove colour' : 'Keep at least one colour'}
+        disabled={count < 2}
+        onClick={onRemove}
+      >
+        ×
+      </button>
     </div>
   );
 }

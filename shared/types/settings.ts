@@ -214,12 +214,22 @@ export interface QuickCommand {
   text: string;
 }
 
-export type DialogueColorOverride = string | null;
+export type PaletteTreatment = 'single' | 'gradient';
+export type DialogueTreatment = 'solid' | 'gradient' | 'off';
+
+/** Local appearance only. Portrait treatments keep following the versioned image. */
+export type SpeakerPaletteOverride = {
+  aura: PaletteTreatment;
+  dialogue: DialogueTreatment;
+} & ({ source: 'portrait' } | { source: 'custom'; colors: string[] });
+
+/** Legacy hex and null remain valid: a pinned solid colour, or speech colouring off. */
+export type DialogueColorOverride = string | null | SpeakerPaletteOverride;
 
 export interface DialogueColorSettings {
   /** Master switch. Per-speaker overrides remain editable while this is false. */
   enabled: boolean;
-  /** Missing means avatar-derived, a hex string is custom, and null disables that speaker. */
+  /** Missing means portrait-derived; null disables speech, independently of Aura. */
   characters: Record<string, DialogueColorOverride>;
   /** Keyed by stable persona id, with the same missing/custom/null semantics. */
   personas: Record<string, DialogueColorOverride>;

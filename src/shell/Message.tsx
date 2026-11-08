@@ -38,6 +38,7 @@ interface MessageProps {
   dialogueActive: boolean;
   /** The speaker's own dialogue colour, when known. */
   dialogueColor: string | null;
+  dialogueGradient?: string | null;
   streaming: boolean;
   /** The character's card, opened from the portrait. None on your own messages. */
   card?: MessageCard;
@@ -79,6 +80,7 @@ export const Message = memo(function Message({
   avatarUrl,
   dialogueActive,
   dialogueColor,
+  dialogueGradient,
   streaming,
   revealWhole,
   card,
@@ -203,7 +205,10 @@ export const Message = memo(function Message({
     },
   ];
 
-  const style = dialogueColor ? ({ '--w3-say': dialogueColor } as CSSProperties) : undefined;
+  const style = {
+    '--w3-say': dialogueColor ?? 'var(--w3-dialogue)',
+    '--dialogue-gradient': dialogueGradient ?? 'none',
+  } as CSSProperties;
 
   return (
     <article
@@ -215,6 +220,7 @@ export const Message = memo(function Message({
       data-last={isLast || undefined}
       data-editing={editing || undefined}
       data-dialogue={dialogueActive || undefined}
+      data-dialogue-gradient={!!dialogueGradient || undefined}
       style={style}
     >
       {card && !isUser ? (

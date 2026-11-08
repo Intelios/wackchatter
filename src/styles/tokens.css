@@ -78,6 +78,20 @@
 
   /* Render-only fallback when an avatar has no usable chromatic colour. */
   --wc-dialogue-default: #e18a24;
+  --wc-palette-preview-bg: #1b1b1f;
+  --wc-palette-preview-height: 108px;
+  --wc-palette-label: 48px;
+  --wc-palette-disabled-opacity: 0.4;
+  --wc-palette-leading: 1.6;
+  --wc-aura-l1: 0.62;
+  --wc-aura-c1: 0.19;
+  --wc-aura-a1: 0.3;
+  --wc-aura-l2: 0.56;
+  --wc-aura-c2: 0.17;
+  --wc-aura-a2: 0.22;
+  --wc-aura-l3: 0.52;
+  --wc-aura-c3: 0.16;
+  --wc-aura-a3: 0.22;
 
   /*
    * Categorical series, for charts. The accent leads and the rest is the dialogue-colour

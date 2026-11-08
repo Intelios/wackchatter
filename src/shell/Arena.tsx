@@ -22,7 +22,11 @@ import { replay } from '../features/arena/elo.ts';
 import { canonicalId } from '../features/arena/merges.ts';
 import { fallbackSlot, seriesToken } from '../features/arena/series.ts';
 import { useArena } from '../features/arena/useArena.ts';
-import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
+import {
+  needsPortrait,
+  resolveSpeakerColors,
+  useAvatarPalette,
+} from '../features/chat/avatarColor.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { modelCatalogueEntry } from '../features/models/modelContext.ts';
 import { personaApi } from '../lib/api.ts';
@@ -248,8 +252,8 @@ export function Arena({ controller }: { controller: AppController }) {
     ? personaApi.avatarUrl(persona.id, library.personaAvatarVersions[persona.id] ?? persona.avatar)
     : null;
   const personaOverride = persona ? prefs.dialogueColors.personas[persona.id] : undefined;
-  const personaAuto = useAvatarColor(personaOverride == null ? personaUrl : null);
-  const personaColor = resolveDialogueColor(true, personaOverride, personaAuto).color;
+  const personaAuto = useAvatarPalette(needsPortrait(personaOverride) ? personaUrl : null);
+  const personaColor = resolveSpeakerColors(true, personaOverride, personaAuto).aura;
   useAura(rootRef, washRef, LIME, personaColor, 'arena');
   const [firstAura] = useState(() => initialAuraStyle(LIME, personaColor));
 

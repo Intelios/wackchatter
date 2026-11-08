@@ -19,7 +19,7 @@ import { useState } from 'react';
 import type { PersonaPage } from '../app/useAppController.ts';
 import { Menu } from '../components/Menu.tsx';
 import { Select } from '../components/Select.tsx';
-import { useAvatarColor } from '../features/chat/avatarColor.ts';
+import { useAvatarPalette } from '../features/chat/avatarColor.ts';
 import { PersonaConverter } from '../features/persona/PersonaConverter.tsx';
 import { personaDisplayName } from '../features/persona/personaRoster.ts';
 import { usePersonaWorkbench } from '../features/persona/usePersonaWorkbench.ts';
@@ -398,7 +398,7 @@ function PersonaEditor({
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const url = avatarUrl(draft);
   const [colour, holdColour] = useHeld(dialogueColors.personas[draft.id]);
-  const autoColour = useAvatarColor(colour === undefined ? url : null);
+  const autoColour = useAvatarPalette(url);
 
   // The group this persona belongs to: its base first, then the variants.
   const baseId = draft.variantOf ?? draft.id;
@@ -510,10 +510,10 @@ function PersonaEditor({
       </section>
 
       <section className="w3-pedit__group">
-        <h3 className="w3-sheet__label">Dialogue colour</h3>
+        <h3 className="w3-sheet__label">Colour</h3>
         <ColourSwatches
           value={colour}
-          autoColor={autoColour}
+          autoPalette={autoColour}
           onChange={(value) => {
             holdColour(value);
             onDialogueColorChange(draft.id, value);
@@ -526,7 +526,7 @@ function PersonaEditor({
 
       <section className="w3-pedit__group">
         <h3 className="w3-sheet__label">In the prompt</h3>
-        <p className="w3-pedit__sentence">
+        <div className="w3-pedit__sentence">
           Sent{' '}
           {word('Where the description goes', position, POSITION_WORDS, (next: PersonaPosition) =>
             patch({ position: next }),
@@ -549,7 +549,7 @@ function PersonaEditor({
           ) : (
             '.'
           )}
-        </p>
+        </div>
       </section>
 
       <section className="w3-pedit__group">

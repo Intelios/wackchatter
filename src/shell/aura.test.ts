@@ -1,5 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import { auraFromColor, hexToOklch, NEUTRAL_AURA, nearestHue } from './aura.ts';
+import { auraFromColor, auraPalette, hexToOklch, NEUTRAL_AURA, nearestHue } from './aura.ts';
+import { initialAuraStyle } from './useAura.ts';
+
+test('single Aura keeps its offsets while gradients use original supporting colours', () => {
+  const primary = auraFromColor('#124b8e');
+  expect(auraPalette(['#124b8e'])).toEqual([
+    primary,
+    { ...primary, hue: primary.hue + 34 },
+    { ...primary, hue: primary.hue - 28 },
+  ]);
+  expect(auraPalette(['#124b8e', '#c98642'])).toEqual([primary, auraFromColor('#c98642'), primary]);
+  expect(auraPalette(['#124b8e', '#c98642', '#628a86'])[2]).toEqual(auraFromColor('#628a86'));
+  const style = initialAuraStyle(['#124b8e', '#c98642'], ['#628a86', '#124b8e']);
+  expect(style['--w3-c2']).toBe(String(auraFromColor('#c98642').chroma));
+  expect(style['--w3-pc2']).toBe(String(primary.chroma));
+  expect(auraPalette(['#808080'])[0].chroma).toBe(0);
+});
 
 describe('hexToOklch', () => {
   test('matches published OKLCH values for the primaries', () => {

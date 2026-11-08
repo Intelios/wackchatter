@@ -30,6 +30,7 @@ interface MessageBubbleProps {
   dialogueActive: boolean;
   /** Null means use the token-backed fallback. */
   dialogueColor: string | null;
+  dialogueGradient?: string | null;
   /** True while this message is the one being generated into. */
   streaming: boolean;
   /*
@@ -118,6 +119,7 @@ export const MessageBubble = memo(function MessageBubble({
   avatarUrl,
   dialogueActive,
   dialogueColor,
+  dialogueGradient,
   streaming,
   flash,
   mode,
@@ -237,8 +239,12 @@ export const MessageBubble = memo(function MessageBubble({
       data-hidden={message.is_system || undefined}
       data-flash={flash || undefined}
       data-dialogue-colored={dialogueActive || undefined}
+      data-dialogue-gradient={!!dialogueGradient || undefined}
       style={
-        dialogueColor ? ({ '--wc-dialogue-color': dialogueColor } as CSSProperties) : undefined
+        {
+          '--wc-dialogue-color': dialogueColor ?? 'var(--wc-dialogue-default)',
+          '--dialogue-gradient': dialogueGradient ?? 'none',
+        } as CSSProperties
       }
     >
       <div className="message__bubble">

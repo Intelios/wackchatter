@@ -594,6 +594,35 @@ button.w3-reason__head:hover {
   transition: --w3-lc 900ms var(--w3-out);
 }
 
+/* A persona's multicolour atmosphere stays in their own composer area. */
+.wc3[data-persona-gradient] .w3-line {
+  background:
+    radial-gradient(
+      ellipse at 0% 100%,
+      oklch(
+        var(--wc-aura-l1) calc(var(--wc-aura-c1) * var(--w3-pc)) var(--w3-ph) /
+        var(--wc-aura-a2)
+      ),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse at 100% 100%,
+      oklch(
+        var(--wc-aura-l2) calc(var(--wc-aura-c2) * var(--w3-pc2)) var(--w3-ph2) /
+        var(--wc-aura-a2)
+      ),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse at 50% 100%,
+      oklch(
+        var(--wc-aura-l3) calc(var(--wc-aura-c3) * var(--w3-pc3)) var(--w3-ph3) /
+        var(--wc-aura-a3)
+      ),
+      transparent 70%
+    );
+}
+
 .w3-line[data-voice="char"] {
   --w3-lc: var(--w3-accent);
 }
