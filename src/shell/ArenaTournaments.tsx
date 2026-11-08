@@ -8,6 +8,7 @@
  */
 
 import {
+  activeProbes,
   TOURNAMENT_SIZES,
   type TournamentSize,
   type TournamentStage,
@@ -513,13 +514,14 @@ function Wizard({
   const [size, setSize] = useState<TournamentSize>(eligible.length >= 8 ? 8 : 4);
   const [name, setName] = useState('Model Cup');
   const [entrants, setEntrants] = useState<string[]>(() => pick(eligible.length >= 8 ? 8 : 4));
+  const cues = activeProbes(arena.settings.probes);
   const blank = (n: TournamentSize): TournamentStage[] =>
     Array.from({ length: tournamentStages(n) }, (_, i) => ({
       characterId:
         arena.drawableCards[i % Math.max(1, arena.drawableCards.length)] ??
         characters[0]?.avatar ??
         '',
-      cue: arena.settings.probes[i % Math.max(1, arena.settings.probes.length)]?.text ?? '',
+      cue: cues[i % Math.max(1, cues.length)]?.text ?? '',
     }));
   const [plans, setPlans] = useState<TournamentStage[]>(() => blank(eligible.length >= 8 ? 8 : 4));
   const [busy, setBusy] = useState(false);

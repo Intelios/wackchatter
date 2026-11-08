@@ -151,10 +151,13 @@ export function Popover({
     let leftBound = 0;
     let rightBound = window.innerWidth;
     for (let node = popup.parentElement; node; node = node.parentElement) {
-      if (getComputedStyle(node).overflowY === 'visible') continue;
+      const style = getComputedStyle(node);
+      if (style.overflowY === 'visible') continue;
       const box = node.getBoundingClientRect();
-      topBound = box.top;
-      bottomBound = box.bottom;
+      // A scroller's scroll-padding marks bands it keeps clear (the 3.0 transcript keeps
+      // the island's band), so popups stay out of them too.
+      topBound = box.top + (Number.parseFloat(style.scrollPaddingTop) || 0);
+      bottomBound = box.bottom - (Number.parseFloat(style.scrollPaddingBottom) || 0);
       leftBound = box.left;
       rightBound = box.right;
       break;

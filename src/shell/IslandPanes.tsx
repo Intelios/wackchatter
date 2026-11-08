@@ -3,6 +3,7 @@
  * is true and what each button does.
  */
 
+import type { ModelRef } from '@shared/models/slots.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary, Persona } from '@shared/types/chat.ts';
 import {
@@ -15,7 +16,10 @@ import {
 } from 'react';
 import { formatTimestamp } from '../features/chat/formatDate.ts';
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
+import { useModels } from '../features/models/ModelsContext.tsx';
+import { modelName } from '../features/models/pickerLogic.ts';
 import { Avatar } from './Avatar.tsx';
+import { useArm } from './controls.tsx';
 import type { IslandMode } from './Island.tsx';
 import { Icon, type IconName } from './icons.tsx';
 import { introLine } from './intro.ts';
@@ -31,12 +35,15 @@ export function RestPane({
   character,
   chatTitle,
   persona,
+  model,
   onOpen,
 }: {
   /** None on the home screen, where nobody is in the scene yet. */
   character: Face | null;
   chatTitle: string;
   persona: Face | null;
+  /** The chat's model, one click from changing. None on the home screen. */
+  model?: ModelRef | null;
   onOpen: (mode: IslandMode) => void;
 }) {
   return (
@@ -56,6 +63,12 @@ export function RestPane({
             </span>
             <Icon name="chevronDown" size="sm" />
           </button>
+          <span className="w3-isl-sep" aria-hidden="true" />
+        </>
+      ) : null}
+      {model !== undefined ? (
+        <>
+          <ChatModelButton value={model} onOpen={() => onOpen('model')} />
           <span className="w3-isl-sep" aria-hidden="true" />
         </>
       ) : null}
@@ -81,6 +94,28 @@ export function RestPane({
         <kbd className="w3-kbd">⌘K</kbd>
       </button>
     </>
+  );
+}
+
+/** The chat's model on the island: its name, and a click opens the picker. */
+function ChatModelButton({ value, onOpen }: { value: ModelRef | null; onOpen: () => void }) {
+  const { catalogs } = useModels();
+  const name = value ? (modelName(value, catalogs).split('/').pop() ?? value.modelId) : null;
+  return (
+    <button
+      type="button"
+      className="w3-isl-btn w3-isl-model"
+      data-missing={name ? undefined : true}
+      aria-label={name ? `Model: ${name}. Change it` : 'Choose a model'}
+      title="The model writing this chat"
+      onClick={onOpen}
+    >
+      <i aria-hidden="true" />
+      <span className="w3-isl-stack">
+        <span className="w3-who-sub">Model</span>
+        <span className="w3-isl-model__name">{name ?? 'Choose a model'}</span>
+      </span>
+    </button>
   );
 }
 
@@ -233,6 +268,8 @@ export interface CastAction {
   icon: IconName;
   run: () => void;
   disabledReason?: string;
+  /** Destructive: the first click arms it and shows this label, the second runs it. */
+  confirmLabel?: string;
 }
 
 export function CastPane({
@@ -254,6 +291,8 @@ export function CastPane({
   chats,
   currentChatId,
   onOpenChat,
+  onDeleteChat,
+  deleteDisabledReason,
 }: {
   active: boolean;
   character: CharacterSummary;
@@ -273,8 +312,12 @@ export function CastPane({
   chats: ChatSummary[];
   currentChatId: string | null;
   onOpenChat: (id: string) => void;
+  /** Sends a chat to the trash bin, where it can be restored. */
+  onDeleteChat: (id: string) => void;
+  deleteDisabledReason?: string;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const arm = useArm();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -379,19 +422,26 @@ export function CastPane({
         </div>
       ) : null}
       <div className="w3-chat-acts">
-        {actions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            className="w3-pill"
-            onClick={action.run}
-            disabled={Boolean(action.disabledReason)}
-            title={action.disabledReason ?? action.label}
-          >
-            <Icon name={action.icon} size="sm" />
-            {action.label}
-          </button>
-        ))}
+        {actions.map((action) => {
+          const armed = arm.armed === `act:${action.id}`;
+          return (
+            <button
+              key={action.id}
+              type="button"
+              className="w3-pill"
+              data-armed={armed || undefined}
+              onClick={() =>
+                action.confirmLabel ? arm.press(`act:${action.id}`, action.run) : action.run()
+              }
+              onBlur={() => armed && arm.disarm()}
+              disabled={Boolean(action.disabledReason)}
+              title={action.disabledReason ?? (armed ? 'Click again to confirm' : action.label)}
+            >
+              <Icon name={action.icon} size="sm" />
+              {armed ? action.confirmLabel : action.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="w3-p-head">
@@ -400,25 +450,39 @@ export function CastPane({
       <div className="w3-opt-list">
         {others.length ? (
           others.map((chat) => (
-            <button
-              key={chat.id}
-              type="button"
-              className="w3-opt"
-              onClick={() => onOpenChat(chat.id)}
-            >
-              <span className="w3-opt__ico">
-                <Icon name="chat" size="sm" />
-              </span>
-              <span className="w3-opt__grow">
-                <span className="w3-opt__t">{chat.title}</span>
-                <span className="w3-opt__s">
-                  {chat.lastMessage
-                    ? chat.lastMessage.slice(0, 120)
-                    : plural(chat.messageCount, 'message')}
+            <div key={chat.id} className="w3-opt-row">
+              <button type="button" className="w3-opt" onClick={() => onOpenChat(chat.id)}>
+                <span className="w3-opt__ico">
+                  <Icon name="chat" size="sm" />
                 </span>
-              </span>
-              <span className="w3-opt__k">{formatTimestamp(chat.modified)?.short ?? ''}</span>
-            </button>
+                <span className="w3-opt__grow">
+                  <span className="w3-opt__t">{chat.title}</span>
+                  <span className="w3-opt__s">
+                    {chat.lastMessage
+                      ? chat.lastMessage.slice(0, 120)
+                      : plural(chat.messageCount, 'message')}
+                  </span>
+                </span>
+                <span className="w3-opt__k">{formatTimestamp(chat.modified)?.short ?? ''}</span>
+              </button>
+              <button
+                type="button"
+                className="w3-opt-x"
+                data-armed={arm.armed === `del:${chat.id}` || undefined}
+                disabled={Boolean(deleteDisabledReason)}
+                aria-label={`Delete ${chat.title}`}
+                title={
+                  deleteDisabledReason ??
+                  (arm.armed === `del:${chat.id}`
+                    ? 'Click again to delete. It goes to the trash bin.'
+                    : 'Delete this chat')
+                }
+                onClick={() => arm.press(`del:${chat.id}`, () => onDeleteChat(chat.id))}
+                onBlur={() => arm.armed === `del:${chat.id}` && arm.disarm()}
+              >
+                {arm.armed === `del:${chat.id}` ? 'Delete?' : <Icon name="trash" size="sm" />}
+              </button>
+            </div>
           ))
         ) : (
           <div className="w3-p-foot">

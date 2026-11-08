@@ -574,6 +574,23 @@ describe('arena settings', () => {
     expect(next.arena.probes).toEqual([{ id: 'p', text: 'Say something.' }]);
   });
 
+  test('a cue switched off stays off; any other value means on', () => {
+    const next = mergeSettings(base(), {
+      arena: {
+        probes: [
+          { id: 'a', text: 'One.', enabled: false },
+          { id: 'b', text: 'Two.', enabled: true },
+          { id: 'c', text: 'Three.', enabled: 'no' },
+        ],
+      } as never,
+    });
+    expect(next.arena.probes).toEqual([
+      { id: 'a', text: 'One.', enabled: false },
+      { id: 'b', text: 'Two.' },
+      { id: 'c', text: 'Three.' },
+    ]);
+  });
+
   test('a stale tab cannot wipe the pool with a null array', () => {
     // The whole reason the three arrays are guarded on Array.isArray inside the branch:
     // normalizeArena turns a non-array into an empty one, and a wiped contender pool takes

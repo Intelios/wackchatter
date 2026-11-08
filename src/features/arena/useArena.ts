@@ -13,14 +13,15 @@
  */
 
 import type { Connection } from '@shared/providers/types.ts';
-import type {
-  ArenaRound,
-  ArenaSettings,
-  RoundUsage,
-  TournamentSize,
-  TournamentStage,
-  TournamentWithMatches,
-  Verdict,
+import {
+  type ArenaRound,
+  type ArenaSettings,
+  activeProbes,
+  type RoundUsage,
+  type TournamentSize,
+  type TournamentStage,
+  type TournamentWithMatches,
+  type Verdict,
 } from '@shared/types/arena.ts';
 import type { CardDataV2, CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
@@ -464,6 +465,9 @@ export function useArena({
     return settings.cardPool.filter((avatar) => library.includes(avatar));
   }, [characters, settings.cardPool]);
 
+  // Only cues that are switched on are drawn.
+  const cues = useMemo(() => activeProbes(settings.probes), [settings.probes]);
+
   const blindReason = useMemo(() => {
     if (setupReason) return setupReason;
     if (eligible.length < 2) {
@@ -471,15 +475,16 @@ export function useArena({
     }
     if (drawableCards.length === 0) return 'No cards to draw from. Add some in Pool.';
     if (settings.probes.length === 0) return 'No probes to ask. Add one in Pool.';
+    if (cues.length === 0) return 'Every probe is switched off.';
     return null;
-  }, [drawableCards.length, eligible.length, settings.probes.length, setupReason]);
+  }, [drawableCards.length, eligible.length, cues.length, settings.probes.length, setupReason]);
 
   const nextRound = useCallback(() => {
     if (blindReason || pendingRun || blindRun.busy) return;
     const next = drawRound({
       contenders: eligible,
       cards: drawableCards,
-      probes: settings.probes,
+      probes: cues,
       rounds: merged.rounds,
       seed: crypto.randomUUID(),
     });
@@ -501,7 +506,7 @@ export function useArena({
     merged.rounds,
     pendingRun,
     requestRun,
-    settings.probes,
+    cues,
   ]);
 
   /** The run ID that was last voted on, to prevent double recording the same round. */

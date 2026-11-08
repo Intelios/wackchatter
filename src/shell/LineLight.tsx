@@ -4,10 +4,11 @@
  *   rest       a short, dim pilot light that breathes slowly
  *   writing    stretches to full width and brightens; a bright spot follows your caret and
  *              every keystroke flares it a little
- *   sending    gathers to the centre and shoots up with the message
+ *   sending    the whole line flares once, bright, as the message leaves
  *   waiting    a comet runs along it until the first words arrive
  *   thinking   the comet slows and dims while the model reasons
- *   speaking   the light hands over to the character's colour and ripples as words arrive
+ *   speaking   the light hands over to the character's colour, and the comet moves along
+ *              with the text: each arrival carries it forward, a pause leaves it resting
  *   settle     one soft flare when the reply is done
  *   failure    a brief flicker in the danger colour
  *
@@ -24,7 +25,7 @@ import type { StreamStore } from '../features/chat/state/streamStore.ts';
 export interface LineLightHandle {
   /** A keystroke: a small flare. */
   kick: () => void;
-  /** A send: gather to the centre, then shoot up. */
+  /** A send: the line flares. */
   launch: () => void;
   /** Something went wrong: a flicker in the danger colour. */
   alarm: () => void;
@@ -40,9 +41,9 @@ interface LineLightProps {
   ref?: Ref<LineLightHandle>;
 }
 
-const SPRING = 'cubic-bezier(0.32, 0.72, 0, 1)';
-/** The fastest the light ripples for arriving words; faster reads as noise. */
-const RIPPLE_EVERY_MS = 150;
+/** How far the comet moves per character that arrives, and the most one arrival can move it. */
+const PX_PER_CHAR = 2.4;
+const MAX_STEP_PX = 140;
 
 function stillness(): boolean {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -51,7 +52,7 @@ function stillness(): boolean {
 export function LineLight({ busy, stream, failed, ref }: LineLightProps) {
   const lightRef = useRef<HTMLDivElement>(null);
   const beamRef = useRef<HTMLDivElement>(null);
-  const rippleRef = useRef<HTMLDivElement>(null);
+  const cometRef = useRef<HTMLDivElement>(null);
   const flareRef = useRef<HTMLDivElement>(null);
   const lastKick = useRef(0);
 
@@ -69,24 +70,16 @@ export function LineLight({ busy, stream, failed, ref }: LineLightProps) {
         });
       },
       launch() {
-        const beam = beamRef.current;
         const flare = flareRef.current;
-        if (!beam || !flare || stillness()) return;
-        beam.animate(
-          [
-            { transform: 'scaleX(1)', filter: 'brightness(1)' },
-            { transform: 'scaleX(0.06)', filter: 'brightness(2.2)', offset: 0.4 },
-            { transform: 'scaleX(1)', filter: 'brightness(1)' },
-          ],
-          { duration: 760, easing: SPRING },
-        );
+        if (!flare || stillness()) return;
+        // Out from the caret's side of the line to its full width, bright, then gone.
         flare.animate(
           [
-            { opacity: 0, transform: 'translateY(0) scaleY(0.2)' },
-            { opacity: 1, transform: 'translateY(-10px) scaleY(1)', offset: 0.38 },
-            { opacity: 0, transform: 'translateY(-150px) scaleY(1.6)' },
+            { opacity: 0, transform: 'scaleX(0.15)' },
+            { opacity: 1, transform: 'scaleX(1)', offset: 0.25 },
+            { opacity: 0, transform: 'scaleX(1.02)' },
           ],
-          { duration: 820, delay: 120, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+          { duration: 900, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
         );
       },
       alarm() {
@@ -105,18 +98,20 @@ export function LineLight({ busy, stream, failed, ref }: LineLightProps) {
     [],
   );
 
-  // While something generates, follow the stream: which phase it is in, and a ripple for
-  // arriving words. Subscribed only while busy.
+  // While something generates, follow the stream: which phase it is in, and while words
+  // arrive, carry the comet forward by how much arrived. Subscribed only while busy.
   useEffect(() => {
     const light = lightRef.current;
+    const comet = cometRef.current;
     if (!light) return;
     if (!busy) {
       delete light.dataset.phase;
+      if (comet) comet.style.removeProperty('transform');
       return;
     }
     light.dataset.phase = 'waiting';
     let lastLength = 0;
-    let lastRipple = 0;
+    let position = -60;
     const update = () => {
       const snapshot = stream.getSnapshot();
       const phase = !snapshot.active
@@ -127,19 +122,21 @@ export function LineLight({ busy, stream, failed, ref }: LineLightProps) {
             ? 'thinking'
             : 'waiting';
       light.dataset.phase = phase;
-      if (phase !== 'speaking' || snapshot.text.length === lastLength) return;
+      if (phase !== 'speaking' || !comet || snapshot.text.length === lastLength) return;
+      const arrived = snapshot.text.length - lastLength;
       lastLength = snapshot.text.length;
-      const now = performance.now();
-      const ripple = rippleRef.current;
-      if (!ripple || stillness() || now - lastRipple < RIPPLE_EVERY_MS) return;
-      lastRipple = now;
-      ripple.animate(
-        [
-          { opacity: 0.9, transform: 'scaleX(0.04)' },
-          { opacity: 0, transform: 'scaleX(1)' },
-        ],
-        { duration: 900, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
-      );
+      if (stillness()) return;
+      position += Math.min(MAX_STEP_PX, Math.max(4, arrived * PX_PER_CHAR));
+      if (position > light.clientWidth + 40) {
+        // Off the end: start again from the left without gliding back across.
+        position = -60;
+        comet.style.transition = 'none';
+        comet.style.transform = `translateX(${position}px)`;
+        void comet.offsetWidth;
+        comet.style.removeProperty('transition');
+        position += Math.min(MAX_STEP_PX, arrived * PX_PER_CHAR);
+      }
+      comet.style.transform = `translateX(${Math.round(position)}px)`;
     };
     update();
     return stream.subscribe(update);
@@ -172,8 +169,7 @@ export function LineLight({ busy, stream, failed, ref }: LineLightProps) {
     <div className="w3-light" ref={lightRef} aria-hidden="true">
       <div className="w3-light__glow" />
       <div className="w3-light__beam" ref={beamRef} />
-      <div className="w3-light__ripple" ref={rippleRef} />
-      <div className="w3-light__comet" />
+      <div className="w3-light__comet" ref={cometRef} />
       <div className="w3-light__spark" />
       <div className="w3-light__flare" ref={flareRef} />
     </div>

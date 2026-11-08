@@ -378,7 +378,8 @@ function normalizeProbes(value: unknown): ArenaProbe[] {
     const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    probes.push({ id, text: typeof entry.text === 'string' ? entry.text : '' });
+    const text = typeof entry.text === 'string' ? entry.text : '';
+    probes.push(entry.enabled === false ? { id, text, enabled: false } : { id, text });
   }
   return probes;
 }

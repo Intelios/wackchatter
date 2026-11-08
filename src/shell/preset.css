@@ -495,7 +495,13 @@
 
 .w3-preset__adds {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.w3-preset__cc {
+  margin-left: auto;
+  color: var(--w3-accent);
 }
 
 .w3-preset__ghost {

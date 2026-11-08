@@ -12,6 +12,8 @@
   min-height: 0;
   overflow-y: auto;
   padding: 86px 32px 24px;
+  /* The island's band, faded by the mask below: nothing scrolls to it, no popup opens in it. */
+  scroll-padding-top: 90px;
   scrollbar-width: thin;
   scrollbar-color: var(--w3-line-strong) transparent;
   -webkit-mask-image: linear-gradient(
@@ -467,6 +469,40 @@ button.w3-reason__head:hover {
   white-space: pre-wrap;
 }
 
+/* Saved reasoning reads as text: formatted, a size up, soft, with a rule in the
+   character's colour, and it scrolls inside itself when it is long. */
+.w3-reason__text {
+  max-height: 320px;
+  overflow: auto;
+  padding: 2px 6px 2px 16px;
+  border-left: 2px solid var(--w3-accent-line);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--w3-muted);
+  white-space: normal;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+}
+
+.w3-reason__text p,
+.w3-reason__text ul,
+.w3-reason__text ol {
+  margin: 0 0 8px;
+}
+
+.w3-reason__text :is(ul, ol) {
+  padding-left: 18px;
+}
+
+.w3-reason__text > :last-child {
+  margin-bottom: 0;
+}
+
+.w3-reason__text strong {
+  color: var(--w3-text);
+  font-weight: 600;
+}
+
 .w3-reason__body .w3-textbtn {
   justify-self: start;
   font-size: 12.5px;
@@ -694,35 +730,26 @@ button.w3-reason__head:hover {
   }
 }
 
-/* Speaking: each burst of words ripples out from the centre. */
-.w3-light__ripple {
-  position: absolute;
-  inset: -1px 0;
-  border-radius: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklch, var(--w3-lc) 60%, white) 30%,
-    color-mix(in oklch, var(--w3-lc) 60%, white) 70%,
-    transparent
-  );
-  opacity: 0;
-  filter: blur(1px);
+/* Speaking: the comet holds still and moves only as words arrive (positioned from script). */
+.w3-light[data-phase="speaking"] .w3-light__comet {
+  opacity: 1;
+  animation: none;
+  transition:
+    transform 0.45s var(--w3-out),
+    opacity 0.4s;
 }
 
-/* Sending: a streak of light that leaves the line upward with the message. */
+/* Sending: the whole line flares once, bright, from the centre out. */
 .w3-light__flare {
   position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 3px;
-  height: 70px;
-  margin-left: -1.5px;
-  border-radius: 2px;
-  background: linear-gradient(to top, color-mix(in oklch, var(--w3-lc) 70%, white), transparent);
-  filter: blur(1px);
+  inset: -1px 0;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--w3-lc) 70%, white);
+  box-shadow:
+    0 0 22px color-mix(in oklch, var(--w3-lc) 80%, transparent),
+    0 0 60px color-mix(in oklch, var(--w3-lc) 45%, transparent);
   opacity: 0;
-  transform-origin: 50% 100%;
+  pointer-events: none;
 }
 
 /* No model: dashed and unlit. */
@@ -1244,4 +1271,163 @@ button.w3-reason__head:hover {
   border: 1px solid var(--w3-line);
   font-size: 13px;
   color: var(--w3-muted);
+}
+
+/* ---------- Quick commands on the Line ---------- */
+
+.w3-qc-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The editor anchors to the bolt: its root covers the bolt and lets clicks through. */
+.w3-qc-anchor > .popover--editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.w3-qc-anchor > .popover--editor .popover__popup {
+  pointer-events: auto;
+}
+
+.wc3 .w3-qc {
+  width: 360px;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--w3-line-strong);
+  border-radius: 20px;
+  background: var(--w3-island);
+  box-shadow: 0 24px 60px -10px oklch(0 0 0 / 0.8);
+}
+
+.w3-qc__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 6px 4px;
+}
+
+.w3-qc__head b {
+  font-family: var(--w3-font-display);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.w3-qc__head span {
+  font-size: 12px;
+  color: var(--w3-faint);
+}
+
+.w3-qc__list {
+  display: grid;
+  gap: 1px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.w3-qc__item {
+  display: grid;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+}
+
+.w3-qc__item:hover,
+.w3-qc__item:focus-visible {
+  background: var(--w3-hover);
+  outline: none;
+}
+
+.w3-qc__item b {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--w3-text);
+}
+
+.w3-qc__item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}
+
+.w3-qc__empty {
+  margin: 4px 6px;
+  font-size: 13px;
+  color: var(--w3-faint);
+}
+
+.w3-qc__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--w3-line);
+}
+
+.w3-qc__edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+}
+
+.w3-qc__edit:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.wc3 .w3-reason__text .message__dialogue {
+  color: inherit;
+}
+
+/* Reveal replies, when finished: a quiet count while it writes, then the reply fades in. */
+.w3-writing {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--w3-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.w3-writing i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--w3-accent);
+  animation: w3-writing 1.4s ease-in-out infinite;
+}
+
+@keyframes w3-writing {
+  50% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+}
+
+.w3-reveal {
+  animation: w3-reveal 0.5s var(--w3-out) both;
+}
+
+@keyframes w3-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }

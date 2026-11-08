@@ -321,34 +321,45 @@
 
 /* Switching character sends the new colour out from the island. */
 .w3-wash {
+  /*
+   * A character switch: a soft bloom of the new colour opens out of the island and fades.
+   * One circle, animated by transform and opacity only, so it composites instead of
+   * repainting the screen under it every frame.
+   */
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 38px;
+  width: 2400px;
+  height: 2400px;
+  margin: -1200px 0 0 -1200px;
   z-index: 6;
   pointer-events: none;
+  border-radius: 50%;
   opacity: 0;
+  transform: scale(0.05);
   background: radial-gradient(
-    circle at 50% 38px,
-    oklch(0.72 calc(0.2 * var(--w3-wc, 1)) var(--w3-wh, 0) / 0.38),
-    oklch(0.72 calc(0.2 * var(--w3-wc, 1)) var(--w3-wh, 0) / 0.1) 45%,
-    transparent 75%
+    closest-side,
+    oklch(0.75 calc(0.2 * var(--w3-wc, 1)) var(--w3-wh, 0) / 0.5),
+    oklch(0.7 calc(0.18 * var(--w3-wc, 1)) var(--w3-wh, 0) / 0.14) 55%,
+    transparent
   );
 }
 
 .w3-wash[data-go] {
-  animation: w3-wash 1150ms var(--w3-out);
+  animation: w3-wash 1000ms var(--w3-out);
 }
 
 @keyframes w3-wash {
   0% {
-    clip-path: circle(0 at 50% 38px);
+    opacity: 0;
+    transform: scale(0.05);
+  }
+  18% {
     opacity: 1;
   }
-  65% {
-    opacity: 0.9;
-  }
   100% {
-    clip-path: circle(150% at 50% 38px);
     opacity: 0;
+    transform: scale(1);
   }
 }
 
@@ -386,6 +397,8 @@
   .wc3 .w3-bloom,
   .wc3 .w3-breath,
   .wc3 .w3-wash,
+  .wc3 .w3-reveal,
+  .wc3 .w3-writing i,
   .wc3 .w3-wave i,
   .wc3 .w3-gen-av::after,
   .wc3 .w3-motion,

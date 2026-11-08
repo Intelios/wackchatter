@@ -541,14 +541,18 @@ export function useAppController() {
     void refresh();
   }, [flushArea, refresh]);
 
-  const enterCoCreator = useCallback(async () => {
-    if (!(await suspendChat())) return;
-    // Entering by hand opens the sessions list. Only the Studio's handoff names a card, and
-    // one the user has already left behind must not seed a later, unrelated entry.
-    setCocreatorSeedAvatar(null);
-    setCoCreatorMode('landing');
-    setView('cocreator');
-  }, [suspendChat]);
+  /** Opens the Co-Creator: its landing, or straight into the Preset Co-Creator's sessions. */
+  const enterCoCreator = useCallback(
+    async (mode: 'landing' | 'preset' = 'landing') => {
+      if (!(await suspendChat())) return;
+      // Entering by hand opens the sessions list. Only the Studio's handoff names a card, and
+      // one the user has already left behind must not seed a later, unrelated entry.
+      setCocreatorSeedAvatar(null);
+      setCoCreatorMode(mode);
+      setView('cocreator');
+    },
+    [suspendChat],
+  );
 
   /**
    * The Studio's half of the handoff: leave for the Co-Creator, seeded on the open card. The

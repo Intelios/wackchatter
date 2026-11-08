@@ -47,6 +47,12 @@ export interface AppSettings {
   /** UI refresh rate during streaming. */
   streamingFps: number;
   /**
+   * How a reply appears: word by word as it is written, or whole once it is finished.
+   * Display only: the request still streams when the preset says so, which is what keeps
+   * the island and the Line lit while you wait.
+   */
+  revealReplies?: 'written' | 'finished';
+  /**
    * The app-wide current persona. Picking one sets this; new chats start with it, and
    * loading a chat adopts its recorded persona (`ChatMetadata.persona`) as the current
    * one — the chat wins, because a transcript records who you were when you wrote it.

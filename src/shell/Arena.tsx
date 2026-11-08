@@ -29,6 +29,7 @@ import { personaApi } from '../lib/api.ts';
 import { ArenaBoard } from './ArenaBoard.tsx';
 import { ArenaPool } from './ArenaPool.tsx';
 import { ArenaRoom } from './ArenaRoom.tsx';
+import { ArenaSetup } from './ArenaSetup.tsx';
 import { ArenaTournaments } from './ArenaTournaments.tsx';
 import { latestSitting, type Price, type PriceOf, pricedModels, roundsCost } from './arenaStats.ts';
 import { Island, type IslandMode, type IslandNotice } from './Island.tsx';
@@ -40,12 +41,13 @@ import { initialAuraStyle, useAura } from './useAura.ts';
 
 const LIME = '#c2ee4a';
 
-export type ArenaScreen = 'board' | 'bench' | 'tour';
+export type ArenaScreen = 'board' | 'bench' | 'tour' | 'setup';
 
 const SCREENS: [ArenaScreen, string][] = [
   ['board', 'Leaderboard'],
   ['bench', 'Benchmark'],
   ['tour', 'Tournaments'],
+  ['setup', 'Setup'],
 ];
 
 const priceKey = (connectionId: string, model: string) => `${connectionId}\u0000${model}`;
@@ -428,13 +430,19 @@ export function Arena({ controller }: { controller: AppController }) {
                 blind={blind}
                 onBlind={setBlind}
                 characters={library.characters}
-                presets={library.presets}
-                personas={library.personas}
                 nameOf={nameOf}
                 colourOf={colourOf}
                 priceOf={priceOf}
-                onSettingsChange={onSettingsChange}
                 onOpenPool={() => setMode('pool')}
+                onOpenSetup={() => setScreen('setup')}
+              />
+            ) : screen === 'setup' ? (
+              <ArenaSetup
+                arena={arena}
+                characters={library.characters}
+                presets={library.presets}
+                personas={library.personas}
+                onSettingsChange={onSettingsChange}
               />
             ) : (
               <ArenaTournaments

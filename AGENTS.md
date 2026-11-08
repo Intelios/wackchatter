@@ -306,6 +306,13 @@ generation, flushes saves, and refuses to move if a flush fails.
   to parse is an **error, never a silent send**.
 - Error boundaries wrap the root and each shell region.
 
+**The chat in 3.0:** the chat's model sits on the island (one click opens the picker; it sets
+the `chat` slot). `AppSettings.revealReplies` is display only: `finished` hides the text while
+it streams and shows it whole at the end, so the island and the Line still follow the stream;
+the preset's `stream_openai` stays the real switch, for endpoints that cannot stream. The
+character's card opens from each portrait (a glance) and in full in the margin, which it
+shares with the tools: opening one puts the other away.
+
 **Stats** live in TokenTrail: the action flushes saves and opens the matching library via
 `tokentrail:` without aborting generation. Discovery stays separate from the library pointer and
 is never published under `WC_DATA_DIR`; TokenTrail reads files read-only, and navigation never
@@ -322,7 +329,8 @@ the island). Each blind round records its sides' tokens, time and connection in
 `arena_round_usage` (schema 15, from 3.0 on; older rounds have none, nothing estimates them),
 priced at the catalogue when shown. The leaderboard's stats (`src/shell/arenaStats.ts`) and
 "this sitting" (rounds with no pause over 45 minutes) are read off the rounds, never stored.
-Removing a model from the pool never touches its rounds.
+Removing a model from the pool never touches its rounds. Cards and cues have their own Setup
+page; a cue with `enabled: false` sits out of new rounds without being deleted (`activeProbes`).
 
 **Tournament** is its own points ladder, never mixed with Elo. Points double per stage; the plan is
 stored and progress replays from `arena_matches`. Matches are write-once and always blind. Ties

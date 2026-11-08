@@ -25,13 +25,13 @@ import type { AppController } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
-import { CardReader } from '../features/chat/CardReader.tsx';
 import { useChatSurface } from '../features/chat/useChatSurface.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { NexusExplorer } from '../features/nexus/NexusExplorer.tsx';
 import { characterApi, chatApi, personaApi } from '../lib/api.ts';
 import { downloadUrl } from '../lib/download.ts';
 import { Arena } from './Arena.tsx';
+import { CardMargin } from './CardViews.tsx';
 import { ChatStage } from './ChatStage.tsx';
 import { CoCreator } from './CoCreator.tsx';
 import { HomeShell } from './Home.tsx';
@@ -59,6 +59,7 @@ import {
   type ToolId,
   toolSubtitle,
 } from './MarginTools.tsx';
+import { ModelPane } from './ModelPane.tsx';
 import { PresetCoCreator } from './PresetCoCreator.tsx';
 import { Stats } from './Stats.tsx';
 import { Studio } from './Studio.tsx';
@@ -396,6 +397,17 @@ function ChatShell({
           disabledReason: busy ? BUSY : undefined,
         },
         {
+          id: 'delete',
+          label: 'Delete chat',
+          confirmLabel: 'Delete this chat?',
+          icon: 'trash',
+          run: () => {
+            setOpened(null);
+            if (state.chatId) void backups.deleteChat(state.chatId);
+          },
+          disabledReason: busy ? BUSY : undefined,
+        },
+        {
           id: 'close',
           label: 'Close chat',
           icon: 'close',
@@ -429,6 +441,14 @@ function ChatShell({
     setOpened(null);
     setTool((current) => (current === id ? null : id));
   }, []);
+  // The card reader and the tools share the margin: opening one puts the other away.
+  const { cardReader, closeCardReader } = surface;
+  useEffect(() => {
+    if (cardReader) setTool(null);
+  }, [cardReader]);
+  useEffect(() => {
+    if (tool) closeCardReader();
+  }, [tool, closeCardReader]);
   // Search opens a tool onto something; it never closes the one already open.
   const showTool = useCallback((id: ToolId) => {
     setOpened(null);
@@ -463,7 +483,8 @@ function ChatShell({
   // --- Margin ----------------------------------------------------------------------------
 
   const side = tool ? TOOLS[tool].side : null;
-  const chooseModel = useCallback(() => openTool('preset'), [openTool]);
+  // A chat with no model asks for one on the island, where the model now lives.
+  const chooseModel = useCallback(() => setOpened('model'), []);
 
   /*
    * The lore this reply fired, for the island. Only a result that arrived after the reply
@@ -515,7 +536,7 @@ function ChatShell({
         ref={rootRef}
         className="wc3"
         data-overlay-root
-        data-margin={side ?? undefined}
+        data-margin={side ?? (surface.cardReader ? 'R' : undefined)}
         data-wide={
           tool === 'inspect' ||
           (tool === 'preset' && controller.presetPrompt) ||
@@ -552,6 +573,9 @@ function ChatShell({
               personaAvatarVersions={library.personaAvatarVersions}
               dialogueColors={prefs.dialogueColors}
               guidance={prefs.guidance}
+              quickCommands={prefs.quickCommands}
+              revealWhole={prefs.revealReplies === 'finished'}
+              onQuickCommandsChange={(next) => void app.patchSettings({ quickCommands: next })}
               onGuidanceChange={(patch) =>
                 void app.patchSettings({ guidance: { ...prefs.guidance, ...patch } })
               }
@@ -648,7 +672,19 @@ function ChatShell({
                 character={characterFace}
                 chatTitle={hasChat ? state.title : 'No chat open'}
                 persona={personaFace}
+                model={models.slots.chat}
                 onOpen={open}
+              />
+            ),
+            model: (
+              <ModelPane
+                active={mode === 'model'}
+                value={models.slots.chat}
+                head={<p className="w3-isl-model__head">The model for your chats</p>}
+                onPick={(ref) => {
+                  app.setModelSlot('chat', ref);
+                  setOpened(null);
+                }}
               />
             ),
             gen: (
@@ -704,6 +740,8 @@ function ChatShell({
                 onRename={(title) => chat.renameChat(title)}
                 renameDisabledReason={busy ? BUSY : undefined}
                 actions={castActions}
+                onDeleteChat={(id) => void backups.deleteChat(id)}
+                deleteDisabledReason={busy ? BUSY : undefined}
                 chats={chat.chats}
                 currentChatId={state.chatId}
                 onOpenChat={(id) => {
@@ -755,13 +793,16 @@ function ChatShell({
           }}
         />
 
-        {surface.cardReader ? (
-          <CardReader
+        {surface.cardReader && !tool ? (
+          <CardMargin
+            key={`${surface.cardReader.sectionId ?? ''}:${surface.cardReader.query ?? ''}`}
             store={surface.cardStore}
             init={surface.cardReader}
+            avatarUrl={surface.characterAvatarUrl}
+            line={intro}
+            busy={busy}
             onClose={surface.closeCardReader}
             onEditCharacter={surface.editCharacter}
-            busy={busy}
           />
         ) : null}
 

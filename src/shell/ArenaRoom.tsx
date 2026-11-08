@@ -8,10 +8,8 @@
  * and the keys never leave the screen.
  */
 
-import type { ArenaSettings, Verdict } from '@shared/types/arena.ts';
+import type { Verdict } from '@shared/types/arena.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
-import type { Persona } from '@shared/types/chat.ts';
-import type { PresetSummary } from '@shared/types/preset.ts';
 import { type ReactNode, useState, useSyncExternalStore } from 'react';
 import { Popover } from '../components/Popover.tsx';
 import { viewSeries } from '../features/arena/series.ts';
@@ -22,7 +20,7 @@ import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { characterApi } from '../lib/api.ts';
 import { Duel, entryCost, type SideReveal, useDuelKeys } from './ArenaDuel.tsx';
 import { formatSeconds, type PriceOf, wordCount } from './arenaStats.ts';
-import { Switch, useArm } from './controls.tsx';
+import { Switch } from './controls.tsx';
 import { Icon } from './icons.tsx';
 import { formatUsd } from './presetcc.ts';
 
@@ -53,57 +51,28 @@ export function ArenaRoom({
   blind,
   onBlind,
   characters,
-  presets,
-  personas,
   nameOf,
   colourOf,
   priceOf,
-  onSettingsChange,
   onOpenPool,
+  onOpenSetup,
 }: {
   arena: ArenaController;
   blind: boolean;
   onBlind: (on: boolean) => void;
   characters: readonly CharacterSummary[];
-  presets: readonly PresetSummary[];
-  personas: readonly Persona[];
   nameOf: (id: string) => string;
   colourOf: (id: string) => string;
   priceOf: PriceOf;
-  onSettingsChange: (patch: Partial<ArenaSettings>) => void;
   onOpenPool: () => void;
+  /** The Setup page: cards, cues and the rest of what rounds draw from. */
+  onOpenSetup: () => void;
 }) {
-  const [setupOpen, setSetupOpen] = useState(false);
-
   const setupButton = (
-    <Popover
-      label="Benchmark setup"
-      icon={null}
-      open={setupOpen}
-      onOpenChange={setSetupOpen}
-      placement="bottom-end"
-      role="dialog"
-      popupClassName="w3-ar-setup"
-      renderTrigger={(trigger) => (
-        <button
-          {...trigger}
-          type="button"
-          className="w3-st-ghost w3-st-ghost--sm"
-          onClick={() => setSetupOpen(!setupOpen)}
-        >
-          <Icon name="sliders" size="sm" />
-          Setup
-        </button>
-      )}
-    >
-      <Setup
-        arena={arena}
-        characters={characters}
-        presets={presets}
-        personas={personas}
-        onSettingsChange={onSettingsChange}
-      />
-    </Popover>
+    <button type="button" className="w3-st-ghost w3-st-ghost--sm" onClick={onOpenSetup}>
+      <Icon name="sliders" size="sm" />
+      Setup
+    </button>
   );
 
   const blindSwitch = (
@@ -136,7 +105,7 @@ export function ArenaRoom({
         </>
       }
       onOpenPool={onOpenPool}
-      onOpenSetup={() => setSetupOpen(true)}
+      onOpenSetup={onOpenSetup}
     />
   ) : (
     <LabelledRoom
@@ -368,21 +337,28 @@ function Blocked({
   onOpenSetup: () => void;
 }) {
   const cards = /no cards/i.test(reason);
-  const cues = /no probes/i.test(reason);
+  const cuesOff = /switched off/i.test(reason);
+  const cues = /no probes/i.test(reason) || cuesOff;
   const models = /contender/i.test(reason);
   const text = cards
     ? 'No characters to draw from.'
-    : cues
-      ? 'No cues yet. A cue is the line both models answer.'
-      : models
-        ? 'Switch on at least two models in the pool.'
-        : reason;
+    : cuesOff
+      ? 'Every cue is switched off.'
+      : cues
+        ? 'No cues yet. A cue is the line both models answer.'
+        : models
+          ? 'Switch on at least two models in the pool.'
+          : reason;
   return (
     <>
       <p>{text}</p>
       {cards || cues ? (
         <button type="button" className="w3-st-ghost" onClick={onOpenSetup}>
-          {cards ? 'Pick characters in Setup' : 'Add a cue in Setup'}
+          {cards
+            ? 'Pick characters in Setup'
+            : cuesOff
+              ? 'Switch one on in Setup'
+              : 'Add a cue in Setup'}
         </button>
       ) : models ? (
         <button type="button" className="w3-st-ghost" onClick={onOpenPool}>
@@ -691,223 +667,5 @@ export function CardPicker({
         </div>
       </div>
     </Popover>
-  );
-}
-
-// ---------- Setup ----------
-
-function Setup({
-  arena,
-  characters,
-  presets,
-  personas,
-  onSettingsChange,
-}: {
-  arena: ArenaController;
-  characters: readonly CharacterSummary[];
-  presets: readonly PresetSummary[];
-  personas: readonly Persona[];
-  onSettingsChange: (patch: Partial<ArenaSettings>) => void;
-}) {
-  const { settings } = arena;
-  const arm = useArm();
-  const [adding, setAdding] = useState(false);
-  const [query, setQuery] = useState('');
-  const [newCue, setNewCue] = useState('');
-  const pool = settings.cardPool;
-  const exists = (id: string) => characters.some((c) => c.avatar === id);
-  const matches = characters
-    .filter((c) => !pool.includes(c.avatar))
-    .filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
-    .slice(0, 30);
-
-  return (
-    <div className="w3-ar-setup__body">
-      <section>
-        <p className="w3-ar-label">
-          Characters it draws from
-          {pool.length === 0 ? <span> · every character</span> : null}
-          {pool.length > 0 && !pool.some(exists) ? (
-            <span> · none of these exist any more, so nothing can be drawn</span>
-          ) : null}
-        </p>
-        <div className="w3-ar-chips">
-          {pool.map((id) => (
-            <button
-              key={id}
-              type="button"
-              className="w3-ar-chip w3-ar-chip--face"
-              data-gone={exists(id) ? undefined : ''}
-              title={exists(id) ? 'Take out of the draw' : 'This character is gone. Take it out.'}
-              onClick={() =>
-                onSettingsChange({ cardPool: settings.cardPool.filter((x) => x !== id) })
-              }
-            >
-              <img src={characterApi.imageUrl(id)} alt="" />
-              {cardName(characters, id)}
-              <Icon name="close" size="xs" />
-            </button>
-          ))}
-          <button
-            type="button"
-            className="w3-ar-chip w3-ar-chip--add"
-            onClick={() => setAdding(!adding)}
-          >
-            <Icon name="plus" size="xs" />
-            Add
-          </button>
-        </div>
-        {adding ? (
-          <div className="w3-ar-addcard">
-            <input
-              value={query}
-              placeholder="Find a character"
-              aria-label="Find a character"
-              // biome-ignore lint/a11y/noAutofocus: opened to type into
-              autoFocus
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="w3-ar-cardpop__list">
-              {matches.map((c) => (
-                <button
-                  key={c.avatar}
-                  type="button"
-                  onClick={() => onSettingsChange({ cardPool: [...settings.cardPool, c.avatar] })}
-                >
-                  <img src={characterApi.imageUrl(c.avatar)} alt="" />
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      <section>
-        <p className="w3-ar-label">Cues · {settings.probes.length}</p>
-        <div className="w3-ar-cues">
-          {settings.probes.map((probe) => (
-            <div key={probe.id} className="w3-ar-cueitem">
-              <textarea
-                value={probe.text}
-                aria-label="Cue"
-                rows={Math.min(4, Math.max(1, Math.ceil(probe.text.length / 52)))}
-                onChange={(event) =>
-                  onSettingsChange({
-                    probes: settings.probes.map((p) =>
-                      p.id === probe.id ? { ...p, text: event.target.value } : p,
-                    ),
-                  })
-                }
-              />
-              <button
-                type="button"
-                className="w3-ar-iconbtn"
-                data-armed={arm.armed === probe.id ? '' : undefined}
-                title={arm.armed === probe.id ? 'Click again to delete' : 'Delete this cue'}
-                onClick={() =>
-                  arm.press(probe.id, () =>
-                    onSettingsChange({ probes: settings.probes.filter((p) => p.id !== probe.id) }),
-                  )
-                }
-              >
-                <Icon name={arm.armed === probe.id ? 'trash' : 'close'} size="xs" />
-              </button>
-            </div>
-          ))}
-          <form
-            className="w3-ar-cueitem"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!newCue.trim()) return;
-              onSettingsChange({
-                probes: [...settings.probes, { id: crypto.randomUUID(), text: newCue.trim() }],
-              });
-              setNewCue('');
-            }}
-          >
-            <input
-              value={newCue}
-              placeholder="Add a cue. Macros like {{char}} work."
-              aria-label="New cue"
-              onChange={(event) => setNewCue(event.target.value)}
-            />
-            <button type="submit" className="w3-ar-iconbtn" disabled={!newCue.trim()} title="Add">
-              <Icon name="plus" size="xs" />
-            </button>
-          </form>
-        </div>
-      </section>
-
-      <section>
-        <p className="w3-ar-label">Preset</p>
-        <div className="w3-ar-chips">
-          {presets.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="w3-ar-chip"
-              aria-pressed={(settings.presetId ?? arena.presetId) === p.id}
-              onClick={() => onSettingsChange({ presetId: p.id })}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <p className="w3-ar-label">Persona</p>
-        <div className="w3-ar-chips">
-          <button
-            type="button"
-            className="w3-ar-chip"
-            aria-pressed={settings.personaId === null}
-            onClick={() => onSettingsChange({ personaId: null })}
-          >
-            None
-          </button>
-          {personas.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="w3-ar-chip"
-              aria-pressed={settings.personaId === p.id}
-              onClick={() => onSettingsChange({ personaId: p.id })}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="w3-ar-setrow">
-        <span>
-          Show the replies only when both have finished
-          <small>How fast text arrives can give a model away.</small>
-        </span>
-        <Switch
-          on={settings.holdBlindUntilComplete}
-          label="Hold the replies until both finish"
-          onChange={(on) => onSettingsChange({ holdBlindUntilComplete: on })}
-        />
-      </section>
-
-      <section className="w3-ar-setrow">
-        <span>
-          Every blind round
-          <small>{arena.rounds.length} recorded</small>
-        </span>
-        <button
-          type="button"
-          className="w3-st-ghost w3-st-ghost--sm"
-          data-armed={arm.armed === 'clear' ? '' : undefined}
-          disabled={arena.rounds.length === 0}
-          onClick={() => arm.press('clear', arena.clearHistory)}
-        >
-          {arm.armed === 'clear' ? 'Erase every round?' : 'Erase all'}
-        </button>
-      </section>
-    </div>
   );
 }

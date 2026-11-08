@@ -39,6 +39,7 @@ import {
 } from '../features/chat/avatarColor.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { characterApi, chatApi, personaApi, type VersionInfo, versionApi } from '../lib/api.ts';
+import { useArm } from './controls.tsx';
 import {
   agoInWords,
   isNamedChat,
@@ -285,6 +286,18 @@ export function HomeShell({
   useAura(rootRef, washRef, coverColor, personaColor, 'home');
   const [firstAura] = useState(() => initialAuraStyle(coverColor, personaColor));
 
+  // Deleting from the stack: the row goes at once, the chat goes to the trash bin.
+  const deleteEntry = useCallback(
+    (entry: Entry) => {
+      const id = entry.chatId;
+      if (!id) return;
+      setRecent((list) => list?.filter((summary) => summary.id !== id) ?? list);
+      setPicked(0);
+      void controller.backups.deleteChat(id);
+    },
+    [controller.backups],
+  );
+
   // --- Going places ---------------------------------------------------------------------------
 
   const openEntry = useCallback(
@@ -510,6 +523,7 @@ export function HomeShell({
                     colorOf={colorOf}
                     onPick={setPicked}
                     onOpen={openEntry}
+                    onDelete={deleteEntry}
                   />
                 ) : null}
               </ErrorBoundary>
@@ -543,14 +557,19 @@ export function HomeShell({
                     Create
                   </button>
                   <p className="w3-home__italic">Someone new, or a better preset.</p>
-                  <p className="w3-home__desc">
-                    Shape a character or tune a preset with the Co-Creator, or build a card by hand
-                    in the Studio.
-                  </p>
-                  <span className="w3-home__links">
+                  <span className="w3-home__pair">
                     <button type="button" onClick={() => void controller.enterCoCreator()}>
-                      Co-Creator
+                      <Icon name="sparkles" size="sm" />
+                      <b>Character Co-Creator</b>
+                      <span>Build a card by talking it through.</span>
                     </button>
+                    <button type="button" onClick={() => void controller.enterCoCreator('preset')}>
+                      <Icon name="sliders" size="sm" />
+                      <b>Preset Co-Creator</b>
+                      <span>Tune a preset: ask, edit, test, send back.</span>
+                    </button>
+                  </span>
+                  <span className="w3-home__links">
                     <button type="button" onClick={() => void controller.enterStudio()}>
                       Studio
                     </button>
@@ -977,6 +996,7 @@ function Stack({
   colorOf,
   onPick,
   onOpen,
+  onDelete,
 }: {
   entries: readonly Entry[];
   picked: number;
@@ -984,8 +1004,11 @@ function Stack({
   colorOf: (avatar: string) => string | null | undefined;
   onPick: (index: number) => void;
   onOpen: (entry: Entry) => void;
+  /** Sends the entry's chat to the trash bin. Two clicks, in place. */
+  onDelete: (entry: Entry) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const arm = useArm();
 
   // Names shrink so the whole stack fits its column; past the smallest size it scrolls.
   useLayoutEffect(() => {
@@ -1017,26 +1040,44 @@ function Stack({
       {entries.map((entry, index) => {
         const color = colorOf(entry.avatar);
         return (
-          <button
-            key={entry.key}
-            type="button"
-            className="w3-home__entry"
-            data-picked={index === picked || undefined}
-            data-lead={index === 0 || undefined}
-            style={color ? ({ '--home-c': color } as CSSProperties) : undefined}
-            onMouseEnter={() => onPick(index)}
-            onFocus={() => onPick(index)}
-            onClick={() => onOpen(entry)}
-          >
-            <b>{entry.name}</b>
-            <span>
-              {index === 0 && !cast
-                ? `Where you left off · ${agoInWords(entry.modified)}`
-                : cast
-                  ? 'Never chatted'
-                  : agoInWords(entry.modified)}
-            </span>
-          </button>
+          <div key={entry.key} className="w3-home__row" data-picked={index === picked || undefined}>
+            {entry.chatId ? (
+              <button
+                type="button"
+                className="w3-home__del"
+                data-armed={arm.armed === entry.key || undefined}
+                aria-label={`Delete the chat with ${entry.name}`}
+                title={
+                  arm.armed === entry.key
+                    ? 'Click again to delete. It goes to the trash bin.'
+                    : 'Delete this chat'
+                }
+                onClick={() => arm.press(entry.key, () => onDelete(entry))}
+                onBlur={() => arm.armed === entry.key && arm.disarm()}
+              >
+                {arm.armed === entry.key ? 'Delete?' : <Icon name="trash" size="sm" />}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="w3-home__entry"
+              data-picked={index === picked || undefined}
+              data-lead={index === 0 || undefined}
+              style={color ? ({ '--home-c': color } as CSSProperties) : undefined}
+              onMouseEnter={() => onPick(index)}
+              onFocus={() => onPick(index)}
+              onClick={() => onOpen(entry)}
+            >
+              <b>{entry.name}</b>
+              <span>
+                {index === 0 && !cast
+                  ? `Where you left off · ${agoInWords(entry.modified)}`
+                  : cast
+                    ? 'Never chatted'
+                    : agoInWords(entry.modified)}
+              </span>
+            </button>
+          </div>
         );
       })}
     </div>

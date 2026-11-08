@@ -102,6 +102,8 @@ export interface PresetToolProps {
   connection: ResolvedModel | null;
   extraSamplersSent: boolean;
   onConnectionPatch: (patch: Partial<Connection>) => void;
+  /** Leaves for the Preset Co-Creator's sessions. */
+  onOpenCoCreator?: () => void;
 }
 
 export function PresetTool(props: PresetToolProps) {
@@ -231,6 +233,17 @@ export function PresetTool(props: PresetToolProps) {
                 <Icon name="plus" size="xs" />
                 Documentation
               </button>
+              {props.onOpenCoCreator ? (
+                <button
+                  type="button"
+                  className="w3-preset__ghost w3-preset__cc"
+                  title="Work on presets with the Preset Co-Creator"
+                  onClick={props.onOpenCoCreator}
+                >
+                  <Icon name="sparkles" size="xs" />
+                  Open in Preset Co-Creator
+                </button>
+              ) : null}
             </div>
           </section>
           <HowItsSent {...props} preset={preset} changed={changedFields} onPutBack={putBackField} />
@@ -1104,7 +1117,12 @@ function HowItsSent({
           unlimited,
           'Replies run until the model finishes.',
         )}
-        {toggle('stream_openai', 'Stream replies', preset.stream_openai !== false)}
+        {toggle(
+          'stream_openai',
+          'Stream replies',
+          preset.stream_openai !== false,
+          'Turn off only for an endpoint that can’t stream. To read replies whole, use Reveal replies in Settings ▸ Text.',
+        )}
         {toggle(
           'squash_system_messages',
           'Squash system messages',

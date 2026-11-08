@@ -68,6 +68,12 @@ export const SETTING_INDEX: readonly SettingEntry[] = [
     words: 'rain snow petals fireflies particles animated',
   },
   { key: 'dialogue', label: 'Dialogue colour', chapter: 'look', words: 'quotes color' },
+  {
+    key: 'reveal',
+    label: 'Reveal replies',
+    chapter: 'text',
+    words: 'streaming stream whole finished written',
+  },
   { key: 'regex', label: 'Regex scripts', chapter: 'text', words: 'find replace' },
   { key: 'hidden-tags', label: 'Hidden tags', chapter: 'text', words: 'cards' },
   { key: 'backup', label: 'Back up the library', chapter: 'library', words: 'backup zip export' },

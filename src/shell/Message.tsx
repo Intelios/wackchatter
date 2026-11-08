@@ -18,14 +18,17 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { Menu, type MenuEntry } from '../components/Menu.tsx';
+import type { CardReaderInit } from '../features/chat/CardReader.tsx';
 import { CreatorNotesPopover } from '../features/chat/CreatorNotesPopover.tsx';
 import { formatTimestamp } from '../features/chat/formatDate.ts';
 import { Markdown } from '../features/chat/Markdown.tsx';
 import { StreamingText } from '../features/chat/StreamingText.tsx';
+import type { CardStore } from '../features/chat/state/cardStore.ts';
 import type { GenMode } from '../features/chat/state/chatReducer.ts';
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { resolveSwipeMotion, type SwipeMotionDir } from '../features/chat/swipeMotion.ts';
 import { Avatar } from './Avatar.tsx';
+import { CardGlance } from './CardViews.tsx';
 import { Icon } from './icons.tsx';
 
 interface MessageProps {
@@ -36,6 +39,10 @@ interface MessageProps {
   /** The speaker's own dialogue colour, when known. */
   dialogueColor: string | null;
   streaming: boolean;
+  /** The character's card, opened from the portrait. None on your own messages. */
+  card?: MessageCard;
+  /** Show the reply whole once it is finished, not word by word (Reveal replies). */
+  revealWhole?: boolean;
   flash: boolean;
   mode: GenMode | null;
   stream: StreamStore;
@@ -59,12 +66,22 @@ interface MessageProps {
   onCopied: (ok: boolean) => void;
 }
 
+/** What a character's portrait needs to open their card. */
+export interface MessageCard {
+  store: CardStore;
+  line: string;
+  onOpenReader: (init: CardReaderInit) => void;
+  onEditCharacter: () => void;
+}
+
 export const Message = memo(function Message({
   message,
   avatarUrl,
   dialogueActive,
   dialogueColor,
   streaming,
+  revealWhole,
+  card,
   flash,
   mode,
   stream,
@@ -97,6 +114,11 @@ export const Message = memo(function Message({
   const [motion, setMotion] = useState<{ n: number; dir: SwipeMotionDir } | null>(null);
   const prevSwipeRef = useRef(message.swipe_id);
   const prevStreamingRef = useRef(false);
+  // A reply revealed whole fades in once, the moment it is finished.
+  const [reveal, setReveal] = useState(0);
+  useLayoutEffect(() => {
+    if (prevStreamingRef.current && !streaming && revealWhole) setReveal((n) => n + 1);
+  }, [streaming, revealWhole]);
   useLayoutEffect(() => {
     const dir = resolveSwipeMotion({
       swipeId: message.swipe_id,
@@ -195,7 +217,19 @@ export const Message = memo(function Message({
       data-dialogue={dialogueActive || undefined}
       style={style}
     >
-      <Avatar url={avatarUrl} name={message.name} size="md" who={isUser ? 'me' : 'char'} />
+      {card && !isUser ? (
+        <CardGlance
+          store={card.store}
+          name={message.name}
+          avatarUrl={avatarUrl}
+          line={card.line}
+          busy={busy}
+          onOpenReader={card.onOpenReader}
+          onEditCharacter={card.onEditCharacter}
+        />
+      ) : (
+        <Avatar url={avatarUrl} name={message.name} size="md" who={isUser ? 'me' : 'char'} />
+      )}
       <div className="w3-msg__body">
         <div className="w3-msg__bubble">
           <header className="w3-msg__head">
@@ -274,12 +308,18 @@ export const Message = memo(function Message({
             </div>
           ) : (
             <div
-              key={motion?.n}
+              key={`${motion?.n ?? 0}:${reveal}`}
               className={
-                motion ? `w3-msg__content w3-motion w3-motion--${motion.dir}` : 'w3-msg__content'
+                motion
+                  ? `w3-msg__content w3-motion w3-motion--${motion.dir}`
+                  : reveal
+                    ? 'w3-msg__content w3-reveal'
+                    : 'w3-msg__content'
               }
             >
-              {streaming ? (
+              {streaming && revealWhole ? (
+                <WritingWhole stream={stream} />
+              ) : streaming ? (
                 <>
                   <LiveReasoning stream={stream} />
                   <StreamingText store={stream} hideReasoning />
@@ -433,6 +473,19 @@ function ToolButton({
   );
 }
 
+/** Reveal replies: when finished. The reply streams out of sight; this counts it in. */
+function WritingWhole({ stream }: { stream: StreamStore }) {
+  const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
+  const words = snapshot.text.trim() ? snapshot.text.trim().split(/\s+/).length : 0;
+  const thinking = !snapshot.text && Boolean(snapshot.reasoning);
+  return (
+    <p className="w3-writing" role="status">
+      <i aria-hidden="true" />
+      {thinking ? 'Thinking…' : words ? `Writing · ${words} words` : 'Writing…'}
+    </p>
+  );
+}
+
 /** The reasoning as it arrives: faint, scrolling under a shimmering "Thinking". */
 function LiveReasoning({ stream }: { stream: StreamStore }) {
   const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
@@ -523,7 +576,9 @@ function ReasoningBlock({
           </div>
         ) : (
           <div className="w3-reason__body">
-            <span>{shown}</span>
+            <div className="w3-reason__text">
+              <Markdown text={shown} />
+            </div>
             <button
               type="button"
               className="w3-textbtn"

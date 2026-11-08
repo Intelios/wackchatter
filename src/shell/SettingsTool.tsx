@@ -495,8 +495,26 @@ function Text({ controller }: { controller: AppController }) {
     if (tag && !tags.includes(tag)) patch({ hiddenTags: [...tags, tag] });
     setDraft('');
   };
+  const reveal = settings?.revealReplies === 'finished' ? 'finished' : 'written';
   return (
     <>
+      <Group label="Replies" setting="reveal">
+        <Row
+          title="Reveal replies"
+          hint="Finished replies appear whole; the lights still follow the writing"
+        >
+          <Segments
+            label="Reveal replies"
+            value={reveal}
+            options={[
+              ['written', 'As they’re written'],
+              ['finished', 'When finished'],
+            ]}
+            onChange={(revealReplies) => patch({ revealReplies })}
+          />
+        </Row>
+      </Group>
+
       <Group
         label="Regex scripts"
         aside={`${scripts.filter((s) => !s.disabled).length} of ${scripts.length} on`}

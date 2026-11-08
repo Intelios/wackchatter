@@ -928,3 +928,95 @@
   height: 80px;
   font-size: 34px;
 }
+
+/* A chat row with its delete beside it: the trash shows on hover, a click arms it. */
+.w3-opt-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.w3-opt-row > .w3-opt {
+  padding-right: 46px;
+}
+
+.w3-opt-x {
+  position: absolute;
+  right: 6px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: var(--w3-island);
+  color: var(--w3-faint);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.w3-opt-row:hover .w3-opt-x,
+.w3-opt-x:focus-visible,
+.w3-opt-x[data-armed] {
+  opacity: 1;
+}
+
+.w3-opt-x:hover:not(:disabled) {
+  background: var(--w3-island-hover);
+  color: var(--w3-text);
+}
+
+.w3-opt-x[data-armed],
+.w3-pill[data-armed] {
+  padding: 0 10px;
+  background: var(--w3-danger-soft);
+  border-color: var(--w3-danger);
+  box-shadow: inset 0 0 0 1px var(--w3-danger);
+  color: var(--w3-text);
+}
+
+/* The chat's model, between the character and your persona. */
+.w3-isl-model {
+  max-width: 240px;
+}
+
+.w3-isl-model > i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--w3-accent);
+  box-shadow: 0 0 8px var(--w3-accent);
+}
+
+.w3-isl-model__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--w3-text);
+}
+
+.w3-isl-model[data-missing] > i {
+  background: var(--w3-danger);
+  box-shadow: 0 0 8px var(--w3-danger);
+}
+
+.w3-isl-model[data-missing] .w3-isl-model__name {
+  color: var(--w3-accent);
+}
+
+.w3-isl-model__head {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}

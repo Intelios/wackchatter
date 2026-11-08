@@ -295,6 +295,7 @@ export function MarginTool({
             connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false
           }
           onConnectionPatch={app.patchChatConnection}
+          onOpenCoCreator={() => void controller.enterCoCreator('preset')}
         />
       );
     case 'memory':

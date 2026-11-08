@@ -555,3 +555,250 @@
   border-radius: 16px;
   background: var(--w3-island);
 }
+
+/* ---------- The card: a glance from the portrait, the whole card in the margin ---------- */
+
+.w3-glance-anchor {
+  align-self: start;
+}
+
+.w3-msg__face {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  transition: transform 0.25s var(--w3-spring);
+}
+
+.w3-msg__face:hover {
+  transform: scale(1.06);
+}
+
+.w3-msg__face:hover .w3-av,
+.w3-msg__face[aria-expanded="true"] .w3-av {
+  box-shadow: 0 0 0 2px var(--w3-accent-line);
+}
+
+.wc3 .w3-glance {
+  width: 400px;
+  max-height: min(460px, 64vh);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+  padding: 0;
+  border: 1px solid var(--w3-line-strong);
+  border-radius: 22px;
+  background: var(--w3-island);
+  box-shadow: 0 30px 70px -10px oklch(0 0 0 / 0.85);
+}
+
+.w3-glance__top {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 14px 10px;
+  flex: none;
+}
+
+.w3-glance__img {
+  width: 64px;
+  height: 86px;
+  border-radius: 14px;
+  object-fit: cover;
+  object-position: 50% 15%;
+}
+
+.w3-glance__who {
+  display: grid;
+  align-content: end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.w3-glance__kicker {
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}
+
+.w3-glance__name {
+  font-family: var(--w3-font-display);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--w3-text);
+}
+
+.w3-glance__line,
+.w3-reader__line {
+  margin: 0;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--w3-soft);
+}
+
+.w3-glance .card-sheet {
+  padding: 0 14px;
+}
+
+.w3-glance .card-sheet {
+  gap: 10px;
+}
+
+/* One row of sections that scrolls sideways, so the text gets the room. */
+.w3-glance .card-sheet__chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+}
+
+.w3-glance .card-sheet__chip {
+  flex: none;
+}
+
+.w3-glance .card-sheet__body {
+  min-height: 90px;
+  max-height: 200px;
+}
+
+.w3-glance__foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  background: var(--w3-island);
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--w3-line);
+}
+
+.w3-glance__read {
+  height: 32px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.w3-glance__edit,
+.w3-reader__edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+}
+
+:is(.w3-glance__edit, .w3-reader__edit):hover:not(:disabled) {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+:is(.w3-glance__edit, .w3-reader__edit):disabled {
+  opacity: 0.45;
+}
+
+.w3-reader__head {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 18px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.w3-reader__img {
+  width: 110px;
+  height: 150px;
+  border-radius: 16px;
+  object-fit: cover;
+  object-position: 50% 15%;
+}
+
+.w3-reader__head > div {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.w3-reader__name {
+  font-family: var(--w3-font-display);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  color: var(--w3-text);
+}
+
+/* The sheet inside either, in 3.0 dress. */
+.wc3 .card-sheet__find {
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .card-sheet__find:focus-within {
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.wc3 .card-sheet__input {
+  font-size: 13px;
+  color: var(--w3-text);
+}
+
+.wc3 .card-sheet__chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-muted);
+  font-size: 12px;
+}
+
+.wc3 .card-sheet__chip:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.wc3 .card-sheet__chip[aria-selected="true"] {
+  background: var(--w3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+  color: var(--w3-accent);
+}
+
+.wc3 .card-sheet__body {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--w3-soft);
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+}
+
+.wc3 .card-sheet[data-variant="reader"] .card-sheet__body {
+  font-size: 14.5px;
+  overflow: visible;
+}
+
+.wc3 .card-sheet__plain mark {
+  border-radius: 3px;
+  background: var(--w3-accent-soft);
+  color: var(--w3-text);
+}

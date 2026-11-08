@@ -104,6 +104,7 @@ export interface SettingsView {
   studioInspectorCollapsed: boolean;
   composerLayout: AppSettings['composerLayouts']['single'];
   streamingFps: number;
+  revealReplies: 'written' | 'finished';
 }
 
 const strings = (value: unknown): string[] =>
@@ -145,5 +146,6 @@ export function appSettingsView(settings: AppSettings | null): SettingsView {
     studioInspectorCollapsed: settings?.studioInspectorCollapsed === true,
     composerLayout: settings?.composerLayouts.single ?? DEFAULT_SINGLE_COMPOSER_LAYOUT,
     streamingFps: Number(settings?.streamingFps ?? 30),
+    revealReplies: settings?.revealReplies === 'finished' ? 'finished' : 'written',
   };
 }

@@ -9,7 +9,7 @@
  */
 
 import type { PersistentGuide } from '@shared/types/chat.ts';
-import type { GuidanceSettings } from '@shared/types/settings.ts';
+import type { GuidanceSettings, QuickCommand } from '@shared/types/settings.ts';
 import {
   type Ref,
   useCallback,
@@ -31,6 +31,7 @@ import { type SlashCommandHelp, slashCompletion } from '../features/chat/slashCo
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { Icon, type IconName } from './icons.tsx';
 import { inkSegments } from './ink.ts';
+import { LineCommands } from './LineCommands.tsx';
 import { caretLeft, LineLight, type LineLightHandle } from './LineLight.tsx';
 
 export interface LineHandle {
@@ -63,6 +64,8 @@ interface LineComposerProps {
   onGuidesChange: (next: PersistentGuide[]) => void;
   guidance: GuidanceSettings;
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
+  quickCommands: QuickCommand[];
+  onQuickCommandsChange: (commands: QuickCommand[]) => void;
   onDraftChange?: (text: string) => void;
   /** Called with the field's position just before a send, for the lift-off. */
   onBeforeSend?: (from: DOMRect) => void;
@@ -94,6 +97,8 @@ export function LineComposer({
   onGuidesChange,
   guidance,
   onGuidanceChange,
+  quickCommands,
+  onQuickCommandsChange,
   onDraftChange,
   onBeforeSend,
   failed = null,
@@ -334,6 +339,18 @@ export function LineComposer({
       <div className="w3-line__row" ref={rowRef}>
         <LineLight ref={lightRef} busy={busy} stream={stream} failed={failed} />
         <span className="w3-line__acts">
+          <LineCommands
+            commands={quickCommands}
+            onChange={onQuickCommandsChange}
+            onInsert={(added) => {
+              setText((current) => {
+                const trimmed = current.trimEnd();
+                return trimmed ? `${trimmed}\n${added}` : added;
+              });
+              setSlashDismissed(false);
+              setTimeout(() => textarea.current?.focus({ preventScroll: true }), 0);
+            }}
+          />
           <LineAction
             icon="mask"
             label="Impersonate"

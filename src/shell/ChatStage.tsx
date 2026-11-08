@@ -6,8 +6,12 @@
  */
 
 import type { Persona } from '@shared/types/chat.ts';
-import type { DialogueColorSettings, GuidanceSettings } from '@shared/types/settings.ts';
-import { memo, type RefObject, useCallback, useLayoutEffect, useRef } from 'react';
+import type {
+  DialogueColorSettings,
+  GuidanceSettings,
+  QuickCommand,
+} from '@shared/types/settings.ts';
+import { memo, type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
 import type { UseChat } from '../features/chat/useChat.ts';
 import type { ChatSurface } from '../features/chat/useChatSurface.ts';
@@ -15,7 +19,7 @@ import { personaApi } from '../lib/api.ts';
 import { Avatar } from './Avatar.tsx';
 import { Icon } from './icons.tsx';
 import { LineComposer, type LineHandle } from './LineComposer.tsx';
-import { Message } from './Message.tsx';
+import { Message, type MessageCard } from './Message.tsx';
 
 interface ChatStageProps {
   chat: UseChat;
@@ -28,6 +32,10 @@ interface ChatStageProps {
   dialogueColors: DialogueColorSettings;
   guidance: GuidanceSettings;
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
+  quickCommands: QuickCommand[];
+  onQuickCommandsChange: (commands: QuickCommand[]) => void;
+  /** Reveal replies: when finished. */
+  revealWhole: boolean;
   ready: boolean;
   notReadyReason: string | null;
   onChooseModel: () => void;
@@ -47,6 +55,9 @@ export function ChatStage({
   dialogueColors,
   guidance,
   onGuidanceChange,
+  quickCommands,
+  onQuickCommandsChange,
+  revealWhole,
   ready,
   notReadyReason,
   onChooseModel,
@@ -73,7 +84,7 @@ export function ChatStage({
     loadBlocksChat,
   } = surface;
 
-  // --- Lift-off: what you send rises from the Line into its place ---------------------
+  // --- Sending: the Line flares and your message rises into its place ----------------
   const liftFrom = useRef<DOMRect | null>(null);
   const liftCount = useRef(0);
   const onBeforeSend = useCallback(
@@ -91,18 +102,31 @@ export function ChatStage({
     // The user's new row is the last user row on screen.
     const rows = contentRef.current?.querySelectorAll<HTMLElement>('.w3-msg[data-role="user"]');
     const row = rows?.[rows.length - 1];
-    const body = row?.querySelector<HTMLElement>('.w3-msg__content');
-    if (!row || !body) return;
-    const to = body.getBoundingClientRect();
-    row.animate(
-      [
-        { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px)`, opacity: 0.5 },
-        { transform: 'none', opacity: 1 },
-      ],
-      { duration: 680, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' },
-    );
+    if (!row) return;
+    if (!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      // A short rise and fade, not a flight from the Line: only transform and opacity, so
+      // it never repaints the transcript.
+      row.animate(
+        [
+          { transform: 'translateY(40px)', opacity: 0 },
+          { transform: 'none', opacity: 1 },
+        ],
+        { duration: 700, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' },
+      );
+    }
     onSent();
   }, [state.messages.length, contentRef, onSent]);
+
+  // The portrait beside each of the character's lines opens their card.
+  const messageCard = useMemo<MessageCard>(
+    () => ({
+      store: surface.cardStore,
+      line: characterDescription,
+      onOpenReader: surface.openCardReader,
+      onEditCharacter: surface.editCharacter,
+    }),
+    [surface.cardStore, characterDescription, surface.openCardReader, surface.editCharacter],
+  );
 
   const continueDisabledReason = !lastId
     ? 'This chat has no messages yet.'
@@ -145,6 +169,8 @@ export function ChatStage({
             const shared = {
               message,
               streaming: state.streamingId === message.id,
+              revealWhole,
+              card: messageCard,
               flash: message.id === flashId,
               mode: state.mode,
               stream,
@@ -242,6 +268,8 @@ export function ChatStage({
           onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
           guidance={guidance}
           onGuidanceChange={onGuidanceChange}
+          quickCommands={quickCommands}
+          onQuickCommandsChange={onQuickCommandsChange}
           onDraftChange={chat.nexus.draftChanged}
           onBeforeSend={onBeforeSend}
           failed={state.error}

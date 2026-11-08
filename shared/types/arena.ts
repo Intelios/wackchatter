@@ -35,6 +35,13 @@ export interface Contender {
 export interface ArenaProbe {
   id: string;
   text: string;
+  /** False sits the cue out of new rounds without deleting it. Missing means on. */
+  enabled?: boolean;
+}
+
+/** The cues new rounds draw from: every cue that is not switched off. */
+export function activeProbes(probes: readonly ArenaProbe[]): ArenaProbe[] {
+  return probes.filter((probe) => probe.enabled !== false);
 }
 
 /**
