@@ -13,7 +13,7 @@ streaming proxy — and never builds a prompt: **assembly runs client-side**, li
 
 - **The user is the designer.** They own the design, what's in the app, and its interface. Take every design question to them with a recommendation, and never settle one yourself.
 - **The Agent is the developer.** The Agent owns the tech stack, architecture, code, docs, commits and branches, and can change or replace any of them without asking.
-- **`docs/todo.md` is the designer's.** Read it for context. Never edit it.
+- **`todo.md` is the designer's.** Read it for context. Never edit it.
 
 ## Commands
 
