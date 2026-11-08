@@ -37,6 +37,8 @@ import './Nexus.css';
 
 type Props = NexusSettingsProps & {
   chat: Pick<UseChat, 'nexus' | 'state' | 'memoryMode' | 'messages' | 'saving' | 'saveError'>;
+  /** Where it renders: the 3.0 shell passes its root so the explorer wears the Aura. */
+  container?: Element | null;
 };
 const KINDS = ['person', 'place', 'object', 'event', 'group', 'concept'] as const;
 const RECORD_KINDS = ['fact', 'event', 'situation', 'thread'] as const;
@@ -51,7 +53,7 @@ const TITLE = {
 const SYMBOL = { person: '◎', place: '⌖', object: '◇', event: '✦', group: '⬡', concept: '❖' };
 /** The floating node card's width, matching `--wc-nexus-card`. */
 const CARD_WIDTH = 380;
-export function NexusExplorer({ chat, ...config }: Props) {
+export function NexusExplorer({ chat, container, ...config }: Props) {
   const n = chat.nexus;
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<NexusNodeKind | 'all'>('all');
@@ -1198,7 +1200,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
         </button>
       </div>
     </div>,
-    document.body,
+    container ?? document.body,
   );
 }
 

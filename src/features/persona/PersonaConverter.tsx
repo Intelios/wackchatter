@@ -197,7 +197,7 @@ export function PersonaConverter({
         <div className="persona-convert__status" role="status">
           <span>
             Reading {card.name}’s card
-            {connection?.name ? ` with ${connection.name}` : ''}…
+            {connection?.model ? ` with ${connection.model.split('/').pop()}` : ''}…
           </span>
           <button type="button" className="wc-button wc-button--ghost" onClick={cancel}>
             Cancel

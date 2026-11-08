@@ -179,20 +179,6 @@ export const Message = memo(function Message({
         : 'Stays in the chat, left out of the prompt',
       onSelect: () => onToggleHidden(message.id),
     },
-    {
-      label: confirmDelete ? 'Click again to delete' : 'Delete',
-      icon: <Icon name="trash" size="sm" />,
-      description: confirmDelete
-        ? 'This can’t be undone'
-        : !isUser && swipes > 1
-          ? `Removes all ${swipes} alternatives`
-          : 'Removes the message',
-      danger: true,
-      keepOpen: !confirmDelete,
-      disabled: busy && isLast,
-      disabledReason: 'Wait for the current reply to finish.',
-      onSelect: () => (confirmDelete ? onDelete(message.id) : setConfirmDelete(true)),
-    },
   ];
 
   const style = dialogueColor ? ({ '--w3-say': dialogueColor } as CSSProperties) : undefined;
@@ -388,15 +374,32 @@ export const Message = memo(function Message({
             ) : null}
             <ToolButton icon="pencil" label="Edit" onClick={startEditing} />
             <ToolButton icon="copy" label="Copy" onClick={copy} />
+            {/* Delete is one click away, and a second click in place confirms it. */}
+            <button
+              type="button"
+              className="w3-tbtn w3-tbtn--delete"
+              data-armed={confirmDelete || undefined}
+              disabled={busy && isLast}
+              aria-label={confirmDelete ? 'Click again to delete' : 'Delete'}
+              title={
+                busy && isLast
+                  ? 'Wait for the current reply to finish.'
+                  : confirmDelete
+                    ? `Click again to delete. ${!isUser && swipes > 1 ? `Removes all ${swipes} alternatives.` : 'This can’t be undone.'}`
+                    : 'Delete'
+              }
+              onClick={() => (confirmDelete ? onDelete(message.id) : setConfirmDelete(true))}
+              onBlur={() => setConfirmDelete(false)}
+              onMouseLeave={() => setConfirmDelete(false)}
+            >
+              {confirmDelete ? 'Delete?' : <Icon name="trash" size="sm" />}
+            </button>
             <Menu
-              label="More: branch, hide, delete"
+              label="More: branch, hide"
               icon={<Icon name="more" size="sm" />}
               entries={moreEntries}
               className="w3-tbtn"
               popupClassName="w3-menu"
-              onOpenChange={(open) => {
-                if (!open) setConfirmDelete(false);
-              }}
             />
           </footer>
         ) : null}

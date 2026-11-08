@@ -229,6 +229,7 @@ export function PresetCoCreator({ controller }: { controller: AppController }) {
     characters: library.characters,
     personas: library.personas,
     personaAvatarVersions: library.personaAvatarVersions,
+    dialogueColors: prefs.dialogueColors,
     books: library.books,
     activeCharacterId: controller.selected ?? null,
     activePersonaId: settings?.personaId ?? null,

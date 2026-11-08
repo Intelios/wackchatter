@@ -27,9 +27,19 @@ import type {
   ReferencePresetSummary,
 } from '@shared/types/preset-cocreator.ts';
 import { REGEX_PLACEMENT, type RegexScript } from '@shared/types/regex.ts';
+import type { DialogueColorSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoBook, WorldInfoSettings } from '@shared/types/worldinfo.ts';
-import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  type CSSProperties,
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Popover } from '../components/Popover.tsx';
+import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
 import { Markdown } from '../features/chat/Markdown.tsx';
 import { Reasoning } from '../features/chat/Reasoning.tsx';
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
@@ -70,6 +80,8 @@ export interface PresetBenchProps {
   characters: readonly CharacterSummary[];
   personas: readonly Persona[];
   personaAvatarVersions: Record<string, string | number>;
+  /** Quoted speech in a test reads in its speaker's colour, as in a chat. */
+  dialogueColors: DialogueColorSettings;
   books: readonly LorebookSummary[];
   activeCharacterId: string | null;
   activePersonaId: string | null;
@@ -780,13 +792,28 @@ const TestMessage = memo(function TestMessage(
       ? personaApi.avatarUrl(persona.id, props.personaAvatarVersions[persona.id] ?? persona.avatar)
       : null
     : cardFace(props.characters, test);
+  const colours = props.dialogueColors;
+  const override = message.is_user
+    ? persona
+      ? colours.personas[persona.id]
+      : undefined
+    : test.scenario.characterId
+      ? colours.characters[test.scenario.characterId]
+      : undefined;
+  const autoColour = useAvatarColor(override == null ? url : null);
+  const dialogue = resolveDialogueColor(colours.enabled, override, autoColour);
   const evidence = !message.is_user ? swipeEvidence(test, message) : null;
   const greeting = !message.is_user && test.messages.indexOf(message) === 0 && !evidence;
   const swipes = message.swipes?.length ?? 1;
   const reasoning = typeof message.extra?.reasoning === 'string' ? message.extra.reasoning : '';
 
   return (
-    <div className="w3-pc-cm" data-me={message.is_user || undefined}>
+    <div
+      className="w3-pc-cm"
+      data-me={message.is_user || undefined}
+      data-dialogue={dialogue.active || undefined}
+      style={dialogue.color ? ({ '--w3-say': dialogue.color } as CSSProperties) : undefined}
+    >
       <div className="w3-pc-cm__who">
         <Avatar url={url} name={name} size="xs" who={message.is_user ? 'me' : 'char'} />
         <b>{name}</b>

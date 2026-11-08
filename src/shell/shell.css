@@ -36,11 +36,6 @@
   inherits: true;
   initial-value: 1;
 }
-@property --w3-spin {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
 
 .wc3 {
   color-scheme: dark;
@@ -169,12 +164,12 @@
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  transition:
-    --w3-h 1000ms var(--w3-out),
-    --w3-c 1000ms var(--w3-out),
-    --w3-ph 800ms var(--w3-out),
-    --w3-pc 800ms var(--w3-out),
-    --w3-tint 600ms var(--w3-out);
+  /*
+   * No transition on the Aura numbers here. Nearly every surface reads them, so animating
+   * them on the root repainted the whole screen every frame for a second at each change:
+   * the home screen's swaps crawled and Helium flickered. The interface takes a new colour
+   * at once; only the glow behind it glides (below), which is one flat layer to repaint.
+   */
 }
 
 :where(.wc3) :focus-visible {
@@ -238,6 +233,10 @@
  * no longer drifts, because drifting would mean repainting it every frame.
  */
 .w3-aura {
+  transition:
+    --w3-h 1000ms var(--w3-out),
+    --w3-c 1000ms var(--w3-out),
+    --w3-tint 600ms var(--w3-out);
   background:
     radial-gradient(
       360px 340px at 120px 60px,
@@ -387,7 +386,6 @@
   .wc3 .w3-bloom,
   .wc3 .w3-breath,
   .wc3 .w3-wash,
-  .wc3 .w3-island::before,
   .wc3 .w3-wave i,
   .wc3 .w3-gen-av::after,
   .wc3 .w3-motion,

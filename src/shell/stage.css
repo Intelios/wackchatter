@@ -181,7 +181,8 @@
   color: var(--w3-text);
 }
 
-.wc3 .w3-msg[data-dialogue] .message__dialogue {
+.wc3 .w3-msg[data-dialogue] .message__dialogue,
+.wc3 .w3-pc-cm[data-dialogue] .message__dialogue {
   color: var(--w3-say, var(--w3-dialogue));
 }
 
@@ -262,6 +263,21 @@
 
 .w3-tbtn:disabled {
   opacity: 0.35;
+}
+
+.w3-tbtn--delete[data-armed] {
+  width: auto;
+  padding: 0 10px;
+  background: var(--w3-danger-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-danger);
+  color: var(--w3-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wc3 .w3-msg__tools button.w3-tbtn--delete[data-armed] {
+  width: auto;
+  padding: 0 10px;
 }
 
 .w3-tbtn[data-invisible] {
@@ -767,7 +783,8 @@ button.w3-reason__head:hover {
   -webkit-text-fill-color: var(--w3-faint);
 }
 
-.w3-line__input:disabled {
+.w3-line__input:disabled,
+.w3-line__input:read-only {
   cursor: not-allowed;
 }
 
@@ -942,12 +959,25 @@ button.w3-reason__head:hover {
 }
 
 .w3-guides__label {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
   font-size: 10.5px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--w3-faint);
   font-weight: 600;
   margin-right: 2px;
+  transition:
+    background var(--w3-quick),
+    color var(--w3-quick);
+}
+
+.w3-guides__label:hover,
+.w3-guides__label[aria-expanded="true"] {
+  background: var(--w3-hover);
+  color: var(--w3-text);
 }
 
 .w3-guide {

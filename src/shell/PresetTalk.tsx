@@ -818,6 +818,7 @@ function Composer({
         <Popover
           label="Compare with"
           icon={null}
+          className="w3-pc-field"
           open={choosing}
           onOpenChange={(open) => {
             if (!open && choosing) setDraft('');

@@ -54,41 +54,6 @@
     0 0 60px -20px var(--w3-accent-line);
 }
 
-/* While anything is generating, a light runs round the island's edge. */
-.w3-island::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  border-radius: inherit;
-  padding: 1.5px;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--w3-spin),
-    transparent 0 55%,
-    var(--w3-accent) 78%,
-    transparent 92%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.5s;
-}
-
-.w3-island[data-generating]::before {
-  opacity: 1;
-  animation: w3-spin 2.2s linear infinite;
-}
-
-@keyframes w3-spin {
-  to {
-    --w3-spin: 360deg;
-  }
-}
-
 /* Panes: all mounted, one shown, cross-fading as the island changes shape. */
 .w3-pane {
   position: absolute;

@@ -190,12 +190,17 @@ export function Island({
           ))}
         </div>
 
-        <nav className="w3-wing w3-wing--left" aria-label="Library">
-          {wingLeft}
-        </nav>
-        <nav className="w3-wing w3-wing--right" aria-label="Tools">
-          {wingRight}
-        </nav>
+        {/* A screen without tools has no wings at all, not empty ones. */}
+        {wingLeft ? (
+          <nav className="w3-wing w3-wing--left" aria-label="Library">
+            {wingLeft}
+          </nav>
+        ) : null}
+        {wingRight ? (
+          <nav className="w3-wing w3-wing--right" aria-label="Tools">
+            {wingRight}
+          </nav>
+        ) : null}
 
         <div
           className="w3-notice"

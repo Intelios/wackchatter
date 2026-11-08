@@ -6,7 +6,7 @@
  */
 
 import type { Persona } from '@shared/types/chat.ts';
-import type { DialogueColorSettings } from '@shared/types/settings.ts';
+import type { DialogueColorSettings, GuidanceSettings } from '@shared/types/settings.ts';
 import { memo, type RefObject, useCallback, useLayoutEffect, useRef } from 'react';
 import { resolveDialogueColor, useAvatarColor } from '../features/chat/avatarColor.ts';
 import type { UseChat } from '../features/chat/useChat.ts';
@@ -26,6 +26,8 @@ interface ChatStageProps {
   greetingCount: number;
   personaAvatarVersions: Readonly<Record<string, number>>;
   dialogueColors: DialogueColorSettings;
+  guidance: GuidanceSettings;
+  onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
   ready: boolean;
   notReadyReason: string | null;
   onChooseModel: () => void;
@@ -43,6 +45,8 @@ export function ChatStage({
   greetingCount,
   personaAvatarVersions,
   dialogueColors,
+  guidance,
+  onGuidanceChange,
   ready,
   notReadyReason,
   onChooseModel,
@@ -236,6 +240,8 @@ export function ChatStage({
           placeholder={placeholder}
           guides={guides}
           onGuidesChange={(next) => chat.updateMetadata({ guides: next })}
+          guidance={guidance}
+          onGuidanceChange={onGuidanceChange}
           onDraftChange={chat.nexus.draftChanged}
           onBeforeSend={onBeforeSend}
           failed={state.error}

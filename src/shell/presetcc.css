@@ -633,6 +633,16 @@ button.w3-pc-report__head:hover b {
   padding: 0 6px;
 }
 
+/* The field sits in the compare popover's anchor, which must fill the box's column. */
+.w3-pc-field {
+  display: grid;
+  min-width: 0;
+}
+
+.w3-pc-field > textarea {
+  width: 100%;
+}
+
 .w3-pc-composer .w3-co-box textarea {
   min-height: 44px;
   font-size: 14.5px;

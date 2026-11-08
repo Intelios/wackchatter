@@ -15,6 +15,7 @@ import type {
   ReferencePresetSummary,
 } from '@shared/types/preset-cocreator.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
+import type { DialogueColorSettings } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Popover } from '../components/Popover.tsx';
@@ -47,6 +48,7 @@ export interface PresetSessionProps {
   characters: readonly CharacterSummary[];
   personas: readonly Persona[];
   personaAvatarVersions: Record<string, string | number>;
+  dialogueColors: DialogueColorSettings;
   books: readonly LorebookSummary[];
   activeCharacterId: string | null;
   activePersonaId: string | null;
@@ -448,6 +450,7 @@ export function PresetSession(props: PresetSessionProps) {
             characters={props.characters}
             personas={props.personas}
             personaAvatarVersions={props.personaAvatarVersions}
+            dialogueColors={props.dialogueColors}
             books={props.books}
             activeCharacterId={props.activeCharacterId}
             activePersonaId={props.activePersonaId}

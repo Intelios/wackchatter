@@ -3,9 +3,8 @@
  *
  * Markup over the app controller, like `LegacyShell`, so it inherits every behaviour
  * unchanged. It covers the chat for now: the island and its wings, the margin, the
- * transcript and the Line, the home screen, the Studio, both Co-Creators and the Arena.
- * Stats still renders through the 2.x shell, so nothing is out of reach while the rebuild
- * catches up.
+ * transcript and the Line, the home screen, the Studio, both Co-Creators, the Arena and
+ * Stats (the hand-off to TokenTrail).
  */
 
 import '@fontsource-variable/bricolage-grotesque/opsz.css';
@@ -13,6 +12,7 @@ import '@fontsource-variable/instrument-sans/index.css';
 import './shell.css';
 import './island.css';
 import './stage.css';
+import './bridge.css';
 
 import { greetingTexts } from '@shared/chat/message.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
@@ -60,6 +60,7 @@ import {
   toolSubtitle,
 } from './MarginTools.tsx';
 import { PresetCoCreator } from './PresetCoCreator.tsx';
+import { Stats } from './Stats.tsx';
 import { Studio } from './Studio.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, replay, useAura } from './useAura.ts';
@@ -101,7 +102,8 @@ export function Shell({
   }
   if (view === 'cocreator') return <CoCreator controller={controller} />;
   if (view === 'arena') return <Arena controller={controller} />;
-  // Everything else the shell does not draw yet (Stats) still goes through the 2.x one.
+  if (view === 'tokentrail') return <Stats controller={controller} />;
+  // Nothing else should reach here; the 2.x shell stays as the floor until it is deleted.
   return <LegacyShell controller={controller} />;
 }
 
@@ -549,6 +551,10 @@ function ChatShell({
               greetingCount={greetingTexts(character).length}
               personaAvatarVersions={library.personaAvatarVersions}
               dialogueColors={prefs.dialogueColors}
+              guidance={prefs.guidance}
+              onGuidanceChange={(patch) =>
+                void app.patchSettings({ guidance: { ...prefs.guidance, ...patch } })
+              }
               ready={controller.ready}
               notReadyReason={models.chat.blockedReason}
               onChooseModel={chooseModel}
@@ -762,6 +768,7 @@ function ChatShell({
         <ErrorBoundary where="Memory Nexus" resetKeys={[state.chatId, chat.nexus.open]}>
           <NexusExplorer
             chat={chat}
+            container={rootRef.current}
             settings={prefs.nexus}
             onSettingsChange={(patch) =>
               void app.patchSettings({ nexus: { ...prefs.nexus, ...patch } })

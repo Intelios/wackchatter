@@ -9,6 +9,7 @@
  */
 
 import type { PersistentGuide } from '@shared/types/chat.ts';
+import type { GuidanceSettings } from '@shared/types/settings.ts';
 import {
   type Ref,
   useCallback,
@@ -25,6 +26,7 @@ import {
   macroComboboxProps,
   useMacroCompletion,
 } from '../components/MacroCompletion.tsx';
+import { GuidesPopover } from '../features/chat/GuidesPopover.tsx';
 import { type SlashCommandHelp, slashCompletion } from '../features/chat/slashCommands.ts';
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { Icon, type IconName } from './icons.tsx';
@@ -59,6 +61,8 @@ interface LineComposerProps {
   placeholder: string;
   guides: PersistentGuide[];
   onGuidesChange: (next: PersistentGuide[]) => void;
+  guidance: GuidanceSettings;
+  onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
   onDraftChange?: (text: string) => void;
   /** Called with the field's position just before a send, for the lift-off. */
   onBeforeSend?: (from: DOMRect) => void;
@@ -88,6 +92,8 @@ export function LineComposer({
   placeholder,
   guides,
   onGuidesChange,
+  guidance,
+  onGuidanceChange,
   onDraftChange,
   onBeforeSend,
   failed = null,
@@ -100,6 +106,7 @@ export function LineComposer({
   const inkRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const lightRef = useRef<LineLightHandle>(null);
   const listboxId = useId();
   // The input that started a generation, so focus comes back to it after.
@@ -120,10 +127,12 @@ export function LineComposer({
     onDraftChange?.(text);
   }, [text, onDraftChange]);
 
+  // When the reply is in, the Line takes focus back, unless you have moved on to
+  // something else in the meantime (editing a message, a tool, a popover).
   useEffect(() => {
     if (busy || !focusBeforeGenerate.current) return;
     const active = document.activeElement;
-    if (active === document.body || active === null || fieldRef.current?.contains(active)) {
+    if (active === document.body || active === null || formRef.current?.contains(active)) {
       textarea.current?.focus({ preventScroll: true });
     }
     focusBeforeGenerate.current = null;
@@ -266,6 +275,7 @@ export function LineComposer({
 
   return (
     <form
+      ref={formRef}
       className="w3-line"
       data-active={focused || has || undefined}
       data-busy={busy || undefined}
@@ -277,9 +287,26 @@ export function LineComposer({
         else void submit();
       }}
     >
-      {enabledGuides.length ? (
+      {/* Shown while the chat has any guide, so switched-off ones stay reachable. */}
+      {guides.length ? (
         <div className="w3-guides">
-          <span className="w3-guides__label">Guides</span>
+          <GuidesPopover
+            guides={guides}
+            onGuidesChange={onGuidesChange}
+            guidance={guidance}
+            onGuidanceChange={onGuidanceChange}
+            renderTrigger={(trigger, toggle) => (
+              <button
+                {...trigger}
+                type="button"
+                className="w3-guides__label"
+                title="Manage guides"
+                onClick={toggle}
+              >
+                Guides
+              </button>
+            )}
+          />
           {enabledGuides.map((guide) => (
             <span key={guide.id} className="w3-guide" title={guide.text}>
               <Icon name="pin" size="xs" />
@@ -367,7 +394,10 @@ export function LineComposer({
             value={displayed}
             rows={1}
             spellCheck
-            disabled={disabled || busy}
+            disabled={disabled}
+            // Read-only, not disabled, while a reply runs: a disabled field drops focus,
+            // and the Line should still hold it when the reply is in.
+            readOnly={busy}
             placeholder={placeholder}
             aria-label="Your message"
             onFocus={() => {
