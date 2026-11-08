@@ -22,7 +22,8 @@ export type IslandMode =
   | 'search'
   | 'recap'
   | 'changes'
-  | 'model';
+  | 'model'
+  | 'pool';
 
 export interface IslandNotice {
   id: number;
@@ -58,6 +59,7 @@ const OPEN_MODES: ReadonlySet<IslandMode> = new Set([
   'recap',
   'changes',
   'model',
+  'pool',
 ]);
 
 export function Island({

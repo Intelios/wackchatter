@@ -3,9 +3,9 @@
  *
  * Markup over the app controller, like `LegacyShell`, so it inherits every behaviour
  * unchanged. It covers the chat for now: the island and its wings, the margin, the
- * transcript and the Line, the home screen, the Studio and the Character Co-Creator.
- * Everything it does not draw yet (the Preset Co-Creator, Arena, Stats) still renders through the 2.x shell, so nothing is out of
- * reach while the rebuild catches up.
+ * transcript and the Line, the home screen, the Studio, both Co-Creators and the Arena.
+ * Stats still renders through the 2.x shell, so nothing is out of reach while the rebuild
+ * catches up.
  */
 
 import '@fontsource-variable/bricolage-grotesque/opsz.css';
@@ -31,6 +31,7 @@ import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { NexusExplorer } from '../features/nexus/NexusExplorer.tsx';
 import { characterApi, chatApi, personaApi } from '../lib/api.ts';
 import { downloadUrl } from '../lib/download.ts';
+import { Arena } from './Arena.tsx';
 import { ChatStage } from './ChatStage.tsx';
 import { CoCreator } from './CoCreator.tsx';
 import { HomeShell } from './Home.tsx';
@@ -99,7 +100,8 @@ export function Shell({
     return <PresetCoCreator controller={controller} />;
   }
   if (view === 'cocreator') return <CoCreator controller={controller} />;
-  // Everything else the shell does not draw yet (Arena, Stats) still goes through the 2.x one.
+  if (view === 'arena') return <Arena controller={controller} />;
+  // Everything else the shell does not draw yet (Stats) still goes through the 2.x one.
   return <LegacyShell controller={controller} />;
 }
 

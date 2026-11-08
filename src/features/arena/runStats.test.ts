@@ -15,6 +15,8 @@ function entry(patch: Partial<RunEntry> & { contenderId: string }): RunEntry {
     firstTokenMs: null,
     elapsedMs: null,
     completionTokens: null,
+    promptTokens: null,
+    connectionId: 'conn',
     ...patch,
   };
 }

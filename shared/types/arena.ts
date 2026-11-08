@@ -58,6 +58,19 @@ export interface RoundSide {
   model: string;
   provider: string;
   text: string;
+  /** What this reply used. Recorded from 3.0 on; absent on older rounds. */
+  usage?: RoundUsage;
+}
+
+/** One reply's cost inputs and timing, as measured when it ran. Priced when shown. */
+export interface RoundUsage {
+  /** The connection it ran on, which is what the catalogue's prices are keyed by. */
+  connectionId: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  /** Milliseconds to the whole reply, and to its first token. */
+  ms: number | null;
+  firstTokenMs: number | null;
 }
 
 /**

@@ -245,6 +245,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
           reasoning: final.reasoning,
           model: final.model,
           completionTokens: final.usage?.completion_tokens ?? countTokens.countText(final.content),
+          promptTokens: final.usage?.prompt_tokens ?? null,
           ms: since(),
         });
       } catch (err) {
@@ -355,6 +356,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
         replace: request.replace,
         entries: columns.map((column) => ({
           contenderId: column.contender.id,
+          connectionId: column.connection.id,
           name: contenderLabel(column.contender),
           model: column.connection.model,
           provider: column.connection.provider,

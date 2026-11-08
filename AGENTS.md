@@ -314,7 +314,15 @@ creates a chat or switches libraries.
 **Model Arena** rounds are write-once; the leaderboard replays them on every render. Only blind
 rounds score; `bad` moves no ratings and ties lift both by `TIE_BONUS`. Pairing is least-played.
 Assemble once per run and send identical messages to every contender. Merging is a lens on
-history, never an edit. Nothing identifying reaches the DOM while masked.
+history, never an edit. Nothing identifying reaches the DOM while masked — names, models,
+timings, cost, colour, and a failed reply's provider error. What the Arena knows and does is
+`useArena` (`src/features/arena/useArena.ts`), shared by the 2.x screen and the 3.0 one
+(`src/shell/Arena.tsx`: Leaderboard, Benchmark with a Blind switch, Tournaments; the pool on
+the island). Each blind round records its sides' tokens, time and connection in
+`arena_round_usage` (schema 15, from 3.0 on; older rounds have none, nothing estimates them),
+priced at the catalogue when shown. The leaderboard's stats (`src/shell/arenaStats.ts`) and
+"this sitting" (rounds with no pause over 45 minutes) are read off the rounds, never stored.
+Removing a model from the pool never touches its rounds.
 
 **Tournament** is its own points ladder, never mixed with Elo. Points double per stage; the plan is
 stored and progress replays from `arena_matches`. Matches are write-once and always blind. Ties

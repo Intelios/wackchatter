@@ -10,8 +10,14 @@ import {
 } from './arenaReducer.ts';
 
 const seeds: EntrySeed[] = [
-  { contenderId: 'a', name: 'Sonnet', model: 'anthropic/sonnet', provider: 'openrouter' },
-  { contenderId: 'b', name: 'Local', model: 'llama-3', provider: 'custom' },
+  {
+    contenderId: 'a',
+    connectionId: 'c1',
+    name: 'Sonnet',
+    model: 'anthropic/sonnet',
+    provider: 'openrouter',
+  },
+  { contenderId: 'b', connectionId: 'c2', name: 'Local', model: 'llama-3', provider: 'custom' },
 ];
 
 function start(overrides: Partial<Extract<ArenaAction, { type: 'run/started' }>> = {}) {

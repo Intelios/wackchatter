@@ -16,7 +16,7 @@ import { PATHS } from './paths.ts';
  * needs a matching step in upgrade.ts, since `CREATE TABLE IF NOT EXISTS` never evolves an
  * existing table.
  */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -223,6 +223,22 @@ CREATE TABLE IF NOT EXISTS arena_rounds (
 
 -- Ascending, because chronological replay is the only read the leaderboard makes.
 CREATE INDEX IF NOT EXISTS idx_arena_rounds_created ON arena_rounds(created ASC);
+
+-- What each side of a blind round used: the connection it ran on (for its prices), its
+-- token counts and how long it took. Recorded from 3.0 on (schema 15); older rounds have no
+-- rows, and nothing estimates them. A table of its own because CREATE TABLE IF NOT EXISTS
+-- never adds a column to an arena_rounds a library already has. Deleted with its round.
+CREATE TABLE IF NOT EXISTS arena_round_usage (
+  round_id          TEXT    NOT NULL REFERENCES arena_rounds(id) ON DELETE CASCADE,
+  -- left | right
+  side              TEXT    NOT NULL,
+  connection_id     TEXT    NOT NULL,
+  prompt_tokens     INTEGER,
+  completion_tokens INTEGER,
+  ms                INTEGER,
+  first_token_ms    INTEGER,
+  PRIMARY KEY (round_id, side)
+);
 
 -- Model Arena tournaments: the bracket definition.
 --
