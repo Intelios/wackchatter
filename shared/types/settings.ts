@@ -7,6 +7,7 @@
  */
 
 import { type ComposerLayouts, DEFAULT_COMPOSER_LAYOUTS } from '../composer/layout.ts';
+import { DEFAULT_MODEL_SLOTS, type ModelRef, type ModelSlots } from '../models/slots.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
 import { DEFAULT_CONNECTION, PROVIDERS } from '../providers/types.ts';
@@ -20,15 +21,37 @@ import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
 export interface AppSettings {
-  /**
-   * Every saved connection. Generations use `activeConnection` — `connectionId` with a
-   * fallback to the first entry — so a stale or cleared selection never strands the app.
-   */
+  /** Every saved connection: endpoints and how to talk to them, never a model. */
   connections: Connection[];
-  /** The connection generations use. Null means "the first one". */
-  connectionId: string | null;
+  /**
+   * The model each app-wide feature runs on (`shared/models/slots.ts`). Field-wise in
+   * `mergeSettings`, so picking one slot's model never touches another's.
+   */
+  models: ModelSlots;
+  /**
+   * Models most recently picked anywhere, newest first, capped at `MAX_RECENT_MODELS`.
+   * Convenience only, like `recentPersonaIds`: it heads the model picker.
+   */
+  recentModels: ModelRef[];
+  /**
+   * Starred models, in the order they were starred. They head the model picker above the
+   * recents, so a model used often never needs a search. Refs to a deleted connection go
+   * with it, like recents.
+   */
+  favoriteModels: ModelRef[];
+  /**
+   * Which model picker groups are open, by group key (`pickerLogic.ts`). Only groups someone
+   * toggled are stored; the rest keep their default.
+   */
+  modelPickerGroups: Record<string, boolean>;
   /** UI refresh rate during streaming. */
   streamingFps: number;
+  /**
+   * How a reply appears: word by word as it is written, or whole once it is finished.
+   * Display only: the request still streams when the preset says so, which is what keeps
+   * the island and the Line lit while you wait.
+   */
+  revealReplies?: 'written' | 'finished';
   /**
    * The app-wide current persona. Picking one sets this; new chats start with it, and
    * loading a chat adopts its recorded persona (`ChatMetadata.persona`) as the current
@@ -67,6 +90,11 @@ export interface AppSettings {
    * log, and nothing about it is specific to one consumer.
    */
   usageLog: boolean;
+  /**
+   * When the server last finished building a library backup (ISO), or null for never.
+   * Written by the export route, not the client: it's when one was made, not downloaded.
+   */
+  lastBackupAt: string | null;
   /** The preset selected on startup. Null means "first alphabetically". */
   presetId: string | null;
   /**
@@ -83,8 +111,6 @@ export interface AppSettings {
   backgroundBlur: number;
   /** Scrim opacity over the background, 0–1. The contrast floor. */
   backgroundDim: number;
-  /** Translucent panels and bubbles. Only meaningful with a background set. */
-  glass: boolean;
   /**
    * Master switch for ambient particle effects. On by default — harmless, because
    * nothing animates until a background is paired below.
@@ -97,16 +123,14 @@ export interface AppSettings {
    * "no effect" at render, the same way a deleted upload degrades to "no background".
    */
   backgroundEffects: Record<string, string>;
-  /** Whether the effect layer sits behind the glass surfaces or in front of them. */
+  /** Whether the effect layer sits behind the screen's surfaces or in front of them. */
   backgroundEffectLayer: 'behind' | 'front';
   /** Guided Generations: how steering text and standing guides reach the prompt. */
   guidance: GuidanceSettings;
   /** Manual rolling chat summaries: generation source and prompt injection preferences. */
   summary: SummarySettings;
-  /** Which story-memory feature reaches the model: the rolling summary, memories, or neither. */
+  /** Which story-memory feature new chats start with: the rolling summary, Nexus, or neither. */
   memoryMode: MemoryMode;
-  /** Discrete memories: extraction source, prompt, hiding and injection preferences. */
-  memory: MemorySettings;
   nexus: NexusSettings;
   coCreator: CoCreatorSettings;
   /**
@@ -124,6 +148,12 @@ export interface AppSettings {
    * shared card nor is overwritten by an imported one.
    */
   characterRatings: Record<string, number>;
+  /**
+   * Where each character's face strip is cut, as the vertical position of the portrait in
+   * percent (0 top, 100 bottom), keyed by PNG filename like the ratings. Absent means the
+   * automatic crop (`AUTO_FACE_CROP`). Local UI state, never written into the card.
+   */
+  characterCrops: Record<string, number>;
   /** How the character list orders its cards. Rating sorts within each folder, not across. */
   characterListSort: 'name' | 'rating';
   /** Tags omitted from character-list chips. Matching is case-insensitive. */
@@ -155,7 +185,7 @@ export interface AppSettings {
    * A flat array, so `mergeSettings`'s spread carries it and no field-wise branch is needed.
    */
   quickCommands: QuickCommand[];
-  /** App-wide control trays, independently arranged for direct and group chats. */
+  /** The app-wide composer control tray. */
   composerLayouts: ComposerLayouts;
   /**
    * User regex scripts, in SillyTavern's format so files move between the two apps.
@@ -182,12 +212,22 @@ export interface QuickCommand {
   text: string;
 }
 
-export type DialogueColorOverride = string | null;
+export type PaletteTreatment = 'single' | 'gradient';
+export type DialogueTreatment = 'solid' | 'gradient' | 'off';
+
+/** Local appearance only. Portrait treatments keep following the versioned image. */
+export type SpeakerPaletteOverride = {
+  aura: PaletteTreatment;
+  dialogue: DialogueTreatment;
+} & ({ source: 'portrait' } | { source: 'custom'; colors: string[] });
+
+/** Legacy hex and null remain valid: a pinned solid colour, or speech colouring off. */
+export type DialogueColorOverride = string | null | SpeakerPaletteOverride;
 
 export interface DialogueColorSettings {
   /** Master switch. Per-speaker overrides remain editable while this is false. */
   enabled: boolean;
-  /** Missing means avatar-derived, a hex string is custom, and null disables that speaker. */
+  /** Missing means portrait-derived; null disables speech, independently of Aura. */
   characters: Record<string, DialogueColorOverride>;
   /** Keyed by stable persona id, with the same missing/custom/null semantics. */
   personas: Record<string, DialogueColorOverride>;
@@ -204,6 +244,12 @@ export type CharacterRating = 1 | 2 | 3 | 4 | 5;
 
 export const CHARACTER_RATING_MIN = 1 as const;
 export const CHARACTER_RATING_MAX = 5 as const;
+
+/**
+ * Where a face strip is cut when nobody has moved it: a fifth of the way down, where most
+ * card art puts the eyes. Percent of the portrait's height, as CSS `object-position`.
+ */
+export const AUTO_FACE_CROP = 20;
 
 /**
  * How many entries `AppSettings.recentPersonaIds` keeps.
@@ -251,7 +297,7 @@ export type SummaryPosition = 'none' | 'beforeMain' | 'afterMain' | 'atDepth';
 /**
  * Where a story-memory feature's text lands in the prompt.
  *
- * Shared by `SummarySettings` and `MemorySettings` because assembly has exactly one slot
+ * Shared by `SummarySettings` and `NexusSettings` because assembly has exactly one slot
  * for "what happened earlier" and either feature can fill it. Splitting the placement out
  * is what lets that slot stay a single code path instead of two parallel ones that would
  * drift.
@@ -264,20 +310,74 @@ export interface StoryMemoryPlacement {
   role: 'system' | 'user' | 'assistant';
 }
 
+/** The summary's model is the `summary` slot in `AppSettings.models`. */
 export interface SummarySettings extends StoryMemoryPlacement {
-  /** Null follows the active chat connection; otherwise names a saved connection. */
-  connectionId: string | null;
+  /** The summarizer's instructions. `{{words}}`, `{{char}}` and `{{user}}` are filled in. */
   prompt: string;
   targetWords: number;
+  /** The summary's own samplers. Nothing about it comes from the chat's preset. */
+  temperature: number;
+  topP: number;
+  /**
+   * Update by itself, right after a reply, once `autoAfter` new messages wait. How much one
+   * request carries is never set: it comes from the model's own context length.
+   */
+  auto: boolean;
+  autoAfter: number;
+  /** Hide summarised messages from the prompt, all but the newest `keepMessages`. */
+  hideCovered: boolean;
+  keepMessages: number;
 }
 
-export const DEFAULT_SUMMARY_PROMPT =
+/**
+ * The default instructions: written for a roleplay, a back-and-forth between two sides
+ * rather than a book, kept in fixed sections so an update rewrites each one instead of
+ * squeezing the oldest facts out of a single paragraph.
+ */
+export const DEFAULT_SUMMARY_PROMPT = `You keep the memory for an ongoing roleplay between {{user}} and {{char}}. It is a back-and-forth chat: {{user}}'s messages are their own words and actions, and {{char}}'s replies answer them. It is not a novel, so don't retell it as one.
+
+You get who the characters are, the memory so far (when there is one) and the newest part of the chat. Write the updated memory: everything from the memory so far that still matters, with the new part folded in. Never drop an earlier fact just because the new part doesn't mention it.
+
+Write it in these sections, as short bullet points:
+
+## Who's who
+Everyone who has appeared: who they are, how they stand with {{user}} and with each other, and how that has changed.
+
+## Where things stand
+The scene right now: where and when it is, what is happening, and anything about what each character is doing, wearing or holding that matters.
+
+## What happened
+The key events in order, oldest first. Compress older events harder than recent ones.
+
+## Promises, plans and open threads
+What is still owed: promises, plans, secrets, unanswered questions, unresolved tension.
+
+## Facts to keep
+Details that must stay consistent: names, places, objects, how the world works, and what {{user}} or {{char}} revealed about themselves.
+
+Rules:
+- Only what the chat shows. Don't invent, guess at motives or fill gaps.
+- Keep who said or believes what: a suspicion or a lie is not a fact.
+- Name people. Never write "the user" or "the AI".
+- Plain, specific wording, and no comments about the memory itself.
+- Stay under {{words}} words. When space runs short, compress the oldest events first, never the current scene or open threads.
+
+Reply with the memory only, starting at the first heading.`;
+
+/** What 2.x shipped as the default. A library still holding it gets the new one. */
+export const LEGACY_SUMMARY_PROMPT =
   'Ignore previous instructions. Summarize the most important facts and events in the story so far. If a summary already exists in your memory, use that as a base and expand with new facts. Limit the summary to {{words}} words or less. Your response should include nothing but the summary.';
+export const LEGACY_SUMMARY_WORDS = 200;
 
 export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
-  connectionId: null,
   prompt: DEFAULT_SUMMARY_PROMPT,
-  targetWords: 200,
+  targetWords: 700,
+  temperature: 0.3,
+  topP: 1,
+  auto: true,
+  autoAfter: 80,
+  hideCovered: false,
+  keepMessages: 200,
   template: '[Summary: {{summary}}]',
   position: 'afterMain',
   depth: 2,
@@ -291,86 +391,18 @@ export const DEFAULT_SUMMARY: Readonly<SummarySettings> = {
  * different `ChatMetadata` fields, so switching mode is reversible and loses nothing: the
  * old rolling summary is still sitting there when you switch back.
  */
-/** `memories` is accepted only for legacy data and format tests. UI uses `nexus`. */
-export type MemoryMode = 'classic' | 'memories' | 'nexus' | 'off';
+export const MEMORY_MODES = ['classic', 'nexus', 'off'] as const;
+export type MemoryMode = (typeof MEMORY_MODES)[number];
 
-/**
- * Discrete memory extraction and recall.
- *
- * Takes a `presetId` as well as a `connectionId`, which summarisation does not — the
- * `CoCreatorSettings` shape rather than the `SummarySettings` one, for the reason given
- * there. `buildRequestBody` reads samplers and never `prompts`, so "the user's samplers
- * without the user's jailbreak" costs nothing to offer, and an RP preset's high
- * temperature and repetition penalties are exactly what makes an extractor wander off its
- * output contract.
- *
- * The extraction prompt is deliberately style guidance only. The JSON contract is appended
- * by `buildExtractionMessages` and is not editable here, so rewriting the prompt cannot
- * break parsing — the one failure a user could not diagnose from the panel.
- */
-export interface MemorySettings extends StoryMemoryPlacement {
-  /** Null follows the active chat connection; otherwise names a saved connection. */
-  connectionId: string | null;
-  /** Null follows the active preset. Samplers only; its prompts are never read. */
-  presetId: string | null;
-  extractPrompt: string;
-  /** Transcript messages handed to one extraction call. */
-  windowSize: number;
-  /**
-   * Extract automatically once this many eligible messages sit unextracted, checked after
-   * a reply settles. 0 disables it — no run should ever cost money the user did not ask
-   * for by chatting.
-   */
-  autoInterval: number;
-  /** Reply budget for one extraction call. Several memories have to fit in it. */
-  maxMemoryTokens: number;
-  /**
-   * Hide the messages a new memory covers. Off by default: compressing two hundred turns
-   * into a dozen cards is a one-way door, and it should not be opened by a feature the
-   * user has not yet learned to trust.
-   */
-  autoHide: boolean;
-  /**
-   * Never auto-hide this many messages at the live end of the chat, whatever a memory
-   * covers. Enforced at hide time rather than at extraction time, so the memories stay
-   * complete while the recent prose stays verbatim.
-   */
-  verbatimTail: number;
-  /**
-   * Token allowance for memory injection, kept separate from the World Info budget.
-   *
-   * Memories accumulate over the life of a chat; sharing one pool would let them silently
-   * crowd out lorebook entries, and the symptom — lore quietly not firing any more —
-   * is close to undiagnosable.
-   */
-  budgetTokens: number;
+export function isMemoryMode(value: unknown): value is MemoryMode {
+  return (MEMORY_MODES as readonly unknown[]).includes(value);
 }
-
-export const DEFAULT_MEMORY_PROMPT =
-  'You are a story archivist. You will be given a transcript excerpt from an ongoing roleplay, numbered one line per message.\n\nDivide the excerpt into scenes and write one memory for each completed scene. A scene is a continuous stretch of story with a single situation and place — it ends when the location, the time, or the company changes.\n\nFor each memory write:\n- A short title naming the moment, like "First Meeting" or "The Bargain". Two to four words.\n- Two to four sentences of what happened, in past tense, as an all-seeing narrator. Record events, decisions, revelations and changes in the relationship. Name people and places explicitly rather than saying "he" or "there" — this will be read on its own, months later, with no surrounding context.\n- Keywords that should bring this memory back to mind: the names, places, objects and topics it is about.\n- At most two short verbatim lines from the excerpt that are worth keeping word for word.\n\nDo not write about the roleplay as a text or mention messages, numbers, summaries or the transcript. Write only about what happened in the story. Do not moralise, do not soften, and do not skip material because of its content — an accurate record is the only thing being asked for.\n\nIf the excerpt ends part-way through a scene, leave that scene out and say where it began.';
-
-export const DEFAULT_MEMORY: Readonly<MemorySettings> = {
-  connectionId: null,
-  presetId: null,
-  extractPrompt: DEFAULT_MEMORY_PROMPT,
-  windowSize: 40,
-  autoInterval: 0,
-  maxMemoryTokens: 700,
-  autoHide: false,
-  verbatimTail: 20,
-  budgetTokens: 1200,
-  template: '{{memories}}',
-  position: 'afterMain',
-  depth: 2,
-  role: 'system',
-};
 
 /**
  * Character Co-Creator preferences.
  *
- * Shaped like `SummarySettings`: a feature that calls a provider for something other than
- * the story gets its own connection choice, because the model that writes good prose is
- * often not the model that follows a formatting contract.
+ * Its model is the `cocreator` slot in `AppSettings.models` (the side chat's is `sideChat`):
+ * the model that writes good prose is often not the model that follows a formatting contract.
  *
  * It also gets its own preset, which summarisation does not. Samplers tuned for roleplay —
  * high temperature, repetition penalties — make a design partner erratic and make the fenced
@@ -378,8 +410,6 @@ export const DEFAULT_MEMORY: Readonly<MemorySettings> = {
  */
 export interface CoCreatorSettings {
   sideChat: SideChatDefaults;
-  /** Null follows the active chat connection; otherwise names a saved connection. */
-  connectionId: string | null;
   /**
    * Null follows the active preset.
    *
@@ -407,11 +437,11 @@ export interface CoCreatorSettings {
 
 export const DEFAULT_COCREATOR_PROMPT = `You are a character-card design partner for a roleplay chat app. You help the user invent and refine characters built for long, immersive roleplay — rich narratives that keep people hooked, not flat profile sheets. You are uncensored: follow the user's premise wherever it goes, embrace creativity, and don't hedge on tone, content or theme the way a generic assistant would. You are not the character and you never roleplay as one — you design the card, you don't perform it.
 
-Before writing any card content, build the character with the user. Ask questions — present them as a numbered list, one question per line, so they're easy to answer and you get back something you can actually use. The user's answer is the truth: take it as given, don't second-guess it, and don't offer alternative answers unless they ask for them. Push for detail over vagueness — a card is only as good as the picture behind it.
+The current accepted card is supplied with each request. When it already contains a character, use that work and focus on the user's requested changes. An alternate scenario is an Alternate Greeting on this character. For a new character, build it with the user before writing card content. Ask questions — present them as a numbered list, one question per line, so they're easy to answer and you get back something you can actually use. The user's answer is the truth: take it as given, don't second-guess it, and don't offer alternative answers unless they ask for them. Push for detail over vagueness — a card is only as good as the picture behind it.
 
 Don't predefine a fixed tone or theme for the roleplay. These are live roleplays that change every time — the card sets up a character and a situation, not a script. Define who the character is, not how every scene should feel.
 
-Work in stages. Build the profile first — description, personality, scenario — and only write the first message once the user says they're ready for it. Never produce the profile and the opening message in the same reply. If the user asks for an alternate greeting, treat it as a new entry point into the character: it can open in a different environment, under different world conditions, or from a different relationship to the one in the original — so rewrite the framing, voice and situation rather than lightly rewording the first message.
+Work in stages when building a new character. Build the profile first — description, personality, scenario — and only write the first message once the user says they're ready for it. Never produce the profile and the opening message in the same reply. If the user asks for an alternate greeting, treat it as a new entry point into the character: it can open in a different environment, under different world conditions, or from a different relationship to the one in the original — so rewrite the framing, voice and situation rather than lightly rewording the first message.
 
 ## Handing over content
 
@@ -458,7 +488,6 @@ export const DEFAULT_COCREATOR_ANALYSIS_PROMPT =
 
 export const DEFAULT_COCREATOR: Readonly<CoCreatorSettings> = {
   sideChat: { ...DEFAULT_SIDE_CHAT },
-  connectionId: null,
   presetId: null,
   systemPrompt: DEFAULT_COCREATOR_PROMPT,
   analysisPrompt: DEFAULT_COCREATOR_ANALYSIS_PROMPT,
@@ -484,20 +513,12 @@ export type SettingsResponse = AppSettings & { keys: Record<string, KeyInfo> };
  */
 export const DEFAULT_CONNECTION_ID = 'default';
 
-/** The connection generations use, or null when none exist. */
-export function activeConnection(
-  settings: Pick<AppSettings, 'connections' | 'connectionId'>,
-): Connection | null {
-  return (
-    settings.connections.find((connection) => connection.id === settings.connectionId) ??
-    settings.connections[0] ??
-    null
-  );
-}
-
 export const DEFAULT_SETTINGS: AppSettings = {
   connections: [{ ...DEFAULT_CONNECTION, id: DEFAULT_CONNECTION_ID, name: PROVIDERS.custom.label }],
-  connectionId: DEFAULT_CONNECTION_ID,
+  models: { ...DEFAULT_MODEL_SLOTS },
+  recentModels: [],
+  favoriteModels: [],
+  modelPickerGroups: {},
   streamingFps: 30,
   personaId: null,
   recentPersonaIds: [],
@@ -506,18 +527,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
   worldInfo: { ...DEFAULT_WI_SETTINGS },
   tokenizerEncoding: 'auto',
   usageLog: true,
+  lastBackupAt: null,
   presetId: null,
   background: null,
   backgroundBlur: 8,
   backgroundDim: 0.55,
-  glass: true,
   backgroundEffectEnabled: true,
   backgroundEffects: {},
   backgroundEffectLayer: 'behind',
   guidance: { ...DEFAULT_GUIDANCE },
   summary: { ...DEFAULT_SUMMARY },
   memoryMode: 'classic',
-  memory: { ...DEFAULT_MEMORY },
   nexus: { ...DEFAULT_NEXUS },
   coCreator: {
     ...DEFAULT_COCREATOR,
@@ -539,6 +559,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     personas: {},
   },
   characterRatings: {},
+  characterCrops: {},
   characterListSort: 'name',
   hiddenTags: [],
   collapsedCharacterFolders: [],

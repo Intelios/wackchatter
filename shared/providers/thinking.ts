@@ -1,11 +1,9 @@
 /**
  * Thinking room bought on top of an output allowance.
  *
- * OpenAI-compatible endpoints count reasoning inside `max_tokens`, so a model that thinks
- * at all spends the JSON's budget before writing any of it — a 10K-token think is not
- * output. Callers that need a visible, parseable answer (the Nexus extraction contract, the
- * group director's speaker pick) ask for their output allowance plus this room, so the
- * answer is never carved out of the thinking.
+ * Reasoning fills the context like any other token, so a caller packing a prompt (the
+ * Co-Creators) reserves its output share plus this room, and the prompt never crowds the
+ * thinking out. A reserve only: those requests send no `max_tokens` (responseLength.ts).
  *
  * `auto` buys the same room as Low: it sends no effort field, but an endpoint's default
  * effort is not "never think".
@@ -13,7 +11,7 @@
 
 import type { ReasoningEffort } from '../types/preset.ts';
 import { isAnthropicModel } from './request.ts';
-import type { ConnectionSettings } from './types.ts';
+import type { ResolvedModel } from './types.ts';
 
 export const THINKING_HEADROOM: Record<ReasoningEffort, number> = {
   auto: 8192,
@@ -40,7 +38,7 @@ export function thinkingMaxTokens(options: {
   outputTokens: number;
   contextTokens: number;
   effort: ReasoningEffort;
-  connection: Pick<ConnectionSettings, 'provider' | 'model'> | null;
+  connection: Pick<ResolvedModel, 'provider' | 'model'> | null;
 }): number {
   if (options.connection?.provider === 'openrouter' && isAnthropicModel(options.connection.model))
     return options.outputTokens;

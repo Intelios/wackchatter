@@ -66,6 +66,7 @@ export async function resolveInitialChat(
         modified: chat.modified,
         messageCount: chat.messages.length,
         lastMessage: '',
+        lastReply: '',
       },
     ],
   };

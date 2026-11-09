@@ -7,7 +7,6 @@
  */
 
 import type { NexusRecall, NexusState } from '../nexus/types.ts';
-import type { GroupScene } from './group.ts';
 import type { MemoryMode } from './settings.ts';
 
 export interface SwipeInfo {
@@ -69,12 +68,35 @@ export interface MessageExtra {
   truncated?: boolean;
   /** Co-Creator-only provenance for user actions whose wording is editable. */
   coCreatorAction?: 'analyseExamples';
+  /** How long each phase of this reply took, for the Inspect tool. */
+  trace?: ReplyTrace;
   [key: string]: unknown;
 }
 
+/**
+ * A reply's timeline, in milliseconds from the moment it started. Small on purpose: it is
+ * kept on every swipe for good, while the prompt it sent is kept only for the session.
+ */
+export interface ReplyTrace {
+  /** The request went to the provider. Everything before it was building the prompt. */
+  sent: number;
+  /** How long the lore scan took, and how many entries fired. */
+  lore?: { ms: number; fired: number };
+  /** How long memory recall took, and how many memories it chose. Nexus chats only. */
+  memory?: { ms: number; recalled: number };
+  /** The first thinking arrived. Absent when the model did not think. */
+  thinking?: number;
+  /** The first visible text arrived. Absent when none did. */
+  writing?: number;
+  /** It ended: finished, stopped or failed. */
+  end: number;
+  outcome: 'finished' | 'length' | 'stopped' | 'failed';
+  /** Thinking and cached prompt tokens, when the provider reported them. */
+  thinkingTokens?: number;
+  cachedTokens?: number;
+}
+
 export interface ChatMessage {
-  memberId?: string;
-  characterId?: string;
   id: string;
   name: string;
   is_user: boolean;
@@ -112,7 +134,6 @@ export interface ChatMessage {
 }
 
 export interface ChatMetadata {
-  group?: GroupScene;
   /** Overrides the character's scenario for this chat only. */
   scenario?: string;
   /**
@@ -131,85 +152,12 @@ export interface ChatMetadata {
   guides?: PersistentGuide[];
   /** Editable rolling story memory and the last transcript message it covers. */
   summary?: StorySummary;
-  /**
-   * Discrete recalled memories — the alternative to `summary`, never a companion to it.
-   * Which of the two reaches the model is `AppSettings.memoryMode`; assembly injects one
-   * or neither, so a chat can carry both without them ever being sent together.
-   */
-  memories?: Memory[];
-  /**
-   * Last transcript message covered by a memory. The Memory counterpart of
-   * `StorySummary.checkpointMessageId`, and absent for the same reason: nothing extracted
-   * yet, so the backlog starts at the top.
-   */
-  memoryWatermark?: string;
   /** Copied from the app default at chat creation; never follows later default changes. */
   memoryMode?: MemoryMode;
   nexus?: NexusState;
   /** Provenance recorded when this chat was created as a branch of another chat. */
   branchedFrom?: BranchOrigin;
   [key: string]: unknown;
-}
-
-/**
- * One recalled moment: a titled scene, a short narrative description, and the transcript
- * range it was written from.
- *
- * Lives in `ChatMetadata` rather than in `data/lorebooks`, which is what makes branching
- * safe against backwards leaks — a branch snapshots metadata, so a memory written after
- * the branch point cannot leak into the parent. The forward direction is not free,
- * though: `branchChat` copies messages with fresh ids, so `remapBranchMetadata`
- * (shared/chat/branch.ts) rewrites every range onto the branch's own ids, clamps ranges
- * that straddle the fork, and drops memories written from transcript past it.
- *
- * `range` is by message id, never by index. Indices shift under delete, branch and swipe;
- * the whole reason the extractor is never shown a global index is that it must not be able
- * to name a message that has since moved.
- */
-export interface Memory {
-  id: string;
-  /** Short scene name, e.g. "First Meeting". Shown as the card heading. */
-  title: string;
-  /** Two to four sentences, all-seeing narrator voice. */
-  text: string;
-  /**
-   * Recall triggers. Become `WorldInfoEntry.key`, so the activation engine matches them
-   * exactly as it matches a lorebook entry's keys — including `/pattern/flags` literals.
-   */
-  keywords: string[];
-  /**
-   * At most a couple of verbatim lines from the covered range.
-   *
-   * Memories that keep some real dialogue stop characters drifting into flat
-   * narrator-summary voice, which is the standard complaint about rolling summaries.
-   */
-  quotes?: string[];
-  /**
-   * The transcript span this was written from, inclusive at both ends.
-   *
-   * Absent on a hand-written memory, which need not describe any span at all — a fact
-   * somebody wants the model to hold is still a memory. Nothing derived from a range
-   * (hiding, staleness, the watermark) applies to one without it.
-   */
-  range?: { startId: string; endId: string };
-  /** Always in the prompt. Becomes `WorldInfoEntry.constant`. */
-  pinned: boolean;
-  /** Excluded from injection entirely, without being deleted. */
-  enabled: boolean;
-  source: 'generated' | 'manual';
-  /** Set on any user edit. Extraction never overwrites an edited memory. */
-  edited: boolean;
-  generatedAt: number;
-  /** Model that wrote it, for the same reason `MessageExtra.model` exists. */
-  model?: string;
-  /**
-   * Set when a covered message was edited or deleted after `generatedAt`.
-   *
-   * Surfaced as a badge and never auto-corrected: a memory quietly describing text that no
-   * longer exists is the failure every comparable extension documents, and silently
-   * rewriting someone's edited memory would be a worse one.
-   */
-  stale?: 'edited' | 'deleted';
 }
 
 export interface BranchOrigin {
@@ -219,8 +167,25 @@ export interface BranchOrigin {
 
 export interface StorySummary {
   text: string;
-  /** Missing means the current text has no generated/transcript checkpoint yet. */
+  /**
+   * The messages the text covers, as fingerprints (`messageFingerprint`), oldest first.
+   * Content rather than ids, so an edited or re-swiped message reads as changed, and a
+   * deleted one never loses the summary its place.
+   */
+  covered?: string[];
+  /** A summary from before fingerprints: the last message it covered. Read, never written. */
   checkpointMessageId?: string;
+  /** When the text was last written, ISO. */
+  updatedAt?: string;
+  /** Earlier versions, newest first, for undo. */
+  history?: StorySummaryVersion[];
+}
+
+export interface StorySummaryVersion {
+  text: string;
+  covered?: string[];
+  checkpointMessageId?: string;
+  updatedAt?: string;
 }
 
 /**
@@ -273,8 +238,7 @@ export interface MacroWarning {
 export interface Chat {
   id: string;
   /** Character avatar filename — the character this chat belongs to. */
-  characterId: string | null;
-  kind?: 'direct' | 'group';
+  characterId: string;
   title: string;
   created: number;
   modified: number;
@@ -302,25 +266,20 @@ export interface ChatSaveAck {
 
 export interface ChatSummary {
   id: string;
-  characterId: string | null;
-  kind?: 'direct' | 'group';
+  characterId: string;
   title: string;
   created: number;
   modified: number;
   messageCount: number;
   /** Preview text from the last message. */
   lastMessage: string;
+  /** The character's newest reply (current swipe), for the home screen's quote; '' if none. */
+  lastReply: string;
   /**
    * Branch provenance — enough to build the branch family from the list alone, without
    * fetching every chat in full. Absent on a chat that was never branched off another.
    */
   branchedFrom?: BranchOrigin;
-  /**
-   * For a group scene, the cast's character filenames in cast order, so the recents list
-   * can show who is in the room without fetching every scene in full. Absent on a direct
-   * chat, and on a scene whose metadata is malformed.
-   */
-  groupMembers?: string[];
 }
 
 /** A deleted chat waiting in the trash bin (data/backups), still restorable. */
@@ -329,8 +288,7 @@ export interface ChatBackupSummary {
   backupId: string;
   /** The chat as it was deleted. Restore recreates it under a fresh id. */
   chatId: string;
-  characterId: string | null;
-  kind?: 'direct' | 'group';
+  characterId: string;
   title: string;
   messageCount: number;
   /** Epoch ms when the chat was deleted, which is when the backup was taken. */

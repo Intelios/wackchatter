@@ -119,3 +119,12 @@
   font-size: var(--wc-text-xs);
   color: var(--wc-text-muted);
 }
+
+/* The editor keeps the panel's own grid: its fields sit in the list's rhythm. */
+.connection__editor {
+  display: contents;
+}
+
+.connection__editor > .wc-label:first-child {
+  margin-top: var(--wc-space-3);
+}

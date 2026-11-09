@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { formatValue, type PresetChange } from './presetChanges.ts';
 import { type DiffPart, diffText, foldParts } from './textDiff.ts';
+import './PresetChanges.css';
 
 /**
  * Preset changes, drawn for reading: prompt text as a word diff with the untouched

@@ -1,0 +1,30 @@
+/* The portrait picker: the image, its actions, and an error line. */
+
+.avatar-studio {
+  display: grid;
+  align-content: start;
+  gap: var(--wc-space-3);
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.avatar-studio__image {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border: var(--wc-border-width) solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  object-fit: cover;
+}
+
+.avatar-studio__actions {
+  display: grid;
+  gap: var(--wc-space-2);
+}
+
+.avatar-studio__error {
+  color: var(--wc-danger);
+  font-size: var(--wc-text-sm);
+  white-space: pre-wrap;
+}

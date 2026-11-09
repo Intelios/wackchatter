@@ -43,6 +43,10 @@ export interface RunEntry {
   firstTokenMs: number | null;
   elapsedMs: number | null;
   completionTokens: number | null;
+  /** What the provider counted for the prompt. Null when it reported nothing. */
+  promptTokens: number | null;
+  /** The connection the column ran on, which is what a reply's price is looked up by. */
+  connectionId: string;
 }
 
 export interface ArenaRun {
@@ -63,6 +67,7 @@ export const initialArenaState: ArenaState = { runs: [] };
 
 export interface EntrySeed {
   contenderId: string;
+  connectionId: string;
   name: string;
   model: string;
   provider: string;
@@ -90,6 +95,7 @@ export type ArenaAction =
       /** What the provider said it served, when it said anything. */
       model?: string;
       completionTokens: number | null;
+      promptTokens?: number | null;
       ms: number;
     }
   | {
@@ -170,6 +176,8 @@ function newEntry(seed: EntrySeed): RunEntry {
     firstTokenMs: null,
     elapsedMs: null,
     completionTokens: null,
+    promptTokens: null,
+    connectionId: seed.connectionId,
   };
 }
 
@@ -209,6 +217,7 @@ export function arenaReducer(state: ArenaState, action: ArenaAction): ArenaState
         // routed request reveals which upstream actually answered.
         model: action.model?.trim() ? action.model : entry.model,
         completionTokens: action.completionTokens,
+        promptTokens: action.promptTokens ?? null,
         elapsedMs: action.ms,
         error: null,
       }));
@@ -245,6 +254,7 @@ export function arenaReducer(state: ArenaState, action: ArenaAction): ArenaState
         firstTokenMs: null,
         elapsedMs: null,
         completionTokens: null,
+        promptTokens: null,
       }));
 
     case 'run/removed':

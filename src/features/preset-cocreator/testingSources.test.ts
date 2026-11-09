@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import { DEFAULT_WI_SETTINGS } from '@shared/types/worldinfo.ts';
 import {
   appendPresetTestUserMessage,
@@ -90,6 +90,7 @@ describe('preset test source resolution', () => {
   test('outgoing macros, assembled prompt and provider body share one resolved copy', async () => {
     const external = createDefaultPreset();
     external.openai_max_tokens = 96;
+    external.openai_max_tokens_unlimited = false;
     const resolved = await resolvePresetTestSource({ kind: 'library', id: 'Other' }, session, {
       library: async () => ({ preset: external, version: 'first-version' }),
       reference: async () => {
@@ -112,7 +113,7 @@ describe('preset test source resolution', () => {
       countText: (value) => value.split(/\s+/).length,
       countChat: (messages) => messages.length * 4,
     };
-    const connection: Connection = {
+    const connection: ResolvedModel = {
       id: 'conn-1',
       name: 'Test',
       provider: 'custom',

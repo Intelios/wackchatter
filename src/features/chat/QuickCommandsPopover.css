@@ -3,26 +3,6 @@
  * Same shape as GuidesPopover.css — one list editor, one layout.
  */
 
-/*
- * The editor opens from inside the quick commands menu and anchors to the bolt button. Its
- * Popover root is stretched over the wrapper — exactly that button's box — and the popup's
- * ordinary CSS anchoring (bottom: 100%, left: 0) does the rest. The root keeps pointer-events
- * off so the button underneath stays clickable; the popup itself turns them back on.
- */
-.chat-quick-commands {
-  position: relative;
-}
-
-.chat-quick-commands > .popover--editor {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.chat-quick-commands > .popover--editor .popover__popup {
-  pointer-events: auto;
-}
-
 .quick-commands__body {
   display: flex;
   flex-direction: column;

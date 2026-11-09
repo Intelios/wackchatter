@@ -74,7 +74,7 @@ describe('side-chat isolation and recovery', () => {
   test('reset replaces frozen context but preserves side settings and filed content', () => {
     const state = run(
       sideExchange(),
-      { type: 'side/settings', patch: { connectionId: 'cheap' } },
+      { type: 'side/settings', patch: { model: { connectionId: 'cheap', modelId: 'm' } } },
       {
         type: 'stash/set',
         slot: 'name',
@@ -85,7 +85,7 @@ describe('side-chat isolation and recovery', () => {
     );
     expect(state.sideChat?.messages).toEqual([]);
     expect(state.sideChat?.snapshot.capturedAt).toBe(456);
-    expect(state.sideChat?.settings.connectionId).toBe('cheap');
+    expect(state.sideChat?.settings.model?.connectionId).toBe('cheap');
     expect(state.stash.name?.text).toBe('Elowen.');
     expect(state.stash.name?.provenance.conversation).toBe('side');
   });
@@ -132,6 +132,10 @@ function session(overrides: Partial<CocreatorSession> = {}): CocreatorSession {
     avatar: null,
     finishedAvatar: null,
     seedAvatar: null,
+    baseline: null,
+    targetAvatar: null,
+    portraitChanged: false,
+    publication: null,
     messages: [],
     sideChat: null,
     ...overrides,

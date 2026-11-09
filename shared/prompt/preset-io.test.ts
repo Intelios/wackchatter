@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
 import { PROMPT_ORDER_LEGACY_ID, PROMPT_ORDER_LIVE_ID } from '../types/preset.ts';
 import {
   addCustomPrompt,
@@ -13,17 +12,80 @@ import {
   updatePrompt,
 } from './preset-io.ts';
 
-/** SillyTavern's own shipped chat-completion preset. */
-const ST_DEFAULT_PRESET =
-  '/Users/jack/Documents/GitHub/SillyTavernSource/default/content/presets/openai/Default.json';
-
-function loadStDefault(): unknown {
-  return JSON.parse(readFileSync(ST_DEFAULT_PRESET, 'utf8'));
+/**
+ * A preset in the shape SillyTavern writes: every prompt carries `system_prompt`, markers
+ * carry no content, the live order sits on 100001 beside an older 100000 order that
+ * predates `personaDescription`, and there are fields for providers we never implement.
+ */
+function stStylePreset(): Record<string, unknown> {
+  const text = (identifier: string, name: string, content: string) => ({
+    identifier,
+    name,
+    system_prompt: true,
+    role: 'system',
+    content,
+  });
+  const marker = (identifier: string, name: string) => ({
+    identifier,
+    name,
+    system_prompt: true,
+    marker: true,
+  });
+  const live = [
+    'main',
+    'worldInfoBefore',
+    'personaDescription',
+    'charDescription',
+    'charPersonality',
+    'scenario',
+    'enhanceDefinitions',
+    'nsfw',
+    'worldInfoAfter',
+    'dialogueExamples',
+    'chatHistory',
+    'jailbreak',
+  ];
+  const entry = (identifier: string) => ({
+    identifier,
+    enabled: identifier !== 'enhanceDefinitions',
+  });
+  return {
+    temperature: 1,
+    openai_max_context: 4095,
+    openai_max_tokens: 300,
+    stream_openai: true,
+    assistant_prefill: '',
+    impersonation_prompt: '[Write your next reply from the point of view of {{user}}.]',
+    minimax_model: 'MiniMax-M1',
+    electronhub_model: 'gpt-4o-mini',
+    vertexai_model: 'gemini-2.0-flash-001',
+    prompts: [
+      text('main', 'Main Prompt', "Write {{char}}'s next reply in a fictional chat."),
+      text('nsfw', 'Auxiliary Prompt', ''),
+      marker('dialogueExamples', 'Chat Examples'),
+      text('jailbreak', 'Post-History Instructions', ''),
+      marker('chatHistory', 'Chat History'),
+      marker('worldInfoAfter', 'World Info (after)'),
+      marker('worldInfoBefore', 'World Info (before)'),
+      text('enhanceDefinitions', 'Enhance Definitions', 'Use your knowledge of {{char}}.'),
+      marker('charDescription', 'Char Description'),
+      marker('charPersonality', 'Char Personality'),
+      marker('scenario', 'Scenario'),
+      marker('personaDescription', 'Persona Description'),
+    ],
+    prompt_order: [
+      {
+        character_id: 100000,
+        order: live.filter((id) => id !== 'personaDescription').map(entry),
+      },
+      { character_id: 100001, order: live.map(entry) },
+    ],
+  };
 }
 
-describe('SillyTavern default preset', () => {
+describe('a SillyTavern-shaped preset', () => {
   test('loads without loss', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
 
     expect(preset.prompts).toHaveLength(12);
     expect(preset.temperature).toBe(1);
@@ -33,7 +95,7 @@ describe('SillyTavern default preset', () => {
   });
 
   test('reads the live prompt order from character_id 100001, not 100000', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const order = getPromptOrder(preset);
 
     // The 100001 order is the one that includes personaDescription; 100000 predates it.
@@ -42,7 +104,7 @@ describe('SillyTavern default preset', () => {
   });
 
   test('preserves the legacy 100000 entry untouched', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const legacy = preset.prompt_order?.find(
       (o) => Number(o.character_id) === PROMPT_ORDER_LEGACY_ID,
     );
@@ -52,13 +114,8 @@ describe('SillyTavern default preset', () => {
     expect(legacy?.order.map((e) => e.identifier)).not.toContain('personaDescription');
   });
 
-  test('enhanceDefinitions ships disabled', () => {
-    const order = getPromptOrder(normalizePreset(loadStDefault()));
-    expect(order.find((e) => e.identifier === 'enhanceDefinitions')?.enabled).toBe(false);
-  });
-
   test('marker prompts carry no content', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     for (const identifier of ['chatHistory', 'charDescription', 'worldInfoBefore']) {
       const prompt = preset.prompts?.find((p) => p.identifier === identifier);
       expect(prompt?.marker).toBe(true);
@@ -67,7 +124,7 @@ describe('SillyTavern default preset', () => {
   });
 
   test('unknown provider fields survive a load/save round trip', () => {
-    const raw = loadStDefault() as Record<string, unknown>;
+    const raw = stStylePreset();
     const written = JSON.parse(serializePreset(normalizePreset(raw)));
 
     // Fields for providers we don't implement must not be dropped — a user may be
@@ -81,7 +138,7 @@ describe('SillyTavern default preset', () => {
   test('the impersonation prompt survives a load/save round trip', () => {
     // The Impersonate action reads this field like any other ST setting, and the user edits
     // it from the Generation panel — so what ST wrote has to come back unchanged.
-    const raw = loadStDefault() as Record<string, unknown>;
+    const raw = stStylePreset();
     const written = JSON.parse(serializePreset(normalizePreset(raw)));
 
     expect(written.impersonation_prompt).toBe(raw.impersonation_prompt);
@@ -91,7 +148,7 @@ describe('SillyTavern default preset', () => {
 
 describe('serialization format', () => {
   test('uses 4-space indent and no trailing newline', () => {
-    const text = serializePreset(normalizePreset(loadStDefault()));
+    const text = serializePreset(normalizePreset(stStylePreset()));
 
     expect(text.startsWith('{\n    "')).toBe(true);
     expect(text.endsWith('\n')).toBe(false);
@@ -355,7 +412,7 @@ describe('Prompt Manager export format', () => {
 
 describe('editing', () => {
   test('setPromptOrder replaces the live order and leaves the legacy one alone', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const reordered = setPromptOrder(preset, [{ identifier: 'main', enabled: false }]);
 
     expect(getPromptOrder(reordered)).toEqual([{ identifier: 'main', enabled: false }]);
@@ -367,7 +424,7 @@ describe('editing', () => {
   });
 
   test('updatePrompt changes one prompt without touching the rest', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const updated = updatePrompt(preset, 'main', { content: 'New instructions.' });
 
     expect(updated.prompts?.find((p) => p.identifier === 'main')?.content).toBe(
@@ -379,7 +436,7 @@ describe('editing', () => {
   });
 
   test('editing does not mutate the original preset', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const before = preset.prompts!.find((p) => p.identifier === 'main')!.content;
 
     updatePrompt(preset, 'main', { content: 'Changed.' });
@@ -387,7 +444,7 @@ describe('editing', () => {
   });
 
   test('creates an enabled, empty, relative system prompt at the end of the live order', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const created = addCustomPrompt(preset, 'custom-test-id');
     const prompt = created.preset.prompts?.find((item) => item.identifier === created.identifier);
 
@@ -405,7 +462,7 @@ describe('editing', () => {
   });
 
   test('creates an enabled documentation block at the end of the live order', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     const created = addDocumentationPrompt(preset, 'documentation-test-id');
     const prompt = created.preset.prompts?.find((item) => item.identifier === created.identifier);
 
@@ -422,7 +479,7 @@ describe('editing', () => {
   });
 
   test('deletes a custom prompt from prompts and every order list', () => {
-    const created = addCustomPrompt(normalizePreset(loadStDefault()), 'custom-delete');
+    const created = addCustomPrompt(normalizePreset(stStylePreset()), 'custom-delete');
     const withExtraOrder = {
       ...created.preset,
       prompt_order: [
@@ -444,7 +501,7 @@ describe('editing', () => {
   });
 
   test('built-ins and markers are protected from deletion', () => {
-    const preset = normalizePreset(loadStDefault());
+    const preset = normalizePreset(stStylePreset());
     expect(deleteCustomPrompt(preset, 'main')).toBe(preset);
     expect(deleteCustomPrompt(preset, 'chatHistory')).toBe(preset);
   });

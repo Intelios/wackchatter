@@ -1,35 +1,30 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  DEFAULT_GROUP_COMPOSER_LAYOUT,
-  DEFAULT_SINGLE_COMPOSER_LAYOUT,
-} from '../../shared/composer/layout.ts';
+import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '../../shared/composer/layout.ts';
 import type { Connection } from '../../shared/providers/types.ts';
-import type { AppSettings } from '../../shared/types/settings.ts';
+import type { AppSettings, SpeakerPaletteOverride } from '../../shared/types/settings.ts';
 import {
   DEFAULT_COCREATOR,
   DEFAULT_CONNECTION_ID,
   DEFAULT_DIALOGUE_COLORS,
   DEFAULT_GUIDANCE,
-  DEFAULT_MEMORY,
   DEFAULT_SETTINGS,
   DEFAULT_SUMMARY,
+  LEGACY_SUMMARY_PROMPT,
   MAX_RECENT_PERSONAS,
 } from '../../shared/types/settings.ts';
 import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
-import { getApiKey } from './secrets.ts';
 import {
   applyConnectionPatch,
   dropConnection,
   getSettings,
-  MIGRATION_CONNECTION_ID,
   mergeSettings,
-  migrateLegacyConnection,
   nextConnectionName,
   reassignArenaCardPool,
+  reassignCharacterCrop,
   reassignCharacterDialogueColor,
   reassignCharacterExampleSets,
   reassignCharacterRating,
@@ -45,31 +40,19 @@ function connection(id: string, name: string, overrides?: Partial<Connection>): 
     name,
     provider: 'custom',
     baseUrl: `http://${id}`,
-    model: '',
     showReasoning: true,
     ...overrides,
   };
 }
 
-test('side-chat defaults merge independently and retain missing endpoint choices without fallback', () => {
+test('side-chat defaults merge field-wise', () => {
   const current = mergeSettings(base(), {
-    coCreator: {
-      sideChat: {
-        connectionId: 'missing-side',
-        modelOverride: { connectionId: 'missing-side', model: 'cheap' },
-        outputTokens: 1024,
-      },
-    } as never,
+    coCreator: { sideChat: { outputTokens: 1024 } } as never,
   });
   const next = mergeSettings(current, {
     coCreator: { sideChat: { contextTokens: 32768 } } as never,
   });
-  expect(next.coCreator.sideChat).toEqual({
-    connectionId: 'missing-side',
-    modelOverride: { connectionId: 'missing-side', model: 'cheap' },
-    outputTokens: 1024,
-    contextTokens: 32768,
-  });
+  expect(next.coCreator.sideChat).toEqual({ outputTokens: 1024, contextTokens: 32768 });
   expect(next.coCreator.systemPrompt).toBe(current.coCreator.systemPrompt);
   expect(mergeSettings(next, { streamingFps: 20 }).coCreator.sideChat).toEqual(
     next.coCreator.sideChat,
@@ -81,6 +64,17 @@ function base(): AppSettings {
 }
 
 describe('mergeSettings', () => {
+  test('the last backup time is the server’s to write, never a patch’s', () => {
+    const current = { ...base(), lastBackupAt: '2026-11-07T10:00:00.000Z' };
+    expect(mergeSettings(current, { lastBackupAt: '2020-01-01T00:00:00.000Z' }).lastBackupAt).toBe(
+      '2026-11-07T10:00:00.000Z',
+    );
+    expect(mergeSettings(current, { lastBackupAt: null }).lastBackupAt).toBe(
+      '2026-11-07T10:00:00.000Z',
+    );
+    expect(DEFAULT_SETTINGS.lastBackupAt).toBeNull();
+  });
+
   test('collapsed chat-menu families round-trip and default to open', () => {
     // The collapsed set, not the expanded one: an empty default means a family added by a
     // later build arrives visible rather than pre-collapsed.
@@ -97,20 +91,17 @@ describe('mergeSettings', () => {
     ]);
   });
 
-  test('composer layouts update independently and preserve required controls', () => {
+  test('a composer layout update keeps its arrangement', () => {
     const single = structuredClone(DEFAULT_SINGLE_COMPOSER_LAYOUT);
     single.rows[0]!.centre.push(single.rows[0]!.right.splice(0, 1)[0]!);
-    const next = mergeSettings(base(), {
-      composerLayouts: { single, group: DEFAULT_GROUP_COMPOSER_LAYOUT },
-    });
+    const next = mergeSettings(base(), { composerLayouts: { single } });
     expect(next.composerLayouts.single).toEqual(single);
-    expect(next.composerLayouts.group).toEqual(DEFAULT_GROUP_COMPOSER_LAYOUT);
   });
 
   test('a malformed composer layout cannot wipe a saved layout', () => {
     const current = base();
     const next = mergeSettings(current, {
-      composerLayouts: { single: { rows: [] }, group: current.composerLayouts.group } as never,
+      composerLayouts: { single: { rows: [] } } as never,
     });
     expect(next.composerLayouts.single).toEqual(current.composerLayouts.single);
   });
@@ -179,14 +170,46 @@ describe('mergeSettings', () => {
     }
   });
 
-  test('an unknown connectionId falls back to the first connection', () => {
-    const next = mergeSettings(base(), { connectionId: 'missing' });
-    expect(next.connectionId).toBe(DEFAULT_CONNECTION_ID);
+  test('model slots merge field-wise: picking one never resets another', () => {
+    const chat = { connectionId: DEFAULT_CONNECTION_ID, modelId: 'chat-model' };
+    const nexus = { connectionId: DEFAULT_CONNECTION_ID, modelId: 'memory-model' };
+    const first = mergeSettings(base(), { models: { chat } as never });
+    const second = mergeSettings(first, { models: { nexus } as never });
+    expect(second.models.chat).toEqual(chat);
+    expect(second.models.nexus).toEqual(nexus);
+    expect(mergeSettings(second, { models: { chat: null } as never }).models.nexus).toEqual(nexus);
   });
 
-  test('a known connectionId is kept and revalidated against the pinned list', () => {
-    const next = mergeSettings(base(), { connectionId: DEFAULT_CONNECTION_ID });
-    expect(next.connectionId).toBe(DEFAULT_CONNECTION_ID);
+  test('a slot naming no saved connection is cleared', () => {
+    const next = mergeSettings(base(), {
+      models: { chat: { connectionId: 'missing', modelId: 'm' } } as never,
+    });
+    expect(next.models.chat).toBeNull();
+  });
+
+  test('recent models are capped and deduped on the way in', () => {
+    const ref = (n: number) => ({ connectionId: DEFAULT_CONNECTION_ID, modelId: `m${n}` });
+    const next = mergeSettings(base(), {
+      recentModels: [ref(1), ref(1), ...Array.from({ length: 20 }, (_, i) => ref(i + 2))],
+    });
+    expect(next.recentModels).toHaveLength(8);
+    expect(next.recentModels.slice(0, 2)).toEqual([ref(1), ref(2)]);
+    expect(mergeSettings(next, { recentModels: null as never }).recentModels).toEqual(
+      next.recentModels,
+    );
+  });
+
+  test('favourites are deduped and kept; picker groups keep booleans only', () => {
+    const ref = (n: number) => ({ connectionId: DEFAULT_CONNECTION_ID, modelId: `m${n}` });
+    const next = mergeSettings(base(), {
+      favoriteModels: [ref(1), ref(2), ref(1), { connectionId: 'missing', modelId: 'x' }],
+      modelPickerGroups: { 'conn:default': false, junk: 'no' as never },
+    });
+    expect(next.favoriteModels).toEqual([ref(1), ref(2)]);
+    expect(next.modelPickerGroups).toEqual({ 'conn:default': false });
+    const untouched = mergeSettings(next, { streamingFps: 60 });
+    expect(untouched.favoriteModels).toEqual(next.favoriteModels);
+    expect(untouched.modelPickerGroups).toEqual(next.modelPickerGroups);
   });
 
   test('unknown keys survive, so a newer build cannot be downgraded into data loss', () => {
@@ -244,113 +267,43 @@ describe('mergeSettings', () => {
   });
 
   test('summary preferences merge field-wise and normalize their constrained values', () => {
-    const withConnection = {
-      ...base(),
-      connections: [connection('a', 'A'), connection('b', 'B')],
-    };
-    const selected = mergeSettings(withConnection, {
-      summary: { connectionId: 'b', targetWords: 438, depth: -4, role: 'narrator' } as never,
+    const selected = mergeSettings(base(), {
+      summary: { targetWords: 438, depth: -4, role: 'narrator' } as never,
     });
 
-    expect(selected.summary.connectionId).toBe('b');
     expect(selected.summary.targetWords).toBe(450);
     expect(selected.summary.depth).toBe(0);
     expect(selected.summary.role).toBe(DEFAULT_SUMMARY.role);
     expect(selected.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
   });
 
-  test('a missing summary connection falls back to following the active chat connection', () => {
-    const current = {
-      ...base(),
-      connections: [connection('a', 'A')],
-      summary: { ...DEFAULT_SUMMARY, connectionId: 'deleted' },
-    };
-    expect(mergeSettings(current, { streamingFps: 60 }).summary.connectionId).toBeNull();
+  test('a summary still on the 2.x default takes the new one; a customised one stays', () => {
+    const legacy = mergeSettings(base(), {
+      summary: { prompt: LEGACY_SUMMARY_PROMPT, targetWords: 200 } as never,
+    });
+    expect(legacy.summary.prompt).toBe(DEFAULT_SUMMARY.prompt);
+    expect(legacy.summary.targetWords).toBe(DEFAULT_SUMMARY.targetWords);
+    const mine = mergeSettings(base(), {
+      summary: { prompt: 'My own.', targetWords: 200, temperature: 9, autoAfter: 120 } as never,
+    });
+    expect(mine.summary.prompt).toBe('My own.');
+    expect(mine.summary.targetWords).toBe(200);
+    expect(mine.summary.temperature).toBe(2);
+    expect(mine.summary.autoAfter).toBe(120);
+    expect(mine.summary.hideCovered).toBe(false);
+    // Generous by default: it runs by itself every 80 and, once hiding is on, keeps 200.
+    expect([mine.summary.auto, mine.summary.keepMessages]).toEqual([true, 200]);
   });
 
-  test('the memory mode defaults to the summary, so an upgrade changes nothing', () => {
+  test('the memory mode defaults to the summary, and an unknown mode falls back to it', () => {
     expect(base().memoryMode).toBe('classic');
     expect(mergeSettings(base(), { memoryMode: 'nonsense' as never }).memoryMode).toBe('classic');
-    expect(mergeSettings(base(), { memoryMode: 'memories' }).memoryMode).toBe('nexus');
+    expect(mergeSettings(base(), { memoryMode: 'nexus' }).memoryMode).toBe('nexus');
   });
 
   test('omitting the memory mode leaves it untouched', () => {
-    const current = mergeSettings(base(), { memoryMode: 'memories' });
+    const current = mergeSettings(base(), { memoryMode: 'nexus' });
     expect(mergeSettings(current, { streamingFps: 15 }).memoryMode).toBe('nexus');
-  });
-
-  test('memory preferences merge field-wise and clamp every numeric field', () => {
-    // Each of these costs money or context when wrong: a 5000-message window sends the
-    // whole chat in one request, and a budget larger than the context starves the
-    // transcript to make room for memories about it.
-    const selected = mergeSettings(base(), {
-      memory: {
-        windowSize: 5000,
-        maxMemoryTokens: 1,
-        verbatimTail: -10,
-        budgetTokens: 999_999,
-        depth: -4,
-        role: 'narrator',
-      } as never,
-    });
-
-    expect(selected.memory.windowSize).toBe(200);
-    expect(selected.memory.maxMemoryTokens).toBe(100);
-    expect(selected.memory.verbatimTail).toBe(0);
-    expect(selected.memory.budgetTokens).toBe(32000);
-    expect(selected.memory.depth).toBe(0);
-    expect(selected.memory.role).toBe(DEFAULT_MEMORY.role);
-    expect(selected.memory.extractPrompt).toBe(DEFAULT_MEMORY.extractPrompt);
-  });
-
-  test('the auto-extract interval is off by default and only off at exactly zero', () => {
-    // A missing or malformed value must never arm a feature that spends money on its own.
-    expect(base().memory.autoInterval).toBe(0);
-    expect(
-      mergeSettings(base(), { memory: { autoInterval: 'often' } as never }).memory.autoInterval,
-    ).toBe(0);
-    expect(
-      mergeSettings(base(), { memory: { autoInterval: 0 } as never }).memory.autoInterval,
-    ).toBe(0);
-  });
-
-  test('the auto-extract interval clamps to a sane positive range and floors', () => {
-    // A typo of 1 would run a paid extraction after every message; nobody wants thousands.
-    const selected = mergeSettings(base(), {
-      memory: { autoInterval: 75.9 } as never,
-    });
-    expect(selected.memory.autoInterval).toBe(75);
-    expect(
-      mergeSettings(selected, { memory: { autoInterval: 5 } as never }).memory.autoInterval,
-    ).toBe(10);
-    expect(
-      mergeSettings(selected, { memory: { autoInterval: 5000 } as never }).memory.autoInterval,
-    ).toBe(2000);
-  });
-
-  test('auto-hide stays off unless it is explicitly turned on', () => {
-    expect(base().memory.autoHide).toBe(false);
-    expect(mergeSettings(base(), { memory: { autoHide: 'yes' } as never }).memory.autoHide).toBe(
-      false,
-    );
-    expect(mergeSettings(base(), { memory: { autoHide: true } as never }).memory.autoHide).toBe(
-      true,
-    );
-  });
-
-  test('an emptied extraction prompt falls back rather than shipping a blank system turn', () => {
-    expect(
-      mergeSettings(base(), { memory: { extractPrompt: '   ' } as never }).memory.extractPrompt,
-    ).toBe(DEFAULT_MEMORY.extractPrompt);
-  });
-
-  test('a missing memory connection falls back to following the active chat connection', () => {
-    const current = {
-      ...base(),
-      connections: [connection('a', 'A')],
-      memory: { ...DEFAULT_MEMORY, connectionId: 'deleted' },
-    };
-    expect(mergeSettings(current, { streamingFps: 60 }).memory.connectionId).toBeNull();
   });
 
   test('dialogue colours default on and a partial patch keeps both override maps', () => {
@@ -384,6 +337,64 @@ describe('mergeSettings', () => {
 
     expect(next.dialogueColors.characters).toEqual({ good: '#abcdef', off: null });
     expect(next.dialogueColors.personas).toEqual({ old: '#abcdef' });
+  });
+
+  test('portrait treatments and pinned palettes round-trip beside legacy colours', () => {
+    const portrait: SpeakerPaletteOverride = {
+      source: 'portrait',
+      aura: 'gradient',
+      dialogue: 'solid',
+    };
+    const pinned: SpeakerPaletteOverride = {
+      source: 'custom',
+      colors: ['#123ABC', '#F0D080', '#AABBCC'],
+      aura: 'single',
+      dialogue: 'gradient',
+    };
+    const next = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { auto: portrait, pinned, legacy: '#ABCDEF', off: null },
+        personas: { you: { ...portrait, dialogue: 'off' } },
+      } as never,
+    });
+    expect(next.dialogueColors.characters).toEqual({
+      auto: portrait,
+      pinned: { ...pinned, colors: ['#123abc', '#f0d080', '#aabbcc'] },
+      legacy: '#abcdef',
+      off: null,
+    });
+    const reloaded = mergeSettings(base(), JSON.parse(JSON.stringify(next)));
+    expect(reloaded.dialogueColors).toEqual(next.dialogueColors);
+    const toggled = mergeSettings(next, { dialogueColors: { enabled: false } as never });
+    expect(toggled.dialogueColors.characters).toEqual(next.dialogueColors.characters);
+    expect(toggled.dialogueColors.personas).toEqual(next.dialogueColors.personas);
+  });
+
+  test('malformed palette overrides cannot reach the renderer', () => {
+    const palette: SpeakerPaletteOverride = {
+      source: 'custom',
+      colors: ['#123456'],
+      aura: 'single',
+      dialogue: 'off',
+    };
+    const next = mergeSettings(base(), {
+      dialogueColors: {
+        characters: {
+          valid: palette,
+          empty: { ...palette, colors: [] },
+          long: { ...palette, colors: Array(4).fill('#123456') },
+          css: { ...palette, colors: ['red'] },
+          mixed: { ...palette, colors: ['#123456', null] },
+          source: { ...palette, source: 'random' },
+          aura: { ...palette, aura: 'rainbow' },
+          dialogue: { ...palette, dialogue: 'rainbow' },
+          array: [],
+        },
+      } as never,
+    });
+    expect(next.dialogueColors.characters).toEqual({ valid: palette });
+    expect(next.dialogueColors.personas).toEqual({});
   });
 
   test('quick commands replace wholesale, an empty list clearing them all', () => {
@@ -459,6 +470,27 @@ describe('mergeSettings', () => {
       characterRatings: { 'Float.png': 2.5, 'String.png': '4', Good: 3 } as never,
     });
     expect(next.characterRatings).toEqual({ Good: 3 });
+  });
+
+  test('face-strip crops are clamped to 0–100, rounded, and junk is dropped', () => {
+    const next = mergeSettings(base(), {
+      characterCrops: {
+        'A.png': 31.46,
+        'High.png': 140,
+        'Low.png': -3,
+        'Nan.png': Number.NaN,
+        'S.png': '30',
+        '': 5,
+      } as never,
+    });
+    expect(next.characterCrops).toEqual({ 'A.png': 31.5, 'High.png': 100, 'Low.png': 0 });
+  });
+
+  test('a stale patch cannot wipe the crops', () => {
+    const current = mergeSettings(base(), { characterCrops: { 'A.png': 25 } });
+    for (const patch of [{ characterCrops: null }, { characterCrops: 'nope' }, {}]) {
+      expect(mergeSettings(current, patch as never).characterCrops).toEqual({ 'A.png': 25 });
+    }
   });
 
   test('background effect pairings replace wholesale, but a malformed patch cannot wipe them', () => {
@@ -586,7 +618,9 @@ describe('arena settings', () => {
   test('a partial arena patch keeps every untouched field', () => {
     const current = mergeSettings(base(), {
       arena: {
-        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'or', model: 'a/b', enabled: true }],
+        contenders: [
+          { id: 'k', name: 'Sonnet', model: { connectionId: 'or', modelId: 'a/b' }, enabled: true },
+        ],
         probes: [{ id: 'p', text: 'Say something.' }],
       } as never,
     });
@@ -598,13 +632,32 @@ describe('arena settings', () => {
     expect(next.arena.probes).toEqual([{ id: 'p', text: 'Say something.' }]);
   });
 
+  test('a cue switched off stays off; any other value means on', () => {
+    const next = mergeSettings(base(), {
+      arena: {
+        probes: [
+          { id: 'a', text: 'One.', enabled: false },
+          { id: 'b', text: 'Two.', enabled: true },
+          { id: 'c', text: 'Three.', enabled: 'no' },
+        ],
+      } as never,
+    });
+    expect(next.arena.probes).toEqual([
+      { id: 'a', text: 'One.', enabled: false },
+      { id: 'b', text: 'Two.' },
+      { id: 'c', text: 'Three.' },
+    ]);
+  });
+
   test('a stale tab cannot wipe the pool with a null array', () => {
     // The whole reason the three arrays are guarded on Array.isArray inside the branch:
     // normalizeArena turns a non-array into an empty one, and a wiped contender pool takes
     // the leaderboard's labels with it.
     const current = mergeSettings(base(), {
       arena: {
-        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'or', model: 'a/b', enabled: true }],
+        contenders: [
+          { id: 'k', name: 'Sonnet', model: { connectionId: 'or', modelId: 'a/b' }, enabled: true },
+        ],
         cardPool: ['Seraphina.png'],
         probes: [{ id: 'p', text: 'Say something.' }],
       } as never,
@@ -624,7 +677,7 @@ describe('arena settings', () => {
 
   test('an explicitly empty pool is emptying it on purpose, and stays empty', () => {
     const current = mergeSettings(base(), {
-      arena: { contenders: [{ id: 'k', name: '', connectionId: 'or', model: '', enabled: true }] },
+      arena: { contenders: [{ id: 'k', name: '', model: null, enabled: true }] },
     } as never);
 
     expect(mergeSettings(current, { arena: { contenders: [] } } as never).arena.contenders).toEqual(
@@ -644,9 +697,7 @@ describe('arena settings', () => {
       },
     } as never);
 
-    expect(next.arena.contenders).toEqual([
-      { id: 'k', name: 'first', connectionId: '', model: '', enabled: true },
-    ]);
+    expect(next.arena.contenders).toEqual([{ id: 'k', name: 'first', model: null, enabled: true }]);
   });
 
   test('a contender pointing at a deleted connection is kept, not dropped', () => {
@@ -654,11 +705,13 @@ describe('arena settings', () => {
     // would rewrite the leaderboard's labels the moment someone tidied their connections.
     const next = mergeSettings(base(), {
       arena: {
-        contenders: [{ id: 'k', name: 'Sonnet', connectionId: 'deleted-long-ago', model: 'a/b' }],
+        contenders: [
+          { id: 'k', name: 'Sonnet', model: { connectionId: 'deleted-long-ago', modelId: 'a/b' } },
+        ],
       },
     } as never);
 
-    expect(next.arena.contenders[0]?.connectionId).toBe('deleted-long-ago');
+    expect(next.arena.contenders[0]?.model?.connectionId).toBe('deleted-long-ago');
   });
 
   test('the merge map keeps only genuine id → id links', () => {
@@ -741,7 +794,6 @@ describe('co-creator settings', () => {
     expect(next.coCreator.presetId).toBe('design');
     expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
     expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
-    expect(next.coCreator.connectionId).toBeNull();
   });
 
   test('toggling one example field does not reset the other seven', () => {
@@ -780,12 +832,6 @@ describe('co-creator settings', () => {
     });
     expect(next.coCreator.systemPrompt).toBe(DEFAULT_COCREATOR.systemPrompt);
     expect(next.coCreator.analysisPrompt).toBe(DEFAULT_COCREATOR.analysisPrompt);
-  });
-
-  test('a connectionId naming no saved connection falls back to following the chat', () => {
-    const next = mergeSettings(base(), { coCreator: { connectionId: 'ghost' } as never });
-
-    expect(next.coCreator.connectionId).toBeNull();
   });
 
   test('a wrong-typed field falls back to its default rather than poisoning the file', () => {
@@ -944,6 +990,30 @@ describe('example set character identity changes', () => {
 });
 
 describe('dialogue colour identity changes', () => {
+  test('structured palettes follow identities on rename and deletion', () => {
+    const pinned: SpeakerPaletteOverride = {
+      source: 'custom',
+      colors: ['#123456', '#abcdef'],
+      aura: 'gradient',
+      dialogue: 'off',
+    };
+    const current = mergeSettings(base(), {
+      dialogueColors: {
+        enabled: true,
+        characters: { 'Old.png': pinned, kept: '#123456' },
+        personas: { you: pinned, kept: null },
+      } as never,
+    });
+    const renamed = reassignCharacterDialogueColor(current, 'Old.png', 'New.png')!;
+    expect(renamed.dialogueColors.characters).toEqual({ 'New.png': pinned, kept: '#123456' });
+    expect(
+      reassignCharacterDialogueColor(renamed, 'New.png', null)?.dialogueColors.characters,
+    ).toEqual({ kept: '#123456' });
+    expect(removePersonaDialogueColor(renamed, 'you')?.dialogueColors.personas).toEqual({
+      kept: null,
+    });
+  });
+
   test('a character rename re-keys its override without disturbing the rest', () => {
     const current = mergeSettings(base(), {
       dialogueColors: {
@@ -1007,6 +1077,18 @@ describe('character rating identity changes', () => {
     expect(reassignCharacterRating(current, 'rated', null)).not.toBeNull();
     expect(reassignCharacterRating(current, 'absent', null)).toBeNull();
   });
+
+  test('a crop moves with its card, goes with a deleted one, and an uncropped card is a no-op', () => {
+    const current = mergeSettings(base(), { characterCrops: { 'Old.png': 40, 'Other.png': 10 } });
+    expect(reassignCharacterCrop(current, 'Old.png', 'New.png')?.characterCrops).toEqual({
+      'New.png': 40,
+      'Other.png': 10,
+    });
+    expect(reassignCharacterCrop(current, 'Old.png', null)?.characterCrops).toEqual({
+      'Other.png': 10,
+    });
+    expect(reassignCharacterCrop(current, 'Missing.png', null)).toBeNull();
+  });
 });
 
 describe('arena card pool identity changes', () => {
@@ -1045,8 +1127,8 @@ describe('applyConnectionPatch', () => {
   }
 
   test('merges into one entry, normalising per field', () => {
-    const next = applyConnectionPatch(list(), 'b', { model: 'x/y', showReasoning: false });
-    expect(next?.[1]).toMatchObject({ id: 'b', model: 'x/y', showReasoning: false });
+    const next = applyConnectionPatch(list(), 'b', { name: 'Mine', showReasoning: false });
+    expect(next?.[1]).toMatchObject({ id: 'b', name: 'Mine', showReasoning: false });
     expect(next?.[0]).toEqual(list()[0]);
   });
 
@@ -1073,7 +1155,11 @@ describe('applyConnectionPatch', () => {
   });
 
   test('an unknown id changes nothing', () => {
-    expect(applyConnectionPatch(list(), 'zzz', { model: 'x' })).toBeNull();
+    expect(applyConnectionPatch(list(), 'zzz', { name: 'x' })).toBeNull();
+  });
+
+  test('a connection never takes a model: models are picked per slot', () => {
+    expect(applyConnectionPatch(list(), 'a', { model: 'x/y' })?.[0]).not.toHaveProperty('model');
   });
 
   test('edits do not mutate the input', () => {
@@ -1105,24 +1191,40 @@ describe('dropConnection', () => {
     return [connection('a', 'A'), connection('b', 'B'), connection('c', 'C')];
   }
 
-  test('dropping the selected entry falls back to the first remaining', () => {
-    const next = dropConnection(list(), 'b', 'b');
+  const settings = (connections: Connection[]) => ({
+    connections,
+    models: {
+      ...DEFAULT_SETTINGS.models,
+      chat: { connectionId: 'a', modelId: 'chat' },
+      nexus: { connectionId: 'b', modelId: 'memory' },
+    },
+    recentModels: [
+      { connectionId: 'b', modelId: 'memory' },
+      { connectionId: 'a', modelId: 'chat' },
+    ],
+    favoriteModels: [
+      { connectionId: 'a', modelId: 'chat' },
+      { connectionId: 'b', modelId: 'memory' },
+    ],
+  });
+
+  test('every slot and recent pick on the dropped connection goes with it', () => {
+    const next = dropConnection(settings(list()), 'b');
     expect(next?.connections.map((entry) => entry.id)).toEqual(['a', 'c']);
-    expect(next?.connectionId).toBe('a');
+    expect(next?.models.chat).toEqual({ connectionId: 'a', modelId: 'chat' });
+    expect(next?.models.nexus).toBeNull();
+    expect(next?.recentModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
+    expect(next?.favoriteModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
   });
 
-  test('a selection pointing elsewhere survives the deletion', () => {
-    expect(dropConnection(list(), 'c', 'a')?.connectionId).toBe('c');
-  });
-
-  test('dropping the only connection clears the selection', () => {
-    const next = dropConnection([connection('a', 'Solo')], 'a', 'a');
+  test('dropping the only connection empties everything', () => {
+    const next = dropConnection(settings([connection('a', 'Solo')]), 'a');
     expect(next?.connections).toEqual([]);
-    expect(next?.connectionId).toBeNull();
+    expect(next?.models.chat).toBeNull();
   });
 
   test('an unknown id changes nothing', () => {
-    expect(dropConnection(list(), 'a', 'zzz')).toBeNull();
+    expect(dropConnection(settings(list()), 'zzz')).toBeNull();
   });
 });
 
@@ -1167,145 +1269,6 @@ describe('sameEndpoint', () => {
     expect(
       sameEndpoint(connection('a', 'A'), connection('a', 'A', { provider: 'openrouter' })),
     ).toBe(false);
-  });
-});
-
-describe('migrateLegacyConnection', () => {
-  function legacy() {
-    return {
-      connection: {
-        provider: 'openrouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'anthropic/claude',
-        showReasoning: false,
-        reportUsage: true,
-      },
-      streamingFps: 30,
-    };
-  }
-
-  test('wraps the legacy connection in a one-entry list and reports the key move', () => {
-    const migration = migrateLegacyConnection(legacy(), 'new-id');
-    expect(migration).not.toBeNull();
-    if (!migration) return;
-
-    const connections = migration.settings.connections as Connection[];
-    expect(connections).toHaveLength(1);
-    expect(connections[0]).toMatchObject({
-      id: 'new-id',
-      // No name existed in the old format; the provider label is the fallback.
-      name: 'OpenRouter',
-      provider: 'openrouter',
-      model: 'anthropic/claude',
-      showReasoning: false,
-      reportUsage: true,
-    });
-    expect(migration.settings.connectionId).toBe('new-id');
-    expect(migration.settings.connection).toBeUndefined();
-    // Unrelated keys ride along untouched.
-    expect(migration.settings.streamingFps).toBe(30);
-    expect(migration.keyMove).toEqual({ from: 'openrouter', to: 'new-id' });
-  });
-
-  test('a file that already has connections is left alone', () => {
-    expect(migrateLegacyConnection({ connections: [] }, 'new-id')).toBeNull();
-  });
-
-  test('a file without a legacy connection is left alone', () => {
-    expect(migrateLegacyConnection({ streamingFps: 30 }, 'new-id')).toBeNull();
-  });
-});
-
-/*
- * !! paths.ts and the settings cache are module state shared by every test file in the
- * process. !! These tests repoint both at a temp directory; the afterEach puts them
- * back, same rule as paths.test.ts.
- */
-describe('legacy migration on disk', () => {
-  afterEach(() => {
-    setDataDir(DEFAULT_DATA_DIR);
-    resetSettingsCache();
-  });
-
-  function seedLegacy(dir: string, secrets: Record<string, string>) {
-    writeFileSync(
-      join(dir, 'settings.json'),
-      JSON.stringify({
-        connection: {
-          provider: 'openrouter',
-          baseUrl: 'https://openrouter.ai/api/v1',
-          model: 'anthropic/claude',
-        },
-        streamingFps: 30,
-      }),
-    );
-    writeFileSync(join(dir, 'secrets.json'), JSON.stringify(secrets), { mode: 0o600 });
-  }
-
-  test('migrates on first read, and the key moves with the connection', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wc-migrate-'));
-    try {
-      setDataDir(dir);
-      resetSettingsCache();
-      seedLegacy(dir, { openrouter: 'sk-or-1234', custom: 'sk-leftover' });
-
-      const settings = getSettings();
-      expect(settings.connections.map((connection) => connection.id)).toEqual([
-        MIGRATION_CONNECTION_ID,
-      ]);
-      expect(settings.connectionId).toBe(MIGRATION_CONNECTION_ID);
-      expect(settings.streamingFps).toBe(30);
-
-      expect(getApiKey(MIGRATION_CONNECTION_ID)).toBe('sk-or-1234');
-      expect(getApiKey('openrouter')).toBeNull();
-      // A key for a provider with no connection has nowhere to move and is left alone.
-      expect(getApiKey('custom')).toBe('sk-leftover');
-
-      // The file on disk caught up, so the migration never runs again.
-      const stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
-      expect(stored.connectionId).toBe(MIGRATION_CONNECTION_ID);
-      expect(stored.connection).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('a crash between the re-key and the settings write converges on retry', () => {
-    // The deterministic id is what makes this safe: the retry computes the same id, so
-    // the key the first attempt already moved is exactly where the second looks. With a
-    // fresh uuid per attempt, the key would sit under the first attempt's id while
-    // settings pointed at the second's, and the next prune would delete it.
-    const dir = mkdtempSync(join(tmpdir(), 'wc-migrate-'));
-    try {
-      setDataDir(dir);
-      resetSettingsCache();
-      writeFileSync(
-        join(dir, 'settings.json'),
-        JSON.stringify({
-          connection: {
-            provider: 'openrouter',
-            baseUrl: 'https://openrouter.ai/api/v1',
-            model: 'x',
-          },
-        }),
-      );
-      // Secrets already re-keyed by the interrupted first attempt.
-      writeFileSync(
-        join(dir, 'secrets.json'),
-        JSON.stringify({ [MIGRATION_CONNECTION_ID]: 'sk-or-1234' }),
-        { mode: 0o600 },
-      );
-
-      const settings = getSettings();
-      expect(settings.connections[0]?.id).toBe(MIGRATION_CONNECTION_ID);
-      expect(getApiKey(MIGRATION_CONNECTION_ID)).toBe('sk-or-1234');
-
-      const stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
-      expect(stored.connectionId).toBe(MIGRATION_CONNECTION_ID);
-      expect(stored.connection).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 
@@ -1423,18 +1386,26 @@ describe('getSettings on disk', () => {
   });
 });
 
-
 describe('TokenTrail recording defaults', () => {
-  test('absent defaults on and explicit false survives migration', () => {
+  test('absent defaults on and explicit false survives a read', () => {
     const original = PATHS.root;
     const dir = mkdtempSync(join(tmpdir(), 'wc-tokentrail-default-'));
     try {
       setDataDir(dir);
-      for (const [stored, expected] of [[{}, true], [{ usageLog: false }, false], [{ usageLog: true }, true], [{ usageLog: 'yes' }, false]] as const) {
+      for (const [stored, expected] of [
+        [{}, true],
+        [{ usageLog: false }, false],
+        [{ usageLog: true }, true],
+        [{ usageLog: 'yes' }, false],
+      ] as const) {
         writeFileSync(PATHS.settings, JSON.stringify(stored));
         resetSettingsCache();
         expect(getSettings().usageLog).toBe(expected);
       }
-    } finally { setDataDir(original); resetSettingsCache(); rmSync(dir, { recursive: true, force: true }); }
+    } finally {
+      setDataDir(original);
+      resetSettingsCache();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

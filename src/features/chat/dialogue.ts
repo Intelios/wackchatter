@@ -4,11 +4,6 @@ export interface DialogueRange {
   end: number;
 }
 
-export interface DialogueSegment {
-  text: string;
-  dialogue: boolean;
-}
-
 /**
  * Locate completed English double-quote pairs without crossing a line or a masked span.
  * The punctuation belongs to the range: colouring just the words leaves the quote marks
@@ -92,26 +87,6 @@ function markdownEligibility(text: string): boolean[] {
   }
 
   return eligible;
-}
-
-export function dialogueSegments(markdown: string): DialogueSegment[] {
-  if (!markdown) return [];
-  const ranges = dialogueRanges(markdown, markdownEligibility(markdown));
-  if (ranges.length === 0) return [{ text: markdown, dialogue: false }];
-
-  const segments: DialogueSegment[] = [];
-  let cursor = 0;
-  for (const range of ranges) {
-    if (range.start > cursor) {
-      segments.push({ text: markdown.slice(cursor, range.start), dialogue: false });
-    }
-    segments.push({ text: markdown.slice(range.start, range.end), dialogue: true });
-    cursor = range.end;
-  }
-  if (cursor < markdown.length) {
-    segments.push({ text: markdown.slice(cursor), dialogue: false });
-  }
-  return segments;
 }
 
 export type EmphasisKind = 'em' | 'strong';

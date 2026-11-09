@@ -8,6 +8,7 @@
 
 import { contentDisposition, errorResponse, json } from '../lib/http.ts';
 import { BackupError, type BackupOptions, planBackup, startBackup } from '../lib/library.ts';
+import { recordBackupMade } from '../lib/settings.ts';
 
 /** Long enough for any loopback download, short enough that temp does not fill up. */
 const ARCHIVE_TTL_MS = 15 * 60 * 1000;
@@ -40,6 +41,13 @@ export async function handleLibraryRoute(
     if (method !== 'GET') return null;
     try {
       const { plan, path, dispose } = await startBackup(optionsFrom(request));
+      // The archive is whole by now, so this is when a backup was made. A failed note must
+      // not cost the download.
+      try {
+        recordBackupMade();
+      } catch (error) {
+        console.error('[wackchatter] could not note the backup time:', error);
+      }
 
       /*
        * The archive is disposable the moment the download finishes, but nothing here can

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
+import { createStreamAccumulator, parseCompletion } from '@shared/providers/sse.ts';
 import type { ProviderToolCall } from '@shared/providers/types.ts';
 import type { PresetCocreatorMessage } from '@shared/types/preset-cocreator.ts';
 import { ApiError } from '../../lib/api.ts';
@@ -18,6 +19,7 @@ import {
   renderAssistantSystem,
   toolCallArguments,
   toolFailureResult,
+  UnconfirmedPresetPatchError,
 } from './assistant.ts';
 
 function call(name: string, args: unknown): ProviderToolCall {
@@ -35,6 +37,87 @@ const UNLINKED = {
 };
 
 describe('Preset Co-Creator assistant boundary', () => {
+  test('Google signatures survive parsing, saving and the request after a tool result', () => {
+    const tool = {
+      ...call('read_preset', {}),
+      extra_content: { google: { thought_signature: 'tool-signature' } },
+    };
+    const state = parseCompletion({
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [tool],
+            extra_content: { google: { thought_signature: 'message-signature' } },
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    });
+    const messages = JSON.parse(
+      JSON.stringify([
+        assistantResponseMessage(state),
+        { id: 'result', role: 'tool', content: '{"revision":0}', created: 1, toolCallId: tool.id },
+      ]),
+    ) as PresetCocreatorMessage[];
+    expect(assistantWireMessages(messages)).toEqual([
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [tool],
+        extra_content: { google: { thought_signature: 'message-signature' } },
+      },
+      { role: 'tool', content: '{"revision":0}', tool_call_id: tool.id },
+    ]);
+  });
+
+  test('streamed Google tool signatures reach the next request after an edit and proposal', () => {
+    const accumulator = createStreamAccumulator();
+    const tools = [
+      {
+        ...call('patch_preset', {
+          expectedRevision: 0,
+          summary: 'Cooler',
+          operations: [{ op: 'replace', path: '/temperature', value: 0.5 }],
+        }),
+        id: 'patch',
+        extra_content: { google: { thought_signature: 'step-signature' } },
+      },
+      {
+        ...call('propose_test', { message: 'Hi', restart: true, rationale: 'Check tone' }),
+        id: 'test',
+      },
+    ];
+    accumulator.push({
+      data: JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: tools.map((tool, index) => ({ ...tool, index })),
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+      }),
+    });
+    const saved = assistantResponseMessage(accumulator.snapshot());
+    const wire = assistantWireMessages([
+      saved,
+      ...tools.map(
+        (tool): PresetCocreatorMessage => ({
+          id: `result-${tool.id}`,
+          role: 'tool',
+          content: '{"ok":true}',
+          created: 1,
+          toolCallId: tool.id,
+          toolName: tool.function.name,
+        }),
+      ),
+    ]);
+    expect(wire[0]).toEqual({ role: 'assistant', content: null, tool_calls: tools });
+    expect(wire.slice(1).map((message) => message.role)).toEqual(['tool', 'tool']);
+  });
+
   test('only the preset-scoped tools parse', () => {
     expect(parsePresetToolCall(call('read_preset', {}))).toEqual({ name: 'read_preset' });
     expect(
@@ -186,6 +269,13 @@ describe('Preset Co-Creator assistant boundary', () => {
 
     const conflictWithoutRevision = new ApiError('Preset conflict', 409, { other: true });
     expect(toolFailureResult(conflictWithoutRevision)).not.toHaveProperty('currentRevision');
+  });
+
+  test('a lost patch acknowledgement reports an unknown outcome, never a definite failed edit', () => {
+    const result = toolFailureResult(new UnconfirmedPresetPatchError(new Error('Connection lost')));
+    expect(result).toMatchObject({ ok: false, outcomeUnknown: true });
+    expect(result.error).toContain('Connection lost');
+    expect(result.error).toContain('current draft');
   });
 
   test('executing a call rejects rather than half-applying, so the caller can feed it back', async () => {

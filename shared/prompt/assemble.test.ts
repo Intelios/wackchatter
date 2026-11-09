@@ -739,7 +739,11 @@ describe('token budget', () => {
   });
 
   test('budget is max_context minus max_tokens', () => {
-    const base = { ...createDefaultPreset(), new_chat_prompt: '' };
+    const base = {
+      ...createDefaultPreset(),
+      new_chat_prompt: '',
+      openai_max_tokens_unlimited: false,
+    };
 
     const roomy = assemble({
       preset: {
@@ -759,6 +763,21 @@ describe('token budget', () => {
     });
 
     expect(tight.messages.length).toBeLessThan(roomy.messages.length);
+  });
+
+  test('an unlimited reply reserves a quarter of the context instead', () => {
+    const base = { ...createDefaultPreset(), new_chat_prompt: '' };
+    const preset = {
+      ...setPromptOrder(base, [{ identifier: 'chatHistory', enabled: true }]),
+      openai_max_context: 100,
+      openai_max_tokens: 0,
+    };
+    const unlimited = assemble({ preset, messages: makeMessages(40) });
+    const capped = assemble({
+      preset: { ...preset, openai_max_tokens_unlimited: false },
+      messages: makeMessages(40),
+    });
+    expect(unlimited.messages.length).toBeLessThan(capped.messages.length);
   });
 
   test('reports per-prompt token counts', () => {
@@ -1138,6 +1157,7 @@ describe('complete-message token accounting', () => {
       ),
       openai_max_context: 10,
       openai_max_tokens: 3,
+      openai_max_tokens_unlimited: false,
     };
     const result = assemble({ preset, countTokens: wireCounter });
 
@@ -2032,9 +2052,9 @@ describe('the story-memory slot', () => {
     );
   });
 
-  test('memories mode injects the memories and suppresses the summary', () => {
+  test('nexus mode injects the recalled records and suppresses the summary', () => {
     // Both live in metadata at once. Sending both would narrate the same events twice.
-    const result = assemble({ summary, memoryText, memoryMode: 'memories' });
+    const result = assemble({ summary, memoryText, memoryMode: 'nexus' });
     const contents = result.messages.map((message) => message.content).join('\n');
     expect(contents).toContain('The Cellar');
     expect(contents).not.toContain('The gate is open.');
@@ -2052,7 +2072,7 @@ describe('the story-memory slot', () => {
   test('the memory template wraps the text through its own macro', () => {
     const result = assemble({
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { template: 'RECALL: {{memories}}', position: 'afterMain' },
     });
     expect(result.messages.map((m) => m.content).join('\n')).toContain('RECALL: ## The Cellar');
@@ -2061,7 +2081,7 @@ describe('the story-memory slot', () => {
   test('memories honour their own position, independently of the summary settings', () => {
     const before = assemble({
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { position: 'beforeMain' },
       summarySettings: { position: 'atDepth' },
     });
@@ -2074,7 +2094,7 @@ describe('the story-memory slot', () => {
     const result = assemble({
       messages: makeMessages(4),
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { position: 'atDepth', depth: 0, role: 'system' },
     });
     expect(result.messages.at(-1)?.content).toContain('The Cellar');
@@ -2082,8 +2102,8 @@ describe('the story-memory slot', () => {
     expect(result.tokenCounts.summary).toBeUndefined();
   });
 
-  test('memories mode with nothing recalled injects nothing', () => {
-    const result = assemble({ summary, memoryText: '', memoryMode: 'memories' });
+  test('nexus mode with nothing recalled injects nothing', () => {
+    const result = assemble({ summary, memoryText: '', memoryMode: 'nexus' });
     const contents = result.messages.map((message) => message.content).join('\n');
     expect(contents).not.toContain('The gate is open.');
     expect(result.tokenCounts.memories).toBeUndefined();
@@ -2092,9 +2112,54 @@ describe('the story-memory slot', () => {
   test('position none suppresses memories the same way it suppresses the summary', () => {
     const result = assemble({
       memoryText,
-      memoryMode: 'memories',
+      memoryMode: 'nexus',
       memorySettings: { position: 'none' },
     });
     expect(result.messages.map((m) => m.content).join('\n')).not.toContain('The Cellar');
+  });
+});
+
+describe('where each message came from', () => {
+  test('origins line up with the messages, injections and all', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'charDescription', enabled: true },
+        { identifier: 'chatHistory', enabled: true },
+      ]),
+      new_chat_prompt: '',
+    };
+    const result = assemble({
+      preset,
+      messages: makeMessages(3),
+      worldInfoDepth: [{ depth: 1, order: 100, role: 'system', content: 'fog on the water' }],
+      authorNote: { text: 'keep it short', position: 'atDepth', depth: 1, role: 'system' },
+    });
+
+    expect(result.origins).toHaveLength(result.messages.length);
+    expect(result.origins).toEqual([
+      ['main'],
+      ['charDescription'],
+      ['chatHistory'],
+      ['chatHistory'],
+      // Lore and the note share depth, order and role, so they go as one message.
+      ['worldInfoDepth', 'authorNote'],
+      ['chatHistory'],
+    ]);
+    // Nothing about origins reaches the wire.
+    for (const message of result.messages)
+      expect(Object.keys(message).sort()).toEqual(['content', 'role']);
+  });
+
+  test('a squashed system message names every prompt in it', () => {
+    const preset = {
+      ...setPromptOrder(createDefaultPreset(), [
+        { identifier: 'main', enabled: true },
+        { identifier: 'charDescription', enabled: true },
+        { identifier: 'scenario', enabled: true },
+      ]),
+      squash_system_messages: true,
+    };
+    expect(assemble({ preset }).origins).toEqual([['main', 'charDescription', 'scenario']]);
   });
 });

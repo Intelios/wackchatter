@@ -20,7 +20,6 @@ import type {
   ProviderModel,
 } from '../../shared/providers/types.ts';
 import type { AppSettings } from '../../shared/types/settings.ts';
-import { activeConnection } from '../../shared/types/settings.ts';
 import { getApiKey } from './secrets.ts';
 import { getSettings } from './settings.ts';
 
@@ -54,12 +53,15 @@ export function trackGeneration(): () => void {
   };
 }
 
-/** Resolve only from the server-owned list; a request can select an id, never an endpoint. */
+/**
+ * Resolve only from the server-owned list; a request can select an id, never an endpoint.
+ * Every generation names its connection — there is no "active" one to fall back to, since
+ * models are picked per feature and each pick carries its connection.
+ */
 export function generationConnection(
-  settings: Pick<AppSettings, 'connections' | 'connectionId'>,
-  connectionId?: string,
-): Connection | null {
-  if (connectionId === undefined) return activeConnection(settings);
+  settings: Pick<AppSettings, 'connections'>,
+  connectionId: string,
+): Connection {
   const connection = settings.connections.find((entry) => entry.id === connectionId);
   if (!connection) throw new Error(`Unknown connection "${connectionId}".`);
   return connection;
@@ -83,16 +85,14 @@ function appUrl(): string {
 export async function callUpstream(
   body: ChatCompletionBody,
   signal: AbortSignal,
-  connectionId?: string,
+  connectionId: string,
   sessionId?: string,
 ): Promise<Response> {
-  const settings = getSettings();
-  const connection = generationConnection(settings, connectionId);
+  const connection = generationConnection(getSettings(), connectionId);
 
-  if (!connection) throw new Error('No connection configured. Add one in Connections.');
   if (!connection.baseUrl) throw new Error('No endpoint configured. Set one in Connections.');
   if (typeof body.model !== 'string' || !body.model.trim()) {
-    throw new Error('No model selected. Choose one in Connections or for this request.');
+    throw new Error('No model selected. Choose one for this feature.');
   }
 
   return fetch(completionsUrl(connection), {
@@ -104,15 +104,13 @@ export async function callUpstream(
 }
 
 /**
- * Fetch the model catalogue for a connection, defaulting to the active one.
+ * Fetch the model catalogue for a connection.
  *
  * `useKey` is false only for probes of a client-supplied endpoint that differs from
  * the stored one — the key belongs to the stored endpoint, and attaching it to a
  * different URL would hand it to whoever controls that URL.
  */
-export async function listModels(connection?: Connection, useKey = true): Promise<ProviderModel[]> {
-  const target = connection ?? activeConnection(getSettings());
-  if (!target) throw new Error('No connection configured. Add one in Connections.');
+export async function listModels(target: Connection, useKey = true): Promise<ProviderModel[]> {
   if (!target.baseUrl) throw new Error('No endpoint configured.');
 
   const response = await fetch(modelsUrl(target), {

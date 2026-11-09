@@ -3,7 +3,7 @@ import type { Contender } from '@shared/types/arena.ts';
 import { fallbackSlot, poolSlots, SERIES_COUNT, seriesToken, viewSeries } from './series.ts';
 
 function contender(id: string): Contender {
-  return { id, name: '', connectionId: 'c', model: 'm', enabled: true };
+  return { id, name: '', model: { connectionId: 'c', modelId: 'm' }, enabled: true };
 }
 
 describe('seriesToken', () => {

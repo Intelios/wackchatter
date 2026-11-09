@@ -16,23 +16,10 @@
 
   /* Surfaces, from furthest back to closest */
   --wc-bg: #0e0e0f;
-  /*
-   * The dim scrim's colour, as channels for a variable-alpha rgb(). Pure black rather
-   * than the background colour: the built-in backgrounds are photographs, and an
-   * overlay the same colour as its backdrop cannot darken it — the Dim slider moved
-   * through its whole range with nothing to show for it. Black has room to pull every
-   * image down.
-   */
-  --wc-scrim-rgb: 0 0 0;
   --wc-surface: #16161a;
   --wc-surface-raised: #1e1e21;
   --wc-surface-hover: #26262a;
-  /* Popups are never glass: they float over the transcript, so translucency without a
-     blur of their own reads as a bug. Kept solid by not being redefined in glass mode. */
   --wc-surface-popup: #1e1e21;
-  /* The message bubble. Its own token because stage 2 makes it translucent
-     independently of the panels — see the glass block in AppShell.css. */
-  --wc-bubble: var(--wc-surface);
 
   /* Text */
   --wc-text: #eaeaec;
@@ -49,7 +36,6 @@
    * from --wc-shadow-text-strong rather than from their value.
    */
   --wc-text-on-image: var(--wc-text);
-  --wc-text-on-image-muted: #c6c6ce;
 
   /* Lines */
   --wc-border: #2a2a2e;
@@ -67,17 +53,25 @@
   --wc-accent-subtle: rgba(194, 238, 74, 0.12);
   /* Border on a tinted active container, softer than solid accent. */
   --wc-accent-border: rgb(194 238 74 / 0.35);
-  /*
-   * The composer's focus bloom: the halo that spills past a picked-up field. A step above
-   * --wc-accent-subtle, whose 0.12 disappears into a 24px blur over the dark surfaces.
-   */
-  --wc-accent-glow: rgb(194 238 74 / 0.16);
   /* Text selection inside the composer's input. More alpha than the glow — a selection is
      a statement about exact extents, not an ambience. Text keeps --wc-text on top of it. */
   --wc-accent-selection: rgb(194 238 74 / 0.3);
 
   /* Render-only fallback when an avatar has no usable chromatic colour. */
-  --wc-dialogue-default: #e18a24;
+  --wc-palette-preview-bg: #1b1b1f;
+  --wc-palette-preview-height: 108px;
+  --wc-palette-label: 48px;
+  --wc-palette-disabled-opacity: 0.4;
+  --wc-palette-leading: 1.6;
+  --wc-aura-l1: 0.62;
+  --wc-aura-c1: 0.19;
+  --wc-aura-a1: 0.3;
+  --wc-aura-l2: 0.56;
+  --wc-aura-c2: 0.17;
+  --wc-aura-a2: 0.22;
+  --wc-aura-l3: 0.52;
+  --wc-aura-c3: 0.16;
+  --wc-aura-a3: 0.22;
 
   /*
    * Categorical series, for charts. The accent leads and the rest is the dialogue-colour
@@ -100,17 +94,16 @@
    * it carries code, and a neutral grey slab reads as a rendering fault rather than a
    * voice. Ported from SillyTavern's Moonlit Echoes theme, whose `#sheld code` is a dark
    * chip with the text in the theme's primary colour — that blue is its default. The
-   * background stays translucent black so the chip darkens whatever bubble it lands in,
-   * opaque or glass, instead of matching one and vanishing into the other.
+   * background stays translucent black so the chip darkens whatever surface it lands on.
    */
   --wc-code-bg: rgb(0 0 0 / 0.45);
   --wc-code-color: #51a0de;
 
   /* Status */
-  --wc-danger: #e5484d;
-  --wc-danger-subtle: rgba(229, 72, 77, 0.12);
   --wc-success: #46a758;
   --wc-success-subtle: rgba(70, 167, 88, 0.16);
+  --wc-danger: #e5484d;
+  --wc-danger-subtle: rgba(229, 72, 77, 0.12);
   --wc-warning: #f0a020;
   --wc-warning-subtle: rgba(240, 160, 32, 0.12);
 
@@ -121,12 +114,8 @@
   --wc-star: #e0b53c;
   --wc-star-empty: #3a3a40;
 
-  /* A wash over imagery, so text laid on top of it stays legible. */
-  --wc-scrim: rgba(0, 0, 0, 0.65);
-  /* For a label sitting directly on an image, where a scrim would cover too much. */
-  --wc-shadow-text: 0 1px 3px rgb(0 0 0 / 0.9);
   /*
-   * One step further, for a label with nothing at all behind it. The tight offset gives an
+   * For a label with nothing at all behind it. The tight offset gives an
    * edge; the wide soft halo is what actually carries a light glyph over a bright, busy
    * photograph — it darkens the few pixels around each stroke instead of the whole region,
    * which is how map labels and subtitles stay readable over arbitrary imagery. A contrast
@@ -135,16 +124,6 @@
   --wc-shadow-text-strong: 0 1px 3px rgb(0 0 0 / 0.9), 0 0 10px rgb(0 0 0 / 0.75);
   /* A barely-there lift, for a panel inside a panel. */
   --wc-tint: rgb(255 255 255 / 0.03);
-  /*
-   * Withheld. Used where something is deliberately not being shown yet — a sealed blind
-   * contender, a rating with too few rounds behind it. A texture rather than a colour
-   * because it has to survive greyscale and sit under text either way.
-   */
-  --wc-hatch: repeating-linear-gradient(
-    135deg,
-    rgb(255 255 255 / 0.04) 0 6px,
-    transparent 6px 12px
-  );
 
   /* Spacing scale */
   --wc-space-1: 4px;
@@ -175,94 +154,40 @@
    * in this corner — and 16px semibold cannot do that next to two columns of prose. No new
    * family: this is the app's one face at a weight and size it was not being asked for.
    */
-  --wc-text-2xl: 20px;
   --wc-text-display: 30px;
 
   /* Control and icon sizes. Named by role, not by pixel value, so a denser or
      roomier pass is one edit here. */
   --wc-icon-sm: 14px;
   --wc-icon: 15px;
-  --wc-icon-lg: 17px;
   --wc-control-sm: 28px;
   --wc-control: 30px;
   --wc-control-lg: 42px;
   --wc-avatar-sm: 32px;
   --wc-avatar-md: 44px;
-  /* How far stacked group faces tuck under one another. The visible step is the face size
-     minus this, so the two are tuned together to keep a face recognisable. */
-  --wc-avatar-overlap: 12px;
 
   /* Layout */
-  --wc-panel-width: clamp(380px, 25vw, 560px);
-  --wc-topbar-height: 44px;
-  --wc-left-width: 0px;
-  --wc-right-width: 0px;
   /* A readable measure for the transcript and everything that must line up with it. */
   --wc-measure: 860px;
   /* Ceiling for lists that would otherwise run the length of the panel. */
   --wc-scroll-cap: 420px;
-  /* The card sheet on an avatar. Wide enough for a description to read as prose, narrow
-     enough to leave the transcript it hangs over visible either side of it. */
-  --wc-card-sheet-width: 420px;
   /* The crash screen. Narrower than the transcript's measure on purpose: a stack trace is
      not prose, and long lines of it are harder to scan, not easier. */
   --wc-crash-width: 620px;
   /* Its folded-open report. Tall enough to show the error and the first frames, short
      enough that the buttons above it stay on screen. */
   --wc-crash-report-height: 240px;
-  --wc-studio-rail-width: 200px;
-  --wc-studio-inspector-width: 300px;
-  --wc-studio-canvas-width: 900px;
-  --wc-studio-filter-width: 200px;
-  --wc-studio-card-width: 260px;
-  --wc-studio-card-avatar: 96px;
-  --wc-studio-card-avatar-tall: 144px;
-  --wc-studio-avatar-min: 180px;
-  --wc-studio-avatar-width: 260px;
-  --wc-studio-error-width: 560px;
-  --wc-studio-active-border: 3px;
-  --wc-studio-badge-size: 16px;
-  --wc-studio-meter-height: 8px;
-  --wc-studio-finding-mark: 16px;
-  --wc-cocreator-examples-width: 280px;
-  --wc-cocreator-stash-width: 340px;
-  --wc-cocreator-session-width: 720px;
-  --wc-cocreator-side-context-height: 30vh;
-  --wc-cocreator-side-settings-width: 380px;
-  /* The rule marking a card block inside a design reply. */
-  --wc-cocreator-block-mark: 3px;
   --wc-stats-canvas-width: 1080px;
-  --wc-stats-tile-width: 176px;
-  --wc-stats-fact-width: 240px;
-  --wc-stats-hero-size: 44px;
-  --wc-stats-card-avatar: 120px;
-  --wc-stats-bar-height: 10px;
-  --wc-stats-row-avatar: 28px;
-  --wc-stats-donut-size: 200px;
-  --wc-stats-dial-size: 220px;
-  --wc-stats-columns-height: 120px;
-  --wc-stats-stagger: 55ms;
-  --wc-stats-draw: 900ms;
-  --wc-arena-canvas-width: 1240px;
-  /* A column narrower than this stops being readable prose and starts being a ticker
-     tape, which is the one thing a side-by-side comparison must not do. */
-  --wc-arena-column-min: 280px;
-  --wc-arena-column-height: 420px;
-  --wc-arena-avatar: 40px;
-  /* The card in the masthead's seam: the thing both contenders are being judged on. */
-  --wc-arena-medallion: 72px;
-  /* A masked contender's plate. Big enough to be the column's name while it has none. */
-  --wc-arena-seal: 32px;
-  /*
-   * The floor for one side of a blind round. Below two of these the duel stops being
-   * readable prose side by side, and the Benchmark swaps to one pane at a time — squashing
-   * two replies into 150px each would make the vote a guess about layout, not writing.
-   */
-  --wc-arena-duel-min: 300px;
   --wc-letter-spacing: 0.08em;
   --wc-code-line-height: 1.6;
-  --wc-glass-blur: 20px;
-  --wc-glass-saturation: 140%;
+  --wc-cocreator-context-height: 260px;
+  --wc-context-ring: 22px;
+  --wc-context-stroke: 1.7;
+  --wc-context-panel: 350px;
+  --wc-context-summary-height: 180px;
+  --wc-context-hover-delay: 180ms;
+  --wc-context-pulse: 1200ms;
+  --wc-cocreator-portrait-height: 160px;
 
   /* Motion. One layout duration and one curve keeps panel movement coherent;
      --wc-duration-fast is for hover and focus, which must not feel laggy;
@@ -271,10 +196,7 @@
   --wc-duration: 260ms;
   --wc-duration-fast: 120ms;
   --wc-duration-view: 380ms;
-  /* How far an incoming swipe or re-roll travels before settling. */
-  --wc-swipe-distance: 28px;
-  /* How far an incoming cast view (Characters ↔ Groups) slides across before settling. */
-  --wc-slide-distance: 20px;
+  --wc-duration-home-cover: 320ms;
 
   --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   /* Half elevation — where an entering view bar's shadow settles before it lifts. */
@@ -286,63 +208,7 @@
     --wc-duration: 0ms;
     --wc-duration-fast: 0ms;
     --wc-duration-view: 0ms;
-  }
-}
-
-/*
- * Glass.
- *
- * These live here rather than in AppShell.css because they are token *definitions* — the
- * whole trick is that redefining the surface tokens turns every component translucent
- * without one component file changing. AppShell.css only applies the backdrop-filter.
- *
- * Set only when a background image is actually selected; over a flat colour, glass costs
- * a compositing layer to blur nothing.
- */
-:is(
-  .shell,
-  .studio-shell,
-  .cocreator-shell,
-  .preset-cc-shell,
-  .cocreator-landing
-)[data-glass="true"] {
-  --wc-surface: rgb(20 20 22 / 0.72);
-  --wc-surface-raised: rgb(30 30 33 / 0.8);
-  --wc-bubble: rgb(24 24 27 / 0.66);
-}
-
-/* Without backdrop-filter, 0.72-alpha panels sit over an unblurred image. Unreadable. */
-@supports not (backdrop-filter: blur(1px)) {
-  :is(
-    .shell,
-    .studio-shell,
-    .cocreator-shell,
-    .preset-cc-shell,
-    .cocreator-landing
-  )[data-glass="true"] {
-    --wc-surface: rgb(20 20 22 / 0.95);
-    --wc-surface-raised: rgb(30 30 33 / 0.97);
-    --wc-bubble: rgb(24 24 27 / 0.94);
-  }
-}
-
-/*
- * The accessibility answer to glass: honour it, in both spellings.
- *
- * A browser that does not know `prefers-reduced-transparency` drops the whole query, which
- * is why `prefers-contrast` is a separate condition rather than an `and`.
- */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :is(
-    .shell,
-    .studio-shell,
-    .cocreator-shell,
-    .preset-cc-shell,
-    .cocreator-landing
-  )[data-glass="true"] {
-    --wc-surface: #16161a;
-    --wc-surface-raised: #1e1e21;
-    --wc-bubble: #16161a;
+    --wc-duration-home-cover: 0ms;
   }
 }
 

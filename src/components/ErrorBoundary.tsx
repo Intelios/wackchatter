@@ -16,7 +16,7 @@ interface ErrorBoundaryProps {
   children: ReactNode;
   /**
    * Which part of the app this boundary owns, in the app's own words: 'the chat', 'the
-   * left panel'. Omitted at the root, where the answer is "all of it" — that is the only
+   * Studio'. Omitted at the root, where the answer is "all of it" — that is the only
    * difference between the two, so there is no separate variant prop to keep in step.
    */
   where?: string;

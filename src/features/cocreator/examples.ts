@@ -15,12 +15,7 @@
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import {
-  DEFAULT_EXAMPLE_FIELDS,
-  type ExampleField,
-  type ExampleFields,
-  type ExampleSelection,
-} from '@shared/types/cocreator.ts';
+import type { ExampleField, ExampleFields } from '@shared/types/cocreator.ts';
 
 export const EXAMPLE_FIELD_ORDER: readonly ExampleField[] = [
   'description',
@@ -43,10 +38,6 @@ export const EXAMPLE_FIELD_LABELS: Readonly<Record<ExampleField, string>> = {
   mes_example: 'Example dialogue',
   character_book: 'Embedded lorebook',
 };
-
-export function emptyExampleSelection(): ExampleSelection {
-  return { cards: [], fields: { ...DEFAULT_EXAMPLE_FIELDS } };
-}
 
 export interface RenderedExample {
   avatar: string;

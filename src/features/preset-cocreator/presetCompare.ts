@@ -24,35 +24,6 @@ export function encodeSource(source: CompareSource): string {
   return `${source.kind}:${source.id}`;
 }
 
-export function decodeSource(value: string): CompareSource | null {
-  if (value === 'draft') return { kind: 'draft' };
-  const colon = value.indexOf(':');
-  if (colon < 0) return null;
-  const kind = value.slice(0, colon);
-  const rest = value.slice(colon + 1);
-  if (kind === 'revision') {
-    return /^\d+$/.test(rest) ? { kind: 'revision', revision: Number(rest) } : null;
-  }
-  if ((kind === 'library' || kind === 'reference') && rest) return { kind, id: rest };
-  return null;
-}
-
-/**
- * What the tab opens on: what Save to preset would overwrite against the draft or, with no
- * linked preset, where the session started against where it is now.
- */
-export function defaultCompareSources(session: {
-  targetPresetId: string | null;
-  history: readonly { revision: number }[];
-}): { left: CompareSource; right: CompareSource } {
-  return {
-    left: session.targetPresetId
-      ? { kind: 'library', id: session.targetPresetId }
-      : { kind: 'revision', revision: session.history[0]?.revision ?? 0 },
-    right: { kind: 'draft' },
-  };
-}
-
 export type CompareStatus = 'same' | 'changed' | 'added' | 'removed';
 
 export interface PromptSide {

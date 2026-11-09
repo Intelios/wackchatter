@@ -37,6 +37,8 @@ import './Nexus.css';
 
 type Props = NexusSettingsProps & {
   chat: Pick<UseChat, 'nexus' | 'state' | 'memoryMode' | 'messages' | 'saving' | 'saveError'>;
+  /** Where it renders: the 3.0 shell passes its root so the explorer wears the Aura. */
+  container?: Element | null;
 };
 const KINDS = ['person', 'place', 'object', 'event', 'group', 'concept'] as const;
 const RECORD_KINDS = ['fact', 'event', 'situation', 'thread'] as const;
@@ -51,7 +53,7 @@ const TITLE = {
 const SYMBOL = { person: '◎', place: '⌖', object: '◇', event: '✦', group: '⬡', concept: '❖' };
 /** The floating node card's width, matching `--wc-nexus-card`. */
 const CARD_WIDTH = 380;
-export function NexusExplorer({ chat, ...config }: Props) {
+export function NexusExplorer({ chat, container, ...config }: Props) {
   const n = chat.nexus;
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<NexusNodeKind | 'all'>('all');
@@ -295,9 +297,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
   const recalled = new Set(
     n.recall?.hits.filter((h) => h.included).flatMap((h) => h.nodeIds) ?? [],
   );
-  const configured = Boolean(
-    config.connections.some((c) => c.id === config.settings.connectionId) && config.settings.model,
-  );
+  const configured = !config.blockedReason;
   // Hand-authored records are real writes to the chat; on a Summary/off chat they would
   // never be recalled, so the add affordances wait for the mode switch instead.
   const nexusMode = chat.memoryMode === 'nexus';
@@ -575,7 +575,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
               </button>
             ) : null}
           </div>
-          {!configured ? <p>Configure a connection and model in Settings first.</p> : null}
+          {!configured ? <p>{config.blockedReason} See Nexus settings.</p> : null}
           {!nexusMode ? <p>Switch this chat to Nexus memory to search with the model.</p> : null}
           {n.run.error ? <p role="status">{n.run.error}</p> : null}
           {n.findings.map((f) => {
@@ -1200,7 +1200,7 @@ export function NexusExplorer({ chat, ...config }: Props) {
         </button>
       </div>
     </div>,
-    document.body,
+    container ?? document.body,
   );
 }
 

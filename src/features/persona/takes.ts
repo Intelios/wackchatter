@@ -28,12 +28,6 @@ export function editTake(takes: readonly Take[], index: number, patch: Partial<T
   return takes.map((take, at) => (at === index ? { ...take, ...patch, dirty: true } : take));
 }
 
-/** Clamped, so stepping past either end is a no-op rather than an index that does not exist. */
-export function stepTake(takes: readonly Take[], index: number, step: number): number {
-  if (takes.length === 0) return 0;
-  return Math.min(Math.max(index + step, 0), takes.length - 1);
-}
-
 /** Any take edited since it arrived — what "discard the draft?" is asking about. */
 export function hasDirtyTake(takes: readonly Take[]): boolean {
   return takes.some((take) => take.dirty);

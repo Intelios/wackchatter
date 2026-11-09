@@ -1,3 +1,4 @@
+import { resolveModel, resolveModelRef } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { ChatMessage } from '@shared/types/chat.ts';
 import type {
@@ -10,7 +11,8 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { presetApi, referencePresetApi, streamGenerate } from '../../lib/api.ts';
+import { presetApi, referencePresetApi } from '../../lib/api.ts';
+import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import {
@@ -70,10 +72,10 @@ export function usePresetTesting({
     [controller.session.document.activeTestId, controller.session.document.tests],
   );
   const setting = activeTest?.testingSettings ?? controller.session.document.settings.testing;
-  const connection = useMemo(() => {
-    const selected = connections.find((entry) => entry.id === setting.connectionId) ?? null;
-    return selected ? { ...selected, model: setting.model.trim() || selected.model } : null;
-  }, [connections, setting.connectionId, setting.model]);
+  const connection = useMemo(
+    () => resolveModel(connections, setting.model),
+    [connections, setting.model],
+  );
   const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
 
   const saveTest = useCallback(
@@ -187,16 +189,17 @@ export function usePresetTesting({
         setBusy(false);
       };
 
-      const selectedConnection = connections.find(
-        (entry) => entry.id === originalTest.testingSettings.connectionId,
+      const resolution = resolveModelRef(
+        connections,
+        originalTest.testingSettings.model,
+        'testing',
       );
-      const model = originalTest.testingSettings.model.trim() || selectedConnection?.model || '';
-      if (!selectedConnection || !model) {
-        setError('Choose a testing connection and model for this chat.');
+      if (!resolution.ok) {
+        setError(`${resolution.reason} It is set per test chat.`);
         finish();
         return;
       }
-      const requestConnection = { ...selectedConnection, model };
+      const requestConnection = resolution.model;
       const dispatchSession = sessionRef.current;
       let resolved: Awaited<ReturnType<typeof resolvePresetTestSource>>;
       try {
@@ -328,27 +331,24 @@ export function usePresetTesting({
         // One stream per request, carrying whether this request actually streams: a test
         // preset may disable it, and a caret on an empty bubble would indicate nothing.
         stream.begin('', resolved.preset.stream_openai !== false);
-        const final = await streamGenerate(
-          prepared.body,
-          controllerAbort.signal,
-          {
-            onTick: (state) => {
-              if (abortRef.current !== controllerAbort) return;
-              text = state.content;
-              reasoning = state.reasoning;
-              stream.set(text, reasoning);
-            },
-          },
-          '',
-          requestConnection.id,
-          {
+        const final = await runGeneration({
+          model: requestConnection,
+          body: prepared.body,
+          signal: controllerAbort.signal,
+          usage: {
             feature: 'presetTest',
             generationId,
             sessionId: sessionRef.current.id,
             character: baseTest.scenario.characterId ?? undefined,
             countText: countTokens.countText,
           },
-        );
+          onTick: (state) => {
+            if (abortRef.current !== controllerAbort) return;
+            text = state.content;
+            reasoning = state.reasoning;
+            stream.set(text, reasoning);
+          },
+        });
         text = final.content;
         reasoning = final.reasoning;
         const selectedIndex = prepared.target.swipe_id ?? 0;
@@ -458,6 +458,14 @@ export function usePresetTesting({
     },
     [activeTest, busy, generate, saveTest],
   );
+
+  /**
+   * The latest reply again on the current preset, as a new swipe beside the old one, so
+   * the two can be read side by side. Only ever on a click: it costs money.
+   */
+  const rerun = useCallback(async () => {
+    if (activeTest && !busy) await generate('swipe', activeTest);
+  }, [activeTest, busy, generate]);
 
   const editMessage = useCallback(
     (id: string, text: string) => {
@@ -605,6 +613,7 @@ export function usePresetTesting({
       send,
       regenerate,
       swipe,
+      rerun,
       editMessage,
       stop,
       dismissProposal,
@@ -633,6 +642,7 @@ export function usePresetTesting({
       send,
       regenerate,
       swipe,
+      rerun,
       editMessage,
       stop,
       dismissProposal,

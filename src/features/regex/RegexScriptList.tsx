@@ -27,7 +27,6 @@ import {
   SelectField,
   TextField,
 } from '../../components/Field.tsx';
-import { Section } from '../../components/Section.tsx';
 import { ChevronIcon, DownloadIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import {
   addScript,
@@ -419,14 +418,5 @@ function RegexTester({ script }: { script: RegexScript }) {
         )}
       </output>
     </div>
-  );
-}
-
-/** The panel section. Kept beside the list so a new home is one import to move. */
-export function RegexScriptSection(props: RegexScriptListProps) {
-  return (
-    <Section title="Regex scripts" badge={props.scripts.length || undefined}>
-      <RegexScriptList {...props} />
-    </Section>
   );
 }

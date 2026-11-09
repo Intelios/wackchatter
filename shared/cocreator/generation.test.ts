@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '../prompt/defaults.ts';
 import { buildRequestBody } from '../providers/request.ts';
-import type { Connection } from '../providers/types.ts';
+import type { ResolvedModel } from '../providers/types.ts';
 import { cocreatorBudget } from './generation.ts';
 
-const connection: Connection = {
+const connection: ResolvedModel = {
   id: 'test',
   name: 'Test',
   provider: 'custom',
@@ -13,10 +13,10 @@ const connection: Connection = {
 };
 
 describe('Co-Creator generation budget', () => {
-  test('design output does not inherit a 300-token roleplay limit', () => {
+  test('design output reserves room for the reply and its reasoning', () => {
     const budget = cocreatorBudget({ preset: createDefaultPreset(), connection });
     expect(budget.outputTokens).toBe(8192);
-    expect(budget.maxTokens).toBe(16384);
+    expect(budget.reservedTokens).toBe(16384);
     expect(budget.promptTokens + budget.reservedTokens).toBe(131072 - 128);
   });
 
@@ -27,8 +27,8 @@ describe('Co-Creator generation budget', () => {
       outputTokens: 4096,
       contextTokens: 65536,
     });
-    expect(budget.maxTokens).toBe(4096 + 32768);
-    expect(budget.promptTokens).toBe(65536 - 128 - budget.maxTokens);
+    expect(budget.reservedTokens).toBe(4096 + 32768);
+    expect(budget.promptTokens).toBe(65536 - 128 - budget.reservedTokens);
   });
 
   test('reserves the actual Claude request including its separate thinking budget', () => {
@@ -44,9 +44,8 @@ describe('Co-Creator generation budget', () => {
       connection: claude,
       messages: [],
       stream: true,
-      maxTokens: budget.maxTokens,
+      maxTokens: 8192,
     });
-    expect(budget.maxTokens).toBe(8192);
     expect(budget.reservedTokens).toBe(Number(body.max_tokens));
     expect(budget.reservedTokens).toBeGreaterThan(budget.outputTokens);
   });

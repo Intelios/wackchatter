@@ -1,52 +1,43 @@
-import type { Connection } from '@shared/providers/types.ts';
+import {
+  type ModelResolution,
+  type ModelSlots,
+  resolveModelRef,
+  slotRef,
+} from '@shared/models/slots.ts';
+import type { Connection, ResolvedModel } from '@shared/providers/types.ts';
 import type { SessionModelSettings } from '@shared/types/cocreator.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 
 export interface ResolvedCocreatorSettings {
-  connection: Connection | null;
+  /** The session's own model, else the `cocreator` slot, else (following it) chat's. */
+  model: ModelResolution;
+  connection: ResolvedModel | null;
   presetId: string | null;
   systemPrompt: string;
   analysisPrompt: string;
   streaming: boolean;
 }
 
-function connectionById(connections: readonly Connection[], id: string | null): Connection | null {
-  if (id) return connections.find((entry) => entry.id === id) ?? null;
-  return connections[0] ?? null;
-}
-
 function validPresetId(presets: readonly PresetSummary[], id: string | null): string | null {
   return id && presets.some((entry) => entry.id === id) ? id : null;
 }
 
-/** Resolve the three-state session overrides without mutating app-wide selections. */
+/** Resolve the session's overrides over the app defaults, without changing either. */
 export function resolveCocreatorSettings(input: {
   session: SessionModelSettings;
   defaults: CoCreatorSettings;
   connections: readonly Connection[];
-  activeConnectionId: string | null;
+  models: ModelSlots;
   presets: readonly PresetSummary[];
   activePresetId: string | null;
 }): ResolvedCocreatorSettings {
-  const { session, defaults, connections, activeConnectionId, presets, activePresetId } = input;
-  const activeConnection = connectionById(connections, activeConnectionId);
-  const defaultConnection =
-    (defaults.connectionId && connectionById(connections, defaults.connectionId)) ||
-    activeConnection;
-
-  let connection: Connection | null;
-  if (session.connectionId === undefined) connection = defaultConnection;
-  else if (session.connectionId === null) connection = activeConnection;
-  else connection = connectionById(connections, session.connectionId) ?? defaultConnection;
-
-  if (
-    connection &&
-    session.modelOverride?.connectionId === connection.id &&
-    session.modelOverride.model.trim()
-  ) {
-    connection = { ...connection, model: session.modelOverride.model.trim() };
-  }
+  const { session, defaults, connections, models, presets, activePresetId } = input;
+  const model = resolveModelRef(
+    connections,
+    session.model ?? slotRef(models, 'cocreator'),
+    'Co-Creator',
+  );
 
   const activePreset = validPresetId(presets, activePresetId);
   const defaultPreset = validPresetId(presets, defaults.presetId) ?? activePreset;
@@ -58,33 +49,13 @@ export function resolveCocreatorSettings(input: {
         : (validPresetId(presets, session.presetId) ?? defaultPreset);
 
   return {
-    connection,
+    model,
+    connection: model.ok ? model.model : null,
     presetId,
     systemPrompt: session.systemPrompt?.trim() ? session.systemPrompt : defaults.systemPrompt,
     analysisPrompt: session.analysisPrompt?.trim()
       ? session.analysisPrompt
       : defaults.analysisPrompt,
     streaming: defaults.streaming,
-  };
-}
-
-/** A connection switch invalidates a model override made for another endpoint. */
-export function connectionPatch(
-  connectionId: string | null | undefined,
-  current: SessionModelSettings,
-): SessionModelSettings {
-  const patch: SessionModelSettings = { connectionId };
-  if (current.modelOverride) patch.modelOverride = undefined;
-  return patch;
-}
-
-/** Store only genuine overrides; selecting the saved model means inherit it. */
-export function modelPatch(connection: Connection, model: string): SessionModelSettings {
-  const trimmed = model.trim();
-  return {
-    modelOverride:
-      !trimmed || trimmed === connection.model
-        ? undefined
-        : { connectionId: connection.id, model: trimmed },
   };
 }

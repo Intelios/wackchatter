@@ -25,7 +25,7 @@ function round(
 }
 
 function contender(id: string, model = 'shared-model'): Contender {
-  return { id, name: id, connectionId: 'or', model, enabled: true };
+  return { id, name: id, model: { connectionId: 'or', modelId: model }, enabled: true };
 }
 
 function rowFor(rows: readonly LeaderboardRow[], id: string): LeaderboardRow | null {

@@ -56,7 +56,7 @@ export function createCardStore(): CardStore {
 
     /*
      * The caller syncs this from an effect, which means it arrives as a fresh object
-     * literal on every render of `ChatView` — most of them carrying exactly what is
+     * literal on every render of the chat — most of them carrying exactly what is
      * already here. Publishing those would notify an open sheet dozens of times a second
      * during a generation, which is the churn this store exists to prevent.
      *

@@ -31,6 +31,19 @@ function create() {
 }
 
 describe('Preset Co-Creator session store', () => {
+  test('new documents enable auto-compaction but older documents stay opt-in', () => {
+    expect(defaultPresetCocreatorDocument().compaction?.automatic).toBe(true);
+    const old = defaultPresetCocreatorDocument();
+    delete old.compaction;
+    expect(normalizePresetCocreatorDocument(old).compaction).toEqual({
+      automatic: false,
+      history: [],
+    });
+    const session = create();
+    const document = { ...session.document, compaction: { automatic: false, history: [] } };
+    store.saveDocument(session.id, { expectedRevision: 0, operationId: 'compaction', document });
+    expect(store.getSession(session.id)?.document.compaction).toEqual(document.compaction);
+  });
   test('older test chats gain per-chat defaults and an empty saved batch', () => {
     const legacy = defaultPresetCocreatorDocument() as unknown as Record<string, unknown>;
     delete legacy.batchQueue;
@@ -70,8 +83,7 @@ describe('Preset Co-Creator session store', () => {
       presetSource: { kind: 'reference', id: 'Example' },
       testingSettings: {
         ...session.document.settings.testing,
-        connectionId: 'connection-1',
-        model: 'model-one',
+        model: { connectionId: 'connection-1', modelId: 'model-one' },
       },
       composerDraft: 'Unsent question',
       localVariables: {},
@@ -117,7 +129,7 @@ describe('Preset Co-Creator session store', () => {
     expect(saved.kind).toBe('saved');
     const loaded = store.getSession(session.id)!.document;
     expect(loaded.tests[0]?.presetSource).toEqual({ kind: 'reference', id: 'Example' });
-    expect(loaded.tests[0]?.testingSettings.model).toBe('model-one');
+    expect(loaded.tests[0]?.testingSettings.model?.modelId).toBe('model-one');
     expect(loaded.tests[0]?.composerDraft).toBe('Unsent question');
     expect(loaded.batchQueue.note).toBe('Compare the results');
     expect(loaded.batchQueue.includePrompt).toBe(false);
@@ -193,6 +205,49 @@ describe('Preset Co-Creator session store', () => {
     const second = store.patchDraft(session.id, { ...request, expectedRevision: 1 });
     expect(second).toEqual(first);
     expect(store.getSession(session.id)?.history).toHaveLength(2);
+  });
+
+  test('an interrupted tool exchange retains its operation identity across save and reload', () => {
+    const session = create();
+    const document: PresetCocreatorDocument = {
+      ...session.document,
+      messages: [
+        {
+          id: 'assistant',
+          role: 'assistant',
+          content: '',
+          created: 1,
+          turnId: 'turn',
+          toolCalls: [
+            {
+              id: 'patch',
+              type: 'function',
+              function: { name: 'patch_preset', arguments: '{}' },
+            },
+          ],
+        },
+      ],
+    };
+    store.saveDocument(session.id, { expectedRevision: 0, operationId: 'before-patch', document });
+    store.patchDraft(session.id, {
+      expectedRevision: 0,
+      operationId: 'tool:turn:patch',
+      source: 'assistant',
+      turnId: 'turn',
+      summary: 'Cooler',
+      operations: [{ op: 'replace', path: '/temperature', value: 0.5 }],
+    });
+    // A lost patch response can be reconciled from the next document save's response too.
+    const saved = store.saveDocument(session.id, {
+      expectedRevision: 1,
+      operationId: 'after-patch',
+      document,
+    });
+    expect(saved.kind).toBe('saved');
+    if (saved.kind !== 'saved') return;
+    expect(saved.value.document.messages[0]?.turnId).toBe('turn');
+    expect(saved.value.history.at(-1)?.operationId).toBe('tool:turn:patch');
+    expect(store.getSession(session.id)?.history.at(-1)?.operationId).toBe('tool:turn:patch');
   });
 
   test('manual whole-JSON replacement uses the same validator', () => {
@@ -344,8 +399,29 @@ test('incomplete assistant output and context limits survive save and reload', (
       created: 1,
       incomplete: 'length',
       analysisOnly: true,
+      extraContent: { google: { thought_signature: 'partial-message-signature' } },
       incompleteToolCalls: [
-        { id: 'cut', type: 'function', function: { name: 'patch_preset', arguments: '{' } },
+        {
+          id: 'cut',
+          type: 'function',
+          function: { name: 'patch_preset', arguments: '{' },
+          extra_content: { google: { thought_signature: 'partial-tool-signature' } },
+        },
+      ],
+    },
+    {
+      id: 'complete',
+      role: 'assistant',
+      content: '',
+      created: 2,
+      extraContent: { google: { thought_signature: 'message-signature' } },
+      toolCalls: [
+        {
+          id: 'read',
+          type: 'function',
+          function: { name: 'read_preset', arguments: '{}' },
+          extra_content: { google: { thought_signature: 'tool-signature' } },
+        },
       ],
     },
   ];
@@ -358,4 +434,31 @@ test('incomplete assistant output and context limits survive save and reload', (
   const read = store.getSession(session.id)!;
   expect(read.document.messages).toEqual(document.messages);
   expect(read.document.settings.assistant.contextTokens).toBe(65536);
+});
+
+test('original reasoning and its endpoint identity survive save and reload without provider usage', () => {
+  const session = create();
+  const document = defaultPresetCocreatorDocument();
+  document.messages = [
+    {
+      id: 'reasoning',
+      role: 'assistant',
+      content: 'Answer',
+      created: 1,
+      reasoning: 'Original API thought',
+      reasoningFields: { reasoning_content: 'Original API thought' },
+      providerSource: {
+        connectionId: 'custom',
+        modelId: 'model',
+        provider: 'custom',
+        baseUrl: 'https://example.invalid/v1',
+      },
+    },
+  ];
+  expect(
+    store.saveDocument(session.id, { expectedRevision: 0, operationId: 'reasoning', document })
+      .kind,
+  ).toBe('saved');
+  expect(store.getSession(session.id)?.document.messages).toEqual(document.messages);
+  expect(store.getSession(session.id)?.document.messages[0]?.usage).toBeUndefined();
 });

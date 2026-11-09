@@ -18,7 +18,7 @@
 import { assemblePrompt } from '@shared/prompt/assemble.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { Contender } from '@shared/types/arena.ts';
 import { ARENA_MAX_COLUMNS, ARENA_MIN_COLUMNS } from '@shared/types/arena.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
@@ -28,7 +28,7 @@ import type { RegexScript } from '@shared/types/regex.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { streamGenerate } from '../../lib/api.ts';
+import { runGeneration } from '../../lib/generation.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
@@ -37,13 +37,10 @@ import { buildScene, sceneSeedId } from './scene.ts';
 import { type ArenaState, arenaReducer, initialArenaState, isBusy } from './state/arenaReducer.ts';
 import { createControllerRegistry } from './state/controllerRegistry.ts';
 
-/** The reply budget when the chosen preset does not name one. */
-const DEFAULT_MAX_TOKENS = 400;
-
 export interface RunColumnRequest {
   contender: Contender;
   /** Already resolved — the connection with this contender's model applied. */
-  connection: Connection;
+  connection: ResolvedModel;
 }
 
 export interface StartRunRequest {
@@ -211,32 +208,28 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
           preset: activePreset,
           connection: column.connection,
           stream: streaming,
-          maxTokens: activePreset.openai_max_tokens ?? DEFAULT_MAX_TOKENS,
         });
 
         if (!owns()) return;
         store?.begin('', streaming);
         streamStarted = true;
 
-        const final = await streamGenerate(
+        const final = await runGeneration({
+          model: column.connection,
           body,
-          controller.signal,
-          {
-            onFirstToken: () => {
-              if (!owns() || controller.signal.aborted) return;
-              dispatch({ type: 'entry/streaming', runId, contenderId, attempt, ms: since() });
-            },
-            onTick: (streamState) => {
-              if (!owns() || controller.signal.aborted) return;
-              text = streamState.content;
-              reasoning = streamState.reasoning;
-              store?.set(streamState.content, streamState.reasoning);
-            },
+          signal: controller.signal,
+          usage: { feature: 'arena', sessionId: runId, countText: countTokens.countText },
+          onFirstToken: () => {
+            if (!owns() || controller.signal.aborted) return;
+            dispatch({ type: 'entry/streaming', runId, contenderId, attempt, ms: since() });
           },
-          '',
-          column.connection.id,
-          { feature: 'arena', sessionId: runId, countText: countTokens.countText },
-        );
+          onTick: (streamState) => {
+            if (!owns() || controller.signal.aborted) return;
+            text = streamState.content;
+            reasoning = streamState.reasoning;
+            store?.set(streamState.content, streamState.reasoning);
+          },
+        });
 
         // A non-streamed response can resolve in the same turn as an abort, so ownership is
         // rechecked after the await as well as inside the callbacks.
@@ -252,6 +245,7 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
           reasoning: final.reasoning,
           model: final.model,
           completionTokens: final.usage?.completion_tokens ?? countTokens.countText(final.content),
+          promptTokens: final.usage?.prompt_tokens ?? null,
           ms: since(),
         });
       } catch (err) {
@@ -362,7 +356,8 @@ export function useArenaRun(options: UseArenaRunOptions): UseArenaRun {
         replace: request.replace,
         entries: columns.map((column) => ({
           contenderId: column.contender.id,
-          name: contenderLabel(column.contender, column.connection),
+          connectionId: column.connection.id,
+          name: contenderLabel(column.contender),
           model: column.connection.model,
           provider: column.connection.provider,
         })),

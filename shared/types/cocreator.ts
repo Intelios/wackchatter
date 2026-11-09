@@ -9,6 +9,9 @@
  * an alternate take on one turn. That is what lets `shared/chat/message.ts` serve both.
  */
 
+import type { CompactionState } from '../cocreator/compaction.ts';
+import type { ModelRef } from '../models/slots.ts';
+import type { TavernCard } from './card.ts';
 import type { ApiMessage, ChatMessage } from './chat.ts';
 
 /** The card fields a piece of generated content may be filed into. */
@@ -165,43 +168,37 @@ export interface ExampleSet {
 }
 
 /**
- * Per-session overrides of `AppSettings.coCreator`.
+ * Per-session overrides of `AppSettings.coCreator` and its model slot.
  *
- * Three states per field, expressed through optionality: absent follows the app setting,
- * and the app setting's own null has its own meaning ("follow the chat connection", "use the
- * active preset"). Collapsing absent into null would make a session silently stop tracking a
- * later change to the app default.
+ * Absent follows the app setting; the app setting's own null has its own meaning ("use the
+ * active preset"). Collapsing absent into null would make a session silently stop tracking
+ * a later change to the app default. `model` is the one exception to that worth naming: a
+ * session's pick is a whole `ModelRef`, so a session never pairs one screen's connection
+ * with another screen's model.
  */
 export interface SessionModelSettings {
   /** Design-specific allowances; independent of the chat sampler preset. */
   outputTokens?: number;
   contextTokens?: number;
-  connectionId?: string | null;
+  /** Absent runs on the `cocreator` slot (or the `sideChat` slot, for the side chat). */
+  model?: ModelRef;
   presetId?: string | null;
   systemPrompt?: string;
   analysisPrompt?: string;
-  /** A model choice belongs to the endpoint it was made against. */
-  modelOverride?: {
-    connectionId: string;
-    model: string;
-  };
 }
 
 export type SideChatModelSettings = Pick<
   SessionModelSettings,
-  'connectionId' | 'modelOverride' | 'outputTokens' | 'contextTokens'
+  'model' | 'outputTokens' | 'contextTokens'
 >;
 
+/** The side chat's model is the `sideChat` slot, which never borrows the chat's. */
 export interface SideChatDefaults {
-  /** Null is unconfigured. Side chat never borrows another connection. */
-  connectionId: string | null;
-  modelOverride?: SessionModelSettings['modelOverride'];
   outputTokens: number;
   contextTokens: number;
 }
 
 export const DEFAULT_SIDE_CHAT: Readonly<SideChatDefaults> = {
-  connectionId: null,
   outputTokens: 2048,
   contextTokens: 131072,
 };
@@ -210,17 +207,35 @@ export interface SideChatSnapshot {
   capturedAt: number;
   systemPrompt: string;
   exampleBlock: string;
+  /** Current accepted card, frozen when the scratchpad is opened/reset. */
+  draftBlock?: string;
   /** Frozen selected text, not references to editable main messages. */
   messages: ApiMessage[];
 }
 
+export interface CocreatorCardBaseline {
+  card: TavernCard;
+  /** Hash of the portrait independently of the embedded card text. */
+  portraitVersion: string | null;
+  /** The pre-upgrade starting card is unknown; compare differences before the first save. */
+  legacy?: boolean;
+}
+
+/** An id makes recording a completed save idempotent, including after a reference rename. */
+export interface CocreatorPublication {
+  id: string;
+  avatar: string | null;
+}
+
 export interface CocreatorSideChat {
+  compaction?: CompactionState;
   snapshot: SideChatSnapshot;
   settings: SideChatModelSettings;
   messages: ChatMessage[];
 }
 
 export interface CocreatorSession {
+  compaction?: CompactionState;
   id: string;
   title: string;
   created: number;
@@ -235,13 +250,18 @@ export interface CocreatorSession {
   /** The card Finish produced, or null. Kept so the session stays the card's reasoning. */
   finishedAvatar: string | null;
   /**
-   * The card this session was seeded from (the Studio's "Design with an assistant" handoff),
+   * The original card, distinct from the current save target after creating a copy.
    * or null. Write-once at creation: the desk never edits it, so it is deliberately NOT part
    * of the save snapshot — whole-session saves preserve the column. A rename follows the
-   * reference cascade; deleting the seed card detaches it (the transcript keeps the seed
-   * text, which is self-contained) and Finish degrades to a flat card.
+   * reference cascade; deleting it detaches this reference while the baseline and inherited
+   * portrait remain in the session. Updating a missing target is disabled.
    */
   seedAvatar: string | null;
+  baseline: CocreatorCardBaseline | null;
+  /** Authoritative server reference, preserved by ordinary whole-document saves. */
+  targetAvatar: string | null;
+  portraitChanged: boolean;
+  publication: CocreatorPublication | null;
   messages: ChatMessage[];
   sideChat: CocreatorSideChat | null;
 }
@@ -262,6 +282,7 @@ export interface CocreatorSessionSummary {
 
 /** A complete immutable client save. The server accepts it only at its revision. */
 export interface CocreatorSaveSnapshot {
+  compaction?: CompactionState;
   sessionId: string;
   revision: number;
   title: string;
@@ -274,6 +295,8 @@ export interface CocreatorSaveSnapshot {
    * must ride the snapshot or the recording never reaches the server.
    */
   finishedAvatar: string | null;
+  baseline?: CocreatorCardBaseline | null;
+  publication?: CocreatorPublication | null;
   messages: ChatMessage[];
   sideChat: CocreatorSideChat | null;
 }

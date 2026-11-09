@@ -1,11 +1,10 @@
 import { NEXUS_MODEL_FINGERPRINT } from '../../shared/nexus/model.ts';
-import { validateGroup } from '../../shared/types/group.ts';
 
 /** Chat CRUD. Storage is ours, so there is no external format to honour here. */
 
-import { emptyNexus, migrateMemories } from '../../shared/nexus/state.ts';
+import { emptyNexus } from '../../shared/nexus/state.ts';
 import type { ChatMessage, ChatMetadata, StaleChatRevision } from '../../shared/types/chat.ts';
-import { parseChatExport } from '../lib/backups.ts';
+import { arrivingMetadata, parseChatExport } from '../lib/backups.ts';
 import { type ChatSaveAckResult, type ChatSaveInput, chatStore } from '../lib/chats.ts';
 import { getDb } from '../lib/db.ts';
 import { contentDisposition, errorResponse, json, notFound, readJson } from '../lib/http.ts';
@@ -14,7 +13,6 @@ import { getSettings } from '../lib/settings.ts';
 
 interface CreateBody {
   characterId?: string | null;
-  kind?: 'direct' | 'group';
   title?: string;
   metadata?: ChatMetadata;
   messages?: ChatMessage[];
@@ -67,14 +65,11 @@ export async function handleChatRoute(
   if (segments.length === 0 && method === 'POST') {
     const body = await readJson<CreateBody>(request);
     if (!body) return errorResponse('Request body is not valid JSON.');
-    if (body.kind === 'group') {
-      if (!validateGroup(body.metadata?.group)) return errorResponse('Invalid group scene.');
-    } else if (!body.characterId) return errorResponse('A characterId is required.');
+    if (!body.characterId) return errorResponse('A characterId is required.');
 
     return json(
       store.createChat({
         characterId: body.characterId,
-        kind: body.kind,
         title: body.title,
         metadata: {
           memoryMode: getSettings().memoryMode,
@@ -106,23 +101,17 @@ export async function handleChatRoute(
 
     const exported = parseChatExport(raw);
     if (!exported) return errorResponse('The file is not a WackChatter chat export.');
-    if (exported.kind !== 'group' && (typeof characterId !== 'string' || !characterId.trim()))
+    if (typeof characterId !== 'string' || !characterId.trim())
       return errorResponse('A characterId is required.');
 
     return json(
       store.createChat({
-        characterId: exported.kind === 'group' ? null : String(characterId).trim(),
         ...exported,
-        metadata: {
-          ...exported.metadata,
-          memoryMode:
-            exported.metadata?.memoryMode === 'memories'
-              ? 'nexus'
-              : (exported.metadata?.memoryMode ?? getSettings().memoryMode),
-          ...(exported.metadata?.memories?.length && !exported.metadata.nexus
-            ? { nexus: migrateMemories(exported.metadata.memories, exported.messages) }
-            : {}),
-        },
+        characterId: characterId.trim(),
+        metadata: arrivingMetadata(exported.metadata, {
+          memoryMode: getSettings().memoryMode,
+          personaId: getSettings().personaId,
+        }),
       }),
       { status: 201 },
     );

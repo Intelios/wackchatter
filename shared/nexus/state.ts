@@ -1,4 +1,4 @@
-import type { ChatMessage, Memory } from '../types/chat.ts';
+import type { ChatMessage } from '../types/chat.ts';
 import type { NexusEvidence, NexusNode, NexusRecord, NexusRevision, NexusState } from './types.ts';
 
 /** Two independent 32-bit hashes: synchronous in the reducer, stable across environments. */
@@ -282,57 +282,4 @@ export function branchNexus(nexus: NexusState, idMap: Map<string, string>): Nexu
         .map(([id, hash]) => [idMap.get(id)!, hash]),
     ),
   };
-}
-export function migrateMemories(memories: Memory[], messages: ChatMessage[]): NexusState {
-  const nexus = emptyNexus();
-  for (const m of memories) {
-    const start = messages.findIndex((x) => x.id === m.range?.startId);
-    const end = messages.findIndex((x) => x.id === m.range?.endId);
-    const covered = start >= 0 && end >= start ? messages.slice(start, end + 1) : [];
-    const evidence = covered.map((x) => ({
-      ...evidenceFor(x),
-      ...(x.hiddenBy === m.id ? { legacyHiddenBy: m.id } : {}),
-    }));
-    const anchorId = m.range?.endId ?? messages.at(-1)?.id;
-    const nodeId = `legacy:${m.id}`;
-    nexus.nodes.push({
-      id: nodeId,
-      versions: [
-        {
-          name: m.title,
-          aliases: [],
-          kind: 'event',
-          evidence,
-          anchorId,
-          manual: m.edited || m.source === 'manual',
-        },
-      ],
-    });
-    nexus.records.push({
-      id: m.id,
-      revisions: [
-        {
-          text: [m.text, ...(m.quotes ?? []).map((q) => `“${q}”`)].join('\n'),
-          kind: 'event',
-          assertion: 'event',
-          status: 'active',
-          nodeIds: [nodeId],
-          cues: m.keywords,
-          evidence,
-          anchorId,
-          // A pre-timestamp legacy memory would otherwise read as 1 January 1970; the
-          // migration moment is a plausible stand-in for when it entered the Nexus.
-          created: m.generatedAt > 0 ? m.generatedAt : Date.now(),
-          enabled: m.enabled,
-          needsReview: Boolean(m.stale) || undefined,
-          pinned: m.pinned,
-          manual: m.edited || m.source === 'manual',
-          deleted: false,
-          legacy: true,
-          model: m.model,
-        },
-      ],
-    });
-  }
-  return nexus;
 }

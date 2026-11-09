@@ -1,4 +1,5 @@
 import { currentText, type MessageState } from '../chat/message.ts';
+import { type ModelSlots, normalizeModelRef, resolveModelRef, slotRef } from '../models/slots.ts';
 import type { Connection } from '../providers/types.ts';
 import {
   DEFAULT_SIDE_CHAT,
@@ -11,50 +12,38 @@ export function normalizeSideSettings(raw: unknown): SideChatModelSettings {
   if (!raw || typeof raw !== 'object') return {};
   const value = raw as Record<string, unknown>;
   const result: SideChatModelSettings = {};
-  if (typeof value.connectionId === 'string' || value.connectionId === null) {
-    result.connectionId = value.connectionId;
-  }
+  const model = normalizeModelRef(value.model);
+  if (model) result.model = model;
   for (const key of ['outputTokens', 'contextTokens'] as const) {
     const limit = value[key];
     if (typeof limit === 'number' && Number.isSafeInteger(limit) && limit > 0 && limit <= 2097152) {
       result[key] = limit;
     }
   }
-  const override = value.modelOverride as Partial<
-    NonNullable<SideChatModelSettings['modelOverride']>
-  > | null;
-  if (
-    override &&
-    typeof override.connectionId === 'string' &&
-    typeof override.model === 'string' &&
-    override.model.trim()
-  ) {
-    result.modelOverride = { connectionId: override.connectionId, model: override.model.trim() };
-  }
   return result;
 }
 
 export function normalizeSideDefaults(raw: unknown): SideChatDefaults {
-  return { ...DEFAULT_SIDE_CHAT, ...normalizeSideSettings(raw) };
+  const { outputTokens, contextTokens } = normalizeSideSettings(raw);
+  return {
+    outputTokens: outputTokens ?? DEFAULT_SIDE_CHAT.outputTokens,
+    contextTokens: contextTokens ?? DEFAULT_SIDE_CHAT.contextTokens,
+  };
 }
 
-/** A missing saved endpoint is a block, never an invitation to spend on another one. */
+/**
+ * The side chat's model and allowances: the session's own pick, else the `sideChat` slot.
+ * A missing model is a block, never an invitation to spend on another one — the slot does
+ * not follow chat.
+ */
 export function resolveSideSettings(
   defaults: SideChatDefaults,
   settings: SideChatModelSettings,
+  slots: ModelSlots,
   connections: readonly Connection[],
 ) {
-  const connectionId =
-    settings.connectionId === undefined ? defaults.connectionId : settings.connectionId;
-  const saved = connections.find((entry) => entry.id === connectionId) ?? null;
-  // A session's explicit endpoint/model choice takes precedence over the app default.
-  const override =
-    settings.modelOverride ??
-    (settings.connectionId === undefined ? defaults.modelOverride : undefined);
-  const connection =
-    saved && override?.connectionId === saved.id ? { ...saved, model: override.model } : saved;
   return {
-    connection,
+    model: resolveModelRef(connections, settings.model ?? slotRef(slots, 'sideChat'), 'side chat'),
     outputTokens: settings.outputTokens ?? defaults.outputTokens,
     contextTokens: settings.contextTokens ?? defaults.contextTokens,
   };
@@ -63,6 +52,7 @@ export function resolveSideSettings(
 export function captureSideSnapshot(input: {
   systemPrompt: string;
   exampleBlock: string;
+  draftBlock?: string;
   messages: readonly MessageState[];
   capturedAt?: number;
 }): SideChatSnapshot {
@@ -70,6 +60,7 @@ export function captureSideSnapshot(input: {
     capturedAt: input.capturedAt ?? Date.now(),
     systemPrompt: input.systemPrompt,
     exampleBlock: input.exampleBlock,
+    ...(input.draftBlock !== undefined ? { draftBlock: input.draftBlock } : {}),
     messages: input.messages
       .filter((message) => currentText(message).trim())
       .map((message) => ({

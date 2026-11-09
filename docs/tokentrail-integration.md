@@ -12,8 +12,10 @@ JSON records indefinitely. Fields retain the v1 usage contract (ISO `ts`, additi
 inside output), with `v: 2`, `library_id`, optional `provider_name`, and `outcome`.
 Outcome is completed, failed, cancelled, or unknown. A UUID is minted per generation;
 retries of delivery and transcript copies preserve it. No prompts, replies, reasoning,
-endpoint URLs, credentials, or character descriptions are exported. `estimated` counts
-are separate from measured counts and never priced. Costs are API-equivalent estimates.
+endpoint URLs, credentials, or character descriptions are exported. A count the provider
+did not report is measured locally from the request or reply rather than left at zero, and
+flags the record `estimated`. `estimated` counts are separate from measured counts and
+never priced. Costs are API-equivalent estimates.
 
 Recording defaults on when absent and respects explicit false. It does not enable
 provider reporting. Failures do not interrupt generation. Legacy usage.jsonl and its

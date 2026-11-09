@@ -91,7 +91,7 @@ describe('OpenCode generation proxy', () => {
     'rejects invalid session ids before making an upstream call: %j',
     async (sessionId) => {
       const response = await handleGenerateRoute(
-        request({ body: { model: 'test-model' }, sessionId }),
+        request({ body: { model: 'test-model' }, connectionId: 'go', sessionId }),
         [],
       );
       expect(response?.status).toBe(400);
@@ -100,4 +100,13 @@ describe('OpenCode generation proxy', () => {
       expect(activeGenerations()).toBe(0);
     },
   );
+
+  test('a generation that names no connection is refused: there is no active one', async () => {
+    const response = await handleGenerateRoute(request({ body: { model: 'test-model' } }), []);
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toMatchObject({
+      error: expect.stringContaining('connectionId'),
+    });
+    expect(calls).toEqual([]);
+  });
 });

@@ -1,9 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
-// Test-only reach into server/. The purity rule is about what ships to the browser;
-// re-implementing a PNG walk here just to keep the import graph tidy would mean the gate
-// test depended on a second, untested decoder.
-import { readCard } from '../../server/lib/card.ts';
 import type { CharacterBook } from '../types/card.ts';
 import type { WorldInfoBook } from '../types/worldinfo.ts';
 import { createWorldInfoEntry, WI_LOGIC, WI_POSITION, WI_ROLE } from '../types/worldinfo.ts';
@@ -15,21 +10,6 @@ import {
   toCharacterBook,
   toWorldInfoBook,
 } from './convert.ts';
-
-/**
- * Seraphina ships with SillyTavern and carries a real 4-entry embedded lorebook. It is
- * the gate: if her book survives a round-trip through our internal shape, the field
- * mapping is right.
- */
-const SERAPHINA_PATH =
-  '/Users/jack/Documents/GitHub/SillyTavernSource/default/content/default_Seraphina.png';
-
-function seraphinaBook(): CharacterBook {
-  const card = readCard(new Uint8Array(readFileSync(SERAPHINA_PATH)));
-  const book = card.data.character_book;
-  if (!book) throw new Error('Seraphina has no embedded lorebook');
-  return book;
-}
 
 /** A book with one entry carrying every field we map, plus keys nothing knows about. */
 function richBook(): CharacterBook {
@@ -249,32 +229,6 @@ describe('toCharacterBook', () => {
     const book = removeEntry(toWorldInfoBook(richBook()), 7);
     const rebuilt = toCharacterBook(book, 'Rich');
     expect(rebuilt.entries).toHaveLength(0);
-  });
-});
-
-describe('Seraphina round-trip', () => {
-  test('her embedded book survives conversion in both directions', () => {
-    const original = seraphinaBook();
-    const converted = toWorldInfoBook(original);
-
-    expect(Object.keys(converted.entries).length).toBe(original.entries.length);
-
-    const rebuilt = toCharacterBook(converted, original.name ?? 'Seraphina');
-    expect(rebuilt.entries).toHaveLength(original.entries.length);
-
-    // Every key ST's own writer emits must match what was there, field by field.
-    original.entries.forEach((before, index) => {
-      const after = rebuilt.entries[index]!;
-      expect(after.keys).toEqual(before.keys);
-      expect(after.content).toBe(before.content);
-      expect(after.enabled).toBe(before.enabled);
-      expect(after.insertion_order).toBe(before.insertion_order);
-      expect(after.constant).toBe(before.constant ?? false);
-      // Every extension key that was there is still there, with the same value.
-      for (const [key, value] of Object.entries(before.extensions ?? {})) {
-        expect(after.extensions[key]).toEqual(value);
-      }
-    });
   });
 });
 

@@ -1,4 +1,3 @@
-import type { MemoryRecall } from '@shared/memory/source.ts';
 import { reportNexusAssembly } from '@shared/nexus/report.ts';
 import type { NexusRecall, NexusSettings } from '@shared/nexus/types.ts';
 import { type AssembleResult, assemblePrompt } from '@shared/prompt/assemble.ts';
@@ -7,16 +6,11 @@ import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type { RegexScript } from '@shared/types/regex.ts';
-import type {
-  GuidanceSettings,
-  MemoryMode,
-  MemorySettings,
-  SummarySettings,
-} from '@shared/types/settings.ts';
+import type { GuidanceSettings, MemoryMode, SummarySettings } from '@shared/types/settings.ts';
 import type { WorldInfoSettings } from '@shared/types/worldinfo.ts';
 import type { ActivationResult, WorldInfoSource } from '@shared/worldinfo/activate.ts';
 import { useEffect, useState } from 'react';
-import { memoryRecallForChat, worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
 import type { NexusController } from '../nexus/useNexus.ts';
 
 const DEBOUNCE_MS = 200;
@@ -39,7 +33,6 @@ export interface PromptPreviewInput {
   guidanceSettings?: GuidanceSettings;
   summarySettings?: SummarySettings;
   memoryMode?: MemoryMode;
-  memorySettings?: MemorySettings;
   nexusSettings?: NexusSettings;
   prepareNexus?: NexusController['preview'];
   nexusVersion?: number;
@@ -56,8 +49,6 @@ export type PromptPreview = AssembleResult & {
   /** What World Info would do, for the Lore tab and the inspector. */
   worldInfo: ActivationResult | null;
   nexusRecall?: NexusRecall;
-  /** What memory recall would do. Kept alongside so the inspector is not blank before a send. */
-  memoryRecall: MemoryRecall | null;
 };
 
 /**
@@ -88,7 +79,6 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
   const guidanceSettings = input?.guidanceSettings;
   const summarySettings = input?.summarySettings;
   const memoryMode = input?.memoryMode ?? 'classic';
-  const memorySettings = input?.memorySettings;
   const globalVariables = input?.globalVariables;
   const regexScripts = input?.regexScripts;
   const nexusSettings = input?.nexusSettings;
@@ -117,21 +107,6 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
               })
             : null;
 
-        // The same recall the send performs, seeded identically, so the Prompt Manager's
-        // memory line is the cost the next generation actually pays.
-        const recall =
-          memoryMode === 'memories' && worldInfoSettings && memorySettings
-            ? memoryRecallForChat({
-                memories: chatMetadata?.memories,
-                messages,
-                settings: worldInfoSettings,
-                budget: memorySettings.budgetTokens,
-                preset,
-                chatId,
-                countTokens,
-              })
-            : null;
-
         const nexusRecall =
           memoryMode === 'nexus' && nexusSettings
             ? await prepareNexus?.(messages, nexusSettings.budgetTokens, countTokens)
@@ -146,8 +121,8 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
           worldInfoAfter: lore?.after,
           worldInfoDepth: lore?.depth,
           memoryMode,
-          memoryText: nexusRecall?.text ?? recall?.text,
-          memorySettings: memoryMode === 'nexus' ? nexusSettings : memorySettings,
+          memoryText: nexusRecall?.text,
+          memorySettings: nexusSettings,
           scenarioOverride:
             typeof chatMetadata?.scenario === 'string' ? chatMetadata.scenario : undefined,
           authorNote: chatMetadata?.authorNote,
@@ -164,7 +139,6 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
         setResult({
           ...assembled,
           worldInfo: lore,
-          memoryRecall: recall,
           nexusRecall: reportNexusAssembly(nexusRecall, assembled),
         });
       } catch {
@@ -190,7 +164,6 @@ export function usePromptPreview(input: PromptPreviewInput | null): PromptPrevie
     guidanceSettings,
     summarySettings,
     memoryMode,
-    memorySettings,
     globalVariables,
     regexScripts,
     nexusSettings,

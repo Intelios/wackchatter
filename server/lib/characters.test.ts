@@ -7,8 +7,10 @@ import {
   createBlankCard,
   createCharacter,
   getCharacter,
+  getCharacterRecord,
   listCharacters,
   renameCharacter,
+  saveCharacterConditional,
   updateCharacter,
   updateWorldLinks,
 } from './characters.ts';
@@ -31,6 +33,61 @@ afterEach(() => {
 function create(name: string, folder = '') {
   return createCharacter(createBlankCard(name), undefined, folder);
 }
+
+describe('conditional character saves', () => {
+  test('a case-only display-name change cannot unlink its own PNG on a case-insensitive filesystem', async () => {
+    await create('Alice');
+    const baseline = getCharacterRecord('Alice.png')!;
+    const saved = await saveCharacterConditional(
+      'Alice.png',
+      { description: 'Kept' },
+      baseline.version,
+      { name: 'alice' },
+    );
+    expect(saved?.detail.avatar).toBe('Alice.png');
+    expect(getCharacter('Alice.png')?.card.data.name).toBe('alice');
+    expect(getCharacter('Alice.png')?.card.data.description).toBe('Kept');
+  });
+  test('a stale save cannot rename or overwrite a newer card', async () => {
+    await create('Alice');
+    const baseline = getCharacterRecord('Alice.png')!;
+    await updateCharacter('Alice.png', { scenario: 'Elsewhere' });
+    await expect(
+      saveCharacterConditional('Alice.png', { description: 'Draft' }, baseline.version, {
+        name: 'Renamed',
+      }),
+    ).rejects.toMatchObject({ code: 'character_conflict' });
+    expect(getCharacter('Alice.png')?.card.data.scenario).toBe('Elsewhere');
+    expect(getCharacter('Renamed.png')).toBeNull();
+  });
+
+  test('rename, fields and artwork commit together and rollback if references fail', async () => {
+    await create('Alice', 'Nested');
+    const baseline = getCharacterRecord('Alice.png')!;
+    await expect(
+      saveCharacterConditional('Alice.png', { description: 'Draft' }, baseline.version, {
+        name: 'Renamed',
+        onStaged: async () => {
+          throw new Error('cascade failed');
+        },
+      }),
+    ).rejects.toThrow('cascade failed');
+    expect(getCharacterRecord('Alice.png')?.version).toBe(baseline.version);
+    expect(getCharacter('Renamed.png')).toBeNull();
+    const saved = await saveCharacterConditional(
+      'Alice.png',
+      { description: 'Draft', alternate_greetings: [] },
+      baseline.version,
+      { name: 'Renamed' },
+    );
+    expect(saved?.detail.avatar).toBe('Renamed.png');
+    expect(saved?.detail.folder).toBe('Nested');
+    expect(saved?.detail.card.data.description).toBe('Draft');
+    expect(getCharacter('Alice.png')).toBeNull();
+    expect(saved?.version).not.toBe(baseline.version);
+    expect(saved?.portraitVersion).toBe(baseline.portraitVersion);
+  });
+});
 
 describe('folders', () => {
   test('a card can be created in a folder, and the listing reports where it is', async () => {
@@ -135,5 +192,25 @@ describe('updateWorldLinks', () => {
     expect(jsonRes?.headers.get('content-disposition')).toBe(
       'attachment; filename="Caf Waitress.json"; filename*=UTF-8\'\'Caf%C3%A9%20Waitress.json',
     );
+  });
+});
+
+describe('listing', () => {
+  test('a summary carries the start of the first greeting for the home screen', async () => {
+    const card = createBlankCard('Alice');
+    card.data.first_mes = `"Hello."${' and more'.repeat(200)}`;
+    await createCharacter(card);
+    const greeting = listCharacters()[0]?.greeting ?? '';
+    expect(greeting.startsWith('"Hello."')).toBe(true);
+    expect(greeting.length).toBe(600);
+  });
+
+  test('a summary names the lorebook the card links to, and only when it links one', async () => {
+    await create('Alice');
+    await create('Bob');
+    await updateCharacter('Alice.png', { extensions: { world: 'Harbor Town' } });
+    const byAvatar = new Map(listCharacters().map((c) => [c.avatar, c]));
+    expect(byAvatar.get('Alice.png')?.linkedBook).toBe('Harbor Town');
+    expect('linkedBook' in (byAvatar.get('Bob.png') ?? {})).toBe(false);
   });
 });

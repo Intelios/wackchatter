@@ -1,0 +1,102 @@
+/* Stats: the hand-off to TokenTrail, set like a cover page. */
+
+.w3-stats__page {
+  align-self: center;
+  justify-self: start;
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  padding: 0 7vw 8vh;
+  animation: w3-stats-in 0.6s var(--w3-out) both;
+}
+
+@keyframes w3-stats-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.w3-stats__kicker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  font-family: var(--w3-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--w3-muted);
+}
+
+.w3-stats__kicker::after {
+  content: "";
+  width: 70px;
+  height: 1px;
+  background: var(--w3-accent-line);
+}
+
+.w3-stats__title {
+  margin: 0;
+  font-family: var(--w3-font-display);
+  font-size: clamp(44px, 6vw, 84px);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  color: var(--w3-text);
+}
+
+.w3-stats__title span {
+  color: var(--w3-accent);
+}
+
+.w3-stats__lede {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--w3-soft);
+}
+
+.w3-stats__error {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--w3-danger);
+}
+
+.w3-stats__acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.w3-stats__acts a {
+  text-decoration: none;
+}
+
+.w3-stats__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  font-size: 14.5px;
+  font-weight: 600;
+  box-shadow: 0 12px 40px -12px var(--w3-accent-line);
+  transition: transform var(--w3-quick);
+}
+
+.w3-stats__open:hover {
+  transform: translateY(-1px);
+}
+
+.w3-stats__note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}

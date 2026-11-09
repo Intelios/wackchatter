@@ -6,6 +6,7 @@ import {
   quoteForSideChat,
   resolveSideSettings,
 } from '@shared/cocreator/sideChat.ts';
+import { DEFAULT_MODEL_SLOTS } from '@shared/models/slots.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { DEFAULT_SIDE_CHAT } from '@shared/types/cocreator.ts';
 import { buildSidePrompt, SIDE_CHAT_BOUNDARY, SIDE_CHAT_INSTRUCTION } from './sidePrompt.ts';
@@ -34,6 +35,17 @@ const build = (overrides: Partial<Parameters<typeof buildSidePrompt>[0]> = {}) =
   });
 
 describe('side context', () => {
+  test('the card is frozen at opening and is pinned independently of main history', () => {
+    const frozen = captureSideSnapshot({
+      systemPrompt: 'Design',
+      exampleBlock: '',
+      draftBlock: 'Accepted card {{char}}',
+      messages: [main],
+    });
+    const prompt = build({ snapshot: frozen });
+    expect(prompt.messages.some((m) => m.content === 'Accepted card {{char}}')).toBe(true);
+    expect(frozen.draftBlock).toBe('Accepted card {{char}}');
+  });
   test('captures selected text, not alternate takes, reasoning, or live references', () => {
     const reply = setText(assistantPlaceholder('a', 'Assistant'), 'Chosen text.', {
       extra: { reasoning: 'Private thinking.' },
@@ -87,34 +99,27 @@ describe('side settings and drafts', () => {
     id: 'cheap',
     name: 'Cheap',
     provider: 'custom' as const,
-    model: 'saved',
     baseUrl: 'http://localhost',
   };
-  test('never falls back to the main or first endpoint', () => {
-    expect(resolveSideSettings(DEFAULT_SIDE_CHAT, {}, [connection]).connection).toBeNull();
-    expect(
-      resolveSideSettings({ ...DEFAULT_SIDE_CHAT, connectionId: 'deleted' }, {}, [connection])
-        .connection,
-    ).toBeNull();
+  const slot = { connectionId: 'cheap', modelId: 'default-cheap' };
+  test('never falls back to the chat model', () => {
+    const models = { ...DEFAULT_MODEL_SLOTS, chat: { connectionId: 'cheap', modelId: 'chat' } };
+    expect(resolveSideSettings(DEFAULT_SIDE_CHAT, {}, models, [connection]).model.ok).toBe(false);
+    const deleted = { ...DEFAULT_MODEL_SLOTS, sideChat: { connectionId: 'deleted', modelId: 'm' } };
+    expect(resolveSideSettings(DEFAULT_SIDE_CHAT, {}, deleted, [connection]).model.ok).toBe(false);
   });
-  test('endpoint-bound model overrides and session choices resolve independently', () => {
-    const defaults = {
-      ...DEFAULT_SIDE_CHAT,
-      connectionId: 'cheap',
-      modelOverride: { connectionId: 'cheap', model: 'default-cheap' },
-    };
-    expect(resolveSideSettings(defaults, {}, [connection]).connection?.model).toBe('default-cheap');
-    expect(
-      resolveSideSettings(
-        defaults,
-        {
-          connectionId: 'cheap',
-          modelOverride: { connectionId: 'other', model: 'wrong' },
-          outputTokens: 100,
-        },
-        [connection],
-      ),
-    ).toMatchObject({ connection: { model: 'saved' }, outputTokens: 100 });
+  test('the session’s own model wins over the side-chat slot', () => {
+    const models = { ...DEFAULT_MODEL_SLOTS, sideChat: slot };
+    const fromSlot = resolveSideSettings(DEFAULT_SIDE_CHAT, {}, models, [connection]);
+    expect(fromSlot.model.ok && fromSlot.model.model.model).toBe('default-cheap');
+    const own = resolveSideSettings(
+      DEFAULT_SIDE_CHAT,
+      { model: { connectionId: 'cheap', modelId: 'saved' }, outputTokens: 100 },
+      models,
+      [connection],
+    );
+    expect(own.model.ok && own.model.model.model).toBe('saved');
+    expect(own.outputTokens).toBe(100);
   });
   test('quotes and transfers append without discarding either draft', () => {
     expect(appendDraft('My answer.', 'Elowen.')).toBe('My answer.\n\nElowen.');

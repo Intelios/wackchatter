@@ -124,6 +124,9 @@ export const PRESET_DEFAULTS = {
 export function createDefaultPreset(): Preset {
   return {
     ...PRESET_DEFAULTS,
+    // Not in PRESET_DEFAULTS, which imports are filled from: a preset someone brings in keeps
+    // the reply limit it came with. Only presets made here start without one.
+    openai_max_tokens_unlimited: true,
     prompts: structuredClone(DEFAULT_PROMPTS),
     prompt_order: [
       { character_id: PROMPT_ORDER_LIVE_ID, order: structuredClone(DEFAULT_PROMPT_ORDER) },

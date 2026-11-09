@@ -15,7 +15,7 @@
 
 import type { CharacterDetail } from '@shared/types/card.ts';
 import type { WorldInfoEntry } from '@shared/types/worldinfo.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { characterBookApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { LorebookEditor } from '../lore/LorebookEditor.tsx';
@@ -31,7 +31,7 @@ interface PendingEdit {
 
 type PendingMap = Record<number, PendingEdit>;
 
-interface EmbeddedBookProps {
+export interface EmbeddedBookProps {
   avatar: string;
   entries: WorldInfoEntry[];
   onSaved: (detail: CharacterDetail) => void;
@@ -40,7 +40,11 @@ interface EmbeddedBookProps {
   registerPersistence?: (controls: PersistenceControls | null) => void;
 }
 
-export function EmbeddedBook({
+/**
+ * The card book's writer: the entries with edits still in flight laid over them, and one
+ * function per kind of change.
+ */
+export function useEmbeddedBook({
   avatar,
   entries,
   onSaved,
@@ -52,7 +56,7 @@ export function EmbeddedBook({
   // Local overlay so typing feels immediate while the debounced write is in flight. The
   // ref is the source of truth; the tick only forces a re-render after it is mutated.
   const pendingRef = useRef<PendingMap>({});
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
@@ -108,10 +112,17 @@ export function EmbeddedBook({
     };
   }, [avatar, queue, registerPersistence]);
 
-  const merged = entries.map((entry) => {
-    const edit = pendingRef.current[entry.uid];
-    return edit ? { ...entry, ...edit.patch } : entry;
-  });
+  // Kept the same array until the entries or an overlay change: a caller that compares
+  // them (the Studio's list of changes) must not see a new book on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the tick is when the overlay changed
+  const merged = useMemo(
+    () =>
+      entries.map((entry) => {
+        const edit = pendingRef.current[entry.uid];
+        return edit ? { ...entry, ...edit.patch } : entry;
+      }),
+    [entries, tick],
+  );
 
   function run(work: () => Promise<CharacterDetail>) {
     setBusy(true);
@@ -132,24 +143,58 @@ export function EmbeddedBook({
     queue.schedule(avatar, queue.nextRevision(avatar), pendingRef.current);
   }
 
+  /** Adds an entry; resolves to its uid once it exists, or null when adding failed. */
+  function addEntry(): Promise<number | null> {
+    let uid: number | null = null;
+    return new Promise((resolve) => {
+      setBusy(true);
+      queue
+        .runSerialized(avatar, () =>
+          serializeCardWriteRef.current(() =>
+            characterBookApi.addEntry(avatar).then((result) => {
+              uid = result.uid;
+              return result.detail;
+            }),
+          ),
+        )
+        .then(onSaved)
+        .catch((err) => onError((err as Error).message))
+        .finally(() => {
+          setBusy(false);
+          resolve(uid);
+        });
+    });
+  }
+
+  function deleteEntry(uid: number) {
+    // No point saving a pending edit for an entry that is about to be deleted; dropping
+    // it before the serialized delete also stops the flush re-creating its write.
+    if (pendingRef.current[uid]) {
+      const next = { ...pendingRef.current };
+      delete next[uid];
+      pendingRef.current = next;
+      setTick((n) => n + 1);
+    }
+    run(() => characterBookApi.removeEntry(avatar, uid));
+  }
+
+  function reorder(uids: number[]) {
+    run(() => characterBookApi.saveBook(avatar, { displayOrder: uids }));
+  }
+
+  return { entries: merged, busy, addEntry, updateEntry, deleteEntry, reorder };
+}
+
+export function EmbeddedBook(props: EmbeddedBookProps) {
+  const book = useEmbeddedBook(props);
   return (
     <LorebookEditor
-      entries={merged}
-      busy={busy}
-      onAddEntry={() => run(() => characterBookApi.addEntry(avatar).then((r) => r.detail))}
-      onUpdateEntry={updateEntry}
-      onDeleteEntry={(uid) => {
-        // No point saving a pending edit for an entry that is about to be deleted; dropping
-        // it before the serialized delete also stops the flush re-creating its write.
-        if (pendingRef.current[uid]) {
-          const next = { ...pendingRef.current };
-          delete next[uid];
-          pendingRef.current = next;
-          setTick((n) => n + 1);
-        }
-        run(() => characterBookApi.removeEntry(avatar, uid));
-      }}
-      onReorder={(uids) => run(() => characterBookApi.saveBook(avatar, { displayOrder: uids }))}
+      entries={book.entries}
+      busy={book.busy}
+      onAddEntry={() => void book.addEntry()}
+      onUpdateEntry={book.updateEntry}
+      onDeleteEntry={book.deleteEntry}
+      onReorder={book.reorder}
     />
   );
 }

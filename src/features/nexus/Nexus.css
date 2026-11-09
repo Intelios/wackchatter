@@ -349,12 +349,11 @@
 
 /* --- Search highlight mirror ----------------------------------------------
  *
- * The CueField technique: a textarea cannot carry markup, so while a search query is
+ * A textarea cannot carry markup, so while a search query is
  * live a marked copy of the text is painted underneath and the real control sits on top
  * with transparent glyphs and a visible caret ([data-searching] below). The layers only
  * stay aligned if they wrap identically, which is why every metric that affects wrapping
  * lives on `.nexus-card__text` — shared by both layers — and never on one of them alone.
- * See ArenaShell.css for the original.
  */
 
 .nexus-card__field {
