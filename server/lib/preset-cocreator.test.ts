@@ -343,8 +343,29 @@ test('incomplete assistant output and context limits survive save and reload', (
       created: 1,
       incomplete: 'length',
       analysisOnly: true,
+      extraContent: { google: { thought_signature: 'partial-message-signature' } },
       incompleteToolCalls: [
-        { id: 'cut', type: 'function', function: { name: 'patch_preset', arguments: '{' } },
+        {
+          id: 'cut',
+          type: 'function',
+          function: { name: 'patch_preset', arguments: '{' },
+          extra_content: { google: { thought_signature: 'partial-tool-signature' } },
+        },
+      ],
+    },
+    {
+      id: 'complete',
+      role: 'assistant',
+      content: '',
+      created: 2,
+      extraContent: { google: { thought_signature: 'message-signature' } },
+      toolCalls: [
+        {
+          id: 'read',
+          type: 'function',
+          function: { name: 'read_preset', arguments: '{}' },
+          extra_content: { google: { thought_signature: 'tool-signature' } },
+        },
       ],
     },
   ];

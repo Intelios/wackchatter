@@ -16,6 +16,8 @@ export interface PresetCocreatorMessage {
   created: number;
   reasoning?: string;
   reasoningDetails?: unknown[];
+  /** Opaque provider metadata to preserve when replaying the assistant message. */
+  extraContent?: Record<string, unknown>;
   incomplete?: 'length' | 'stopped' | 'error';
   /** Retained for inspection, never executed or sent as pending tool calls. */
   incompleteToolCalls?: ProviderToolCall[];

@@ -123,7 +123,9 @@ describe('runGeneration', () => {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (input === '/api/generate') {
         payload = JSON.parse(String(init?.body));
-        return sseResponse([JSON.stringify({ choices: [{ delta: { content: 'hello' } }] })]);
+        return sseResponse([
+          JSON.stringify({ choices: [{ delta: { content: 'hello' }, finish_reason: 'stop' }] }),
+        ]);
       }
       return jsonResponse({ ok: true });
     }) as unknown as typeof fetch;
@@ -161,6 +163,7 @@ describe('runGeneration', () => {
       sseResponse([
         JSON.stringify({ choices: [{ delta: { content: 'hel' } }] }),
         JSON.stringify({ choices: [{ delta: { content: 'lo' } }] }),
+        '[DONE]',
       ])) as unknown as typeof fetch;
 
     const state = await run({});
@@ -172,7 +175,7 @@ describe('runGeneration', () => {
     globalThis.fetch = (async () =>
       sseResponse([
         JSON.stringify({ choices: [{ delta: { content: '', reasoning: 'Thinking…' } }] }),
-        JSON.stringify({ choices: [{ delta: { content: 'answer' } }] }),
+        JSON.stringify({ choices: [{ delta: { content: 'answer' }, finish_reason: 'stop' }] }),
       ])) as unknown as typeof fetch;
 
     const ticks: string[] = [];
@@ -199,6 +202,89 @@ describe('runGeneration', () => {
       ])) as unknown as typeof fetch;
 
     expect(run({})).rejects.toThrow('rate limited');
+  });
+
+  test('EOF during an ordinary answer is an error and preserves the received words', async () => {
+    globalThis.fetch = (async () =>
+      sseResponse([
+        JSON.stringify({ choices: [{ delta: { content: 'The rest of my' } }] }),
+      ])) as unknown as typeof fetch;
+    const ticks: string[] = [];
+    await expect(run({}, { onTick: (state) => ticks.push(state.content) })).rejects.toThrow(
+      'before confirming the reply was complete',
+    );
+    expect(ticks.at(-1)).toBe('The rest of my');
+  });
+
+  test('EOF after complete-looking tool JSON still fails before the tools can run', async () => {
+    globalThis.fetch = (async () =>
+      sseResponse([
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call',
+                    type: 'function',
+                    function: { name: 'read_preset', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ])) as unknown as typeof fetch;
+    await expect(run({})).rejects.toThrow('before confirming the reply was complete');
+  });
+
+  test('a finish reason completes a stream even when the provider omits DONE', async () => {
+    globalThis.fetch = (async () =>
+      sseResponse([
+        JSON.stringify({ choices: [{ delta: { content: 'Complete.' }, finish_reason: 'stop' }] }),
+      ])) as unknown as typeof fetch;
+    expect((await run({})).content).toBe('Complete.');
+  });
+
+  test('a finish reason on one alternate cannot hide a truncated other choice', async () => {
+    globalThis.fetch = (async () =>
+      sseResponse([
+        JSON.stringify({
+          choices: [
+            { index: 0, delta: { content: 'Complete.' }, finish_reason: 'stop' },
+            { index: 1, delta: { content: 'The other answer' } },
+          ],
+        }),
+      ])) as unknown as typeof fetch;
+    await expect(run({})).rejects.toThrow('before confirming the reply was complete');
+  });
+
+  test('an unconfirmed stream is logged as failed and keeps its usage', async () => {
+    const reports: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === '/api/usage') {
+        reports.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ ok: true });
+      }
+      return sseResponse([
+        JSON.stringify({
+          choices: [{ delta: { content: 'Partial' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 2 },
+        }),
+      ]);
+    }) as unknown as typeof fetch;
+    await expect(run({}, noop, { usage: { feature: 'presetCocreator' } })).rejects.toThrow(
+      'before confirming the reply was complete',
+    );
+    expect(reports).toEqual([
+      expect.objectContaining({
+        outcome: 'failed',
+        aborted: false,
+        inputTokens: 10,
+        outputTokens: 2,
+      }),
+    ]);
   });
 
   test('the non-stream error does not reach the tick handler', async () => {

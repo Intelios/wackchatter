@@ -31,6 +31,7 @@ export function assistantResponseMessage(
     ...(response.reasoningDetails?.length
       ? { reasoningDetails: structuredClone(response.reasoningDetails) }
       : {}),
+    ...(response.extraContent ? { extraContent: structuredClone(response.extraContent) } : {}),
     ...(incomplete ? { incomplete } : {}),
     ...(response.toolCalls?.length
       ? incomplete
@@ -343,6 +344,7 @@ export type AssistantWireMessage =
       content: string | null;
       tool_calls?: ProviderToolCall[];
       reasoning_details?: unknown[];
+      extra_content?: Record<string, unknown>;
     }
   | { role: 'tool'; content: string; tool_call_id: string; name?: string };
 
@@ -358,6 +360,7 @@ export function assistantWireMessages(
         ...(message.reasoningDetails?.length
           ? { reasoning_details: structuredClone(message.reasoningDetails) }
           : {}),
+        ...(message.extraContent ? { extra_content: structuredClone(message.extraContent) } : {}),
       };
     }
     if (message.role === 'tool') {

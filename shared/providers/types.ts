@@ -19,6 +19,8 @@ export interface ProviderToolCall {
   id: string;
   type: 'function';
   function: { name: string; arguments: string };
+  /** Opaque provider state, including Google's required thought signature. Echo unchanged. */
+  extra_content?: Record<string, unknown>;
 }
 
 export type ProviderId = 'custom' | 'openrouter';

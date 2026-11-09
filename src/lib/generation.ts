@@ -259,7 +259,7 @@ async function streamGenerate(
       }
     }
 
-    for (const frame of parser.flush()) {
+    for (const frame of [...parser.push(decoder.decode()), ...parser.flush()]) {
       publish(accumulator.push(frame));
     }
   } catch (error) {
@@ -272,6 +272,16 @@ async function streamGenerate(
   }
 
   const final = identify(accumulator.snapshot());
+  // EOF is just the socket closing. A clean close without a terminal frame used to
+  // silently accept half an answer (or execute a tool call whose stream was interrupted).
+  // Some compatible endpoints omit [DONE], so accept finish reasons for every choice too.
+  if (
+    !final.error &&
+    !final.done &&
+    [final, ...(final.alternates ?? [])].some((choice) => !choice.finishReason)
+  ) {
+    final.error = 'The provider closed the stream before confirming the reply was complete.';
+  }
   report(final, false);
   // A provider can report a failure inside an otherwise-successful stream.
   if (final.error) throw new Error(final.error);

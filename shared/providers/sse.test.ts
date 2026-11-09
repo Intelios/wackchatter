@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { createSseParser, createStreamAccumulator, parseCompletion, type SseFrame } from './sse.ts';
+import {
+  createSseParser,
+  createStreamAccumulator,
+  extractError,
+  parseCompletion,
+  type SseFrame,
+} from './sse.ts';
+import type { ProviderToolCall } from './types.ts';
 
 /** Wrap a delta the way an OpenAI-compatible stream does. */
 function chunk(content: string): string {
@@ -9,6 +16,40 @@ function chunk(content: string): string {
 function frame(data: string): SseFrame {
   return { data };
 }
+
+describe('provider error details', () => {
+  test('a Google error array is surfaced from both a response body and a stream', () => {
+    const error = [
+      { error: { code: 400, message: 'Function call is missing a thought_signature.' } },
+    ];
+    expect(parseCompletion(error).error).toBe('Function call is missing a thought_signature.');
+    expect(createStreamAccumulator().push(frame(JSON.stringify(error)))?.error).toBe(
+      'Function call is missing a thought_signature.',
+    );
+  });
+
+  test('a gateway wrapper includes the underlying provider rejection', () => {
+    expect(
+      extractError({
+        error: {
+          message: 'Provider returned error',
+          code: 400,
+          metadata: { raw: JSON.stringify({ error: { message: 'Invalid thought signature.' } }) },
+        },
+      }),
+    ).toBe('Provider returned error: Invalid thought signature.');
+  });
+
+  test('plain-text provider details and ordinary errors stay readable', () => {
+    expect(
+      extractError({
+        error: { message: 'Provider returned error', metadata: { raw: 'Bad tool call' } },
+      }),
+    ).toBe('Provider returned error: Bad tool call');
+    expect(extractError({ error: { message: 'Rate limited' } })).toBe('Rate limited');
+    expect(extractError({ choices: [] })).toBeNull();
+  });
+});
 
 describe('framing', () => {
   test('a complete frame is emitted', () => {
@@ -433,6 +474,100 @@ describe('non-streamed completions', () => {
 });
 
 describe('tool calls and reasoning continuity', () => {
+  test('Google tool signatures survive a metadata-only delta after the arguments', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'google-call',
+                    type: 'function',
+                    function: { name: 'read_preset', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    const state = accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    extra_content: { google: { thought_signature: 'opaque-signature' } },
+                  },
+                ],
+              },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        }),
+      ),
+    );
+    expect(state?.toolCalls).toEqual([
+      {
+        id: 'google-call',
+        type: 'function',
+        function: { name: 'read_preset', arguments: '{}' },
+        extra_content: { google: { thought_signature: 'opaque-signature' } },
+      },
+    ]);
+    // A consumer's saved snapshot must not mutate the accumulator's opaque metadata.
+    const extra = state!.toolCalls![0]!.extra_content!;
+    (extra.google as Record<string, unknown>).thought_signature = 'changed';
+    expect(accumulator.snapshot().toolCalls?.[0]?.extra_content).toEqual({
+      google: { thought_signature: 'opaque-signature' },
+    });
+  });
+
+  test('Google signatures stay on their own parallel tool calls', () => {
+    const calls: ProviderToolCall[] = [
+      {
+        id: 'signed',
+        type: 'function',
+        function: { name: 'read_preset', arguments: '{}' },
+        extra_content: { google: { thought_signature: 'first-signature' } },
+      },
+      { id: 'unsigned', type: 'function', function: { name: 'read_preset', arguments: '{}' } },
+    ];
+    const state = parseCompletion({
+      choices: [{ message: { content: null, tool_calls: calls }, finish_reason: 'tool_calls' }],
+    });
+    expect(state.toolCalls).toEqual(calls);
+    expect(state.toolCalls?.[1]).not.toHaveProperty('extra_content');
+  });
+
+  test('Google message metadata survives empty streamed content and non-streamed responses', () => {
+    const extra = { google: { thought_signature: 'text-signature' } };
+    const accumulator = createStreamAccumulator();
+    accumulator.push(frame(JSON.stringify({ choices: [{ delta: { content: 'Answer' } }] })));
+    const state = accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [{ delta: { content: '', extra_content: extra }, finish_reason: 'stop' }],
+        }),
+      ),
+    );
+    expect(state?.extraContent).toEqual(extra);
+    expect(state?.content).toBe('Answer');
+    expect(
+      parseCompletion({
+        choices: [{ message: { content: 'Answer', extra_content: extra }, finish_reason: 'stop' }],
+      }).extraContent,
+    ).toEqual(extra);
+  });
+
   test('fragmented streamed tool arguments are accumulated into one complete call', () => {
     const accumulator = createStreamAccumulator();
     accumulator.push(

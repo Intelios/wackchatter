@@ -115,6 +115,7 @@ export interface StreamChoice {
   finishReason: string | null;
   toolCalls?: ProviderToolCall[];
   reasoningDetails?: unknown[];
+  extraContent?: Record<string, unknown>;
 }
 
 export interface StreamState {
@@ -143,6 +144,8 @@ export interface StreamState {
   toolCalls?: ProviderToolCall[];
   /** Opaque provider reasoning blocks echoed unchanged into a following tool request. */
   reasoningDetails?: unknown[];
+  /** Opaque message-level provider state, returned on the next assistant message. */
+  extraContent?: Record<string, unknown>;
   /**
    * Completions AFTER the first, in provider index order. Absent unless `n > 1` was both
    * asked for and honoured, so every existing consumer sees exactly what it saw before.
@@ -168,6 +171,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 /** Pull an error message out of the several shapes providers use for it. */
 export function extractError(payload: unknown): string | null {
+  return readError(payload, 0);
+}
+
+function readError(payload: unknown, depth: number): string | null {
+  if (depth > 3) return null;
+  // Google's streaming endpoint can return an array of error objects.
+  if (Array.isArray(payload)) {
+    for (const entry of payload) {
+      const message = readError(entry, depth + 1);
+      if (message) return message;
+    }
+    return null;
+  }
   const root = asRecord(payload);
   if (!root) return null;
 
@@ -175,10 +191,25 @@ export function extractError(payload: unknown): string | null {
   if (typeof error === 'string') return error;
 
   const record = asRecord(error);
-  if (record && typeof record.message === 'string') return record.message;
-
-  if (typeof root.message === 'string' && root.error !== undefined) return root.message;
-  return null;
+  const message =
+    record && typeof record.message === 'string'
+      ? record.message
+      : typeof root.message === 'string' && root.error !== undefined
+        ? root.message
+        : null;
+  // Gateways often hide Google's actual rejection behind "Provider returned error".
+  const raw = asRecord(record?.metadata)?.raw;
+  let detail: string | null = null;
+  if (typeof raw === 'string') {
+    try {
+      detail = readError(JSON.parse(raw), depth + 1);
+    } catch {
+      detail = raw.trim().slice(0, 500) || null;
+    }
+  } else if (raw) {
+    detail = readError(raw, depth + 1);
+  }
+  return detail && message && detail !== message ? `${message}: ${detail}` : (detail ?? message);
 }
 
 function readUsage(value: unknown): StreamUsage | undefined {
@@ -279,6 +310,7 @@ function publicChoice(choice: AccumulatedChoice): StreamChoice {
   if (choice.reasoningDetailsMutable.length) {
     result.reasoningDetails = structuredClone(choice.reasoningDetailsMutable);
   }
+  if (choice.extraContent) result.extraContent = structuredClone(choice.extraContent);
   return result;
 }
 
@@ -307,6 +339,11 @@ function appendToolCalls(choice: AccumulatedChoice, value: unknown): boolean {
       target.id = target.id || call.id;
       changed = true;
     }
+    const extraContent = asRecord(call.extra_content);
+    if (extraContent) {
+      target.extra_content = { ...target.extra_content, ...structuredClone(extraContent) };
+      changed = true;
+    }
     const fn = asRecord(call.function);
     if (fn) {
       if (typeof fn.name === 'string' && fn.name) {
@@ -320,6 +357,14 @@ function appendToolCalls(choice: AccumulatedChoice, value: unknown): boolean {
     }
   }
   return changed;
+}
+
+function appendExtraContent(choice: AccumulatedChoice, value: unknown): boolean {
+  const extraContent = asRecord(value);
+  if (!extraContent) return false;
+  // Signatures are opaque complete values, never text fragments to concatenate.
+  choice.extraContent = { ...choice.extraContent, ...structuredClone(extraContent) };
+  return true;
 }
 
 function appendReasoningDetails(choice: AccumulatedChoice, value: unknown): boolean {
@@ -425,6 +470,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
     if (primary.reasoningDetailsMutable.length) {
       result.reasoningDetails = structuredClone(primary.reasoningDetailsMutable);
     }
+    if (primary.extraContent) result.extraContent = structuredClone(primary.extraContent);
     if (choices.length > 1) result.alternates = choices.slice(1).map(publicChoice);
     return result;
   }
@@ -524,6 +570,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
 
         if (source && appendToolCalls(target, source.tool_calls)) changed = true;
         if (source && appendReasoningDetails(target, source.reasoning_details)) changed = true;
+        if (source && appendExtraContent(target, source.extra_content)) changed = true;
 
         if (typeof choice.finish_reason === 'string') {
           target.finishReason = choice.finish_reason;
@@ -593,6 +640,7 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
       if (thought) appendReasoning(result, thought);
       appendToolCalls(result, message.tool_calls);
       appendReasoningDetails(result, message.reasoning_details);
+      appendExtraContent(result, message.extra_content);
     }
     if (typeof choice.finish_reason === 'string') result.finishReason = choice.finish_reason;
     return result;
@@ -607,6 +655,7 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   if (primary.reasoningDetailsMutable.length) {
     state.reasoningDetails = structuredClone(primary.reasoningDetailsMutable);
   }
+  if (primary.extraContent) state.extraContent = structuredClone(primary.extraContent);
   if (parsed.length > 1) state.alternates = parsed.slice(1).map(publicChoice);
 
   return state;
