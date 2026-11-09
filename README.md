@@ -4,7 +4,7 @@ A chat frontend for cloud LLMs with character cards, lorebooks, personas, and lo
 
 Your existing character cards and presets from [SillyTavern](https://github.com/SillyTavern/SillyTavern) import without conversion. WackChatter presets may also use documented extensions described below.
 
-![Chat view](images/chat.jpeg)
+![Chat view](images/chat.png)
 
 ## Getting started
 
@@ -49,7 +49,7 @@ Your characters, chats, presets, and keys are all in `data/`, which git ignores 
 
 ## Features
 
-![Home screen with characters](images/character-panel.jpeg)
+![Home screen with characters](images/character-panel.png)
 
 **Chat** — Multiple chats per character. Swipes, branching, regenerate, continue, edit, delete, hide messages. Deleted chats go to a trash bin you can restore from.
 
@@ -58,6 +58,8 @@ Your characters, chats, presets, and keys are all in `data/`, which git ignores 
 **Character Creator Studio** — A full card editor with structured fields for every part of a character: identity, description, personality, greetings, example dialogue, prompts, embedded lorebook, tags, and metadata. Shows live token counts per field and a budget meter against your preset's context limit, and lints your card in real time — catches missing fields, broken macros, duplicate greetings, placeholder avatars, and more.
 
 **Character Co-Creator** — An AI design partner that helps you build characters through conversation. Describe a vague idea and it'll ask the right questions, draft fields, and propose openings. Everything it suggests appears as a labelled block you can file into the card with one click. Start from an existing character with every field and its portrait already loaded, or attach favourite cards as style examples. The assistant follows your accepted draft as you refine it. Add alternate scenarios as Alternate Greetings, or compare and replace an existing greeting. Finish updates the character or creates a separate copy, preserving its lore and metadata, then opens it in Studio. The AI never edits the card directly — you curate what goes in.
+
+![Co-Creator view](images/co-creator.jpeg)
 
 **Prompt Manager** — Drag to reorder prompts, set depth injections, use marker prompts, and add Documentation blocks for author notes and design rationale. Documentation is readable by people and the Preset Co-Creator but is never sent in chat requests. Shows live token counts using a real tokenizer so you can see exactly how your context budget is being spent.
 
@@ -70,8 +72,6 @@ Documentation blocks are a WackChatter preset extension saved as `role: "documen
 **Guided Generations** — Steer replies with one-shot instructions or persistent per-chat guides, without cluttering the transcript.
 
 **Memory Nexus** — The app tracks characters, places, events, and relationships as the story unfolds and recalls them when relevant. Uses a separate, cheaper model so it doesn't eat into your chat context. Includes a full-screen graph view for exploring what the story knows. You can also use classic summarisation, or turn memory off entirely — it's per-chat.
-
-![Memory Nexus graph view](images/memory-nexus.jpeg)
 
 **Model Arena** — Blind side-by-side comparisons between models so you can figure out which one actually writes better for your use case.
 
