@@ -188,6 +188,7 @@
   --wc-duration: 260ms;
   --wc-duration-fast: 120ms;
   --wc-duration-view: 380ms;
+  --wc-duration-home-cover: 320ms;
 
   --wc-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   /* Half elevation — where an entering view bar's shadow settles before it lifts. */
@@ -199,6 +200,7 @@
     --wc-duration: 0ms;
     --wc-duration-fast: 0ms;
     --wc-duration-view: 0ms;
+    --wc-duration-home-cover: 0ms;
   }
 }
 

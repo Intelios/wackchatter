@@ -910,11 +910,20 @@ function Cover({
   const top = pages.length - 1;
   return (
     <div className="w3-home__cover">
+      {/* Mask the stack once: overlapping per-image masks thicken the soft edges, then
+          snap back when the old image is removed. */}
+      <div className="w3-home__portrait" aria-hidden="true">
+        {pages.map((page) => (
+          <CoverPortrait key={page.id} page={page} arriving={page.id > 0} />
+        ))}
+      </div>
       {pages.map((page, index) => (
         <CoverPage
           key={page.id}
           page={page}
-          arriving={index === top && pages.length > 1}
+          // Keep an entrance running if another pick interrupts it; removing its
+          // animation would jump that layer to full opacity.
+          arriving={page.id > 0}
           leaving={index < top}
           cast={cast}
           castSize={castSize}
@@ -925,6 +934,19 @@ function Cover({
           }
         />
       ))}
+    </div>
+  );
+}
+
+function CoverPortrait({ page, arriving }: { page: Page; arriving: boolean }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <div className="w3-home__page" data-arriving={arriving || undefined}>
+      {broken ? (
+        <span className="w3-home__initial">{[...page.entry.name.trim()][0]?.toUpperCase()}</span>
+      ) : (
+        <img src={page.imageUrl} alt="" draggable={false} onError={() => setBroken(true)} />
+      )}
     </div>
   );
 }
@@ -948,8 +970,7 @@ function CoverPage({
   onOpen: () => void;
   onArrived: () => void;
 }) {
-  const { entry, imageUrl } = page;
-  const [broken, setBroken] = useState(false);
+  const { entry } = page;
   const quote = quoteOf(entry.reply, { char: entry.name, user: personaName });
   const kicker = cast
     ? `Your cast · ${plural(castSize, 'character')}`
@@ -963,16 +984,9 @@ function CoverPage({
       data-leaving={leaving || undefined}
       aria-hidden={leaving || undefined}
       onAnimationEnd={(event) => {
-        if (event.target === event.currentTarget && arriving) onArrived();
+        if (event.target === event.currentTarget && arriving && !leaving) onArrived();
       }}
     >
-      <div className="w3-home__portrait" aria-hidden="true">
-        {broken ? (
-          <span className="w3-home__initial">{[...entry.name.trim()][0]?.toUpperCase()}</span>
-        ) : (
-          <img src={imageUrl} alt="" draggable={false} onError={() => setBroken(true)} />
-        )}
-      </div>
       <div className="w3-home__left">
         <span className="w3-home__kicker">{kicker}</span>
         {quote ? <p className="w3-home__quote">{quote}</p> : <span className="w3-home__spacer" />}

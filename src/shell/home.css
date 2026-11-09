@@ -92,23 +92,20 @@
   mask:
     linear-gradient(to right, transparent 0, #000 32%, #000 70%, transparent 100%) intersect,
     linear-gradient(to top, transparent 0, #000 30%);
-  will-change: transform;
 }
 
 /*
- * Swapping covers, as whole pages: the new page fades in over the old one; the old
- * portrait stays solid beneath it while the old words fade out. Nothing dips to dark.
+ * Portraits and words fade in together, with the portrait layers inside one shared mask.
+ * The old portrait stays solid beneath them while the old words fade out.
  */
 .w3-home__page {
   position: absolute;
   inset: 0;
-  /* Its own layer, so the portrait's soft-edged mask is drawn once and the fade is only
-     composited, never re-masked frame by frame. */
   will-change: opacity;
 }
 
 .w3-home__page[data-arriving] {
-  animation: w3-home-page-in 0.32s var(--w3-out) both;
+  animation: w3-home-page-in var(--wc-duration-home-cover) var(--w3-out) both;
 }
 
 @keyframes w3-home-page-in {
@@ -734,6 +731,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .w3-home__page[data-leaving] .w3-home__left {
+    transition: none;
+  }
+
   .w3-home__cover,
   .w3-home__version i,
   .w3-home__cue .w3-ic {
