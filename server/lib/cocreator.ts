@@ -18,6 +18,11 @@
 
 import type { Database } from 'bun:sqlite';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
+import {
+  type CompactionState,
+  createCompactionState,
+  normalizeCompaction,
+} from '../../shared/cocreator/compaction.ts';
 import { normalizeSideSettings } from '../../shared/cocreator/sideChat.ts';
 import { emptyStash, normalizeStash, stashedSlotCount } from '../../shared/cocreator/stash.ts';
 import { normalizeModelRef } from '../../shared/models/slots.ts';
@@ -54,6 +59,7 @@ interface SessionRow {
   stash: string;
   examples: string;
   settings: string;
+  compaction: string;
   avatar: string | null;
   finished_avatar: string | null;
   seed_avatar: string | null;
@@ -123,6 +129,7 @@ export interface CocreatorStore {
       publication?: CocreatorPublication | null;
       messages: ChatMessage[];
       sideChat?: CocreatorSideChat | null;
+      compaction?: CompactionState;
     },
   ): CocreatorSaveResult;
   /** Metadata-only write. Never touches the transcript. */
@@ -180,6 +187,7 @@ function normalizeSideChat(raw: unknown): CocreatorSideChat | null {
   )
     return null;
   return {
+    compaction: normalizeCompaction(value.compaction),
     snapshot: {
       capturedAt: snapshot.capturedAt,
       systemPrompt: snapshot.systemPrompt,
@@ -275,9 +283,9 @@ export function createCocreatorStore(database: Database): CocreatorStore {
   const statements = {
     insertSession: database.query(
       `INSERT INTO cocreator_sessions
-         (id, title, created, modified, revision, stash, examples, settings, avatar,
+         (id, title, created, modified, revision, stash, examples, settings, compaction, avatar,
           finished_avatar, seed_avatar, target_avatar, baseline)
-       VALUES ($id, $title, $created, $modified, $revision, $stash, $examples, $settings, $avatar,
+       VALUES ($id, $title, $created, $modified, $revision, $stash, $examples, $settings, $compaction, $avatar,
                NULL, $seedAvatar, $seedAvatar, $baseline)`,
     ),
     selectSession: database.query<SessionRow, [string]>(
@@ -287,7 +295,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     // the column stays whatever creation and the reference cascade last made it.
     updateSession: database.query(
       `UPDATE cocreator_sessions
-          SET title = $title, stash = $stash, examples = $examples, settings = $settings,
+          SET title = $title, stash = $stash, examples = $examples, settings = $settings, compaction = $compaction,
               avatar = $avatar, finished_avatar = $finishedAvatar,
               modified = $modified, revision = $revision, side_chat = $sideChat,
               baseline = $baseline, target_avatar = $targetAvatar,
@@ -369,6 +377,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       stash: normalizeStash(parseJson<unknown>(row.stash, null)),
       examples: normalizeExamples(parseJson<unknown>(row.examples, null)),
       settings: normalizeSessionSettings(parseJson<unknown>(row.settings, null)),
+      compaction: normalizeCompaction(parseJson<unknown>(row.compaction, null)),
       avatar: row.avatar,
       finishedAvatar: row.finished_avatar,
       seedAvatar: row.seed_avatar,
@@ -400,6 +409,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       $stash: JSON.stringify(next.stash),
       $examples: JSON.stringify(next.examples),
       $settings: JSON.stringify(next.settings),
+      $compaction: JSON.stringify(next.compaction),
       $avatar: next.avatar,
       $finishedAvatar: next.finishedAvatar,
       $modified: Date.now(),
@@ -454,6 +464,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         publication?: CocreatorPublication | null;
         messages: ChatMessage[];
         sideChat?: CocreatorSideChat | null;
+        compaction?: CompactionState;
       },
     ): CocreatorSaveResult => {
       const existing = readSession(id);
@@ -466,6 +477,10 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         ? normalizeSessionSettings(input.settings)
         : existing.settings;
       const messages = normalizeMessages(input.messages);
+      const compaction =
+        input.compaction === undefined
+          ? existing.compaction
+          : normalizeCompaction(input.compaction);
       const sideChat =
         input.sideChat === undefined ? existing.sideChat : normalizeSideChat(input.sideChat);
       // Absent means "keep what is there" — a whole-session save that predates the field, or
@@ -495,6 +510,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
           JSON.stringify(examples) === JSON.stringify(existing.examples) &&
           JSON.stringify(settings) === JSON.stringify(existing.settings) &&
           JSON.stringify(sideChat) === JSON.stringify(existing.sideChat) &&
+          JSON.stringify(compaction) === JSON.stringify(existing.compaction) &&
           JSON.stringify(messages) === JSON.stringify(existing.messages),
       );
       if (conflict) return conflict;
@@ -513,6 +529,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         publication,
         portraitChanged: newPublication ? false : existing.portraitChanged,
         sideChat,
+        compaction,
       });
       writeMessages(id, messages);
       return { kind: 'saved', session: readSession(id)! };
@@ -556,6 +573,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         title,
         revision: patch.revision,
         sideChat: existing.sideChat,
+        compaction: existing.compaction,
         stash,
         examples,
         settings,
@@ -647,6 +665,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         $stash: JSON.stringify(input.stash ? normalizeStash(input.stash) : emptyStash()),
         $examples: JSON.stringify({ cards: [], fields: { ...DEFAULT_EXAMPLE_FIELDS } }),
         $settings: '{}',
+        $compaction: JSON.stringify(createCompactionState()),
         $seedAvatar: input.seedAvatar ?? null,
         $baseline: input.baseline ? JSON.stringify(input.baseline) : null,
         $avatar: input.avatar ?? null,

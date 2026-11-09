@@ -237,6 +237,43 @@ describe('the bench', () => {
 });
 
 describe('what it cost', () => {
+  test('includes completed, failed and stopped compaction usage without treating estimates as billed counts', () => {
+    const document = {
+      messages: [],
+      tests: [],
+      compaction: {
+        automatic: true,
+        history: [
+          {
+            id: 'complete',
+            status: 'complete',
+            model: { connectionId: 'c', modelId: 'm' },
+            beforeTokens: 9000,
+            afterTokens: 3000,
+            inputTokens: 7000,
+            outputTokens: 200,
+          },
+          {
+            id: 'stopped',
+            status: 'aborted',
+            model: { connectionId: 'c', modelId: 'm' },
+            beforeTokens: 8000,
+            inputTokens: 6000,
+            outputTokens: 20,
+          },
+          {
+            id: 'failed',
+            status: 'failed',
+            model: { connectionId: 'c', modelId: 'm' },
+            beforeTokens: 8000,
+          },
+        ],
+      },
+    } as unknown as PresetCocreatorDocument;
+    expect(sessionSpend(document)).toEqual([
+      { connectionId: 'c', model: 'm', inputTokens: 13000, outputTokens: 220 },
+    ]);
+  });
   test('sums the Co-Creator and the bench per model, and prices what it can', () => {
     const document = {
       messages: [

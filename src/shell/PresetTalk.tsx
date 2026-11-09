@@ -176,7 +176,7 @@ export function PresetTalk({
             />
           ))}
           {controller.busy && !controller.preparing ? (
-            <Streaming store={controller.stream} last={last} />
+            <Streaming store={controller.stream} last={last} compacting={controller.compacting} />
           ) : null}
         </div>
       </div>
@@ -621,13 +621,16 @@ function SentBack({
 function Streaming({
   store,
   last,
+  compacting,
 }: {
   store: StreamStore;
   last: PresetCocreatorMessage | undefined;
+  compacting: boolean;
 }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const working =
-    last?.role === 'tool' && last.toolName === 'patch_preset'
+  const working = compacting
+    ? 'Compacting the conversation'
+    : last?.role === 'tool' && last.toolName === 'patch_preset'
       ? 'Edited the preset, carrying on'
       : last?.role === 'tool'
         ? 'Reading'

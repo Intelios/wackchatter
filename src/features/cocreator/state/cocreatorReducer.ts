@@ -27,6 +27,12 @@ import {
   toChatMessage,
   userMessage,
 } from '@shared/chat/message.ts';
+import {
+  type CompactionRecord,
+  type CompactionState,
+  createCompactionState,
+  normalizeCompaction,
+} from '@shared/cocreator/compaction.ts';
 import { replaceGreeting } from '@shared/cocreator/draft.ts';
 import {
   clearAll,
@@ -90,6 +96,7 @@ export interface SideChatState extends Omit<CocreatorSideChat, 'messages'> {
 }
 
 export interface CocreatorState {
+  compaction: CompactionState;
   sessionId: string | null;
   title: string;
   messages: MessageState[];
@@ -126,6 +133,7 @@ export interface CocreatorState {
 }
 
 export const initialCocreatorState: CocreatorState = {
+  compaction: createCompactionState(false),
   sessionId: null,
   title: '',
   messages: [],
@@ -150,6 +158,9 @@ export const initialCocreatorState: CocreatorState = {
 };
 
 type BaseCocreatorAction =
+  | { type: 'compaction/automatic'; automatic: boolean }
+  | { type: 'compaction/recorded'; record: CompactionRecord }
+  | { type: 'error/set'; message: string }
   | { type: 'side/opened' | 'side/reset'; snapshot: SideChatSnapshot }
   | { type: 'side/settings'; patch: SideChatModelSettings }
   | { type: 'session/loaded'; session: CocreatorSession }
@@ -299,6 +310,9 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
       ...state,
       revision: state.revision + 1,
       sideChat: {
+        compaction: createCompactionState(
+          state.sideChat?.compaction?.automatic ?? state.compaction.automatic,
+        ),
         snapshot: structuredClone(action.snapshot),
         settings: state.sideChat?.settings ?? {},
         messages: [],
@@ -331,15 +345,26 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
     return state;
   if (target === 'side') {
     if (!state.sideChat) return state;
-    const projected = { ...state, messages: state.sideChat.messages, error: state.sideChat.error };
+    const projected = {
+      ...state,
+      messages: state.sideChat.messages,
+      error: state.sideChat.error,
+      compaction: normalizeCompaction(state.sideChat.compaction),
+    };
     const next = reduceConversation(projected, action);
     if (next === projected) return state;
     return {
       ...next,
       messages: state.messages,
+      compaction: state.compaction,
       error: state.error,
       activeConversation: next.status === 'idle' ? null : 'side',
-      sideChat: { ...state.sideChat, messages: next.messages, error: next.error },
+      sideChat: {
+        ...state.sideChat,
+        messages: next.messages,
+        error: next.error,
+        compaction: next.compaction,
+      },
     };
   }
   const next = reduceConversation(state, action);
@@ -352,15 +377,32 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
 
 function reduceConversation(state: CocreatorState, action: CocreatorAction): CocreatorState {
   switch (action.type) {
+    case 'compaction/automatic':
+      return {
+        ...state,
+        compaction: { ...state.compaction, automatic: action.automatic },
+        revision: state.revision + 1,
+      };
+    case 'compaction/recorded':
+      return {
+        ...state,
+        compaction: { ...state.compaction, history: [...state.compaction.history, action.record] },
+        revision: state.revision + 1,
+        error: action.record.error ?? null,
+      };
+    case 'error/set':
+      return { ...state, error: action.message };
     case 'session/loaded':
       return {
         ...initialCocreatorState,
         sessionId: action.session.id,
+        compaction: normalizeCompaction(action.session.compaction),
         title: action.session.title,
         messages: action.session.messages.map(fromChatMessage),
         sideChat: action.session.sideChat
           ? {
               ...action.session.sideChat,
+              compaction: normalizeCompaction(action.session.sideChat.compaction),
               messages: action.session.sideChat.messages.map(fromChatMessage),
               error: null,
             }
@@ -703,6 +745,7 @@ export function toPersistedSideChat(state: CocreatorState): CocreatorSideChat | 
   if (!state.sideChat) return null;
   return {
     snapshot: state.sideChat.snapshot,
+    compaction: state.sideChat.compaction,
     settings: state.sideChat.settings,
     messages: toPersistedMessages(state, 'side'),
   };

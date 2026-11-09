@@ -181,6 +181,12 @@
   --wc-letter-spacing: 0.08em;
   --wc-code-line-height: 1.6;
   --wc-cocreator-context-height: 260px;
+  --wc-context-ring: 22px;
+  --wc-context-stroke: 1.7;
+  --wc-context-panel: 350px;
+  --wc-context-summary-height: 180px;
+  --wc-context-hover-delay: 180ms;
+  --wc-context-pulse: 1200ms;
   --wc-cocreator-portrait-height: 160px;
 
   /* Motion. One layout duration and one curve keeps panel movement coherent;

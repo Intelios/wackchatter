@@ -1,6 +1,7 @@
 /** Durable Preset Co-Creator sessions, immutable draft revisions, and publication records. */
 
 import type { Database } from 'bun:sqlite';
+import { createCompactionState, normalizeCompaction } from '../../shared/cocreator/compaction.ts';
 import { COCREATOR_OUTPUT_TOKENS } from '../../shared/cocreator/generation.ts';
 import { normalizeModelRef } from '../../shared/models/slots.ts';
 import {
@@ -83,6 +84,7 @@ export function defaultPresetCocreatorDocument(
   input?: Partial<PresetCocreatorDocument['settings']>,
 ): PresetCocreatorDocument {
   const document: PresetCocreatorDocument = {
+    compaction: createCompactionState(),
     settings: {
       assistant: { ...DEFAULT_MODEL_SETTINGS },
       testing: { ...DEFAULT_MODEL_SETTINGS, maxTokens: 1024, reasoningEffort: 'auto' },
@@ -185,7 +187,7 @@ function normalizeTestSource(value: unknown): PresetTestSource {
 /** Repair only the outer session shape; immutable reports/tests remain byte-for-byte JSON. */
 export function normalizePresetCocreatorDocument(value: unknown): PresetCocreatorDocument {
   const defaults = defaultPresetCocreatorDocument();
-  if (!isRecord(value)) return defaults;
+  if (!isRecord(value)) return { ...defaults, compaction: normalizeCompaction(undefined) };
   const settings = isRecord(value.settings) ? value.settings : {};
   const normalizedSettings = {
     assistant: normalizeModelSettings(settings.assistant, defaults.settings.assistant),
@@ -228,6 +230,7 @@ export function normalizePresetCocreatorDocument(value: unknown): PresetCocreato
     : [];
   return {
     settings: normalizedSettings,
+    compaction: normalizeCompaction(value.compaction),
     messages: structuredClone(messages) as PresetCocreatorDocument['messages'],
     tests: tests as PresetCocreatorDocument['tests'],
     activeTestId: active && tests.some((test) => test.id === active) ? active : null,

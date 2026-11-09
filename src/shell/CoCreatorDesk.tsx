@@ -39,6 +39,7 @@ import { Popover } from '../components/Popover.tsx';
 import { QuickCommandsPopover } from '../features/chat/QuickCommandsPopover.tsx';
 import { useStickToBottom } from '../features/chat/useStickToBottom.ts';
 import { useTranscriptWindow } from '../features/chat/useTranscriptWindow.ts';
+import type { CocreatorContext } from '../features/cocreator/context.ts';
 import { ExampleSetsPopover } from '../features/cocreator/ExampleSetsPopover.tsx';
 import { EXAMPLE_FIELD_LABELS, EXAMPLE_FIELD_ORDER } from '../features/cocreator/examples.ts';
 import {
@@ -66,6 +67,8 @@ import { Icon } from './icons.tsx';
 
 /** What the island shows of the session. */
 export interface DeskReport {
+  context: CocreatorContext;
+  contextTarget: 'main' | 'side';
   name: string;
   filled: number;
   saving: boolean;
@@ -83,6 +86,9 @@ export interface DeskReport {
 /** What the island can ask of the session. */
 export interface DeskHandle {
   setModel: (target: 'main' | 'side', ref: ModelRef | null) => void;
+  compact: (target: 'main' | 'side') => void;
+  setAutoCompaction: (target: 'main' | 'side', automatic: boolean) => void;
+  stop: () => void;
 }
 
 // ---------- The composer ----------
@@ -525,6 +531,7 @@ export function CoCreatorDesk({
   const loaded = useExampleCards(state.examples, countTokens);
   exampleBlockRef.current = loaded.text;
   examplesReadyRef.current = !loaded.loading;
+  useEffect(() => design.refreshContext(loaded.text), [loaded.text, design.refreshContext]);
   const stateRef = useRef(state);
   stateRef.current = state;
   // biome-ignore lint/correctness/useExhaustiveDependencies: draft changes invalidate choices made against the previous draft
@@ -532,8 +539,11 @@ export function CoCreatorDesk({
     setFinishReview(null);
     setFinishChoices({});
   }, [state.stash, state.avatar, state.targetAvatar]);
-  const busyReason =
-    state.activeConversation === 'side' ? 'The side chat is writing' : 'The Co-Creator is writing';
+  const busyReason = design.compacting
+    ? 'Compacting the conversation'
+    : state.activeConversation === 'side'
+      ? 'The side chat is writing'
+      : 'The Co-Creator is writing';
 
   useEffect(() => {
     registerPersistence({
@@ -557,8 +567,11 @@ export function CoCreatorDesk({
   const sideReady = Boolean(state.sideChat);
   const sideModel = state.sideChat?.settings.model;
   const sideModelName = design.sideConnection?.model ?? null;
+  const context = sideOpen ? design.sideCompactionContext : design.mainContext;
   useEffect(() => {
     onReport({
+      context,
+      contextTarget: sideOpen ? 'side' : 'main',
       name,
       filled,
       saving: design.saving,
@@ -580,8 +593,15 @@ export function CoCreatorDesk({
     sideReady,
     sideModel,
     sideModelName,
+    context,
+    sideOpen,
   ]);
   handle.current = {
+    compact: (target) => {
+      void design.compact(target);
+    },
+    setAutoCompaction: design.setAutoCompaction,
+    stop: design.abort,
     setModel: (target, ref) =>
       design.dispatch(
         target === 'main'

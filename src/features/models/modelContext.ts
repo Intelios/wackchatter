@@ -37,6 +37,29 @@ export async function modelContextLength(model: ResolvedModel): Promise<number |
 }
 
 /** The context a request to `model` may fill. */
-export async function resolveModelContext(model: ResolvedModel): Promise<number> {
-  return contextOrDefault(await modelContextLength(model));
+export async function resolveModelContext(
+  model: ResolvedModel,
+  signal?: AbortSignal,
+): Promise<number> {
+  signal?.throwIfAborted();
+  const pending = modelContextLength(model).then(contextOrDefault);
+  if (!signal) return pending;
+  // The catalogue is shared. Stop releases this request without aborting other readers.
+  return new Promise<number>((resolve, reject) => {
+    const aborted = () => {
+      signal.removeEventListener('abort', aborted);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    };
+    signal.addEventListener('abort', aborted, { once: true });
+    pending.then(
+      (tokens) => {
+        signal.removeEventListener('abort', aborted);
+        resolve(tokens);
+      },
+      (error) => {
+        signal.removeEventListener('abort', aborted);
+        reject(error);
+      },
+    );
+  });
 }

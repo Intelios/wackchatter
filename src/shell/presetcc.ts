@@ -245,6 +245,15 @@ export function sessionSpend(document: PresetCocreatorDocument): Spend[] {
       );
     }
   }
+  for (const record of document.compaction?.history ?? []) {
+    if (record.inputTokens === undefined && record.outputTokens === undefined) continue;
+    add(
+      record.model.connectionId,
+      record.model.modelId,
+      record.inputTokens ?? 0,
+      record.outputTokens ?? 0,
+    );
+  }
   for (const test of document.tests) {
     for (const evidence of test.evidence) {
       if (evidence.promptTokens === undefined && evidence.completionTokens === undefined) continue;

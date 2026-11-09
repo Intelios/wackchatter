@@ -13,6 +13,21 @@ import { upgradeLibrary } from './upgrade.ts';
 let dir: string;
 let db: Database;
 
+test('compaction conversion adds its JSON column once without changing recency or enabling old sessions', () => {
+  db.exec('ALTER TABLE cocreator_sessions DROP COLUMN compaction');
+  db.query(
+    "INSERT INTO cocreator_sessions (id, title, created, modified, revision) VALUES ('old', 'Keep', 1, 17, 4)",
+  ).run();
+  db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('conversion_step', '3')").run();
+  upgradeLibrary(db);
+  const session = createCocreatorStore(db).getSession('old')!;
+  expect(session.modified).toBe(17);
+  expect(session.revision).toBe(5);
+  expect(session.compaction).toEqual({ automatic: false, history: [] });
+  upgradeLibrary(db);
+  expect(createCocreatorStore(db).getSession('old')).toEqual(session);
+});
+
 test('working-card conversion adds schema-15 columns, preserves edits and recency, and is idempotent', async () => {
   const card = createBlankCard('Alice');
   card.data.extensions = { world: 'Town', unknown: 7 };
@@ -156,7 +171,7 @@ test('recency is untouched, the revision moves, and a second run changes nothing
   expect(
     db.query<{ value: string }, []>("SELECT value FROM meta WHERE key = 'conversion_step'").get()
       ?.value,
-  ).toBe('3');
+  ).toBe('4');
 });
 
 test('malformed metadata converts as an empty object rather than vanishing', () => {

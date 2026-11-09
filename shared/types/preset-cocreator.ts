@@ -1,3 +1,4 @@
+import type { CompactionState } from '../cocreator/compaction.ts';
 import type { ModelRef } from '../models/slots.ts';
 import type { JsonPatchOperation, PresetDiffEntry } from '../preset-cocreator/patch.ts';
 import type {
@@ -19,6 +20,8 @@ export interface PresetCocreatorMessage {
   role: 'user' | 'assistant' | 'tool' | 'report';
   content: string;
   created: number;
+  /** App-generated continuation text, not words to quote as the user's original brief. */
+  appAction?: 'continue';
   /** Links assistant tool calls to their durable draft operation ids after interruption. */
   turnId?: string;
   reasoning?: string;
@@ -187,6 +190,7 @@ export interface PresetTestBatch {
 
 /** Autosaved independently from the immutable preset revision history. */
 export interface PresetCocreatorDocument {
+  compaction?: CompactionState;
   settings: PresetCocreatorSettings;
   messages: PresetCocreatorMessage[];
   tests: PresetTest[];

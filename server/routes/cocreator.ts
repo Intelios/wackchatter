@@ -28,6 +28,7 @@ import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import { PATHS, safeJoin } from '../lib/paths.ts';
 
 interface ReplaceBody {
+  compaction?: import('../../shared/cocreator/compaction.ts').CompactionState;
   sideChat?: CocreatorSideChat | null;
   revision?: number;
   title?: string;
@@ -210,6 +211,7 @@ export async function handleCocreatorRoute(
           stash: body.stash,
           examples: body.examples,
           settings: body.settings,
+          ...(Object.hasOwn(body, 'compaction') ? { compaction: body.compaction } : {}),
           ...(Object.hasOwn(body, 'finishedAvatar') ? { finishedAvatar: body.finishedAvatar } : {}),
           messages: body.messages,
           ...(Object.hasOwn(body, 'baseline') ? { baseline: body.baseline } : {}),

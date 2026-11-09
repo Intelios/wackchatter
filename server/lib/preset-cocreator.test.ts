@@ -31,6 +31,19 @@ function create() {
 }
 
 describe('Preset Co-Creator session store', () => {
+  test('new documents enable auto-compaction but older documents stay opt-in', () => {
+    expect(defaultPresetCocreatorDocument().compaction?.automatic).toBe(true);
+    const old = defaultPresetCocreatorDocument();
+    delete old.compaction;
+    expect(normalizePresetCocreatorDocument(old).compaction).toEqual({
+      automatic: false,
+      history: [],
+    });
+    const session = create();
+    const document = { ...session.document, compaction: { automatic: false, history: [] } };
+    store.saveDocument(session.id, { expectedRevision: 0, operationId: 'compaction', document });
+    expect(store.getSession(session.id)?.document.compaction).toEqual(document.compaction);
+  });
   test('older test chats gain per-chat defaults and an empty saved batch', () => {
     const legacy = defaultPresetCocreatorDocument() as unknown as Record<string, unknown>;
     delete legacy.batchQueue;

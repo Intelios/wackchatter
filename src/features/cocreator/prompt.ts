@@ -19,11 +19,18 @@
 
 import type { MessageState } from '@shared/chat/message.ts';
 import { currentText } from '@shared/chat/message.ts';
+import {
+  activeCheckpoint,
+  type CompactionState,
+  renderCheckpoint,
+} from '@shared/cocreator/compaction.ts';
 import { messageCoster, type TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ApiMessage } from '@shared/types/chat.ts';
 import { DEFAULT_COCREATOR_ANALYSIS_PROMPT } from '@shared/types/settings.ts';
+import { characterCompactionSources } from './compactionSources.ts';
 
 export interface DesignPromptInput {
+  compaction?: CompactionState;
   systemPrompt: string;
   /** The rendered example block, or empty when nothing is attached. */
   exampleBlock: string;
@@ -38,7 +45,13 @@ export interface DesignPromptInput {
 
 export interface DesignPrompt {
   messages: ApiMessage[];
-  tokenCounts: { system: number; examples: number; draft: number; transcript: number };
+  tokenCounts: {
+    system: number;
+    examples: number;
+    draft: number;
+    summary: number;
+    transcript: number;
+  };
   totalTokens: number;
   /** Oldest turns that did not fit. Shown in the desk when non-zero. */
   droppedMessages: number;
@@ -68,12 +81,14 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
   // the only things the macro engine could do here are expand a stray {{char}} to an empty
   // string and let a {{setvar}} in the user's own system prompt write global state from a
   // screen that has no story.
+  const checkpoint = activeCheckpoint(input.compaction, characterCompactionSources(messages));
   const fixed: ApiMessage[] = [];
   if (systemPrompt.trim()) fixed.push({ role: 'system', content: systemPrompt });
   // One message rather than one per card, so the model reads them as a single exhibit and
   // the panel has one number to show.
   if (exampleBlock.trim()) fixed.push({ role: 'system', content: exampleBlock });
   if (input.draftBlock?.trim()) fixed.push({ role: 'system', content: input.draftBlock });
+  if (checkpoint) fixed.push({ role: 'user', content: renderCheckpoint(checkpoint) });
 
   // The same accounting `assemblePrompt` uses, from the same helper: an individual message
   // costs its tokens without the priming every whole-chat count carries.
@@ -92,7 +107,9 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
 
   // A blank message is the placeholder being generated into. Skipping it is what excludes a
   // reply from its own prompt — no splicing, no special case, the same trick `assemble` uses.
-  const visible = messages.filter((message) => currentText(message).trim());
+  const visible = messages
+    .filter((message) => currentText(message).trim())
+    .slice(checkpoint?.coveredMessages ?? 0);
 
   const packed: ApiMessage[] = [];
   let transcriptTokens = 0;
@@ -131,6 +148,9 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
       system: systemTokens,
       examples: examplesTokens,
       draft: draftTokens,
+      summary: checkpoint
+        ? messageCost({ role: 'user', content: renderCheckpoint(checkpoint) })
+        : 0,
       transcript: transcriptTokens,
     },
     totalTokens: countTokens.countChat(assembled),

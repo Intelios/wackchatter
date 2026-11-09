@@ -16,7 +16,7 @@ import { PATHS } from './paths.ts';
  * needs a matching step in upgrade.ts, since `CREATE TABLE IF NOT EXISTS` never evolves an
  * existing table.
  */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS cocreator_sessions (
   examples        TEXT    NOT NULL DEFAULT '{"cards":[],"fields":{}}',
   -- Per-session overrides of AppSettings.coCreator. A missing key follows the app setting.
   settings        TEXT    NOT NULL DEFAULT '{}',
+  compaction      TEXT    NOT NULL DEFAULT '{}',
   -- Filename under data/cocreator/avatars, or NULL. Bytes never live in this database.
   avatar          TEXT,
   -- The card this session produced, once Finish has run. Kept rather than deleting the

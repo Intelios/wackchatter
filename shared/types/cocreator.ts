@@ -9,6 +9,7 @@
  * an alternate take on one turn. That is what lets `shared/chat/message.ts` serve both.
  */
 
+import type { CompactionState } from '../cocreator/compaction.ts';
 import type { ModelRef } from '../models/slots.ts';
 import type { TavernCard } from './card.ts';
 import type { ApiMessage, ChatMessage } from './chat.ts';
@@ -227,12 +228,14 @@ export interface CocreatorPublication {
 }
 
 export interface CocreatorSideChat {
+  compaction?: CompactionState;
   snapshot: SideChatSnapshot;
   settings: SideChatModelSettings;
   messages: ChatMessage[];
 }
 
 export interface CocreatorSession {
+  compaction?: CompactionState;
   id: string;
   title: string;
   created: number;
@@ -279,6 +282,7 @@ export interface CocreatorSessionSummary {
 
 /** A complete immutable client save. The server accepts it only at its revision. */
 export interface CocreatorSaveSnapshot {
+  compaction?: CompactionState;
   sessionId: string;
   revision: number;
   title: string;

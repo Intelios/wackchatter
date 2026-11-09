@@ -30,6 +30,7 @@ import { characterApi, cocreatorApi, personaApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { Avatar } from './Avatar.tsx';
 import { CoCreatorDesk, type DeskHandle, type DeskReport } from './CoCreatorDesk.tsx';
+import { ContextRing } from './ContextRing.tsx';
 import { MAIN_FIELD_COUNT } from './cocreator.ts';
 import { Island, type IslandMode, type IslandNotice } from './Island.tsx';
 import { type SearchItem, SearchPane } from './IslandPanes.tsx';
@@ -390,6 +391,19 @@ export function CoCreator({ controller }: { controller: AppController }) {
         </header>
 
         <Island
+          accessory={
+            session && report ? (
+              <ContextRing
+                key={report.contextTarget}
+                context={report.context}
+                onCompact={() => deskRef.current?.compact(report.contextTarget)}
+                onAutomatic={(automatic) =>
+                  deskRef.current?.setAutoCompaction(report.contextTarget, automatic)
+                }
+                onStop={() => deskRef.current?.stop()}
+              />
+            ) : null
+          }
           mode={islandMode}
           generating={false}
           onCollapse={() => setMode(null)}

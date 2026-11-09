@@ -1,7 +1,10 @@
-import { cocreatorBudget } from '@shared/cocreator/generation.ts';
+import {
+  activeCheckpoint,
+  makeCompactionPlan,
+  normalizeCompaction,
+  shouldCompact,
+} from '@shared/cocreator/compaction.ts';
 import { resolveModelRef } from '@shared/models/slots.ts';
-import { createDefaultPreset } from '@shared/prompt/defaults.ts';
-import { buildRequestBody } from '@shared/providers/request.ts';
 import type { StreamState } from '@shared/providers/sse.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -20,19 +23,20 @@ import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
+import { runCompaction } from '../cocreator/compactionRun.ts';
+import { contextView } from '../cocreator/context.ts';
 import { resolveModelContext } from '../models/modelContext.ts';
+import { useModelContext } from '../models/useModelContext.ts';
 import {
   ASSISTANT_REQUEST_LIMIT,
   assistantResponseMessage,
-  assistantWireMessages,
-  configureAssistantMode,
   editAssistantConversationMessage,
   presetIdentity,
   referencePresetView,
   rejectComparisonToolCalls,
-  renderAssistantSystem,
   UnconfirmedPresetPatchError,
 } from './assistant.ts';
+import { buildAssistantRequest } from './assistantRequest.ts';
 import { loadComparisonPreset } from './compareSources.ts';
 import {
   batchConversationMessage,
@@ -68,22 +72,26 @@ export interface UsePresetCocreatorOptions {
   initial: PresetCocreatorSession;
   connections: readonly Connection[];
   streamingFps: number;
+  referenceNames?: readonly string[];
 }
 
 export function usePresetCocreator({
   initial,
   connections,
   streamingFps,
+  referenceNames = [],
 }: UsePresetCocreatorOptions) {
   const [session, setSessionState] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [batchSending, setBatchSending] = useState(false);
+  const [compacting, setCompacting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef(session);
   const serverDocumentRevision = useRef(new Map<string, number>());
   const abortRef = useRef<AbortController | null>(null);
+  const workDone = useRef<Promise<void> | null>(null);
   const preparingComparison = useRef(false);
   const preparingBatch = useRef(false);
 
@@ -142,6 +150,10 @@ export function usePresetCocreator({
   const queue = queueRef.current;
 
   useEffect(() => {
+    // Adopt once per session. A parent refresh (including hot reload) may still carry
+    // the original document; it must not replace newer messages or checkpoints.
+    if (sessionRef.current.id === initial.id && serverDocumentRevision.current.has(initial.id))
+      return;
     setSession(initial);
     serverDocumentRevision.current.set(initial.id, initial.documentRevision);
     queue.adopt(initial.id, 0);
@@ -180,7 +192,14 @@ export function usePresetCocreator({
   }, [queue]);
 
   const persistence = useMemo<PersistenceControls>(
-    () => ({ flush, retry: () => queue.retry(sessionRef.current.id) }),
+    () => ({
+      flush: async () => {
+        abortRef.current?.abort();
+        await workDone.current;
+        await flush();
+      },
+      retry: () => queue.retry(sessionRef.current.id),
+    }),
     [flush, queue],
   );
 
@@ -254,6 +273,186 @@ export function usePresetCocreator({
   const assistantConnection = assistantModel.ok ? assistantModel.model : null;
   const assistantBlocked = assistantModel.ok ? null : assistantModel.reason;
   const countTokens = useTokenizer(assistantConnection?.model ?? '');
+  const modelContext = useModelContext(assistantConnection);
+
+  const context = useMemo(() => {
+    let measured: ReturnType<typeof buildAssistantRequest> | null = null;
+    let blocked = assistantBlocked;
+    try {
+      if (assistantConnection)
+        measured = buildAssistantRequest({
+          session,
+          messages: session.document.messages,
+          model: assistantConnection,
+          contextTokens: modelContext.tokens,
+          countText: countTokens.countText,
+          referenceNames,
+        });
+    } catch (failure) {
+      blocked = (failure as Error).message;
+    }
+    return contextView({
+      label: 'Preset Co-Creator',
+      model: assistantConnection?.model ?? null,
+      total: modelContext.tokens,
+      assumed: modelContext.assumed,
+      used: measured?.used ?? 0,
+      fixed: measured?.fixed ?? 0,
+      summary: measured?.summary ?? 0,
+      reserved: measured?.budget.reservedTokens ?? 0,
+      promptBudget: measured?.budget.promptTokens ?? 0,
+      messages: measured?.sources ?? [],
+      state: session.document.compaction,
+      busy,
+      compacting,
+      countText: countTokens.countText,
+      kind: 'preset',
+      blocked,
+    });
+  }, [
+    session,
+    assistantConnection,
+    modelContext.tokens,
+    modelContext.assumed,
+    countTokens,
+    referenceNames,
+    busy,
+    compacting,
+    assistantBlocked,
+  ]);
+
+  const setAutoCompaction = useCallback(
+    (automatic: boolean) => {
+      updateDocument((document) => ({
+        ...document,
+        compaction: { ...normalizeCompaction(document.compaction), automatic },
+      }));
+    },
+    [updateDocument],
+  );
+
+  const performCompaction = useCallback(
+    async (
+      messages: PresetCocreatorMessage[],
+      controller: AbortController,
+      contextTokens: number,
+      names: readonly string[],
+      mode: 'conversation' | 'comparison' = 'conversation',
+    ) => {
+      if (!assistantConnection) return;
+      const base = sessionRef.current;
+      const before = buildAssistantRequest({
+        session: base,
+        messages,
+        model: assistantConnection,
+        contextTokens,
+        countText: countTokens.countText,
+        referenceNames: names,
+        mode,
+      });
+      const plan = makeCompactionPlan({
+        messages: before.sources,
+        state: base.document.compaction,
+        maxPromptTokens: before.budget.promptTokens,
+        countText: countTokens.countText,
+        kind: 'preset',
+      });
+      if (!plan || before.fixed > before.budget.promptTokens) return;
+      setCompacting(true);
+      try {
+        let record = {
+          ...(await runCompaction({
+            plan,
+            model: assistantConnection,
+            preset: before.preset,
+            signal: controller.signal,
+            sessionId: base.id,
+            feature: 'presetCocreator',
+            countText: countTokens.countText,
+          })),
+          beforeTokens: before.used,
+        };
+        if (abortRef.current !== controller || sessionRef.current.id !== base.id) return;
+        const latest = sessionRef.current;
+        const compaction = normalizeCompaction(latest.document.compaction);
+        if (record.status === 'complete') {
+          const next = {
+            ...latest,
+            document: {
+              ...latest.document,
+              compaction: { ...compaction, history: [...compaction.history, record] },
+            },
+          };
+          const after = buildAssistantRequest({
+            session: next,
+            messages,
+            model: assistantConnection,
+            contextTokens,
+            countText: countTokens.countText,
+            referenceNames: names,
+            mode,
+          });
+          record =
+            after.used < before.used && activeCheckpoint(next.document.compaction, after.sources)
+              ? { ...record, beforeTokens: before.used, afterTokens: after.used }
+              : {
+                  ...record,
+                  status: 'failed',
+                  checkpoint: undefined,
+                  error:
+                    'The summary did not reduce the current context. The previous context is still in use.',
+                };
+        }
+        updateDocument((document) => ({
+          ...document,
+          compaction: {
+            ...normalizeCompaction(document.compaction),
+            history: [...normalizeCompaction(document.compaction).history, record],
+          },
+        }));
+        await flush();
+        if (record.status === 'aborted')
+          throw new DOMException('Compaction stopped.', 'AbortError');
+        if (record.status !== 'complete') throw new Error(record.error ?? 'Compaction failed.');
+      } finally {
+        setCompacting(false);
+      }
+    },
+    [assistantConnection, countTokens, updateDocument, flush],
+  );
+
+  const compact = useCallback(async () => {
+    if (busy || abortRef.current || !assistantConnection) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    workDone.current = done;
+    setBusy(true);
+    setCompacting(true);
+    setError(null);
+    try {
+      await flush();
+      const contextTokens = await resolveModelContext(assistantConnection, controller.signal);
+      controller.signal.throwIfAborted();
+      await performCompaction(
+        sessionRef.current.document.messages,
+        controller,
+        contextTokens,
+        referenceNames,
+      );
+    } catch (failure) {
+      if (!controller.signal.aborted) setError((failure as Error).message);
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      if (workDone.current === done) workDone.current = null;
+      setBusy(false);
+      setCompacting(false);
+      finish();
+    }
+  }, [busy, assistantConnection, flush, performCompaction, referenceNames]);
 
   const commitMessages = useCallback(
     (messages: PresetCocreatorMessage[]) =>
@@ -273,6 +472,11 @@ export function usePresetCocreator({
       }
       const controller = new AbortController();
       abortRef.current = controller;
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      workDone.current = done;
       setBusy(true);
       setError(null);
       // The bubble mounts the moment `busy` flips, and the store may still hold the
@@ -304,50 +508,40 @@ export function usePresetCocreator({
           // A failed save stops the loop rather than sending an unverified edit outcome.
           await flush();
           controller.signal.throwIfAborted();
-          const current = sessionRef.current;
-          const generation = current.document.settings.assistant;
-          const utilityPreset = createDefaultPreset();
-          utilityPreset.temperature = generation.temperature;
-          utilityPreset.openai_max_tokens = generation.maxTokens;
-          utilityPreset.reasoning_effort = generation.reasoningEffort;
-          utilityPreset.stream_openai = true;
-
-          // Sized from the model's own context, like every other Co-Creator request.
-          const budget = cocreatorBudget({
-            preset: utilityPreset,
-            connection: assistantConnection,
-            outputTokens: generation.maxTokens,
-            contextTokens: await resolveModelContext(assistantConnection),
-          });
+          const contextTokens = await resolveModelContext(assistantConnection, controller.signal);
           controller.signal.throwIfAborted();
-          const body = buildRequestBody({
-            messages: [],
-            preset: utilityPreset,
-            connection: assistantConnection,
-            stream: true,
-            // No cap: the budget only reserves room in the context.
-            maxTokens: null,
+          let request = buildAssistantRequest({
+            session: sessionRef.current,
+            messages,
+            model: assistantConnection,
+            contextTokens,
+            countText: countTokens.countText,
+            referenceNames,
+            mode,
           });
-          body.messages = [
-            {
-              role: 'system',
-              content: renderAssistantSystem(
-                current.current,
-                current.document.settings.assistantInstructions,
-                referenceNames,
-                presetIdentity(current),
-              ),
-            },
-            ...assistantWireMessages(messages, current.history, assistantConnection),
-          ];
-          configureAssistantMode(body, mode);
-          // Tool JSON and reasoning details also consume input; include them in the estimate.
-          const inputTokens =
-            countTokens.countText(JSON.stringify(body.messages)) +
-            (body.tools ? countTokens.countText(JSON.stringify(body.tools)) : 0);
-          if (inputTokens > budget.promptTokens) {
+          if (
+            shouldCompact(
+              sessionRef.current.document.compaction,
+              request.used,
+              request.budget.promptTokens,
+            )
+          ) {
+            await performCompaction(messages, controller, contextTokens, referenceNames, mode);
+            controller.signal.throwIfAborted();
+            request = buildAssistantRequest({
+              session: sessionRef.current,
+              messages,
+              model: assistantConnection,
+              contextTokens,
+              countText: countTokens.countText,
+              referenceNames,
+              mode,
+            });
+          }
+          const { body, budget, used } = request;
+          if (used > budget.promptTokens) {
             throw new Error(
-              "The conversation is longer than this model's context. Start a new session, or pick a model with a longer context.",
+              "The context still exceeds this model's limit. Compact more conversation, reduce the fixed preset or instructions, or choose a larger model.",
             );
           }
 
@@ -363,7 +557,7 @@ export function usePresetCocreator({
             usage: {
               feature: 'presetCocreator',
               generationId,
-              sessionId: current.id,
+              sessionId: sessionRef.current.id,
               countText: countTokens.countText,
             },
             onTick: (state) => {
@@ -480,6 +674,8 @@ export function usePresetCocreator({
         // so the next turn starts from a clean snapshot.
         stream.end();
         setBusy(false);
+        if (workDone.current === done) workDone.current = null;
+        finish();
       }
     },
     [
@@ -491,6 +687,7 @@ export function usePresetCocreator({
       flush,
       stream,
       updateDocument,
+      performCompaction,
     ],
   );
 
@@ -517,7 +714,13 @@ export function usePresetCocreator({
       ? `Your previous response was interrupted during a tool call. The incomplete calls were saved but never executed. Continue the task; reissue any unfinished tool call with complete JSON. Saved incomplete arguments (data):\n${JSON.stringify(last.incompleteToolCalls)}`
       : 'Continue your interrupted answer exactly where it stopped. Do not repeat the existing answer.';
     await startTurnWith(
-      { id: crypto.randomUUID(), role: 'user', content, created: Date.now() },
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content,
+        created: Date.now(),
+        appAction: 'continue',
+      },
       last.analysisOnly ? 'comparison' : 'conversation',
     );
   }, [busy, preparing, startTurnWith]);
@@ -687,6 +890,10 @@ export function usePresetCocreator({
       saving,
       busy,
       preparing,
+      compacting,
+      context,
+      compact,
+      setAutoCompaction,
       batchSending,
       error,
       setError,
@@ -713,6 +920,10 @@ export function usePresetCocreator({
       saving,
       busy,
       preparing,
+      compacting,
+      context,
+      compact,
+      setAutoCompaction,
       batchSending,
       error,
       stream,

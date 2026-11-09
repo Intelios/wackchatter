@@ -406,6 +406,19 @@ const STEPS: ReadonlyArray<(database: Database) => boolean> = [
   convertChats,
   convertModels,
   convertWorkingCards,
+  (database) => {
+    database.transaction(() => {
+      const columns = database
+        .query<{ name: string }, []>('PRAGMA table_info(cocreator_sessions)')
+        .all();
+      if (columns.some((column) => column.name === 'compaction')) return;
+      database.exec(
+        "ALTER TABLE cocreator_sessions ADD COLUMN compaction TEXT NOT NULL DEFAULT '{}'",
+      );
+      database.exec('UPDATE cocreator_sessions SET revision = revision + 1');
+    })();
+    return false;
+  },
 ];
 
 /**

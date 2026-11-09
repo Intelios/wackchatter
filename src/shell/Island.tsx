@@ -39,6 +39,8 @@ export interface IslandNotice {
 }
 
 interface IslandProps {
+  /** A rest-pane control whose Popover must sit outside the island's animated clip. */
+  accessory?: ReactNode;
   mode: IslandMode;
   generating: boolean;
   panes: Partial<Record<IslandMode, ReactNode>>;
@@ -72,6 +74,7 @@ export function Island({
   notice,
   onDismissNotice,
   onCollapse,
+  accessory,
 }: IslandProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const islandRef = useRef<HTMLDivElement>(null);
@@ -173,6 +176,7 @@ export function Island({
           data-ready={ready || undefined}
           data-open={open || undefined}
           data-generating={generating || undefined}
+          data-accessory={accessory ? true : undefined}
         >
           {(Object.keys(panes) as IslandMode[]).map((key) => (
             <div
@@ -189,6 +193,9 @@ export function Island({
             </div>
           ))}
         </div>
+        {accessory && mode === 'rest' ? (
+          <div className="w3-island-accessory">{accessory}</div>
+        ) : null}
 
         {/* A screen without tools has no wings at all, not empty ones. */}
         {wingLeft ? (

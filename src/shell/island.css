@@ -27,6 +27,15 @@
   pointer-events: auto;
 }
 
+.w3-island-accessory {
+  position: absolute;
+  right: var(--wc-space-2);
+  top: 0;
+  height: var(--w3-island-h);
+  display: flex;
+  align-items: center;
+}
+
 .w3-island {
   position: relative;
   overflow: hidden;
@@ -86,6 +95,10 @@
   padding: 0 6px;
   white-space: nowrap;
   width: max-content;
+}
+
+.w3-island[data-accessory] .w3-pane--rest {
+  padding-right: calc(var(--wc-control-lg) + var(--wc-space-2));
 }
 
 .w3-pane--gen {

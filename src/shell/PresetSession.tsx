@@ -24,6 +24,7 @@ import { usePresetCocreator } from '../features/preset-cocreator/usePresetCocrea
 import { usePresetTesting } from '../features/preset-cocreator/usePresetTesting.ts';
 import { ApiError } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
+import { ContextRing } from './ContextRing.tsx';
 import { Island, type IslandMode, type IslandNotice } from './Island.tsx';
 import { Icon } from './icons.tsx';
 import { ModelPane } from './ModelPane.tsx';
@@ -70,10 +71,15 @@ export interface PresetSessionProps {
 
 export function PresetSession(props: PresetSessionProps) {
   const { connections, registerPersistence, onFail } = props;
+  const referenceNames = useMemo(
+    () => props.references.map((entry) => entry.name),
+    [props.references],
+  );
   const controller = usePresetCocreator({
     initial: props.initial,
     connections,
     streamingFps: props.streamingFps,
+    referenceNames,
   });
   const testing = usePresetTesting({
     controller,
@@ -354,6 +360,14 @@ export function PresetSession(props: PresetSessionProps) {
       </header>
 
       <Island
+        accessory={
+          <ContextRing
+            context={controller.context}
+            onCompact={() => void controller.compact()}
+            onAutomatic={controller.setAutoCompaction}
+            onStop={controller.stop}
+          />
+        }
         mode={islandMode}
         generating={false}
         onCollapse={() => setMode(null)}

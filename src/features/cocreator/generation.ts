@@ -1,4 +1,5 @@
 import { currentText, type MessageState, userMessage } from '@shared/chat/message.ts';
+import type { CompactionState } from '@shared/cocreator/compaction.ts';
 import { CONTINUE_DESIGN_REPLY, cocreatorBudget } from '@shared/cocreator/generation.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
@@ -22,6 +23,7 @@ export function buildDesignGeneration(input: {
   countTokens: TokenCounter;
   streaming: boolean;
   sideSnapshot?: SideChatSnapshot;
+  compaction?: CompactionState;
 }): { prefix: string; body: ChatCompletionBody & { messages: ApiMessage[] } } {
   const { mode, messages, preset, connection, settings, streaming } = input;
   const prefix = mode === 'continue' ? currentText(messages.at(-1)!) : '';
@@ -48,12 +50,14 @@ export function buildDesignGeneration(input: {
   });
   const prompt = input.sideSnapshot
     ? buildSidePrompt({
+        compaction: input.compaction,
         snapshot: input.sideSnapshot,
         messages: promptMessages,
         countTokens: input.countTokens,
         maxPromptTokens: budget.promptTokens,
       })
     : buildDesignPrompt({
+        compaction: input.compaction,
         systemPrompt: input.systemPrompt,
         exampleBlock: input.exampleBlock,
         draftBlock: input.draftBlock,

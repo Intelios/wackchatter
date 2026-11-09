@@ -32,6 +32,22 @@ const provenance: StashProvenance = {
   source: 'block',
 };
 
+test('new compaction defaults and explicit session state round-trip without changing messages', () => {
+  const session = store.createSession({});
+  expect(session.compaction?.automatic).toBe(true);
+  const compaction = { automatic: false, history: [] };
+  const saved = store.replaceSession(session.id, {
+    revision: 1,
+    messages: session.messages,
+    compaction,
+  });
+  expect(saved.kind).toBe('saved');
+  expect(store.getSession(session.id)?.compaction).toEqual(compaction);
+  expect(store.getSession(session.id)?.messages).toEqual(session.messages);
+  store.patchSession(session.id, { revision: 2, title: 'Renamed' });
+  expect(store.getSession(session.id)?.compaction).toEqual(compaction);
+});
+
 describe('complete working cards', () => {
   const baseline = () => ({
     card: {
