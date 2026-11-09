@@ -6,8 +6,7 @@
  * Layering, decided here once:
  * - behind: z-index 0, the backdrop/scrim band. Rendered as the last child of that
  *   band, so it paints above the scrim (bright streaks, not double-dimmed) and under
- *   all content; glass panels' backdrop-filter samples it, which is the "blurred
- *   behind the glass" look.
+ *   all content.
  * - front: z-index 1 as the shell's last static child. The bar, panels and chat
  *   column are z-index 1 too, so DOM order decides and the layer wins; everything
  *   raised above them — flyouts, overlays at z-index 2+ — still wins over the rain.

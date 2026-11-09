@@ -60,7 +60,6 @@ export const SETTING_INDEX: readonly SettingEntry[] = [
   { key: 'background', label: 'Background', chapter: 'look', words: 'image wallpaper upload' },
   { key: 'blur', label: 'Blur', chapter: 'look', words: 'background' },
   { key: 'dim', label: 'Dim', chapter: 'look', words: 'background dark' },
-  { key: 'glass', label: 'Glass surfaces', chapter: 'look', words: 'transparent' },
   {
     key: 'effect',
     label: 'Background effect',

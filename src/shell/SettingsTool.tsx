@@ -388,17 +388,6 @@ function Look({ controller }: { controller: AppController }) {
           shown={`${Math.round(Number(settings?.backgroundDim ?? 0.55) * 100)}%`}
           onChange={(value) => patch({ backgroundDim: value })}
         />
-        <Row
-          title="Glass surfaces"
-          hint="Bubbles and panels let the background through"
-          setting="glass"
-        >
-          <Switch
-            label="Glass surfaces"
-            on={settings?.glass !== false}
-            onChange={(glass) => patch({ glass })}
-          />
-        </Row>
       </Group>
 
       <Group

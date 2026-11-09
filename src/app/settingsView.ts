@@ -75,7 +75,6 @@ export interface Backdrop {
   url: string | null;
   blur: number;
   dim: number;
-  glass: boolean;
   effect: EffectId | null;
   effectLayer: 'behind' | 'front';
 }
@@ -120,7 +119,6 @@ export function appSettingsView(settings: AppSettings | null): SettingsView {
       url: resolveBackgroundUrl(settings?.background),
       blur: Number(settings?.backgroundBlur ?? 8),
       dim: Number(settings?.backgroundDim ?? 0.55),
-      glass: settings?.glass !== false,
       // The one resolve point for the ambient-effect layer — every shell gets the same
       // answer, so pairing, master switch and unknown-id degrade cannot disagree by surface.
       effect: resolveBackgroundEffect(settings ?? {}),

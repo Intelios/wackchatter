@@ -41,7 +41,6 @@ describe('appSettingsView', () => {
       url: null,
       blur: 8,
       dim: 0.55,
-      glass: true,
       effect: null,
       effectLayer: 'behind',
     });

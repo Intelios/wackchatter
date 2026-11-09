@@ -111,8 +111,6 @@ export interface AppSettings {
   backgroundBlur: number;
   /** Scrim opacity over the background, 0–1. The contrast floor. */
   backgroundDim: number;
-  /** Translucent panels and bubbles. Only meaningful with a background set. */
-  glass: boolean;
   /**
    * Master switch for ambient particle effects. On by default — harmless, because
    * nothing animates until a background is paired below.
@@ -125,7 +123,7 @@ export interface AppSettings {
    * "no effect" at render, the same way a deleted upload degrades to "no background".
    */
   backgroundEffects: Record<string, string>;
-  /** Whether the effect layer sits behind the glass surfaces or in front of them. */
+  /** Whether the effect layer sits behind the screen's surfaces or in front of them. */
   backgroundEffectLayer: 'behind' | 'front';
   /** Guided Generations: how steering text and standing guides reach the prompt. */
   guidance: GuidanceSettings;
@@ -534,7 +532,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   background: null,
   backgroundBlur: 8,
   backgroundDim: 0.55,
-  glass: true,
   backgroundEffectEnabled: true,
   backgroundEffects: {},
   backgroundEffectLayer: 'behind',
