@@ -13,6 +13,12 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { ApiError } from '../../lib/api.ts';
+import {
+  type PresetToolRevision,
+  presetToolHistory,
+  presetToolOperationId,
+  validPresetToolCallIds,
+} from './toolHistory.ts';
 
 export const ASSISTANT_REQUEST_LIMIT = 6;
 
@@ -21,7 +27,13 @@ export function assistantResponseMessage(
   response: StreamState,
   interrupted?: 'stopped' | 'error',
 ): PresetCocreatorMessage {
-  const incomplete = interrupted ?? (isLengthCutoff(response.finishReason) ? 'length' : undefined);
+  const incomplete =
+    interrupted ??
+    (isLengthCutoff(response.finishReason)
+      ? 'length'
+      : response.toolCalls && !validPresetToolCallIds(response.toolCalls)
+        ? 'error'
+        : undefined);
   return {
     id: crypto.randomUUID(),
     role: 'assistant',
@@ -350,8 +362,9 @@ export type AssistantWireMessage =
 
 export function assistantWireMessages(
   messages: readonly PresetCocreatorMessage[],
+  history: readonly PresetToolRevision[] = [],
 ): AssistantWireMessage[] {
-  return messages.map((message): AssistantWireMessage => {
+  return presetToolHistory(messages, history).map((message): AssistantWireMessage => {
     if (message.role === 'assistant') {
       return {
         role: 'assistant',
@@ -408,10 +421,12 @@ export interface PresetToolDeps {
   patchDraft(
     input: PatchPresetDraftRequest,
   ): Promise<Pick<PresetDraftRevision, 'revision' | 'diff'>>;
+  /** Drain pending saves before editing. Cancellation is checked again after this await. */
+  beforePatch?(): Promise<void>;
   /** Files an assistant-proposed test for the user to run. */
   proposeTest(proposal: ProposedPresetTest): void;
   /** Reads one named reference preset — resolves to its view, rejects when absent. */
-  readReference(name: string): Promise<unknown>;
+  readReference(name: string, signal?: AbortSignal): Promise<unknown>;
 }
 
 /**
@@ -423,17 +438,21 @@ export async function executePresetToolCall(
   call: ProviderToolCall,
   turnId: string,
   deps: PresetToolDeps,
+  signal?: AbortSignal,
 ): Promise<unknown> {
+  signal?.throwIfAborted();
   const parsed = parsePresetToolCall(call);
   if (parsed.name === 'read_preset') {
     const latest = deps.currentRevision();
     return presetReference(latest.preset, latest.revision, deps.identity().targetPresetId);
   }
   if (parsed.name === 'patch_preset') {
+    await deps.beforePatch?.();
+    signal?.throwIfAborted();
     const saved = await deps.patchDraft({
       expectedRevision: parsed.expectedRevision,
       // The call id makes the operation idempotent: a retried request cannot apply twice.
-      operationId: `tool:${turnId}:${call.id}`,
+      operationId: presetToolOperationId(turnId, call.id),
       source: 'assistant',
       summary: parsed.summary,
       turnId,
@@ -442,7 +461,7 @@ export async function executePresetToolCall(
     return { ok: true, revision: saved.revision, diff: saved.diff };
   }
   if (parsed.name === 'read_reference_preset') {
-    return deps.readReference(parsed.presetName);
+    return deps.readReference(parsed.presetName, signal);
   }
   const proposal: ProposedPresetTest = {
     id: crypto.randomUUID(),
@@ -456,6 +475,18 @@ export async function executePresetToolCall(
   return { ok: true, proposalId: proposal.id, awaitingUserRun: true };
 }
 
+/** A transport failure cannot establish whether an already-dispatched edit committed. */
+export class UnconfirmedPresetPatchError extends Error {
+  constructor(cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `The edit's acknowledgement was lost: ${detail}. It may already have committed. ` +
+        'Inspect the current draft before deciding whether another edit is needed.',
+      { cause },
+    );
+  }
+}
+
 /** The tool result a model sees when its call failed: the message, plus the live revision
  *  when the failure was a stale-expectedRevision conflict, so the retry can aim correctly. */
 export function toolFailureResult(error: unknown): Record<string, unknown> {
@@ -463,6 +494,7 @@ export function toolFailureResult(error: unknown): Record<string, unknown> {
     ok: false,
     error: error instanceof Error && error.message ? error.message : String(error),
   };
+  if (error instanceof UnconfirmedPresetPatchError) result.outcomeUnknown = true;
   if (error instanceof ApiError) {
     const revision = (error.body as { currentRevision?: unknown } | null)?.currentRevision;
     if (typeof revision === 'number') result.currentRevision = revision;

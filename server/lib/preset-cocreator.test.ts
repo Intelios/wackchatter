@@ -194,6 +194,49 @@ describe('Preset Co-Creator session store', () => {
     expect(store.getSession(session.id)?.history).toHaveLength(2);
   });
 
+  test('an interrupted tool exchange retains its operation identity across save and reload', () => {
+    const session = create();
+    const document: PresetCocreatorDocument = {
+      ...session.document,
+      messages: [
+        {
+          id: 'assistant',
+          role: 'assistant',
+          content: '',
+          created: 1,
+          turnId: 'turn',
+          toolCalls: [
+            {
+              id: 'patch',
+              type: 'function',
+              function: { name: 'patch_preset', arguments: '{}' },
+            },
+          ],
+        },
+      ],
+    };
+    store.saveDocument(session.id, { expectedRevision: 0, operationId: 'before-patch', document });
+    store.patchDraft(session.id, {
+      expectedRevision: 0,
+      operationId: 'tool:turn:patch',
+      source: 'assistant',
+      turnId: 'turn',
+      summary: 'Cooler',
+      operations: [{ op: 'replace', path: '/temperature', value: 0.5 }],
+    });
+    // A lost patch response can be reconciled from the next document save's response too.
+    const saved = store.saveDocument(session.id, {
+      expectedRevision: 1,
+      operationId: 'after-patch',
+      document,
+    });
+    expect(saved.kind).toBe('saved');
+    if (saved.kind !== 'saved') return;
+    expect(saved.value.document.messages[0]?.turnId).toBe('turn');
+    expect(saved.value.history.at(-1)?.operationId).toBe('tool:turn:patch');
+    expect(store.getSession(session.id)?.history.at(-1)?.operationId).toBe('tool:turn:patch');
+  });
+
   test('manual whole-JSON replacement uses the same validator', () => {
     const session = create();
     const invalid = structuredClone(session.current.preset);

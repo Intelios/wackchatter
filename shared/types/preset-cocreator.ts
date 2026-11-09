@@ -14,6 +14,8 @@ export interface PresetCocreatorMessage {
   role: 'user' | 'assistant' | 'tool' | 'report';
   content: string;
   created: number;
+  /** Links assistant tool calls to their durable draft operation ids after interruption. */
+  turnId?: string;
   reasoning?: string;
   reasoningDetails?: unknown[];
   /** Opaque provider metadata to preserve when replaying the assistant message. */

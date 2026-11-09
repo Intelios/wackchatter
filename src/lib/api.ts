@@ -648,10 +648,14 @@ export const presetCocreatorApi = {
 
 /** Read-only example presets for the Co-Creator assistant — never the live preset list. */
 export const referencePresetApi = {
-  list: () => request<ReferencePresetSummary[]>('/reference-presets'),
+  list: (signal?: AbortSignal) =>
+    request<ReferencePresetSummary[]>('/reference-presets', signal ? { signal } : undefined),
 
-  get: (id: string) =>
-    request<ReferencePresetRecord>(`/reference-presets/${encodeURIComponent(id)}`),
+  get: (id: string, signal?: AbortSignal) =>
+    request<ReferencePresetRecord>(
+      `/reference-presets/${encodeURIComponent(id)}`,
+      signal ? { signal } : undefined,
+    ),
 
   import: (file: File) => {
     const form = new FormData();

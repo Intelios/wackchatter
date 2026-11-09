@@ -15,7 +15,7 @@ import type {
   ReplacePresetDraftRequest,
 } from '@shared/types/preset-cocreator.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { presetCocreatorApi, referencePresetApi } from '../../lib/api.ts';
+import { ApiError, presetCocreatorApi, referencePresetApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
 import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
@@ -27,12 +27,11 @@ import {
   assistantWireMessages,
   configureAssistantMode,
   editAssistantConversationMessage,
-  executePresetToolCall,
   presetIdentity,
   referencePresetView,
   rejectComparisonToolCalls,
   renderAssistantSystem,
-  toolFailureResult,
+  UnconfirmedPresetPatchError,
 } from './assistant.ts';
 import { loadComparisonPreset } from './compareSources.ts';
 import {
@@ -40,6 +39,7 @@ import {
   buildPresetTestBatch,
   reportConversationMessage,
 } from './testing.ts';
+import { executePresetToolBatch } from './toolExecution.ts';
 
 /** What a reply used, for the session's cost: the provider's count when it gave one. */
 function messageUsage(
@@ -122,6 +122,15 @@ export function usePresetCocreator({
             modified: saved.modified,
             documentRevision: saved.documentRevision,
             document: snapshot.document,
+            // A patch may commit even if its response was lost. The document-save reply
+            // also carries the server's operation receipts; adopt them before continuing.
+            ...(saved.draftRevision >= current.draftRevision
+              ? {
+                  draftRevision: saved.draftRevision,
+                  current: saved.current,
+                  history: saved.history,
+                }
+              : {}),
           });
           setError(null);
         },
@@ -276,7 +285,9 @@ export function usePresetCocreator({
       // the names ride the system prompt — the model reads the full file only on demand.
       let referenceNames: string[] = [];
       try {
-        referenceNames = (await referencePresetApi.list()).map((entry) => entry.name);
+        referenceNames = (await referencePresetApi.list(controller.signal)).map(
+          (entry) => entry.name,
+        );
       } catch {
         // A missing or unreadable folder must not fail the turn — the tool still answers
         // real read attempts with their own errors.
@@ -288,7 +299,11 @@ export function usePresetCocreator({
           requestIndex < (mode === 'comparison' ? 1 : ASSISTANT_REQUEST_LIMIT);
           requestIndex += 1
         ) {
-          if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          controller.signal.throwIfAborted();
+          // Land results and refresh committed patch receipts before the next paid request.
+          // A failed save stops the loop rather than sending an unverified edit outcome.
+          await flush();
+          controller.signal.throwIfAborted();
           const current = sessionRef.current;
           const generation = current.document.settings.assistant;
           const utilityPreset = createDefaultPreset();
@@ -304,6 +319,7 @@ export function usePresetCocreator({
             outputTokens: generation.maxTokens,
             contextTokens: await resolveModelContext(assistantConnection),
           });
+          controller.signal.throwIfAborted();
           const body = buildRequestBody({
             messages: [],
             preset: utilityPreset,
@@ -322,7 +338,7 @@ export function usePresetCocreator({
                 presetIdentity(current),
               ),
             },
-            ...assistantWireMessages(messages),
+            ...assistantWireMessages(messages, current.history),
           ];
           configureAssistantMode(body, mode);
           // Tool JSON and reasoning details also consume input; include them in the estimate.
@@ -351,7 +367,7 @@ export function usePresetCocreator({
               countText: countTokens.countText,
             },
             onTick: (state) => {
-              if (abortRef.current !== controller) return;
+              if (abortRef.current !== controller || controller.signal.aborted) return;
               partial = state;
               stream.set(state.content, state.reasoning);
             },
@@ -364,6 +380,7 @@ export function usePresetCocreator({
               final,
               mode === 'comparison' && final.toolCalls?.length ? 'error' : undefined,
             ),
+            turnId,
             ...(mode === 'comparison' ? { analysisOnly: true } : {}),
             ...messageUsage(final, assistantConnection),
           };
@@ -376,7 +393,11 @@ export function usePresetCocreator({
 
           if (mode === 'comparison') rejectComparisonToolCalls(final.toolCalls);
           if (assistantMessage.incomplete) {
-            setError('The reply was cut off. What arrived is saved: use Continue to get the rest.');
+            setError(
+              assistantMessage.incomplete === 'error'
+                ? 'The model returned tool calls without unique ids. They were saved but not run: use Continue to retry.'
+                : 'The reply was cut off. What arrived is saved: use Continue to get the rest.',
+            );
             await flush();
             return;
           }
@@ -385,47 +406,44 @@ export function usePresetCocreator({
             return;
           }
 
-          for (const call of final.toolCalls) {
-            // Without an id no tool message can answer this call, and most providers reject
-            // a follow-up request whose tool_calls were left unanswered — turn-fatal.
-            if (!call.id) throw new Error('The model returned a tool call without an id.');
-            let result: unknown;
-            try {
-              result = await executePresetToolCall(call, turnId, {
-                currentRevision: () => sessionRef.current.current,
-                identity: () => presetIdentity(sessionRef.current),
-                patchDraft: async (input) => {
-                  await flush();
+          await executePresetToolBatch({
+            calls: assistantMessage.toolCalls!,
+            turnId,
+            signal: controller.signal,
+            deps: {
+              currentRevision: () => sessionRef.current.current,
+              identity: () => presetIdentity(sessionRef.current),
+              beforePatch: flush,
+              patchDraft: async (input) => {
+                try {
+                  // Once dispatched, let the atomic mutation settle even after Stop so
+                  // its committed receipt is retained. The batch skips subsequent tools.
                   const saved = await presetCocreatorApi.patchDraft(sessionRef.current.id, input);
                   adoptDraftResponse(saved);
-                  return saved.current;
-                },
-                proposeTest: (proposal) =>
-                  updateDocument((document) => ({
-                    ...document,
-                    proposedTests: [...document.proposedTests, proposal],
-                  })),
-                readReference: async (name) => {
-                  const record = await referencePresetApi.get(name);
-                  return referencePresetView(record.name, record.version, record.preset);
-                },
-              });
-            } catch (failure) {
-              // A rejected tool call is data for the model, not the end of the turn: it
-              // reads the error and sends a corrected call within the same request budget.
-              result = toolFailureResult(failure);
-            }
-            const toolMessage: PresetCocreatorMessage = {
-              id: crypto.randomUUID(),
-              role: 'tool',
-              content: JSON.stringify(result),
-              created: Date.now(),
-              toolCallId: call.id,
-              toolName: call.function.name,
-            };
-            messages = [...messages, toolMessage];
-            commitMessages(messages);
-          }
+                  return (
+                    saved.history.find((revision) => revision.operationId === input.operationId) ??
+                    saved.current
+                  );
+                } catch (failure) {
+                  if (failure instanceof ApiError && failure.status < 500) throw failure;
+                  throw new UnconfirmedPresetPatchError(failure);
+                }
+              },
+              proposeTest: (proposal) =>
+                updateDocument((document) => ({
+                  ...document,
+                  proposedTests: [...document.proposedTests, proposal],
+                })),
+              readReference: async (name, signal) => {
+                const record = await referencePresetApi.get(name, signal);
+                return referencePresetView(record.name, record.version, record.preset);
+              },
+            },
+            onResult: (toolMessage) => {
+              messages = [...messages, toolMessage];
+              commitMessages(messages);
+            },
+          });
         }
         if (mode === 'conversation') {
           setError(
@@ -438,6 +456,7 @@ export function usePresetCocreator({
         if (partial) {
           const received = {
             ...assistantResponseMessage(partial, controller.signal.aborted ? 'stopped' : 'error'),
+            turnId,
             ...messageUsage(partial, assistantConnection),
           };
           if (received.content || received.reasoning || received.incompleteToolCalls?.length) {

@@ -19,6 +19,7 @@ import {
   renderAssistantSystem,
   toolCallArguments,
   toolFailureResult,
+  UnconfirmedPresetPatchError,
 } from './assistant.ts';
 
 function call(name: string, args: unknown): ProviderToolCall {
@@ -268,6 +269,13 @@ describe('Preset Co-Creator assistant boundary', () => {
 
     const conflictWithoutRevision = new ApiError('Preset conflict', 409, { other: true });
     expect(toolFailureResult(conflictWithoutRevision)).not.toHaveProperty('currentRevision');
+  });
+
+  test('a lost patch acknowledgement reports an unknown outcome, never a definite failed edit', () => {
+    const result = toolFailureResult(new UnconfirmedPresetPatchError(new Error('Connection lost')));
+    expect(result).toMatchObject({ ok: false, outcomeUnknown: true });
+    expect(result.error).toContain('Connection lost');
+    expect(result.error).toContain('current draft');
   });
 
   test('executing a call rejects rather than half-applying, so the caller can feed it back', async () => {
