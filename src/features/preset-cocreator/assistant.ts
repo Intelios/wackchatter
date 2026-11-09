@@ -1,7 +1,8 @@
 import type { JsonPatchOperation } from '@shared/preset-cocreator/patch.ts';
 import { getPromptOrder } from '@shared/prompt/preset-io.ts';
+import { normalizeBase } from '@shared/providers/request.ts';
 import { isLengthCutoff, type StreamState } from '@shared/providers/sse.ts';
-import type { ProviderToolCall } from '@shared/providers/types.ts';
+import type { ProviderToolCall, ResolvedModel } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { PROMPT_ORDER_LIVE_ID } from '@shared/types/preset.ts';
 import type {
@@ -13,6 +14,8 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { ApiError } from '../../lib/api.ts';
+import { type AssistantProviderState, replayAssistantProviderState } from './reasoningReplay.ts';
+import { presetBatchWireContent, presetReportWireContent } from './reportWire.ts';
 import {
   type PresetToolRevision,
   presetToolHistory,
@@ -26,6 +29,7 @@ export const ASSISTANT_REQUEST_LIMIT = 6;
 export function assistantResponseMessage(
   response: StreamState,
   interrupted?: 'stopped' | 'error',
+  source?: ResolvedModel,
 ): PresetCocreatorMessage {
   const incomplete =
     interrupted ??
@@ -40,6 +44,17 @@ export function assistantResponseMessage(
     created: Date.now(),
     content: response.content,
     ...(response.reasoning ? { reasoning: response.reasoning } : {}),
+    ...(response.reasoningFields ? { reasoningFields: { ...response.reasoningFields } } : {}),
+    ...(source
+      ? {
+          providerSource: {
+            connectionId: source.id,
+            modelId: source.model,
+            provider: source.provider,
+            baseUrl: normalizeBase(source.baseUrl),
+          },
+        }
+      : {}),
     ...(response.reasoningDetails?.length
       ? { reasoningDetails: structuredClone(response.reasoningDetails) }
       : {}),
@@ -351,29 +366,23 @@ export function referencePresetView(name: string, version: string, preset: Prese
 
 export type AssistantWireMessage =
   | { role: 'system' | 'user'; content: string }
-  | {
+  | ({
       role: 'assistant';
       content: string | null;
-      tool_calls?: ProviderToolCall[];
-      reasoning_details?: unknown[];
-      extra_content?: Record<string, unknown>;
-    }
+    } & AssistantProviderState)
   | { role: 'tool'; content: string; tool_call_id: string; name?: string };
 
 export function assistantWireMessages(
   messages: readonly PresetCocreatorMessage[],
   history: readonly PresetToolRevision[] = [],
+  target?: ResolvedModel,
 ): AssistantWireMessage[] {
   return presetToolHistory(messages, history).map((message): AssistantWireMessage => {
     if (message.role === 'assistant') {
       return {
         role: 'assistant',
         content: message.content || null,
-        ...(message.toolCalls?.length ? { tool_calls: structuredClone(message.toolCalls) } : {}),
-        ...(message.reasoningDetails?.length
-          ? { reasoning_details: structuredClone(message.reasoningDetails) }
-          : {}),
-        ...(message.extraContent ? { extra_content: structuredClone(message.extraContent) } : {}),
+        ...replayAssistantProviderState(message, target),
       };
     }
     if (message.role === 'tool') {
@@ -387,7 +396,13 @@ export function assistantWireMessages(
     }
     return {
       role: 'user',
-      content: message.comparison ? comparisonWireContent(message.comparison) : message.content,
+      content: message.comparison
+        ? comparisonWireContent(message.comparison)
+        : message.report
+          ? presetReportWireContent(message.report)
+          : message.batch
+            ? presetBatchWireContent(message.batch)
+            : message.content,
     };
   });
 }

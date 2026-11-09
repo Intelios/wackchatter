@@ -11,7 +11,11 @@
  *    consumer assigns instead of appending, so dropping frames can never lose content.
  */
 
-import type { ProviderToolCall } from './types.ts';
+import {
+  PROVIDER_REASONING_FIELDS,
+  type ProviderReasoningFields,
+  type ProviderToolCall,
+} from './types.ts';
 
 export interface SseFrame {
   event?: string;
@@ -112,6 +116,7 @@ export interface StreamChoice {
   /** The FULL text so far, never a delta. */
   content: string;
   reasoning: string;
+  reasoningFields?: ProviderReasoningFields;
   finishReason: string | null;
   toolCalls?: ProviderToolCall[];
   reasoningDetails?: unknown[];
@@ -122,6 +127,8 @@ export interface StreamState {
   /** The FULL text so far, never a delta. Always choice 0 — the reply on screen. */
   content: string;
   reasoning: string;
+  /** Exact explicit fields for provider replay, separate from display reasoning. */
+  reasoningFields?: ProviderReasoningFields;
   finishReason: string | null;
   model?: string;
   /**
@@ -306,6 +313,7 @@ function publicChoice(choice: AccumulatedChoice): StreamChoice {
     reasoning: choice.reasoning,
     finishReason: choice.finishReason,
   };
+  if (choice.reasoningFields) result.reasoningFields = { ...choice.reasoningFields };
   if (choice.toolCallsMutable.length) result.toolCalls = structuredClone(choice.toolCallsMutable);
   if (choice.reasoningDetailsMutable.length) {
     result.reasoningDetails = structuredClone(choice.reasoningDetailsMutable);
@@ -412,6 +420,33 @@ function appendReasoning(choice: AccumulatedChoice, text: string): void {
   choice.reasoning = choice.explicitReasoning + split.reasoning;
 }
 
+function appendProviderReasoning(
+  choice: AccumulatedChoice,
+  source: Record<string, unknown>,
+): boolean {
+  let changed = false;
+  for (const field of PROVIDER_REASONING_FIELDS) {
+    const incoming = source[field];
+    if (typeof incoming !== 'string') continue;
+    choice.reasoningFields ??= {};
+    const fields = choice.reasoningFields;
+    fields[field] = (fields[field] ?? '') + incoming;
+    changed = true;
+  }
+  // Preserve the display's existing preference, with reasoning_text as an additional
+  // compatible alias. Mirror fields are never concatenated into the visible thought twice.
+  const thought =
+    typeof source.reasoning === 'string'
+      ? source.reasoning
+      : typeof source.reasoning_content === 'string'
+        ? source.reasoning_content
+        : typeof source.reasoning_text === 'string'
+          ? source.reasoning_text
+          : '';
+  if (thought) appendReasoning(choice, thought);
+  return changed;
+}
+
 /**
  * Which completion a chunk belongs to.
  *
@@ -464,6 +499,7 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
     if (state.model !== undefined) result.model = state.model;
     if (state.id !== undefined) result.id = state.id;
     if (state.error !== undefined) result.error = state.error;
+    if (primary.reasoningFields) result.reasoningFields = { ...primary.reasoningFields };
     if (primary.toolCallsMutable.length) {
       result.toolCalls = structuredClone(primary.toolCallsMutable);
     }
@@ -554,19 +590,8 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
           changed = true;
         }
 
-        // OpenRouter uses `reasoning`; most others use `reasoning_content`.
         const source = delta ?? message;
-        const thought =
-          source && typeof source.reasoning === 'string'
-            ? source.reasoning
-            : source && typeof source.reasoning_content === 'string'
-              ? source.reasoning_content
-              : null;
-
-        if (thought) {
-          appendReasoning(target, thought);
-          changed = true;
-        }
+        if (source && appendProviderReasoning(target, source)) changed = true;
 
         if (source && appendToolCalls(target, source.tool_calls)) changed = true;
         if (source && appendReasoningDetails(target, source.reasoning_details)) changed = true;
@@ -631,13 +656,7 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
     const message = asRecord(choice.message);
     if (message) {
       if (typeof message.content === 'string') appendContent(result, message.content);
-      const thought =
-        typeof message.reasoning === 'string'
-          ? message.reasoning
-          : typeof message.reasoning_content === 'string'
-            ? message.reasoning_content
-            : null;
-      if (thought) appendReasoning(result, thought);
+      appendProviderReasoning(result, message);
       appendToolCalls(result, message.tool_calls);
       appendReasoningDetails(result, message.reasoning_details);
       appendExtraContent(result, message.extra_content);
@@ -650,6 +669,7 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   // `+=` keeps the seed in front, for a non-streamed continue.
   state.content += primary.content;
   state.reasoning = primary.reasoning;
+  if (primary.reasoningFields) state.reasoningFields = { ...primary.reasoningFields };
   state.finishReason = primary.finishReason;
   if (primary.toolCallsMutable.length) state.toolCalls = structuredClone(primary.toolCallsMutable);
   if (primary.reasoningDetailsMutable.length) {

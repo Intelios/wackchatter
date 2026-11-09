@@ -338,7 +338,7 @@ export function usePresetCocreator({
                 presetIdentity(current),
               ),
             },
-            ...assistantWireMessages(messages, current.history),
+            ...assistantWireMessages(messages, current.history, assistantConnection),
           ];
           configureAssistantMode(body, mode);
           // Tool JSON and reasoning details also consume input; include them in the estimate.
@@ -379,6 +379,7 @@ export function usePresetCocreator({
             ...assistantResponseMessage(
               final,
               mode === 'comparison' && final.toolCalls?.length ? 'error' : undefined,
+              assistantConnection,
             ),
             turnId,
             ...(mode === 'comparison' ? { analysisOnly: true } : {}),
@@ -455,7 +456,11 @@ export function usePresetCocreator({
         // A Stop or a broken stream still costs tokens. Preserve its latest snapshot.
         if (partial) {
           const received = {
-            ...assistantResponseMessage(partial, controller.signal.aborted ? 'stopped' : 'error'),
+            ...assistantResponseMessage(
+              partial,
+              controller.signal.aborted ? 'stopped' : 'error',
+              assistantConnection,
+            ),
             turnId,
             ...messageUsage(partial, assistantConnection),
           };

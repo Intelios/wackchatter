@@ -25,6 +25,24 @@ export interface ProviderToolCall {
 
 export type ProviderId = 'custom' | 'openrouter';
 
+export const PROVIDER_REASONING_FIELDS = [
+  'reasoning_content',
+  'reasoning',
+  'reasoning_text',
+] as const;
+/** Original API fields, kept apart from the display's merged/inline thought text. */
+export type ProviderReasoningFields = Partial<
+  Record<(typeof PROVIDER_REASONING_FIELDS)[number], string>
+>;
+
+/** Requested model and endpoint that own opaque reasoning/signature state. Never credentials. */
+export interface ProviderReplaySource {
+  connectionId: string;
+  modelId: string;
+  provider: ProviderId;
+  baseUrl: string;
+}
+
 /** OpenRouter's provider-routing preferences. */
 export interface OpenRouterRouting {
   /** Provider names in preference order. Sent as `provider.order`. */

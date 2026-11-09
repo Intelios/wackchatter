@@ -82,7 +82,14 @@ export function presetToolHistory(
     // that malformed/incomplete exchange itself cannot be sent. Valid exchanges keep all
     // metadata unchanged, including signatures on individual parallel calls.
     const assistant = incompleteCalls
-      ? { ...message, toolCalls: undefined, reasoningDetails: undefined, extraContent: undefined }
+      ? {
+          ...message,
+          incomplete: message.incomplete ?? ('error' as const),
+          toolCalls: undefined,
+          reasoningFields: undefined,
+          reasoningDetails: undefined,
+          extraContent: undefined,
+        }
       : message;
     if (assistant.content || calls.length) projected.push(assistant);
 

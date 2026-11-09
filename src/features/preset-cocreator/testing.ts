@@ -33,6 +33,9 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { REPORT_DEFAULT_REQUEST } from './reportWire.ts';
+
+export { REPORT_DEFAULT_REQUEST } from './reportWire.ts';
 
 /** What `{{char}}` becomes in a test with no character card, unless the user names it. */
 export const NO_CARD_DEFAULT_NAME = 'Assistant';
@@ -392,10 +395,6 @@ export function buildPresetTestReport(options: {
     ...(evidence ? { evidence } : {}),
   };
 }
-
-/** What a report says on the user's behalf when they sent it without a note. */
-export const REPORT_DEFAULT_REQUEST =
-  'Here is a test report from the testing panel. Review how the draft behaved.';
 
 /**
  * A shared report is the user's whole turn — the Co-Creator answers it directly, with no

@@ -351,6 +351,7 @@ describe('multi-choice completions', () => {
     expect(state.alternates?.[0]).toEqual({
       content: '',
       reasoning: 'Hmm',
+      reasoningFields: { reasoning: 'Hmm' },
       finishReason: 'length',
     });
   });
@@ -457,7 +458,12 @@ describe('non-streamed completions', () => {
 
     expect(state.content).toBe('first');
     expect(state.alternates).toEqual([
-      { content: 'second', reasoning: 'why', finishReason: 'stop' },
+      {
+        content: 'second',
+        reasoning: 'why',
+        reasoningFields: { reasoning: 'why' },
+        finishReason: 'stop',
+      },
       { content: 'third', reasoning: '', finishReason: 'length' },
     ]);
   });
@@ -474,6 +480,75 @@ describe('non-streamed completions', () => {
 });
 
 describe('tool calls and reasoning continuity', () => {
+  test('original reasoning fields survive streamed and complete responses, including empty strings', () => {
+    for (const name of ['reasoning', 'reasoning_content', 'reasoning_text']) {
+      const complete = parseCompletion({
+        choices: [
+          { message: { content: 'Answer', [name]: 'First second' }, finish_reason: 'stop' },
+        ],
+      });
+      expect(complete.reasoningFields).toEqual({ [name]: 'First second' });
+      const accumulator = createStreamAccumulator();
+      for (const text of ['', 'First ', 'second']) {
+        accumulator.push(frame(JSON.stringify({ choices: [{ delta: { [name]: text } }] })));
+      }
+      expect(accumulator.snapshot().reasoningFields).toEqual(complete.reasoningFields);
+      expect(accumulator.snapshot().reasoning).toBe('First second');
+      expect(
+        parseCompletion({ choices: [{ message: { content: 'Answer', [name]: '' } }] })
+          .reasoningFields,
+      ).toEqual({ [name]: '' });
+    }
+  });
+
+  test('inline thoughts remain display text and never contaminate original API reasoning', () => {
+    const state = parseCompletion({
+      choices: [
+        {
+          message: {
+            content: '<think>Inline thought</think>Answer',
+            reasoning_content: 'Original API thought',
+          },
+        },
+      ],
+    });
+    expect(state.reasoning).toContain('Inline thought');
+    expect(state.reasoningFields).toEqual({ reasoning_content: 'Original API thought' });
+    expect(
+      parseCompletion({ choices: [{ message: { content: '<think>Inline only</think>Answer' } }] })
+        .reasoningFields,
+    ).toBeUndefined();
+  });
+
+  test('reasoning aliases stay separate per choice and snapshots cannot change previous fields', () => {
+    const accumulator = createStreamAccumulator();
+    accumulator.push(
+      frame(
+        JSON.stringify({
+          choices: [
+            { index: 0, delta: { reasoning: 'Mirror', reasoning_content: 'Original' } },
+            { index: 1, delta: { reasoning_content: 'Alternate' } },
+          ],
+        }),
+      ),
+    );
+    const previous = accumulator.snapshot();
+    accumulator.push(
+      frame(JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: ' tail' } }] })),
+    );
+    expect(previous.reasoningFields).toEqual({
+      reasoning: 'Mirror',
+      reasoning_content: 'Original',
+    });
+    expect(previous.alternates?.[0]?.reasoningFields).toEqual({ reasoning_content: 'Alternate' });
+    expect(accumulator.snapshot().reasoningFields).toEqual({
+      reasoning: 'Mirror',
+      reasoning_content: 'Original tail',
+    });
+    previous.reasoningFields!.reasoning_content = 'Changed by consumer';
+    expect(accumulator.snapshot().reasoningFields?.reasoning_content).toBe('Original tail');
+  });
+
   test('Google tool signatures survive a metadata-only delta after the arguments', () => {
     const accumulator = createStreamAccumulator();
     accumulator.push(

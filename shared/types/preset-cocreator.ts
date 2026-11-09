@@ -1,6 +1,11 @@
 import type { ModelRef } from '../models/slots.ts';
 import type { JsonPatchOperation, PresetDiffEntry } from '../preset-cocreator/patch.ts';
-import type { ChatCompletionBody, ProviderToolCall } from '../providers/types.ts';
+import type {
+  ChatCompletionBody,
+  ProviderReasoningFields,
+  ProviderReplaySource,
+  ProviderToolCall,
+} from '../providers/types.ts';
 import type { WorldInfoSource } from '../worldinfo/activate.ts';
 import type { CardDataV2 } from './card.ts';
 import type { ApiMessage, ChatMessage, MacroVariableMap, Persona } from './chat.ts';
@@ -17,6 +22,10 @@ export interface PresetCocreatorMessage {
   /** Links assistant tool calls to their durable draft operation ids after interruption. */
   turnId?: string;
   reasoning?: string;
+  /** Exact API thought fields; display reasoning can also contain inline thoughts. */
+  reasoningFields?: ProviderReasoningFields;
+  /** Present even when usage reporting is off; provider state belongs to this source. */
+  providerSource?: ProviderReplaySource;
   reasoningDetails?: unknown[];
   /** Opaque provider metadata to preserve when replaying the assistant message. */
   extraContent?: Record<string, unknown>;

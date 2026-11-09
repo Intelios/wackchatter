@@ -422,3 +422,30 @@ test('incomplete assistant output and context limits survive save and reload', (
   expect(read.document.messages).toEqual(document.messages);
   expect(read.document.settings.assistant.contextTokens).toBe(65536);
 });
+
+test('original reasoning and its endpoint identity survive save and reload without provider usage', () => {
+  const session = create();
+  const document = defaultPresetCocreatorDocument();
+  document.messages = [
+    {
+      id: 'reasoning',
+      role: 'assistant',
+      content: 'Answer',
+      created: 1,
+      reasoning: 'Original API thought',
+      reasoningFields: { reasoning_content: 'Original API thought' },
+      providerSource: {
+        connectionId: 'custom',
+        modelId: 'model',
+        provider: 'custom',
+        baseUrl: 'https://example.invalid/v1',
+      },
+    },
+  ];
+  expect(
+    store.saveDocument(session.id, { expectedRevision: 0, operationId: 'reasoning', document })
+      .kind,
+  ).toBe('saved');
+  expect(store.getSession(session.id)?.document.messages).toEqual(document.messages);
+  expect(store.getSession(session.id)?.document.messages[0]?.usage).toBeUndefined();
+});
