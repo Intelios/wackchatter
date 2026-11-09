@@ -60,7 +60,9 @@ export interface UsageReport {
   model: string;
   /**
    * Prompt tokens with cached tokens already subtracted, so input and cache never
-   * double-count. Zero when the provider reported no usage at all.
+   * double-count. When the provider reported no usage this is measured from the request
+   * (and the record is `estimated`) rather than left at zero, so an input-heavy
+   * generation is never logged as nothing just because its endpoint kept quiet.
    */
   inputTokens: number;
   outputTokens: number;
@@ -69,7 +71,10 @@ export interface UsageReport {
   cacheReadTokens: number;
   durationMs: number;
   ttftMs?: number;
-  /** True when `outputTokens` is our tokenizer's guess rather than the provider's count. */
+  /**
+   * True when any count is our tokenizer's guess rather than the provider's — a partly
+   * estimated record is never priced as if it were measured.
+   */
   estimated: boolean;
   /** True when the user stopped the generation. It was still generated, and still billed. */
   outcome?: 'completed' | 'failed' | 'cancelled' | 'unknown';

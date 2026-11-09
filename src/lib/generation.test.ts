@@ -326,6 +326,8 @@ describe('runGeneration', () => {
         countText: (text) => text.split(' ').length * 10,
       },
     });
+    // reportUsage is fire-and-forget; give it a tick to land the POST before reading it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(posted.length).toBe(1);
     expect(posted[0]).toMatchObject({
@@ -335,6 +337,93 @@ describe('runGeneration', () => {
       outputTokens: 20,
       estimated: true,
     });
+  });
+
+  test('with no provider usage the prompt is measured, not logged as zero', async () => {
+    const posted: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/usage')) {
+        posted.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+    }) as unknown as typeof fetch;
+
+    const messages = [
+      { role: 'system' as const, content: 'You design characters.' },
+      { role: 'user' as const, content: 'Draft a card.' },
+    ];
+    await run({ messages }, noop, {
+      usage: { feature: 'cocreator', countText: (text) => text.length },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(posted.length).toBe(1);
+    // countText is identity-length, so the estimate is exactly the serialized prompt.
+    expect(posted[0]).toMatchObject({
+      estimated: true,
+      inputTokens: JSON.stringify(messages).length,
+    });
+  });
+
+  test('tool schemas count toward the measured prompt', async () => {
+    const posted: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/usage')) {
+        posted.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+    }) as unknown as typeof fetch;
+
+    const messages = [{ role: 'user' as const, content: 'Apply the edits.' }];
+    const tools = [
+      { type: 'function', function: { name: 'apply_edits', parameters: { type: 'object' } } },
+    ];
+    await run({ messages, tools }, noop, {
+      usage: { feature: 'presetCocreator', countText: (text) => text.length },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(posted[0]).toMatchObject({
+      inputTokens: JSON.stringify(messages).length + JSON.stringify(tools).length,
+    });
+  });
+
+  test('a turn that is only tool calls is still logged', async () => {
+    const posted: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/usage')) {
+        posted.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({
+        choices: [
+          {
+            message: {
+              content: '',
+              tool_calls: [
+                { id: 't1', type: 'function', function: { name: 'apply_edits', arguments: '{}' } },
+              ],
+            },
+          },
+        ],
+      });
+    }) as unknown as typeof fetch;
+
+    await run({ messages: [{ role: 'user' as const, content: 'Go.' }] }, noop, {
+      usage: { feature: 'presetCocreator', countText: (text) => text.length },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Not dropped: the prompt was processed and the tool JSON generated, both billed.
+    expect(posted.length).toBe(1);
+    expect(posted[0]).toMatchObject({ estimated: true });
+    expect((posted[0] as { inputTokens: number }).inputTokens).toBeGreaterThan(0);
+    expect((posted[0] as { outputTokens: number }).outputTokens).toBeGreaterThan(0);
   });
 });
 

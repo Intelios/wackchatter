@@ -59,16 +59,16 @@ export interface UsageMeta {
 }
 
 /**
- * Count a completion locally, for the case where the provider reported nothing.
+ * Count text locally, for the case where the provider reported nothing.
  *
  * Encodings are cached inside `loadCounter`, so this is one dynamic import on the first
  * generation of a session and a synchronous table lookup after that.
  */
-async function estimateOutputTokens(
+async function measure(
   text: string,
   model: string,
   countText?: (t: string) => number,
-) {
+): Promise<number> {
   if (!text) return 0;
   try {
     if (countText) return countText(text);
@@ -80,6 +80,30 @@ async function estimateOutputTokens(
     // evidence that a generation happened, and it is flagged as estimated regardless.
     return 0;
   }
+}
+
+/**
+ * Everything the request puts in front of the model: the messages and any tool schemas.
+ *
+ * Serialized rather than summed field-by-field so tool calls, tool results and provider
+ * reasoning blocks carried on the wire all land in the count — the same estimate the
+ * Preset Co-Creator sizes its own context against, so the logged prompt matches what the
+ * request was budgeted as. This is the whole prompt, which for the Co-Creators is the
+ * dominant cost and exactly what a provider-reported count would have covered; logging
+ * zero here hid almost all of their usage.
+ */
+function promptText(body: ChatCompletionBody): string {
+  const parts: string[] = [];
+  if (Array.isArray(body.messages)) parts.push(JSON.stringify(body.messages));
+  if (Array.isArray(body.tools)) parts.push(JSON.stringify(body.tools));
+  return parts.join('');
+}
+
+/** Everything the model generated: visible text, reasoning, and any tool-call JSON. */
+function completionText(state: StreamState): string {
+  const parts: string[] = [state.content, state.reasoning ?? ''];
+  if (state.toolCalls?.length) parts.push(JSON.stringify(state.toolCalls));
+  return parts.join('');
 }
 
 /**
@@ -99,11 +123,21 @@ async function reportUsage(
 ): Promise<void> {
   try {
     // Nothing generated and nothing reported: a request that failed before it began.
-    if (!state.usage && !state.content.trim()) return;
+    // A turn can be all reasoning or all tool calls with no visible text, so those count
+    // as generated too — its prompt was still processed and billed.
+    if (
+      !state.usage &&
+      !state.content.trim() &&
+      !state.reasoning?.trim() &&
+      !state.toolCalls?.length
+    ) {
+      return;
+    }
 
     const model = state.model ?? (typeof body.model === 'string' ? body.model : '');
     const usage = state.usage;
-    const reported = typeof usage?.completion_tokens === 'number';
+    const reportedInput = typeof usage?.prompt_tokens === 'number';
+    const reportedOutput = typeof usage?.completion_tokens === 'number';
     const cacheRead = usage?.cached_tokens ?? 0;
 
     const report: UsageReport = {
@@ -115,16 +149,20 @@ async function reportUsage(
       connectionId,
       model,
       // OpenAI counts cached tokens inside prompt_tokens. Subtracting here keeps input
-      // and cache additive for anyone summing the columns.
-      inputTokens: Math.max(0, (usage?.prompt_tokens ?? 0) - cacheRead),
-      outputTokens: reported
+      // and cache additive for anyone summing the columns. Without a provider count the
+      // prompt is measured instead of dropped, so an input-heavy generation is never
+      // logged as zero just because its endpoint kept quiet.
+      inputTokens: reportedInput
+        ? Math.max(0, (usage?.prompt_tokens ?? 0) - cacheRead)
+        : await measure(promptText(body), model, meta.countText),
+      outputTokens: reportedOutput
         ? (usage?.completion_tokens ?? 0)
-        : await estimateOutputTokens(state.content, model, meta.countText),
+        : await measure(completionText(state), model, meta.countText),
       reasoningTokens: usage?.reasoning_tokens ?? 0,
       cacheReadTokens: cacheRead,
       durationMs: Date.now() - timing.startedAt,
       ...(timing.ttftMs !== undefined ? { ttftMs: timing.ttftMs } : {}),
-      estimated: !reported,
+      estimated: !(reportedInput && reportedOutput),
       aborted: timing.aborted,
       outcome: timing.aborted ? 'cancelled' : state.error ? 'failed' : 'completed',
     };
