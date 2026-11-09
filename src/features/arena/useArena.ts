@@ -1,8 +1,7 @@
 /**
  * Everything the Model Arena knows and does, apart from how it looks.
  *
- * Lifted out of `ArenaShell` so the 2.x screen and the 3.0 one (`src/shell/Arena.tsx`) run on
- * the same rounds, runs, votes and tournaments. Nothing here registers persistence — the
+ * `src/shell/Arena.tsx` is the markup over it. Nothing here registers persistence — the
  * run log is session work and a verdict is one immediate POST.
  *
  * The one piece of real orchestration is `pendingRun`. A run needs the card's detail *and*
@@ -32,7 +31,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { arenaApi, characterApi, presetApi, tournamentApi } from '../../lib/api.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import { useLorebooks } from '../lore/useLorebooks.ts';
-import type { ArenaMode } from './ArenaTabs.tsx';
 import { blockedEntrantReason, eligibleContenders, resolveContenders } from './contenders.ts';
 import type { ArenaDisplay } from './display.ts';
 import { createArenaDisplay, PASSTHROUGH_DISPLAY } from './display.ts';
@@ -48,6 +46,9 @@ import { tournamentLadder } from './tournament/ladder.ts';
 import type { MatchRun } from './tournament/match.ts';
 import { tournamentNameFor } from './tournament/names.ts';
 import { useArenaRun } from './useArenaRun.ts';
+
+/** Which part of the Arena is open; Benchmark splits into open and blind runs. */
+export type ArenaMode = 'bench' | 'blind' | 'tournament' | 'board' | 'pool';
 
 /** A run waiting for its card and lorebooks to finish loading. */
 interface PendingRun {

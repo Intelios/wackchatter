@@ -1,4 +1,3 @@
-import { readablePalette } from '@shared/colors/color.ts';
 import type { DialogueColorOverride } from '@shared/types/settings.ts';
 import { useEffect, useState } from 'react';
 import { createPaletteCache } from './paletteCache.ts';
@@ -65,13 +64,6 @@ export function useAvatarPalette(url: string | null): PortraitPalette | null {
   return url ? (cache.peek(url) ?? null) : null;
 }
 
-/** Compatibility helper for callers that only need the readable primary colour. */
-export function selectAvatarColor(pixels: Uint8ClampedArray): string | null {
-  return readablePalette(selectAvatarPalette(pixels)?.colors.slice(0, 1) ?? [])[0] ?? null;
-}
-export function useAvatarColor(url: string | null): string | null {
-  return resolveSpeakerColors(true, undefined, useAvatarPalette(url)).dialogue.color;
-}
 export function resolveDialogueColor(
   enabled: boolean,
   override: DialogueColorOverride | undefined,

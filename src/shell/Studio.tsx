@@ -518,10 +518,12 @@ export function Studio({ controller }: { controller: AppController }) {
                 );
               }}
               onRenamed={(saved) => {
+                controller.characterRenamed(detail.avatar, saved.avatar);
                 setDetail(saved);
                 void refreshCards().catch(fail);
               }}
               onDeleted={() => {
+                controller.characterDeleted(detail.avatar);
                 const name = detail.card.data.name;
                 setDetail(null);
                 setOpened(null);

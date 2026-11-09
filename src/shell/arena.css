@@ -12,7 +12,6 @@
   --w3-ar-num: var(--w3-font-label, var(--w3-font-mono));
 }
 
-.wc3 .w3-ar-setup,
 .wc3 .w3-ar-cardpop {
   max-height: min(70vh, 640px);
   padding: 0;
@@ -1764,24 +1763,6 @@
   opacity: 0.4;
 }
 
-.w3-ar-chip--face {
-  padding-left: 3px;
-}
-
-.w3-ar-chip--face img {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: center 20%;
-}
-
-.w3-ar-chip--add {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
-  color: var(--w3-accent);
-}
-
 .w3-ar-chips--sm .w3-ar-chip {
   height: 26px;
   font-size: 12px;
@@ -1869,18 +1850,16 @@
   font-size: 15px;
 }
 
-/* Popovers: picking a character, Setup */
+/* The Setup page's choice popovers */
 
-.w3-ar-cardpop__body,
-.w3-ar-addcard {
+.w3-ar-cardpop__body {
   display: grid;
   gap: 8px;
   padding: 10px;
   width: 300px;
 }
 
-.w3-ar-cardpop__body input,
-.w3-ar-addcard input {
+.w3-ar-cardpop__body input {
   height: 36px;
   padding: 0 12px;
   border: 0;
@@ -1922,74 +1901,6 @@
   border-radius: 50%;
   object-fit: cover;
   object-position: center 20%;
-}
-
-.w3-ar-setup__body {
-  display: grid;
-  gap: 16px;
-  width: 420px;
-  max-width: calc(100vw - 40px);
-  padding: 16px;
-}
-
-.w3-ar-setup__body section {
-  display: grid;
-  gap: 8px;
-}
-
-.w3-ar-addcard {
-  width: auto;
-  padding: 0;
-}
-
-.w3-ar-cues {
-  display: grid;
-  gap: 6px;
-}
-
-.w3-ar-cueitem {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.w3-ar-cueitem textarea,
-.w3-ar-cueitem input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 11px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--w3-raised);
-  color: var(--w3-soft);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.45;
-  resize: vertical;
-}
-
-.w3-ar-cueitem textarea:focus,
-.w3-ar-cueitem input:focus {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
-}
-
-.w3-ar-setrow {
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  font-size: 13px;
-  color: var(--w3-soft);
-}
-
-.w3-ar-setrow > span {
-  display: grid;
-}
-
-.w3-ar-setrow small {
-  font-size: 12px;
-  color: var(--w3-faint);
 }
 
 /* ---------- Tournaments ---------- */
@@ -2358,11 +2269,6 @@
   .w3-ar-writing i {
     animation: none;
   }
-}
-
-.w3-ar-chip--face[data-gone] {
-  opacity: 0.55;
-  text-decoration: line-through;
 }
 
 /* ---------- Setup: cards and cues on their own page ---------- */

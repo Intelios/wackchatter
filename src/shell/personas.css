@@ -633,7 +633,7 @@
 }
 
 /* ---------- From a character ---------- */
-/* The converter is shared with 2.x; here it wears the tool's look. */
+/* The converter's own styles sit beside it; here it wears the tool's look. */
 
 .w3-persona--from .persona-convert {
   display: grid;

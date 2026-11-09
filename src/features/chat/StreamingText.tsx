@@ -2,6 +2,7 @@ import { Fragment, type ReactNode, useSyncExternalStore } from 'react';
 import { streamSegments } from './dialogue.ts';
 import { Reasoning } from './Reasoning.tsx';
 import type { StreamStore } from './state/streamStore.ts';
+import './StreamingText.css';
 
 /**
  * The only component that re-renders while a reply streams.

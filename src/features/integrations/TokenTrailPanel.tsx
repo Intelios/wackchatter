@@ -3,7 +3,6 @@ import './TokenTrailPanel.css';
 
 /**
  * The `tokentrail:` link for this library (and the open character), opened once on mount.
- * Shared by the 2.x panel and the 3.0 Stats screen.
  */
 export function useTokenTrailLink(character: string | null) {
   const [url, setUrl] = useState('');

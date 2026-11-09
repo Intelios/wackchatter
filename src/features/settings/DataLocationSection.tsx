@@ -24,7 +24,7 @@ export function DataLocationSection({
   unsavedPreset = false,
   bare = false,
 }: DataLocationSectionProps) {
-  // The 3.0 Settings tool places it in its own chapter, without the 2.x fold.
+  // The Settings tool places it in its own chapter, without the fold.
   const Frame = bare ? BareFrame : Section;
   const [info, setInfo] = useState<LocationInfo | null>(null);
   const [draft, setDraft] = useState('');

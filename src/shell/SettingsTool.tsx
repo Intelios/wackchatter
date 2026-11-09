@@ -5,15 +5,14 @@
  * held), your library as a card, and the sign-off at the end.
  *
  * The island's search opens a chapter on a setting (`SettingsPage.focus`), which lights up
- * for a moment. Saving is shared with 2.x: the connection editor, the background list, the
- * regex list and the data-location flow are the same components and hooks.
+ * for a moment. The connection editor, the background list, the regex list and the
+ * data-location flow are shared components and hooks from `src/features`.
  */
 
 import type { Connection } from '@shared/providers/types.ts';
 import type { LocationInfo } from '@shared/types/location.ts';
 import { DEFAULT_DIALOGUE_COLORS, type SettingsResponse } from '@shared/types/settings.ts';
 import { useEffect, useRef, useState } from 'react';
-import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController, SettingsChapter } from '../app/useAppController.ts';
 import { EFFECTS, type EffectId } from '../features/backgrounds/effects.ts';
 import { ParticleLayer } from '../features/backgrounds/ParticleLayer.tsx';
@@ -47,13 +46,7 @@ import {
 } from './settings.ts';
 import './settings.css';
 
-export function SettingsTool({
-  controller,
-  onUiChoice,
-}: {
-  controller: AppController;
-  onUiChoice: (choice: UiChoice) => void;
-}) {
+export function SettingsTool({ controller }: { controller: AppController }) {
   const page = controller.settingsPage ?? { chapter: 'connections' as const, focus: null };
   const { setSettingsPage } = controller;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -99,7 +92,7 @@ export function SettingsTool({
         {page.chapter === 'look' ? <Look controller={controller} /> : null}
         {page.chapter === 'text' ? <Text controller={controller} /> : null}
         {page.chapter === 'library' ? <Library controller={controller} /> : null}
-        {page.chapter === 'hood' ? <Hood controller={controller} onUiChoice={onUiChoice} /> : null}
+        {page.chapter === 'hood' ? <Hood controller={controller} /> : null}
       </section>
     </div>
   );
@@ -757,13 +750,7 @@ const WHATS_NEW = [
   'Group chats are gone; the Arena and Tournament stay',
 ];
 
-function Hood({
-  controller,
-  onUiChoice,
-}: {
-  controller: AppController;
-  onUiChoice: (choice: UiChoice) => void;
-}) {
+function Hood({ controller }: { controller: AppController }) {
   const { settings, patchUserSettings: patch } = controller.app;
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [news, setNews] = useState(false);
@@ -843,11 +830,6 @@ function Hood({
             on={Boolean(settings?.usageLog)}
             onChange={(usageLog) => patch({ usageLog })}
           />
-        </Row>
-        <Row title="The 2.x interface" hint="While 3.0 is finished · Ctrl+Shift+U" setting="legacy">
-          <button type="button" className="w3-set__ghost" onClick={() => onUiChoice('legacy')}>
-            Switch
-          </button>
         </Row>
       </Group>
 

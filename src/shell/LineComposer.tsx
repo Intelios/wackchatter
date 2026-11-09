@@ -2,7 +2,7 @@
  * The Line: the 3.0 composer. No box. You write on one line of light in your persona's
  * colour, which brightens while you write and breathes while a reply comes in.
  *
- * The draft stays private here, the bargain the 2.x composer made: the chat only ever
+ * The draft stays private here: the chat only ever
  * sees text handed to `onSend`, `onGuide` or `onGuidedSwipe`, and `insert`/`replace` are
  * the only ways in. Slash commands and `{{macros}}` complete inline; what you type is
  * coloured the way the chat will show it (live ink). Every action is one click or typed.

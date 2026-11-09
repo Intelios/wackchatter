@@ -155,8 +155,8 @@ export function ConnectionPanel({
 
 /**
  * The fields of one connection: name, provider, endpoint, key and custom headers, with
- * delete (two clicks) and, where asked, a test. Shared by the 2.x panel and the 3.0 Settings
- * tool; keyed by connection id at the call site, so drafts never cross over.
+ * delete (two clicks) and, where asked, a test. Keyed by connection id at the call site,
+ * so drafts never cross over.
  *
  * Every write goes through the server's per-connection endpoints and every async result is
  * checked against the connection that asked, so nothing captured on one can land on another.

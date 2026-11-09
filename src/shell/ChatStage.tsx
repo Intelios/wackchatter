@@ -1,8 +1,7 @@
 /**
  * The chat itself: the transcript and the Line, centred in the scene.
  *
- * Markup over the shared chat surface (`useChatSurface`), the same behaviour the 2.x
- * `ChatView` renders, so the two interfaces cannot drift while both exist.
+ * Markup over the chat surface (`useChatSurface`), which holds the behaviour.
  */
 
 import type { Persona } from '@shared/types/chat.ts';

@@ -1,8 +1,7 @@
 /**
  * Everything a chat surface knows and does, apart from its markup.
  *
- * The 2.x `ChatView` and the 3.0 shell's chat stage render the same conversation in two
- * different ways; this hook is the one copy of what they share: the sliding transcript
+ * The chat stage is markup over this hook, which holds the sliding transcript
  * window and its scroll protocol, `/jump`, slash commands, the send path, impersonation,
  * the recap's run, the card reader's state, the render-only text pass (greeting macros,
  * then regex scripts), and the stable per-row callbacks the memoised rows depend on.
@@ -18,7 +17,6 @@ import type { RegexScript } from '@shared/types/regex.ts';
 import { REGEX_PLACEMENT } from '@shared/types/regex.ts';
 import type { DialogueColorSettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { RightPanelId } from '../../layout/panels.tsx';
 import { characterApi } from '../../lib/api.ts';
 import { matchPersonaByName, personaDisplayName } from '../persona/personaRoster.ts';
 import { needsPortrait, resolveDialogueColor, useAvatarPalette } from './avatarColor.ts';
@@ -38,7 +36,7 @@ export interface ChatSurfaceOptions {
   personas: Persona[];
   onSelectPersona: (id: string | null) => void;
   /** Where `/persona` with no name sends you. */
-  onOpenPanel: (panel: RightPanelId) => void;
+  onOpenPersonas: () => void;
   /** The card's `creator_notes` as stored; macros are resolved here. */
   creatorNotes: string;
   card: CardDataV2 | null;
@@ -55,7 +53,7 @@ export function useChatSurface({
   characterAvatarVersion,
   personas,
   onSelectPersona,
-  onOpenPanel,
+  onOpenPersonas,
   creatorNotes,
   card,
   onEditCharacter,
@@ -293,7 +291,7 @@ export function useChatSurface({
         // would be recorded onto every message sent afterwards.
         case 'persona': {
           if (!command.query) {
-            onOpenPanel('persona');
+            onOpenPersonas();
             return null;
           }
           if (command.query.toLowerCase() === 'none') {
@@ -347,7 +345,7 @@ export function useChatSurface({
       impersonate,
       jumpTo,
       openCardReader,
-      onOpenPanel,
+      onOpenPersonas,
       onSelectPersona,
       personas,
       snapToEnd,

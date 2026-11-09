@@ -250,7 +250,7 @@ export function Duel({
   );
 }
 
-/** 1/2/3/4 (and the 2.x keys = and 0) vote; Enter or Space moves on; Escape stops. */
+/** 1/2/3/4 (and = and 0) vote; Enter or Space moves on; Escape stops. */
 export function useDuelKeys({
   canVote,
   ties,

@@ -161,7 +161,7 @@
   border-style: dashed;
 }
 
-/* The message text: the 2.x markdown renderer, set in the shell's voice. */
+/* The message text: the shared markdown renderer, set in the shell's voice. */
 .wc3 .message__text {
   font-family: var(--w3-font);
   font-size: 16px;

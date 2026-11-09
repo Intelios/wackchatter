@@ -79,34 +79,6 @@
   gap: var(--wc-space-3);
 }
 
-.list-field__row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wc-space-2);
-  padding: var(--wc-space-2);
-  margin-bottom: var(--wc-space-2);
-  border: 1px solid var(--wc-border);
-  border-radius: var(--wc-radius);
-}
-
-.list-field__row .wc-button {
-  align-self: flex-end;
-}
-
-.list-field__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--wc-space-2);
-  margin-bottom: var(--wc-space-2);
-}
-
-/* The per-row expand button already gets its margin from the label-line rule; inside a
-   row with no block label it should sit flush. */
-.list-field__head .field__expand {
-  margin-bottom: 0;
-}
-
 .tag-field__control {
   display: flex;
   align-items: center;

@@ -287,8 +287,11 @@ boundary.
 
 **State and markup are apart.** `src/app/useAppController.ts` holds everything the app knows and
 does — settings (`useAppSettings`, defaults and slot resolution in the pure `settingsView.ts`),
-the library, the trash bin, navigation — and `src/app/LegacyShell.tsx` is markup over it. The
-3.0 shell replaces `LegacyShell` in `App.tsx`. `useChat` is likewise a composer over
+the library, the trash bin, navigation — and `src/shell/Shell.tsx` is markup over it, one screen
+per `view` (the chat or home, the Studio, the Co-Creators, the Arena, Stats). The 2.x interface
+is gone; the components it shared with 3.0 (connection editor, regex list, lorebook editor,
+popovers) stay in `src/features` with their base CSS beside them, and `.wc3` rules in
+`src/shell` restyle them. `useChat` is likewise a composer over
 `useChatSession`, `useChatGeneration`, `useChatSummary` and `useChatLifecycle`, with the pure parts
 in `chatRequest.ts` and `summary/request.ts` / `summary/coverage.ts`. Every navigation that leaves the chat stops
 generation, flushes saves, and refuses to move if a flush fails.
@@ -299,9 +302,9 @@ generation, flushes saves, and refuses to move if a flush fails.
   inside popups pass `preventScroll: true`.
 - **No blocking modals.** Destructive actions confirm with two clicks in place. Disabled beats
   refused: a blocked entry is `disabled` with a `disabledReason` title.
-- Panels are **multi-destination, routed by a panel id**, not open/closed plus tab.
-- **Presets save explicitly, characters autosave.** The preset draft (`usePresetDraft`) lives above
-  the left panel's router.
+- The margin is **multi-destination, routed by a tool id** (`ToolId`), not open/closed plus tab.
+- **Presets save explicitly, characters autosave.** The preset draft (`usePresetDraft`) lives in
+  the app controller, above every screen, so closing a tool never hides unsaved edits.
 - Slash commands parse in `slashCommands.ts` before `chat.send`; a command-shaped line that fails
   to parse is an **error, never a silent send**.
 - Error boundaries wrap the root and each shell region.
@@ -323,8 +326,8 @@ rounds score; `bad` moves no ratings and ties lift both by `TIE_BONUS`. Pairing 
 Assemble once per run and send identical messages to every contender. Merging is a lens on
 history, never an edit. Nothing identifying reaches the DOM while masked — names, models,
 timings, cost, colour, and a failed reply's provider error. What the Arena knows and does is
-`useArena` (`src/features/arena/useArena.ts`), shared by the 2.x screen and the 3.0 one
-(`src/shell/Arena.tsx`: Leaderboard, Benchmark with a Blind switch, Tournaments; the pool on
+`useArena` (`src/features/arena/useArena.ts`), with `src/shell/Arena.tsx` as its markup
+(Leaderboard, Benchmark with a Blind switch, Tournaments; the pool on
 the island). Each blind round records its sides' tokens, time and connection in
 `arena_round_usage` (schema 15, from 3.0 on; older rounds have none, nothing estimates them),
 priced at the catalogue when shown. The leaderboard's stats (`src/shell/arenaStats.ts`) and

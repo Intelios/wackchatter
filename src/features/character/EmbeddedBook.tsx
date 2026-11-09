@@ -42,8 +42,7 @@ export interface EmbeddedBookProps {
 
 /**
  * The card book's writer: the entries with edits still in flight laid over them, and one
- * function per kind of change. The Studio and the 2.x character editor both use it, so an
- * entry saves the same way whichever screen it was edited from.
+ * function per kind of change.
  */
 export function useEmbeddedBook({
   avatar,

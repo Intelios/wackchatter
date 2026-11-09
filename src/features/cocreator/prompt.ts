@@ -123,17 +123,3 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
     fixedOverflow,
   };
 }
-
-/**
- * Render the stash as the body of a visible user turn.
- *
- * The stash is never appended to the prompt automatically: it is the user's editorial
- * decision rather than conversational context, re-sending it doubles the cost of text the
- * model just wrote, and a model shown its own filed output tends to restate it. When the
- * user does want the model to see where things stand, this becomes a turn they can read.
- */
-export function renderStashRequest(slots: readonly { label: string; text: string }[]): string {
-  if (slots.length === 0) return 'Nothing is filed into the card yet.';
-  const body = slots.map((slot) => `${slot.label}:\n${slot.text}`).join('\n\n');
-  return `Here is what I have filed into the card so far. Use it as the current state — do not restate it back to me unless I ask.\n\n${body}`;
-}

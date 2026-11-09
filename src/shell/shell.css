@@ -7,8 +7,7 @@
  * and how vivid it is. Your persona has its own pair (--w3-ph, --w3-pc) for the parts of
  * the screen that are yours: the composer, your messages, your speech.
  *
- * Scoped to `.wc3` so the 2.x interface, which shares the page while the rebuild is in
- * progress, keeps its own tokens untouched.
+ * Scoped to `.wc3`, the shell's root, so the tokens.css values stay the defaults under it.
  */
 
 @property --w3-h {
@@ -147,9 +146,9 @@
   --w3-column: 740px;
 
   /*
-   * The bridge: the 2.x panels hosted in the margin, and the popups that portal into this
-   * root, read the 2.x tokens. Pointing those at the Aura here makes them wear the
-   * character's colour and the shell's type until each is redesigned.
+   * The shared components hosted in the margin, and the popups that portal into this
+   * root, read the tokens.css names. Pointing those at the Aura here makes them wear the
+   * character's colour and the shell's type.
    */
   --wc-font: var(--w3-font);
   --wc-bg: var(--w3-bg);
@@ -167,9 +166,7 @@
   --wc-accent-text: var(--w3-accent-ink);
   --wc-accent-subtle: var(--w3-accent-soft);
   --wc-accent-border: var(--w3-accent-line);
-  --wc-accent-glow: oklch(0.77 calc(0.15 * var(--w3-c)) var(--w3-h) / 0.16);
   --wc-accent-selection: oklch(0.77 calc(0.15 * var(--w3-c)) var(--w3-h) / 0.3);
-  --wc-dialogue-default: var(--w3-dialogue);
   --wc-danger: var(--w3-danger);
 
   position: fixed;

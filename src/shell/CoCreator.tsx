@@ -6,7 +6,7 @@
  * Studio's desk: the one you were last on, big, the rest under it. The colour is the app's
  * own lime, the colour of making something; a new card has no portrait to take one from.
  *
- * The Preset Co-Creator is its own thing and still draws in the 2.x shell.
+ * The Preset Co-Creator is its own screen (`PresetCoCreator.tsx`).
  */
 
 import './studio.css';

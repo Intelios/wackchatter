@@ -314,10 +314,8 @@ interface PickerStepProps {
 /**
  * A searchable row list, not a popover.
  *
- * The Arena's medallion picker is not reused: its every class name is `arena-*` with the
- * styles in `ArenaShell.css`, its trigger hardcodes a VS badge and Arena wording, and it does
- * not honour `hiddenTags`. The part that could meaningfully drift — what matches a query,
- * which tags are visible — is `characterTree.ts`, and that *is* shared.
+ * The part that could meaningfully drift from the other character pickers (what matches a
+ * query, which tags are visible) is `characterTree.ts`, and that is shared.
  */
 function PickerStep({ characters, hiddenTags, query, onQuery, onPick, onClose }: PickerStepProps) {
   const searchRef = useRef<HTMLInputElement>(null);

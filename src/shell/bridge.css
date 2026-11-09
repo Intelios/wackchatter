@@ -1,8 +1,8 @@
 /*
- * 2.x popups that the 3.0 screens still host: creator notes, quick commands, example sets
- * and guides. Their behaviour is shared with 2.x; here they wear the 3.0 popup: the
- * island's material, display type for names, small caps for labels, pill buttons and
- * borderless fields. Scoped to `.wc3`, so the 2.x screens keep their own look.
+ * The older shared popups: creator notes, quick commands, example sets and guides. Their
+ * base styles sit beside each component; here they wear the shell's popup: the island's
+ * material, display type for names, small caps for labels, pill buttons and borderless
+ * fields.
  */
 
 .wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) {
@@ -336,7 +336,7 @@
 }
 
 /* ---------- The Nexus explorer ----------
- * Same layout as 2.x (map first, HUD pills, the dock, cards on nodes); the chrome wears
+ * Map first, HUD pills, the dock, cards on nodes; the chrome wears
  * the island's material and the 3.0 type. */
 
 .wc3 .nexus {

@@ -1,14 +1,12 @@
 /**
  * The tools the island's wings open into the margin, and what each one shows.
  *
- * For now each tool hosts the 2.x panel that already does the job, so nothing goes missing
- * while the shell is new. Restyling them one by one in the programme style is the sub-app
- * work that follows; the wiring here is what LegacyShell passes the same panels.
+ * Each tool is its own screen; the few shared components they host (the connection
+ * editor, the regex list) are wired here.
  */
 
 import { PROVIDERS } from '@shared/providers/types.ts';
 import { useMemo } from 'react';
-import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
 import { characterApi } from '../lib/api.ts';
@@ -166,12 +164,10 @@ export function toolSubtitle(id: ToolId, controller: AppController): string {
 export function MarginTool({
   id,
   controller,
-  onUiChoice,
   onOpenTool,
 }: {
   id: ToolId;
   controller: AppController;
-  onUiChoice: (choice: UiChoice) => void;
   /** Move the margin to another tool, for links between them. */
   onOpenTool?: (id: ToolId) => void;
 }) {
@@ -206,7 +202,6 @@ export function MarginTool({
       }
       return (
         <CharacterList
-          look="strips"
           crops={prefs.characterCrops}
           characters={characters}
           folders={library.folders}
@@ -301,7 +296,7 @@ export function MarginTool({
     case 'memory':
       return <MemoryTool controller={controller} />;
     case 'settings':
-      return <SettingsTool controller={controller} onUiChoice={onUiChoice} />;
+      return <SettingsTool controller={controller} />;
     case 'inspect':
       return <InspectMargin controller={controller} onOpenTool={onOpenTool} />;
   }

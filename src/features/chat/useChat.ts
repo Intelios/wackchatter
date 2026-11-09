@@ -14,7 +14,6 @@
  * through the store and never touches React state.
  */
 
-import type { MessageState } from '@shared/chat/message.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '@shared/nexus/types.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
@@ -330,12 +329,4 @@ export function useChat(options: UseChatOptions): UseChat {
 
     ...lifecycle,
   };
-}
-
-/** The last assistant message, which is the only swipeable/continuable one. */
-export function lastAssistant(messages: MessageState[]): MessageState | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (!messages[i]!.is_user) return messages[i]!;
-  }
-  return null;
 }

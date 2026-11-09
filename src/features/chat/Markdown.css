@@ -1,0 +1,68 @@
+/* A rendered message: paragraphs, emphasis, code, quotes and tables. */
+
+.message__text {
+  font-size: var(--wc-text-base);
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.message__text > :first-child {
+  margin-top: 0;
+}
+
+.message__text > :last-child {
+  margin-bottom: 0;
+}
+
+.message__text p {
+  margin: 0 0 var(--wc-space-3);
+}
+
+.message__text em {
+  color: var(--wc-text-muted);
+}
+
+.message__text pre {
+  padding: var(--wc-space-3);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-surface);
+  border: 1px solid var(--wc-border);
+  overflow-x: auto;
+}
+
+.message__text code {
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+}
+
+.message__text :not(pre) > code {
+  margin: 0 3px;
+  padding: 0.2em 0.4em;
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-code-bg);
+  color: var(--wc-code-color);
+  font-size: 85%;
+  letter-spacing: 0.8px;
+  line-height: normal;
+  white-space: pre-wrap;
+}
+
+.message__text blockquote {
+  margin: 0 0 var(--wc-space-3);
+  padding-left: var(--wc-space-3);
+  border-left: 2px solid var(--wc-border-strong);
+  color: var(--wc-text-muted);
+}
+
+.message__text table {
+  border-collapse: collapse;
+  font-size: var(--wc-text-sm);
+}
+
+.message__text th,
+.message__text td {
+  padding: var(--wc-space-1) var(--wc-space-2);
+  border: 1px solid var(--wc-border);
+  text-align: left;
+}

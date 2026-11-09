@@ -325,7 +325,7 @@ function BlindRoom({
 
 /**
  * Why no round can be drawn, said where 3.0 keeps the fix: models are in the pool on the
- * island, characters and cues in Setup. The reasons come from the engine shared with 2.x.
+ * island, characters and cues in Setup. The reasons come from the engine (`useArena`).
  */
 function Blocked({
   reason,

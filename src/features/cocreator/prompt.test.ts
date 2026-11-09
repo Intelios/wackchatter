@@ -3,12 +3,7 @@ import { assistantPlaceholder, type MessageState, userMessage } from '@shared/ch
 import { emptyStash, setSlot } from '@shared/cocreator/stash.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { StashProvenance } from '@shared/types/cocreator.ts';
-import {
-  ANALYSE_EXAMPLES_REQUEST,
-  buildDesignPrompt,
-  isAnalyseRequest,
-  renderStashRequest,
-} from './prompt.ts';
+import { ANALYSE_EXAMPLES_REQUEST, buildDesignPrompt, isAnalyseRequest } from './prompt.ts';
 
 /** One token per word, plus a fixed envelope per message and one for reply priming. */
 const words: TokenCounter = {
@@ -122,20 +117,6 @@ describe('the stash never reaches the model on its own', () => {
     // buildDesignPrompt takes no stash parameter at all — this asserts the consequence.
     expect(JSON.stringify(prompt.messages)).not.toContain('UNIQUESTASHMARKER');
     expect(Object.keys(stash)).toContain('description');
-  });
-
-  test('showing the model the stash produces text for a visible user turn', () => {
-    const request = renderStashRequest([
-      { label: 'Description', text: 'Tall and tired.' },
-      { label: 'First message', text: 'The lamp room is cold.' },
-    ]);
-
-    expect(request).toContain('Description:\nTall and tired.');
-    expect(request).toContain('First message:\nThe lamp room is cold.');
-  });
-
-  test('an empty stash still renders something sayable', () => {
-    expect(renderStashRequest([])).toBe('Nothing is filed into the card yet.');
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * The Preset tool: the 2.x Prompts and Generation panels as one.
+ * The Preset tool: the prompts and the generation settings in one place.
  *
  * What's sent (the prompt order) comes first, since prompt text is what gets changed most;
  * how it's sent (the chat model, samplers, context, wording) sits below it. A bar above

@@ -57,7 +57,7 @@ export function ArenaTournaments({
     if (latest) setTournamentId(latest.id);
   }, [tournamentId, creating, tournaments, setTournamentId]);
 
-  // The engine's wording is 2.x's ("contenders"); 3.0 calls them models in the pool.
+  // The engine says "contenders"; the screen calls them models in the pool.
   const blockedReason = arena.tournamentBlockedReason
     ? /contenders/.test(arena.tournamentBlockedReason)
       ? `A tournament needs at least 4 models switched on in the pool. You have ${arena.eligible.length}.`

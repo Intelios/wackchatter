@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ArenaRound, Verdict } from '@shared/types/arena.ts';
-import { allPairings, headToHead, matchupOf, unplayedPairings, winRate } from './matchups.ts';
+import { headToHead, matchupOf, winRate } from './matchups.ts';
 
 let clock = 0;
 
@@ -80,29 +80,5 @@ describe('winRate', () => {
 
   test('a clean sweep is 1', () => {
     expect(winRate({ wins: 3, losses: 0, ties: 0, played: 3, rejected: 0 })).toBe(1);
-  });
-});
-
-describe('pairings', () => {
-  test('enumerates each unordered pair once', () => {
-    expect(allPairings(['a', 'b', 'c'])).toEqual([
-      ['a', 'b'],
-      ['a', 'c'],
-      ['b', 'c'],
-    ]);
-  });
-
-  test('a single entrant has no pairings', () => {
-    expect(allPairings(['a'])).toEqual([]);
-  });
-
-  test('counts the pairings still to be played', () => {
-    const table = headToHead([round('a', 'b', 'left')]);
-    expect(unplayedPairings(table, ['a', 'b', 'c'])).toBe(2);
-  });
-
-  test('a rejected round leaves the pairing unplayed, because it settled nothing', () => {
-    const table = headToHead([round('a', 'b', 'bad')]);
-    expect(unplayedPairings(table, ['a', 'b'])).toBe(1);
   });
 });

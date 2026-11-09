@@ -44,7 +44,7 @@
   }
 }
 
-.popover[data-side="bottom"] .popover__popup {
+.popover[data-side="bottom"] > .popover__popup {
   animation-name: wc-pop-in-down;
 }
 
@@ -65,19 +65,20 @@
 /*
  * Side and alignment are independent, because the side can flip at runtime when the
  * preferred one has no room (see the layout effect in Popover.tsx) while the alignment
- * never changes. Four combinations, two rules each.
+ * never changes. Four combinations, two rules each. Child selectors, so a popup opened
+ * inside another one takes only its own side, never its host's as well.
  */
-.popover[data-side="top"] .popover__popup {
+.popover[data-side="top"] > .popover__popup {
   bottom: 100%;
   margin-bottom: var(--wc-space-1);
 }
 
-.popover[data-side="bottom"] .popover__popup {
+.popover[data-side="bottom"] > .popover__popup {
   top: 100%;
   margin-top: var(--wc-space-1);
 }
 
-.popover[data-align="start"] .popover__popup {
+.popover[data-align="start"] > .popover__popup {
   left: 0;
 }
 
@@ -85,7 +86,7 @@
  * Right-aligned so the popup grows inward, away from the edge it is anchored to. Growing
  * outward would push it under the scroll container's `overflow-x: hidden`.
  */
-.popover[data-align="end"] .popover__popup {
+.popover[data-align="end"] > .popover__popup {
   right: 0;
 }
 

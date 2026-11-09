@@ -32,7 +32,6 @@ import {
   restartPresetTest,
   selectPresetTestSwipe,
   settlePresetTestGeneration,
-  summarizeReport,
   updateProposedTest,
 } from './testing.ts';
 
@@ -655,7 +654,6 @@ describe('shared reports', () => {
     expect(batch.reports[1]!.transcript?.at(-1)?.mes).toBe('second reply');
     expect(batch.reports[0]!.presetUsed?.revision).toBe(4);
     expect(batch.reports[1]!.presetUsed?.version).toBe('version-two');
-    expect(summarizeReport(batch.reports[1]!, []).replyNumber).toBe(2);
   });
 
   test('a report is an immutable attachment: later edits do not rewrite it', () => {
@@ -765,74 +763,6 @@ describe('shared reports', () => {
     });
 
     expect(reportConversationMessage(report).content.startsWith(REPORT_DEFAULT_REQUEST)).toBe(true);
-  });
-
-  test('summarizeReport names the test, the reply and the revision it was shared through', () => {
-    const { settled } = sharedTest();
-    const report = buildPresetTestReport({
-      test: settled,
-      throughMessageId: settled.messages.at(-1)!.id,
-      note: '',
-      includeTranscript: true,
-      includePrompt: false,
-      includeDiagnostics: true,
-    });
-
-    expect(summarizeReport(report, [settled])).toEqual({
-      testTitle: settled.title,
-      // The greeting is not a generated reply, so the first answer is reply 1.
-      replyNumber: 1,
-      revision: 4,
-      sections: ['conversation', 'diagnostics'],
-    });
-  });
-
-  test('summarizeReport reads what was shared, not what the test became', () => {
-    const { settled } = sharedTest();
-    const replyId = settled.messages.at(-1)!.id;
-    const report = buildPresetTestReport({
-      test: settled,
-      throughMessageId: replyId,
-      note: '',
-      includeTranscript: true,
-      includePrompt: false,
-      includeDiagnostics: false,
-    });
-    // The test is deleted afterwards: the transcript the report carries still answers.
-    const summary = summarizeReport(report, []);
-    expect(summary.testTitle).toBe(settled.title);
-    expect(summary.replyNumber).toBe(1);
-    expect(summary.revision).toBe(4);
-  });
-
-  test('summarizeReport falls back to the evidence revision and admits what it cannot know', () => {
-    const { settled } = sharedTest();
-    const report = buildPresetTestReport({
-      test: settled,
-      throughMessageId: settled.messages.at(-1)!.id,
-      note: '',
-      includeTranscript: false,
-      includePrompt: false,
-      includeDiagnostics: true,
-    });
-    // No transcript and no live test: the reply is unknown, the evidence still dates it.
-    const summary = summarizeReport(report, []);
-    expect(summary.replyNumber).toBeNull();
-    expect(summary.revision).toBe(4);
-  });
-
-  test('a report through the greeting is reply 0', () => {
-    const test = createPresetTest(scenario());
-    const report = buildPresetTestReport({
-      test,
-      throughMessageId: test.messages[0]!.id,
-      note: '',
-      includeTranscript: true,
-      includePrompt: false,
-      includeDiagnostics: false,
-    });
-    expect(summarizeReport(report, [test]).replyNumber).toBe(0);
-    expect(summarizeReport(report, [test]).revision).toBeNull();
   });
 
   test('a message that is not in the test cannot anchor a report', () => {

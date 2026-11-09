@@ -5,6 +5,7 @@ import { Popover } from '../../components/Popover.tsx';
 import { EditIcon, LayersIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { characterApi } from '../../lib/api.ts';
 import { addExampleSet, removeExampleSet, updateExampleSet } from './exampleSets.ts';
+import './ExampleSetsPopover.css';
 
 interface ExampleSetsPopoverProps {
   sets: readonly ExampleSet[];

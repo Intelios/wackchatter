@@ -7,7 +7,7 @@
  * lives on the island, picked the way models are picked everywhere else. Lime is the
  * Arena's colour.
  *
- * Everything it knows and does is `useArena`, shared with the 2.x screen.
+ * Everything it knows and does is `useArena`.
  */
 
 import './studio.css';

@@ -483,55 +483,6 @@ export function batchConversationMessage(batch: PresetTestBatch): PresetCocreato
 
 export type ReportSection = 'conversation' | 'assembled prompt' | 'diagnostics';
 
-export interface ReportSummary {
-  /** Null when the test has since been deleted from the session. */
-  testTitle: string | null;
-  /** Which generated reply the report runs up to; 0 means the greeting; null if unknown. */
-  replyNumber: number | null;
-  /** The draft revision that produced that reply, when it is known. */
-  revision: number | null;
-  sections: ReportSection[];
-}
-
-/**
- * The one-line account of a report the conversation shows in place of its JSON.
- *
- * Read from the report's own transcript when it carries one — that is what was shared,
- * however the test has moved on since — and from the live test otherwise. Only generated
- * replies count: the greeting carries no preset revision, so it is reply 0, not reply 1.
- */
-export function summarizeReport(
-  report: PresetTestReport,
-  tests: readonly PresetTest[],
-): ReportSummary {
-  const test = tests.find((entry) => entry.id === report.testId) ?? null;
-  const messages = report.transcript ?? test?.messages ?? [];
-  const index = messages.findIndex((message) => message.id === report.throughMessageId);
-  const through = index >= 0 ? messages[index] : undefined;
-  const generated = (message: ChatMessage) =>
-    !message.is_user &&
-    (typeof message.extra?.preset_revision === 'number' ||
-      typeof message.extra?.preset_test_evidence_id === 'string');
-
-  const revision = report.presetUsed ? report.presetUsed.revision : through?.extra?.preset_revision;
-  const sections: ReportSection[] = [];
-  if (report.includeTranscript) sections.push('conversation');
-  if (report.includePrompt) sections.push('assembled prompt');
-  if (report.includeDiagnostics) sections.push('diagnostics');
-
-  return {
-    testTitle: report.testTitle ?? test?.title ?? null,
-    replyNumber: through ? messages.slice(0, index + 1).filter(generated).length : null,
-    revision:
-      typeof revision === 'number'
-        ? revision
-        : report.presetUsed
-          ? null
-          : (report.evidence?.draftRevision ?? null),
-    sections,
-  };
-}
-
 export function updateProposedTest(
   proposals: ProposedPresetTest[],
   id: string,

@@ -1,7 +1,6 @@
 /**
  * Everything a persona editor does besides drawing: the draft, autosave, create, variants,
- * the portrait and delete. Shared by the 2.x panel and the 3.0 Personas tool, so the two
- * cannot disagree about how a persona is saved.
+ * the portrait and delete.
  *
  * Which persona is open is the caller's state (`editing`), because the 3.0 shell names the
  * open persona in the margin's heading, outside the tool.

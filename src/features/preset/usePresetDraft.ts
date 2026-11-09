@@ -2,11 +2,11 @@
  * The working copy of the active preset, and everything that decides what may be done to
  * it while there are unsaved edits.
  *
- * This lives above the left panel's router rather than inside a panel, because the left
- * side is now four panels that all edit the same preset. If `dirty` lived in one of them,
- * editing a sampler and then clicking Connection would unmount the Save/Revert bar: the
- * edits would still be sitting in App's `preset` state, but the only affordance for
- * saving them would be gone and the app would look saved. Losing work silently is worse
+ * This lives in the app controller rather than inside a tool, because several screens
+ * read the same preset. If `dirty` lived in one of them, closing that tool would unmount
+ * the Save/Revert bar: the edits would still be sitting in the controller's `preset`
+ * state, but the only affordance for saving them would be gone and the app would look
+ * saved. Losing work silently is worse
  * than losing it loudly.
  */
 

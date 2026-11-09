@@ -1,4 +1,4 @@
-import { diffPreset, type PresetDiffEntry } from '@shared/preset-cocreator/patch.ts';
+import { diffPreset } from '@shared/preset-cocreator/patch.ts';
 import type { Preset, Prompt, PromptOrderEntry, PromptOrderList } from '@shared/types/preset.ts';
 import { PROMPT_ORDER_LEGACY_ID, PROMPT_ORDER_LIVE_ID } from '@shared/types/preset.ts';
 
@@ -285,29 +285,6 @@ export function describePresetChanges(before: Preset, after: Preset): PresetChan
     .filter((key) => key !== 'prompts' && key !== 'prompt_order')
     .flatMap((key) => fieldChanges(key, settingLabel(key), before[key], after[key]));
   return [...promptChanges(before, after), ...orderChanges(before, after), ...settings];
-}
-
-/**
- * The fallback when the two presets are not at hand: the stored diff, one row per entry,
- * with prompt indices resolved to names against `preset` when it is given.
- */
-export function describeDiffEntries(
-  diff: readonly PresetDiffEntry[],
-  preset?: Preset,
-): PresetChange[] {
-  return diff.map((entry, index): PresetChange => {
-    const segments = entry.path.split('/').filter(Boolean);
-    let label = segments.map(humanize).join(' › ') || 'Preset';
-    if (segments[0] === 'prompts' && segments[1] !== undefined && preset) {
-      const prompt = promptsOf(preset)[Number(segments[1])];
-      if (prompt) {
-        label = [promptName(prompt), ...segments.slice(2).map(promptFieldLabel)].join(' › ');
-      }
-    } else if (segments.length === 1) {
-      label = settingLabel(segments[0]!);
-    }
-    return leafChange(`${entry.path}:${index}`, label, entry.before, entry.after);
-  });
 }
 
 /** A plain value as a reader wants it: on/off, numbers as written, objects compact. */

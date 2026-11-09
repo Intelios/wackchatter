@@ -93,29 +93,6 @@ export function drawable(canonical: ReadonlyMap<string, string>, id: string): bo
   return canonicalId(canonical, id) === id;
 }
 
-/**
- * Every pool entry grouped by the identity it counts under.
- *
- * Two entries under one root is a merge, and the pair is what the UI names — "Sonnet (A) +
- * Sonnet (B)" reads as a model with two providers, where an unqualified single row on a
- * board that says nothing about the fold would just look like the other one vanished.
- * Only pool entries are listed: a folded contender deleted from the pool still contributes
- * its rounds, but there is no row left to name.
- */
-export function mergeGroups(
-  contenders: readonly Contender[],
-  canonical: ReadonlyMap<string, string>,
-): Map<string, Contender[]> {
-  const groups = new Map<string, Contender[]>();
-  for (const contender of contenders) {
-    const root = canonicalId(canonical, contender.id);
-    const members = groups.get(root);
-    if (members) members.push(contender);
-    else groups.set(root, [contender]);
-  }
-  return groups;
-}
-
 /** One side folded to its canonical id, for a round that has not been recorded yet. */
 export function canonicalSide(canonical: ReadonlyMap<string, string>, side: RoundSide): RoundSide {
   const contenderId = canonicalId(canonical, side.contenderId);

@@ -65,11 +65,6 @@ interface CharacterListProps {
   onEdit: (avatar: string) => void;
   onRefresh: () => void;
   onCollapsedFoldersChange: (next: string[]) => void;
-  /**
-   * How a card is drawn. `strips` (the 3.0 shell) cuts each portrait to a band across the
-   * eyes with the name over it; `rows` is the 2.x list.
-   */
-  look?: 'rows' | 'strips';
   /** Where each face strip is cut, by avatar; absent means the automatic crop. */
   crops?: Readonly<Record<string, number>>;
 }
@@ -96,7 +91,6 @@ export function CharacterList({
   onEdit,
   onRefresh,
   onCollapsedFoldersChange,
-  look = 'rows',
   crops,
 }: CharacterListProps) {
   const [query, setQuery] = useState('');
@@ -147,7 +141,7 @@ export function CharacterList({
     restoredScroll.current = true;
   }, [loading, rows.length, scrollMemory]);
 
-  // Matching PromptManager: a small distance threshold so a plain click on the grip is still
+  // A small distance threshold so a plain click on the grip is still
   // a click, and a drag only begins once the pointer has actually moved.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -233,7 +227,7 @@ export function CharacterList({
   const message = error ?? actionError;
 
   return (
-    <div className="character-list" data-look={look}>
+    <div className="character-list" data-look="strips">
       <div className="character-list__search">
         <input
           className="wc-input"
@@ -317,7 +311,7 @@ export function CharacterList({
                   draggable={!searching}
                   current={row.character.avatar === selected}
                   hiddenTags={hiddenTags}
-                  strip={look === 'strips'}
+                  strip
                   crop={crops?.[row.character.avatar] ?? AUTO_FACE_CROP}
                   onSelect={() => onSelect(row.character.avatar)}
                   onEdit={() => onEdit(row.character.avatar)}

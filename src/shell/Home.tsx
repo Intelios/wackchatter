@@ -28,7 +28,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
@@ -86,13 +85,7 @@ interface Entry {
   reply: string;
 }
 
-export function HomeShell({
-  controller,
-  onUiChoice,
-}: {
-  controller: AppController;
-  onUiChoice: (choice: UiChoice) => void;
-}) {
+export function HomeShell({ controller }: { controller: AppController }) {
   const { app, library } = controller;
   const { settings, view: prefs, models } = app;
 
@@ -656,7 +649,7 @@ export function HomeShell({
                   controller.lorePage?.book,
                 ]}
               >
-                <MarginTool id={tool} controller={controller} onUiChoice={onUiChoice} />
+                <MarginTool id={tool} controller={controller} />
               </ErrorBoundary>
             </div>
           </aside>

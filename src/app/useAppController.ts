@@ -1,8 +1,8 @@
 /**
  * Everything the app knows and can do, with no markup.
  *
- * A shell renders from this and nothing else: today's (`LegacyShell`) and the 3.0 one,
- * which can replace it without re-deriving a line of state. Settings, the library and the
+ * The shell renders from this and nothing else, so markup never re-derives a line of
+ * state. Settings, the library and the
  * trash bin are hooks of their own; what stays here is what ties them together — which
  * character and chat are open, which area and panels are showing, and the navigation rule
  * every move between them follows: stop what is generating, land pending saves, and refuse
@@ -18,7 +18,6 @@ import { usePromptPreview } from '../features/chat/usePromptPreview.ts';
 import { useLorebooks } from '../features/lore/useLorebooks.ts';
 import { recentPersonaId, withRecentPersona } from '../features/persona/personaRoster.ts';
 import { usePresetDraft } from '../features/preset/usePresetDraft.ts';
-import type { LeftPanelId, RightPanelId } from '../layout/panels.tsx';
 import { characterApi, chatApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { useAppSettings } from './useAppSettings.ts';
@@ -56,7 +55,7 @@ export type AppView = 'app' | 'studio' | 'cocreator' | 'tokentrail' | 'arena';
 export type CoCreatorMode = 'landing' | 'character' | 'preset';
 
 /** The autosaving editors a shell registers, so a navigation can land their work first. */
-export type PersistenceKind = 'character' | 'lore' | 'persona' | 'studio' | 'cocreator';
+export type PersistenceKind = 'lore' | 'persona' | 'studio' | 'cocreator';
 
 /**
  * The settings write for a persona pick.
@@ -92,14 +91,11 @@ export function useAppController() {
   const [studioInitialAvatar, setStudioInitialAvatar] = useState<string | null>(null);
   /** The card the Studio just handed off, seeded into a new session on arrival in the Co-Creator. */
   const [cocreatorSeedAvatar, setCocreatorSeedAvatar] = useState<string | null>(null);
-  const [leftPanel, setLeftPanel] = useState<LeftPanelId | null>(null);
-  const [rightPanel, setRightPanel] = useState<RightPanelId | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CharacterDetail | null>(null);
-  const [editing, setEditing] = useState(false);
   /**
-   * The character whose sheet the 3.0 Characters tool is showing, or null for the list. A
-   * viewer, so unlike `editing` it never changes the open chat.
+   * The character whose sheet the Characters tool is showing, or null for the list. A
+   * viewer: it never changes the open chat.
    */
   const [characterSheet, setCharacterSheet] = useState<string | null>(null);
   /**
@@ -122,7 +118,6 @@ export function useAppController() {
   const showError = useCallback((message: string) => setError(message), []);
 
   const persistence = useRef<Record<PersistenceKind, PersistenceControls | null>>({
-    character: null,
     lore: null,
     persona: null,
     studio: null,
@@ -180,8 +175,8 @@ export function useAppController() {
   // avatar into useChat's auto-open effect.
   const character = detail?.avatar === selected ? detail.card.data : null;
 
-  // Hoisted above the left panel's router: all four left panels edit the same preset, and a
-  // Save/Revert bar that unmounts when you switch panels would hide unsaved work.
+  // Held here, above every screen: the Preset tool, the Inspect tool and the Arena all read
+  // the same draft, and unsaved edits must survive closing the tool that made them.
   const presetDraft = usePresetDraft({
     presetId,
     preset,
@@ -263,80 +258,22 @@ export function useAppController() {
       : null,
   );
 
-  // --- Panels ----------------------------------------------------------------
-
-  const flushRightPanel = useCallback(async () => {
-    const controls = editing
-      ? persistence.current.character
-      : rightPanel === 'lorebooks'
-        ? persistence.current.lore
-        : rightPanel === 'persona'
-          ? persistence.current.persona
-          : null;
-    await controls?.flush();
-  }, [editing, rightPanel]);
+  // --- The margin tools' autosaves ------------------------------------------
 
   /**
-   * Reveal a right panel. Idempotent — never closes, so programmatic jumps (the chat menu,
-   * opening a character) cannot toggle a panel shut by landing on the one you are already
-   * looking at.
+   * Land the Lorebooks and Personas tools' pending edits. Each registers its queue while it
+   * is mounted, so whichever is open (if either) is flushed; a closed one has none.
    */
-  const showRightPanel = useCallback(
-    async (targetPanel: RightPanelId) => {
-      // The character editor replaces the panel outright, so without the `editing` check the
-      // panel would change behind a screen nobody can see.
-      if (targetPanel === rightPanel && !editing) return;
-      try {
-        await flushRightPanel();
-      } catch (err) {
-        setError((err as Error).message);
-        return;
-      }
-      setEditing(false);
-      setRightPanel(targetPanel);
-    },
-    [editing, flushRightPanel, rightPanel],
-  );
-
-  /**
-   * The bar buttons. Pressing the panel you are already on closes the side.
-   *
-   * Closing unmounts the panel, unlike the old collapse-in-place, so it has to flush like a
-   * switch does — the panels' own unmount cleanups are fire-and-forget and swallow errors,
-   * where this aborts and surfaces them.
-   */
-  const selectRightPanel = useCallback(
-    async (id: RightPanelId) => {
-      if (id !== rightPanel || editing) {
-        await showRightPanel(id);
-        return;
-      }
-      try {
-        await flushRightPanel();
-      } catch (err) {
-        setError((err as Error).message);
-        return;
-      }
-      setRightPanel(null);
-    },
-    [editing, flushRightPanel, rightPanel, showRightPanel],
-  );
-
-  const selectLeftPanel = useCallback((id: LeftPanelId) => {
-    // Nothing on the left autosaves — the preset saves explicitly and connection settings
-    // write through immediately — so there is nothing to flush.
-    setLeftPanel((current) => (current === id ? null : id));
+  const flushTools = useCallback(async () => {
+    await persistence.current.lore?.flush();
+    await persistence.current.persona?.flush();
   }, []);
 
   // --- Characters and chats --------------------------------------------------
 
   const transitionToCharacter = useCallback(
-    async (
-      avatar: string,
-      options?: { editing?: boolean; chatId?: string; panel?: RightPanelId | null },
-    ) => {
-      const nextEditing = options?.editing ?? false;
-      if (avatar !== selected || nextEditing || options?.chatId !== undefined) {
+    async (avatar: string, options?: { chatId?: string }) => {
+      if (avatar !== selected || options?.chatId !== undefined) {
         chat.abort();
         chat.cancelSummary();
         try {
@@ -350,8 +287,6 @@ export function useAppController() {
         setDetail(null);
         setSelected(avatar);
       }
-      setEditing(nextEditing);
-      setRightPanel(options?.panel === undefined ? 'characters' : options.panel);
     },
     [chat, selected],
   );
@@ -361,13 +296,8 @@ export function useAppController() {
     [transitionToCharacter],
   );
 
-  const editCharacter = useCallback(
-    (avatar: string) => void transitionToCharacter(avatar, { editing: true }),
-    [transitionToCharacter],
-  );
-
   const openRecentChat = useCallback(
-    (avatar: string, chatId: string) => void transitionToCharacter(avatar, { chatId, panel: null }),
+    (avatar: string, chatId: string) => void transitionToCharacter(avatar, { chatId }),
     [transitionToCharacter],
   );
 
@@ -377,24 +307,19 @@ export function useAppController() {
    * Flushed first, and a failed flush aborts — same rule as `transitionToCharacter`, and for
    * the same reason: navigating away from an unsaved chat drops the tail of the transcript
    * with nothing to show for it. Once `selected` is null `useChat` closes the chat itself.
-   *
-   * The right panel is deliberately left as it was — closing a chat is not a reason to close
-   * the character browser, so browsing survives hopping in and out of chats (same rule as
-   * `characterDeleted`).
    */
   const closeChat = useCallback(async () => {
     try {
       chat.abort();
       chat.cancelSummary();
       await chat.flushSaves();
-      await flushRightPanel();
+      await flushTools();
     } catch {
       return;
     }
     setSelected(null);
     setDetail(null);
-    setEditing(false);
-  }, [chat, flushRightPanel]);
+  }, [chat, flushTools]);
 
   const backups = useBackups({
     chat,
@@ -403,59 +328,41 @@ export function useAppController() {
     onError: showError,
   });
 
-  const { setCharacters, refresh, followCharacterAvatar } = library;
+  const { refresh, followCharacterAvatar } = library;
   const { followCharacter } = app;
 
-  const characterSaved = useCallback(
-    (saved: CharacterDetail) => {
-      setDetail(saved);
-      setCharacters((prev) =>
-        prev.map((c) => (c.avatar === saved.avatar ? { ...c, ...saved } : c)),
-      );
-    },
-    [setCharacters],
-  );
-
-  /**
-   * A rename changed the character's file identity. Re-select under the new avatar and
-   * refresh the library so the old entry is replaced. Chat saves are flushed first so the
-   * re-select (which reopens the character's most recent chat) cannot drop in-memory edits;
-   * the chats themselves were carried over server-side by the rename.
+  /*
+   * A card's file name is its identity, so a rename or delete moves or drops what is keyed on
+   * it. The server has already rewritten settings.json; these bring this tab along, and
+   * re-point (or close) the chat when it was the open character.
    */
   const characterRenamed = useCallback(
-    async (saved: CharacterDetail) => {
-      const previousAvatar = selected;
-      try {
-        chat.abort();
-        chat.cancelSummary();
-        await chat.flushSaves();
-      } catch {
-        // The rename already landed; a failed chat flush is surfaced by the app shell and
-        // should not stop the re-select.
-      }
-      setSelected(saved.avatar);
-      setDetail(saved);
-      if (previousAvatar) {
-        followCharacter(previousAvatar, saved.avatar);
-        followCharacterAvatar(previousAvatar, saved.avatar);
+    (from: string, to: string) => {
+      followCharacter(from, to);
+      followCharacterAvatar(from, to);
+      if (selected === from) {
+        setDetail(null);
+        setSelected(to);
       }
       void refresh();
     },
-    [chat, refresh, selected, followCharacter, followCharacterAvatar],
+    [followCharacter, followCharacterAvatar, refresh, selected],
   );
 
-  const characterDeleted = useCallback(() => {
-    chat.abort();
-    chat.cancelSummary();
-    if (selected) {
-      followCharacter(selected, null);
-      followCharacterAvatar(selected);
-    }
-    setSelected(null);
-    setDetail(null);
-    setEditing(false);
-    void refresh();
-  }, [chat, refresh, selected, followCharacter, followCharacterAvatar]);
+  const characterDeleted = useCallback(
+    (avatar: string) => {
+      followCharacter(avatar, null);
+      followCharacterAvatar(avatar);
+      if (selected === avatar) {
+        chat.abort();
+        chat.cancelSummary();
+        setDetail(null);
+        setSelected(null);
+      }
+      void refresh();
+    },
+    [chat, followCharacter, followCharacterAvatar, refresh, selected],
+  );
 
   // --- Personas --------------------------------------------------------------
 
@@ -494,14 +401,14 @@ export function useAppController() {
           chat.cancelSummary();
         }
         await chat.flushSaves();
-        await flushRightPanel();
+        await flushTools();
         return true;
       } catch (err) {
         setError((err as Error).message);
         return false;
       }
     },
-    [chat, flushRightPanel],
+    [chat, flushTools],
   );
 
   /** Land an area's own editor before leaving it. False, with the error shown, on failure. */
@@ -568,13 +475,6 @@ export function useAppController() {
     },
     [flushArea],
   );
-
-  /** Back from a Co-Creator desk to its landing, once the desk's saves have landed. */
-  const leaveCocreatorDesk = useCallback(async () => {
-    if (!(await flushArea('cocreator'))) return;
-    setCocreatorSeedAvatar(null);
-    setCoCreatorMode('landing');
-  }, [flushArea]);
 
   /**
    * Finish: leave the Co-Creator for the Studio, on the card it just made. The desk has
@@ -658,12 +558,12 @@ export function useAppController() {
           const target = await chatApi.get(id);
           if (!characters.some((c) => c.avatar === target.characterId))
             throw new Error('This character is no longer in the library.');
-          await transitionToCharacter(target.characterId, { chatId: id, panel: null });
+          await transitionToCharacter(target.characterId, { chatId: id });
         } else if (avatar) {
           if (!characters.some((c) => c.avatar === avatar))
             throw new Error('This character is no longer in the library.');
           await chat.flushSaves();
-          await flushRightPanel();
+          await flushTools();
           setStudioInitialAvatar(avatar);
           setView('studio');
         }
@@ -675,12 +575,11 @@ export function useAppController() {
         window.history.replaceState(null, '', url);
       }
     })();
-  }, [settings, library.loading, characters, transitionToCharacter, chat, flushRightPanel]);
+  }, [settings, library.loading, characters, transitionToCharacter, chat, flushTools]);
 
   // --- What is showing ---------------------------------------------------------
 
   const active = characters.find((c) => c.avatar === selected) ?? null;
-  const showEditor = editing && detail?.avatar === selected ? detail : null;
   const ready = Boolean(models.chat.model && preset);
 
   /*
@@ -721,14 +620,9 @@ export function useAppController() {
     setCoCreatorMode,
     studioInitialAvatar,
     cocreatorSeedAvatar,
-    leftPanel,
-    rightPanel,
     selected,
     active,
     character,
-    showEditor,
-    editing,
-    setEditing,
     characterSheet,
     setCharacterSheet,
     personaPage,
@@ -743,18 +637,12 @@ export function useAppController() {
     setSettingsPage,
     ready,
     error,
-    showError,
     characterListScroll,
     registerPersistence,
 
-    selectLeftPanel,
-    selectRightPanel,
-    showRightPanel,
     selectCharacter,
-    editCharacter,
     openRecentChat,
     closeChat,
-    characterSaved,
     characterRenamed,
     characterDeleted,
     personaDeleted,
@@ -764,7 +652,6 @@ export function useAppController() {
     exitStudio,
     enterCoCreator,
     enterCoCreatorFromStudio,
-    leaveCocreatorDesk,
     finishCoCreator,
     exitCoCreator,
     enterStats,

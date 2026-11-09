@@ -155,8 +155,7 @@ export function GuidesPopover({
       </button>
 
       {/*
-       * The app-wide knobs live here, with the feature, rather than in a settings panel —
-       * the same call LorePanel makes for the global World Info settings.
+       * The app-wide knobs live here, with the feature, rather than in Settings.
        */}
       <Section title="Guidance settings">
         <TextField

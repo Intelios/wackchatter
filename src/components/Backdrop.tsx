@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef } from 'react';
+import './Backdrop.css';
 
 /**
- * The background image layer, shared by the app shell and the studio shell.
+ * The background image layer, behind the chat and the home screen.
  *
  * Crossfades between pictures: background-image is not animatable, so the outgoing
- * image is parked in a `::before` layer (painted from `--wc-bg-prev`, see
- * AppShell.css) that fades out over the element's new one. The layer inherits the
+ * image is parked in a `::before` layer (painted from `--wc-bg-prev`, see Backdrop.css)
+ * that fades out over the element's new one. The layer inherits the
  * element's blur and overscan for free — the element's own filter and transform
  * apply to everything painted inside it, so the two images line up exactly.
  *

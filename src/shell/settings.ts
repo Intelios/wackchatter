@@ -87,7 +87,6 @@ export const SETTING_INDEX: readonly SettingEntry[] = [
   { key: 'streaming', label: 'Streaming refresh rate', chapter: 'hood', words: 'fps' },
   { key: 'tokenizer', label: 'Token counter', chapter: 'hood', words: 'tokenizer' },
   { key: 'usage', label: 'Record usage for TokenTrail', chapter: 'hood', words: 'stats log' },
-  { key: 'legacy', label: 'The 2.x interface', chapter: 'hood', words: 'old legacy' },
   { key: 'version', label: 'What’s new', chapter: 'hood', words: 'version update about' },
   { key: 'shutdown', label: 'Shut down WackChatter', chapter: 'hood', words: 'quit stop server' },
 ];

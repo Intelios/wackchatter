@@ -1,7 +1,6 @@
 /**
  * Everything a lorebook editor does besides drawing: load the open book, autosave its
- * edits, and create, import, rename and delete books. Shared by the 2.x Lore panel and the
- * 3.0 Lorebooks tool, so the two cannot disagree about how a book is saved.
+ * edits, and create, import, rename and delete books.
  *
  * Standalone books are saved whole: unlike a card's embedded book, the file is ours alone
  * and a whole-file write cannot corrupt a character card. Writes are debounced so typing

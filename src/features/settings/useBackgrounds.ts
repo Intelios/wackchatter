@@ -1,7 +1,6 @@
 /**
  * Your background images, and what you do with them: upload, delete, import from
- * SillyTavern. Shared by the 2.x settings panel and the 3.0 Settings tool, so both save the
- * same way. Picking one is a settings patch, which stays with the caller.
+ * SillyTavern. Picking one is a settings patch, which stays with the caller.
  */
 
 import { useCallback, useEffect, useState } from 'react';

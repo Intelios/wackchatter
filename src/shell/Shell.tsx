@@ -1,9 +1,8 @@
 /**
  * The 3.0 shell.
  *
- * Markup over the app controller, like `LegacyShell`, so it inherits every behaviour
- * unchanged. It covers the chat for now: the island and its wings, the margin, the
- * transcript and the Line, the home screen, the Studio, both Co-Creators, the Arena and
+ * Markup over the app controller: the chat (the island and its wings, the margin, the
+ * transcript and the Line), the home screen, the Studio, both Co-Creators, the Arena and
  * Stats (the hand-off to TokenTrail).
  */
 
@@ -19,8 +18,6 @@ import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import type { ActivationResult } from '@shared/worldinfo/activate.ts';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LegacyShell } from '../app/LegacyShell.tsx';
-import type { UiChoice } from '../app/uiChoice.ts';
 import type { AppController } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
@@ -70,13 +67,7 @@ import { Studio } from './Studio.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, replay, useAura } from './useAura.ts';
 
-export function Shell({
-  controller,
-  onUiChoice,
-}: {
-  controller: AppController;
-  onUiChoice: (choice: UiChoice) => void;
-}) {
+export function Shell({ controller }: { controller: AppController }) {
   /*
    * Picking a character clears the old card before the new one arrives. Through that gap
    * the screen you were on stays: the last chat (its own character and card together, never
@@ -88,28 +79,19 @@ export function Shell({
   if (view === 'app' && !active) shown.current = null;
 
   if (view === 'app' && active && character) {
-    return (
-      <ChatShell
-        controller={controller}
-        active={active}
-        character={character}
-        onUiChoice={onUiChoice}
-      />
-    );
+    return <ChatShell controller={controller} active={active} character={character} />;
   }
   if (view === 'app' && shown.current) {
-    return <ChatShell controller={controller} {...shown.current} onUiChoice={onUiChoice} />;
+    return <ChatShell controller={controller} {...shown.current} />;
   }
-  if (view === 'app') return <HomeShell controller={controller} onUiChoice={onUiChoice} />;
+  if (view === 'app') return <HomeShell controller={controller} />;
   if (view === 'studio') return <Studio controller={controller} />;
   if (view === 'cocreator' && controller.coCreatorMode === 'preset') {
     return <PresetCoCreator controller={controller} />;
   }
   if (view === 'cocreator') return <CoCreator controller={controller} />;
   if (view === 'arena') return <Arena controller={controller} />;
-  if (view === 'tokentrail') return <Stats controller={controller} />;
-  // Nothing else should reach here; the 2.x shell stays as the floor until it is deleted.
-  return <LegacyShell controller={controller} />;
+  return <Stats controller={controller} />;
 }
 
 /** The open character's card, as the controller holds it. */
@@ -121,12 +103,10 @@ function ChatShell({
   controller,
   active,
   character,
-  onUiChoice,
 }: {
   controller: AppController;
   active: CharacterSummary;
   character: CardData;
-  onUiChoice: (choice: UiChoice) => void;
 }) {
   const { app, library, backups, chat } = controller;
   const { settings, view: prefs, models } = app;
@@ -166,13 +146,7 @@ function ChatShell({
     characterAvatarVersion,
     personas: library.personas,
     onSelectPersona: controller.selectPersona,
-    onOpenPanel: (panel) => {
-      if (panel === 'persona') setTool('personas');
-      else if (panel === 'characters') setTool('characters');
-      else if (panel === 'lorebooks') setTool('lorebooks');
-      else if (panel === 'summary') setTool('memory');
-      else setTool('settings');
-    },
+    onOpenPersonas: () => setTool('personas'),
     creatorNotes: character.creator_notes ?? '',
     card: character,
     onEditCharacter: () => {
@@ -622,12 +596,7 @@ function ChatShell({
                   controller.selected,
                 ]}
               >
-                <MarginTool
-                  id={tool}
-                  controller={controller}
-                  onUiChoice={onUiChoice}
-                  onOpenTool={setTool}
-                />
+                <MarginTool id={tool} controller={controller} onOpenTool={setTool} />
               </ErrorBoundary>
             </div>
           </aside>

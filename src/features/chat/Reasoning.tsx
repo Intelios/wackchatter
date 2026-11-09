@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditIcon } from '../../layout/icons.tsx';
+import './Reasoning.css';
 
 /**
  * A model's thinking, boxed above the reply it produced.
@@ -26,8 +27,8 @@ export function Reasoning({
   text: string;
   /**
    * What to show, when regex scripts have rewritten it. The editor still seeds from `text`
-   * — you edit what is stored, not what you were shown — which is the same split
-   * `MessageBubble` makes for the message body itself.
+   * — you edit what is stored, not what you were shown — the same split the message
+   * body makes.
    */
   displayText?: string;
   defaultOpen?: boolean;

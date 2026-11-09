@@ -1,0 +1,88 @@
+/* A reply's reasoning, folded under its summary line, with an editor for the text. */
+
+.reasoning {
+  position: relative;
+  margin-bottom: var(--wc-space-3);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  background: var(--wc-tint);
+}
+
+.reasoning__summary {
+  padding: var(--wc-space-2) var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.reasoning__summary:hover {
+  color: var(--wc-text);
+}
+
+.reasoning__body {
+  padding: 0 var(--wc-space-3) var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+  white-space: pre-wrap;
+}
+
+.reasoning[open] .reasoning__body {
+  animation: wc-reasoning-in var(--wc-duration) var(--wc-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning[open] .reasoning__body {
+    animation: none;
+  }
+}
+
+.reasoning__tools {
+  position: absolute;
+  top: var(--wc-space-2);
+  right: var(--wc-space-2);
+  opacity: 0;
+  transition: opacity var(--wc-duration-fast) ease;
+}
+
+.reasoning:hover .reasoning__tools,
+.reasoning:focus-within .reasoning__tools {
+  opacity: 1;
+}
+
+.reasoning__edit {
+  padding: var(--wc-space-1);
+  color: var(--wc-text-faint);
+}
+
+.reasoning__edit:hover {
+  color: var(--wc-text);
+  background: var(--wc-surface-hover);
+}
+
+.reasoning__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wc-space-2);
+  padding: 0 var(--wc-space-3) var(--wc-space-3);
+}
+
+.reasoning__input {
+  font-size: var(--wc-text-sm);
+  line-height: 1.6;
+  color: var(--wc-text-muted);
+}
+
+.reasoning__editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+}
+
+@keyframes wc-reasoning-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--wc-space-1) * -1));
+  }
+}

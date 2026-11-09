@@ -364,7 +364,7 @@
   color: var(--w3-danger);
 }
 
-/* 2.x pieces placed in a chapter: the regex list, the data-location flow. */
+/* Shared components placed in a chapter: the regex list, the data-location flow. */
 .w3-set__legacy {
   font-size: 13px;
 }

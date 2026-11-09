@@ -2,14 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import { getPromptOrder, setPromptOrder } from '@shared/prompt/preset-io.ts';
 import type { Preset } from '@shared/types/preset.ts';
-import {
-  buildSideBySide,
-  type CompareSource,
-  decodeSource,
-  defaultCompareSources,
-  encodeSource,
-  splitSides,
-} from './presetCompare.ts';
+import { buildSideBySide, splitSides } from './presetCompare.ts';
 import { diffText } from './textDiff.ts';
 
 function withPrompt(preset: Preset, identifier: string, content: string): Preset {
@@ -28,39 +21,6 @@ function addPrompt(preset: Preset, identifier: string, content: string): Preset 
   };
   return setPromptOrder(next, [...getPromptOrder(next), { identifier, enabled: true }]);
 }
-
-describe('compare sources', () => {
-  test('every source round-trips through its Select value', () => {
-    const sources: CompareSource[] = [
-      { kind: 'draft' },
-      { kind: 'revision', revision: 0 },
-      { kind: 'revision', revision: 12 },
-      { kind: 'library', id: 'My: preset' },
-      { kind: 'reference', id: 'Found online' },
-    ];
-    for (const source of sources) expect(decodeSource(encodeSource(source))).toEqual(source);
-  });
-
-  test('a value that names no source decodes to null', () => {
-    expect(decodeSource('')).toBeNull();
-    expect(decodeSource('revision:abc')).toBeNull();
-    expect(decodeSource('elsewhere:x')).toBeNull();
-    expect(decodeSource('library:')).toBeNull();
-  });
-
-  test('a linked session starts as the library preset against the draft', () => {
-    expect(defaultCompareSources({ targetPresetId: 'Mine', history: [{ revision: 0 }] })).toEqual({
-      left: { kind: 'library', id: 'Mine' },
-      right: { kind: 'draft' },
-    });
-  });
-
-  test('an unlinked session starts as its first revision against the draft', () => {
-    expect(
-      defaultCompareSources({ targetPresetId: null, history: [{ revision: 0 }, { revision: 1 }] }),
-    ).toEqual({ left: { kind: 'revision', revision: 0 }, right: { kind: 'draft' } });
-  });
-});
 
 describe('side by side', () => {
   test('identical presets have no differences and every row is the same', () => {
