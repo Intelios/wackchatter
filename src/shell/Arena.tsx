@@ -355,9 +355,15 @@ export function Arena({ controller }: { controller: AppController }) {
 
         <header className="w3-studio__top">
           <div className="w3-studio__side">
-            <button type="button" className="w3-st-topbtn" onClick={controller.exitArena}>
+            <button
+              type="button"
+              className="w3-st-topbtn"
+              aria-label={backLabel}
+              title={backLabel}
+              onClick={controller.exitArena}
+            >
               <Icon name="chevronLeft" size="sm" />
-              {backLabel}
+              <span className="w3-ar-backlabel">{backLabel}</span>
             </button>
             <nav className="w3-ar-tabs" aria-label="Arena">
               {SCREENS.map(([id, label]) => (

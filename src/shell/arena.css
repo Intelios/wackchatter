@@ -108,6 +108,31 @@
   color: var(--w3-text);
 }
 
+/*
+ * The back button and four tabs need about 520px beside a centred island, which a window
+ * narrower than this cannot give them. Here the back button keeps only its arrow (the
+ * label stays its accessible name and title) and the tabs close up, so Setup stays clear
+ * of the island down to a 1024px window.
+ */
+@media (max-width: 1320px) {
+  .w3-ar .w3-ar-backlabel {
+    display: none;
+  }
+
+  .w3-ar .w3-studio__top .w3-st-topbtn {
+    padding: 0 10px;
+  }
+
+  .w3-ar-tabs {
+    margin-left: 2px;
+  }
+
+  .w3-ar-tabs button {
+    padding: 0 9px;
+    font-size: 13px;
+  }
+}
+
 /* ---------- The island ---------- */
 
 .w3-ar-streak {

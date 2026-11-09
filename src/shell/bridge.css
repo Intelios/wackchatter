@@ -210,6 +210,15 @@
   gap: 14px;
 }
 
+/*
+ * Opened from inside the Co-Creator's "Writing like" popup, which scrolls and so clips
+ * anything wider than itself: the sets fill its 352px content box (380px less 14px padding
+ * each side) less their own 4px padding and 1px border.
+ */
+.wc3 .w3-co-expop .example-sets {
+  width: 342px;
+}
+
 .wc3 .example-set-item {
   gap: 8px;
   padding: 10px;
