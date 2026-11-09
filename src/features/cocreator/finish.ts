@@ -1,99 +1,121 @@
-/**
- * Turning a stash into a real card.
- *
- * A client sequence over the existing character endpoints, deliberately — there is no
- * `POST /cocreator/:id/finish`. Putting the stash-to-card mapping on the server would move
- * card assembly into a server that otherwise never builds one.
- */
-
-import { toCardPatch } from '@shared/cocreator/stash.ts';
-import type { CardDataV2, CharacterDetail, TavernCard } from '@shared/types/card.ts';
-import type { CardStash } from '@shared/types/cocreator.ts';
+/** Card assembly and conflict decisions belong to the client; the server only writes files. */
+import {
+  compareDraft,
+  type DraftChoices,
+  type DraftConflict,
+  projectDraft,
+} from '@shared/cocreator/draft.ts';
+import type { CardDataV2, TavernCard, VersionedCharacter } from '@shared/types/card.ts';
+import type { CardStash, CocreatorCardBaseline } from '@shared/types/cocreator.ts';
 import { characterApi, cocreatorApi } from '../../lib/api.ts';
-import { fetchPngFile } from '../../lib/imageFile.ts';
 
-/** The folder new cards land in, so a design session's output is easy to find and move. */
 export const FINISH_FOLDER = 'Drafts';
+export interface FinishInput {
+  mode: 'create' | 'update';
+  stash: CardStash;
+  baseline: CocreatorCardBaseline | null;
+  portraitChanged: boolean;
+  review?: { version: string; choices: DraftChoices };
+}
+export type FinishPlan =
+  | { kind: 'create'; card: TavernCard }
+  | {
+      kind: 'update';
+      latest: VersionedCharacter;
+      patch: Partial<CardDataV2>;
+      name?: string;
+      replacePortrait: boolean;
+    };
 
-/**
- * What a seeded session carries over from its seed card at Finish: everything the stash
- * cannot hold, so the variant is the whole character and not just the fields the design
- * conversation touched.
- *
- * The set is deliberately disjoint from `toCardPatch`'s — a slot the user cleared in the
- * stash must stay cleared, so no stash slot ever appears here. `fav` is reset rather than
- * copied: a favourite is a judgment about one card, and a variant starts unfaved, the same
- * deal `duplicateCard` gives.
- */
-export function seedCarryOver(card: TavernCard): Partial<CardDataV2> {
-  const data = card.data;
-  const carry: Partial<CardDataV2> = {};
-
-  if (data.character_book) carry.character_book = data.character_book;
-  if (Object.keys(data.extensions).length > 0) {
-    carry.extensions = { ...data.extensions, fav: false };
+export class FinishConflictError extends Error {
+  constructor(
+    readonly latest: VersionedCharacter,
+    readonly conflicts: DraftConflict[],
+    readonly portrait: boolean,
+  ) {
+    super('The character changed elsewhere. Compare the conflicting fields before updating.');
   }
-  if (data.creator.trim()) carry.creator = data.creator;
-  if (data.character_version.trim()) carry.character_version = data.character_version;
-  if (data.nickname?.trim()) carry.nickname = data.nickname;
-  if (data.source?.length) carry.source = [...data.source];
-  if (data.group_only_greetings?.length) {
-    carry.group_only_greetings = [...data.group_only_greetings];
-  }
-
-  return carry;
 }
 
-/**
- * Create the card and apply the stash to it.
- * `create` mints a tree-unique filename server-side, so two Finishes with the same name
- * cannot collide. The fields then go on in one PATCH — with the artwork in the same request
- * when there is any, so the card is never briefly on disk with fields but no art.
- *
- * Why this cannot break the shallow-merge rule: `toCardPatch` emits only flat strings and
- * two string arrays, and the seed carry-over writes onto a card created moments ago in this
- * same flow, from a fresh read — there is no established card whose book a wholesale
- * `character_book` replace could clobber, which is the stale-tab hazard that rule exists
- * for. `updateCharacter` still re-reads the PNG and merges onto the parsed original, so
- * unknown and V3 keys survive.
- */
-export async function finishSession(input: {
-  sessionId: string;
-  stash: CardStash;
-  avatar: string | null;
-  cacheKey: number;
-  seedAvatar: string | null;
-}): Promise<string> {
-  const name = input.stash.name?.text.trim() || 'Untitled Character';
-
-  // The seed reference is read fresh at Finish time. A card that was deleted or renamed
-  // away degrades to a flat finish rather than failing — the stash still holds every field
-  // the conversation produced, which is the same bargain artwork makes below.
-  let seed: CharacterDetail | null = null;
-  if (input.seedAvatar) {
-    try {
-      seed = await characterApi.get(input.seedAvatar);
-    } catch {
-      seed = null;
-    }
+/** A successful file write is retained until its session recording also succeeds. */
+export class FinishAttempt {
+  readonly publicationId = crypto.randomUUID();
+  result: VersionedCharacter | null = null;
+  recorded = false;
+  async run(
+    write: () => Promise<VersionedCharacter>,
+    record: (saved: VersionedCharacter, publicationId: string) => Promise<void>,
+  ): Promise<string> {
+    this.result ??= await write();
+    await record(this.result, this.publicationId);
+    this.recorded = true;
+    return this.result.detail.avatar;
   }
+}
 
-  const created = await characterApi.create(name, FINISH_FOLDER);
-  const patch = { ...(seed ? seedCarryOver(seed.card) : {}), ...toCardPatch(input.stash) };
+export function finishPlan(
+  input: FinishInput,
+  latest: VersionedCharacter | null = null,
+): FinishPlan {
+  const draft = projectDraft(input.stash, input.baseline?.card ?? null);
+  if (input.mode === 'create') return { kind: 'create', card: draft };
+  if (!latest)
+    throw new Error(
+      'The character is no longer in the library. You can create a new character from this draft.',
+    );
+  const choices = input.review?.version === latest.version ? input.review.choices : {};
+  const comparison = compareDraft(
+    input.baseline?.legacy ? null : (input.baseline?.card ?? null),
+    latest.detail.card,
+    draft,
+    choices,
+  );
+  const portraitConflict =
+    input.portraitChanged &&
+    latest.portraitVersion !== input.baseline?.portraitVersion &&
+    !choices.portrait;
+  if (comparison.conflicts.length || portraitConflict)
+    throw new FinishConflictError(latest, comparison.conflicts, portraitConflict);
+  const name = comparison.patch.name;
+  delete comparison.patch.name;
+  return {
+    kind: 'update',
+    latest,
+    patch: comparison.patch,
+    ...(name ? { name } : {}),
+    replacePortrait: input.portraitChanged && choices.portrait !== 'library',
+  };
+}
 
-  let art: File | null = null;
-  if (input.avatar) {
-    art = await fetchPngFile(cocreatorApi.avatarUrl(input.sessionId, input.cacheKey));
-  }
-  if (!art && seed && input.seedAvatar) {
-    // A variant of a card the user likes should not land artless just because this session
-    // never made artwork of its own.
-    art = await fetchPngFile(characterApi.imageUrl(input.seedAvatar, seed.modified));
-  }
+/** Artwork failures must not silently strip a full-card copy of its inherited portrait. */
+export async function requiredPortrait(url: string): Promise<File> {
+  const response = await fetch(url);
+  if (!response.ok)
+    throw new Error('Could not read the portrait. Your draft is saved; retry finishing.');
+  return new File([await response.blob()], 'avatar.png', { type: 'image/png' });
+}
 
-  const saved = art
-    ? await characterApi.updateWithImage(created.avatar, patch, art)
-    : await characterApi.update(created.avatar, patch);
-
-  return saved.avatar;
+export async function finishSession(
+  input: FinishInput & { sessionId: string; avatar: string | null; cacheKey: number },
+): Promise<VersionedCharacter> {
+  // Resolve the server-owned reference again: a rename or deletion can happen while the
+  // workspace is open. Never fall back from a missing output copy to its original source.
+  const session = input.mode === 'update' ? await cocreatorApi.get(input.sessionId) : null;
+  const latest = session?.targetAvatar
+    ? await characterApi.getVersioned(session.targetAvatar)
+    : null;
+  const plan = finishPlan(input, latest);
+  const needArt = plan.kind === 'create' || plan.replacePortrait;
+  const art =
+    needArt && input.avatar
+      ? await requiredPortrait(cocreatorApi.avatarUrl(input.sessionId, input.cacheKey))
+      : null;
+  if (plan.kind === 'create') return characterApi.createComplete(plan.card, FINISH_FOLDER, art);
+  return characterApi.saveVersioned(
+    plan.latest.detail.avatar,
+    plan.patch,
+    plan.latest.version,
+    plan.replacePortrait ? art : undefined,
+    plan.name,
+  );
 }

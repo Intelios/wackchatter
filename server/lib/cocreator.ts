@@ -18,11 +18,19 @@
 
 import type { Database } from 'bun:sqlite';
 import { fromChatMessage, normalizeState, toChatMessage } from '../../shared/chat/message.ts';
+import {
+  type CompactionState,
+  createCompactionState,
+  normalizeCompaction,
+} from '../../shared/cocreator/compaction.ts';
 import { normalizeSideSettings } from '../../shared/cocreator/sideChat.ts';
 import { emptyStash, normalizeStash, stashedSlotCount } from '../../shared/cocreator/stash.ts';
+import { normalizeModelRef } from '../../shared/models/slots.ts';
 import type { ChatMessage, StaleChatRevision } from '../../shared/types/chat.ts';
 import {
   type CardStash,
+  type CocreatorCardBaseline,
+  type CocreatorPublication,
   type CocreatorSession,
   type CocreatorSessionSummary,
   type CocreatorSideChat,
@@ -51,10 +59,15 @@ interface SessionRow {
   stash: string;
   examples: string;
   settings: string;
+  compaction: string;
   avatar: string | null;
   finished_avatar: string | null;
   seed_avatar: string | null;
   side_chat: string | null;
+  baseline: string | null;
+  target_avatar: string | null;
+  portrait_changed: number;
+  publication_id: string | null;
 }
 
 interface MessageRow {
@@ -80,6 +93,8 @@ export interface CocreatorPatch {
   /** Explicit null clears it; absent leaves it alone. */
   avatar?: string | null;
   finishedAvatar?: string | null;
+  baseline?: CocreatorCardBaseline | null;
+  publication?: CocreatorPublication | null;
 }
 
 export interface CocreatorStore {
@@ -90,9 +105,16 @@ export interface CocreatorStore {
    *
    * Write-once: this is the column's only writer outside the reference cascade, and the
    * whole-session UPDATE statement never mentions it, so every later save preserves it. That
-   * is what lets Finish trust the reference to still name the card the user started from.
+   * keeps origin provenance independent of the current save target.
    */
-  createSession(input: { title?: string; seedAvatar?: string | null }): CocreatorSession;
+  createSession(input: {
+    id?: string;
+    title?: string;
+    seedAvatar?: string | null;
+    stash?: CardStash;
+    baseline?: CocreatorCardBaseline | null;
+    avatar?: string | null;
+  }): CocreatorSession;
   /** Whole-session write: the only path that changes messages. */
   replaceSession(
     id: string,
@@ -103,8 +125,11 @@ export interface CocreatorStore {
       examples?: ExampleSelection;
       settings?: SessionModelSettings;
       finishedAvatar?: string | null;
+      baseline?: CocreatorCardBaseline | null;
+      publication?: CocreatorPublication | null;
       messages: ChatMessage[];
       sideChat?: CocreatorSideChat | null;
+      compaction?: CompactionState;
     },
   ): CocreatorSaveResult;
   /** Metadata-only write. Never touches the transcript. */
@@ -133,10 +158,9 @@ export interface CocreatorStore {
   /**
    * Repoint (or detach, for a null) the seed card across every session.
    *
-   * Same rule as `reassignExampleCard` — including the deliberately missing revision bump —
-   * but simpler, because the seed is a bare column rather than JSON. Deleting the seed card
-   * detaches rather than deletes: the transcript keeps the seed text (self-contained
-   * reasoning), only Finish loses the lorebook copy it would have made.
+   * Repairs the origin, target and finished-card references without a revision bump.
+   * Ordinary document saves preserve the authoritative target; a new publication id is
+   * the only way to change it. Deleting a card leaves the full baseline and artwork intact.
    */
   reassignSeedCard(oldAvatar: string, newAvatar: string | null): number;
 }
@@ -163,10 +187,12 @@ function normalizeSideChat(raw: unknown): CocreatorSideChat | null {
   )
     return null;
   return {
+    compaction: normalizeCompaction(value.compaction),
     snapshot: {
       capturedAt: snapshot.capturedAt,
       systemPrompt: snapshot.systemPrompt,
       exampleBlock: snapshot.exampleBlock,
+      ...(typeof snapshot.draftBlock === 'string' ? { draftBlock: snapshot.draftBlock } : {}),
       messages: snapshot.messages
         .filter(
           (m) =>
@@ -207,10 +233,12 @@ export function normalizeExamples(raw: unknown): ExampleSelection {
 }
 
 /**
- * Repair per-session model overrides.
+ * Repair per-session overrides.
  *
  * Absence is meaningful — it means "follow the app setting" — so a key is only kept when it
- * is actually present and of the right type. Writing a null for a missing key would silently
+ * is actually present and of the right type. A session's model ref is kept even when its
+ * connection has since been deleted: resolving it says so, rather than the session quietly
+ * moving to another model. Writing a null for a missing key would silently
  * pin the session to today's default.
  */
 export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
@@ -223,9 +251,8 @@ export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
       settings[key] = limit;
     }
   }
-  if (typeof value.connectionId === 'string' || value.connectionId === null) {
-    settings.connectionId = value.connectionId as string | null;
-  }
+  const model = normalizeModelRef(value.model);
+  if (model) settings.model = model;
   if (typeof value.presetId === 'string' || value.presetId === null) {
     settings.presetId = value.presetId as string | null;
   }
@@ -234,20 +261,6 @@ export function normalizeSessionSettings(raw: unknown): SessionModelSettings {
   }
   if (typeof value.analysisPrompt === 'string' && value.analysisPrompt.trim()) {
     settings.analysisPrompt = value.analysisPrompt;
-  }
-  const modelOverride = value.modelOverride;
-  if (
-    modelOverride &&
-    typeof modelOverride === 'object' &&
-    typeof (modelOverride as Record<string, unknown>).connectionId === 'string' &&
-    typeof (modelOverride as Record<string, unknown>).model === 'string' &&
-    ((modelOverride as Record<string, unknown>).connectionId as string).trim() &&
-    ((modelOverride as Record<string, unknown>).model as string).trim()
-  ) {
-    settings.modelOverride = {
-      connectionId: (modelOverride as Record<string, unknown>).connectionId as string,
-      model: ((modelOverride as Record<string, unknown>).model as string).trim(),
-    };
   }
   return settings;
 }
@@ -270,10 +283,10 @@ export function createCocreatorStore(database: Database): CocreatorStore {
   const statements = {
     insertSession: database.query(
       `INSERT INTO cocreator_sessions
-         (id, title, created, modified, revision, stash, examples, settings, avatar,
-          finished_avatar, seed_avatar)
-       VALUES ($id, $title, $created, $modified, $revision, $stash, $examples, $settings, NULL,
-               NULL, $seedAvatar)`,
+         (id, title, created, modified, revision, stash, examples, settings, compaction, avatar,
+          finished_avatar, seed_avatar, target_avatar, baseline)
+       VALUES ($id, $title, $created, $modified, $revision, $stash, $examples, $settings, $compaction, $avatar,
+               NULL, $seedAvatar, $seedAvatar, $baseline)`,
     ),
     selectSession: database.query<SessionRow, [string]>(
       'SELECT * FROM cocreator_sessions WHERE id = ?',
@@ -282,9 +295,11 @@ export function createCocreatorStore(database: Database): CocreatorStore {
     // the column stays whatever creation and the reference cascade last made it.
     updateSession: database.query(
       `UPDATE cocreator_sessions
-          SET title = $title, stash = $stash, examples = $examples, settings = $settings,
+          SET title = $title, stash = $stash, examples = $examples, settings = $settings, compaction = $compaction,
               avatar = $avatar, finished_avatar = $finishedAvatar,
-              modified = $modified, revision = $revision, side_chat = $sideChat
+              modified = $modified, revision = $revision, side_chat = $sideChat,
+              baseline = $baseline, target_avatar = $targetAvatar,
+              portrait_changed = $portraitChanged, publication_id = $publicationId
         WHERE id = $id`,
     ),
     deleteSession: database.query('DELETE FROM cocreator_sessions WHERE id = ?'),
@@ -300,7 +315,11 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       'UPDATE cocreator_sessions SET examples = $examples WHERE id = $id',
     ),
     updateSeedAvatar: database.query(
-      'UPDATE cocreator_sessions SET seed_avatar = $seedAvatar WHERE seed_avatar = $old',
+      `UPDATE cocreator_sessions
+         SET seed_avatar = CASE WHEN seed_avatar = $old THEN $seedAvatar ELSE seed_avatar END,
+             target_avatar = CASE WHEN target_avatar = $old THEN $seedAvatar ELSE target_avatar END,
+             finished_avatar = CASE WHEN finished_avatar = $old THEN $seedAvatar ELSE finished_avatar END
+       WHERE seed_avatar = $old OR target_avatar = $old OR finished_avatar = $old`,
     ),
     insertMessage: database.query(
       `INSERT INTO cocreator_messages
@@ -358,9 +377,16 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       stash: normalizeStash(parseJson<unknown>(row.stash, null)),
       examples: normalizeExamples(parseJson<unknown>(row.examples, null)),
       settings: normalizeSessionSettings(parseJson<unknown>(row.settings, null)),
+      compaction: normalizeCompaction(parseJson<unknown>(row.compaction, null)),
       avatar: row.avatar,
       finishedAvatar: row.finished_avatar,
       seedAvatar: row.seed_avatar,
+      baseline: parseJson<CocreatorCardBaseline | null>(row.baseline ?? 'null', null),
+      targetAvatar: row.target_avatar,
+      portraitChanged: row.portrait_changed === 1,
+      publication: row.publication_id
+        ? { id: row.publication_id, avatar: row.target_avatar }
+        : null,
       messages: statements.selectMessages.all(id).map(rowToMessage),
       sideChat: normalizeSideChat(parseJson<unknown>(row.side_chat ?? 'null', null)),
     };
@@ -383,11 +409,16 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       $stash: JSON.stringify(next.stash),
       $examples: JSON.stringify(next.examples),
       $settings: JSON.stringify(next.settings),
+      $compaction: JSON.stringify(next.compaction),
       $avatar: next.avatar,
       $finishedAvatar: next.finishedAvatar,
       $modified: Date.now(),
       $revision: next.revision,
       $sideChat: encodeSideChat(next.sideChat),
+      $baseline: next.baseline ? JSON.stringify(next.baseline) : null,
+      $targetAvatar: next.targetAvatar,
+      $portraitChanged: Number(next.portraitChanged),
+      $publicationId: next.publication?.id ?? null,
     });
   }
 
@@ -429,8 +460,11 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         examples?: ExampleSelection;
         settings?: SessionModelSettings;
         finishedAvatar?: string | null;
+        baseline?: CocreatorCardBaseline | null;
+        publication?: CocreatorPublication | null;
         messages: ChatMessage[];
         sideChat?: CocreatorSideChat | null;
+        compaction?: CompactionState;
       },
     ): CocreatorSaveResult => {
       const existing = readSession(id);
@@ -443,12 +477,26 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         ? normalizeSessionSettings(input.settings)
         : existing.settings;
       const messages = normalizeMessages(input.messages);
+      const compaction =
+        input.compaction === undefined
+          ? existing.compaction
+          : normalizeCompaction(input.compaction);
       const sideChat =
         input.sideChat === undefined ? existing.sideChat : normalizeSideChat(input.sideChat);
       // Absent means "keep what is there" — a whole-session save that predates the field, or
       // one the client has no reason to change, must not clear the recording.
-      const finishedAvatar =
-        input.finishedAvatar === undefined ? existing.finishedAvatar : input.finishedAvatar;
+      const newPublication =
+        input.publication && input.publication.id !== existing.publication?.id
+          ? input.publication
+          : null;
+      const publication = newPublication ?? existing.publication;
+      const targetAvatar = newPublication ? newPublication.avatar : existing.targetAvatar;
+      const baseline = input.baseline === undefined ? existing.baseline : input.baseline;
+      const finishedAvatar = publication
+        ? targetAvatar
+        : input.finishedAvatar === undefined
+          ? existing.finishedAvatar
+          : input.finishedAvatar;
 
       const conflict = checkRevision(
         existing,
@@ -456,10 +504,13 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         () =>
           title === existing.title &&
           finishedAvatar === existing.finishedAvatar &&
+          publication?.id === existing.publication?.id &&
+          JSON.stringify(baseline) === JSON.stringify(existing.baseline) &&
           JSON.stringify(stash) === JSON.stringify(existing.stash) &&
           JSON.stringify(examples) === JSON.stringify(existing.examples) &&
           JSON.stringify(settings) === JSON.stringify(existing.settings) &&
           JSON.stringify(sideChat) === JSON.stringify(existing.sideChat) &&
+          JSON.stringify(compaction) === JSON.stringify(existing.compaction) &&
           JSON.stringify(messages) === JSON.stringify(existing.messages),
       );
       if (conflict) return conflict;
@@ -473,7 +524,12 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         settings,
         avatar: existing.avatar,
         finishedAvatar,
+        baseline,
+        targetAvatar,
+        publication,
+        portraitChanged: newPublication ? false : existing.portraitChanged,
         sideChat,
+        compaction,
       });
       writeMessages(id, messages);
       return { kind: 'saved', session: readSession(id)! };
@@ -496,6 +552,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       const avatar = patch.avatar === undefined ? existing.avatar : patch.avatar;
       const finishedAvatar =
         patch.finishedAvatar === undefined ? existing.finishedAvatar : patch.finishedAvatar;
+      const baseline = patch.baseline === undefined ? existing.baseline : patch.baseline;
 
       const conflict = checkRevision(
         existing,
@@ -504,6 +561,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
           title === existing.title &&
           avatar === existing.avatar &&
           finishedAvatar === existing.finishedAvatar &&
+          JSON.stringify(baseline) === JSON.stringify(existing.baseline) &&
           JSON.stringify(stash) === JSON.stringify(existing.stash) &&
           JSON.stringify(examples) === JSON.stringify(existing.examples) &&
           JSON.stringify(settings) === JSON.stringify(existing.settings),
@@ -515,11 +573,16 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         title,
         revision: patch.revision,
         sideChat: existing.sideChat,
+        compaction: existing.compaction,
         stash,
         examples,
         settings,
         avatar,
         finishedAvatar,
+        baseline,
+        targetAvatar: existing.targetAvatar,
+        publication: existing.publication,
+        portraitChanged: existing.portraitChanged,
       });
       return { kind: 'saved', session: readSession(id)! };
     },
@@ -565,17 +628,11 @@ export function createCocreatorStore(database: Database): CocreatorStore {
       const existing = readSession(id);
       if (!existing) return null;
 
-      statements.updateSession.run({
-        $id: id,
-        $title: existing.title,
-        $stash: JSON.stringify(existing.stash),
-        $examples: JSON.stringify(existing.examples),
-        $settings: JSON.stringify(existing.settings),
-        $avatar: avatar,
-        $finishedAvatar: existing.finishedAvatar,
-        $modified: Date.now(),
-        $revision: existing.revision,
-      });
+      database
+        .query(
+          'UPDATE cocreator_sessions SET avatar = ?, portrait_changed = 1, modified = ? WHERE id = ?',
+        )
+        .run(avatar, Date.now(), id);
       return readSession(id);
     },
   );
@@ -597,7 +654,7 @@ export function createCocreatorStore(database: Database): CocreatorStore {
 
     createSession(input): CocreatorSession {
       const now = Date.now();
-      const id = crypto.randomUUID();
+      const id = input.id ?? crypto.randomUUID();
 
       statements.insertSession.run({
         $id: id,
@@ -605,10 +662,13 @@ export function createCocreatorStore(database: Database): CocreatorStore {
         $created: now,
         $modified: now,
         $revision: 0,
-        $stash: JSON.stringify(emptyStash()),
+        $stash: JSON.stringify(input.stash ? normalizeStash(input.stash) : emptyStash()),
         $examples: JSON.stringify({ cards: [], fields: { ...DEFAULT_EXAMPLE_FIELDS } }),
         $settings: '{}',
+        $compaction: JSON.stringify(createCompactionState()),
         $seedAvatar: input.seedAvatar ?? null,
+        $baseline: input.baseline ? JSON.stringify(input.baseline) : null,
+        $avatar: input.avatar ?? null,
       });
 
       return readSession(id)!;

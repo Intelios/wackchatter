@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { blankCardData } from '../../shared/card/blank.ts';
 import { emptyStash, setSlot } from '../../shared/cocreator/stash.ts';
 import type { ChatMessage } from '../../shared/types/chat.ts';
 import type { CardStash, CocreatorSession, StashProvenance } from '../../shared/types/cocreator.ts';
@@ -10,7 +11,7 @@ import {
   normalizeExamples,
   normalizeSessionSettings,
 } from './cocreator.ts';
-import { createSchema, SCHEMA_VERSION } from './db.ts';
+import { createSchema } from './db.ts';
 
 let store: CocreatorStore;
 let database: Database;
@@ -30,6 +31,94 @@ const provenance: StashProvenance = {
   at: '2026-08-13T10:00:00.000Z',
   source: 'block',
 };
+
+test('new compaction defaults and explicit session state round-trip without changing messages', () => {
+  const session = store.createSession({});
+  expect(session.compaction?.automatic).toBe(true);
+  const compaction = { automatic: false, history: [] };
+  const saved = store.replaceSession(session.id, {
+    revision: 1,
+    messages: session.messages,
+    compaction,
+  });
+  expect(saved.kind).toBe('saved');
+  expect(store.getSession(session.id)?.compaction).toEqual(compaction);
+  expect(store.getSession(session.id)?.messages).toEqual(session.messages);
+  store.patchSession(session.id, { revision: 2, title: 'Renamed' });
+  expect(store.getSession(session.id)?.compaction).toEqual(compaction);
+});
+
+describe('complete working cards', () => {
+  const baseline = () => ({
+    card: {
+      spec: 'chara_card_v3' as const,
+      unknown: 7,
+      data: { ...blankCardData('Alice'), extensions: { world: 'Town' } },
+    },
+    portraitVersion: 'original-art',
+  });
+  test('creation commits the baseline, inherited portrait and every seeded field together', () => {
+    const stash = setSlot(emptyStash(), 'description', '  Exact\n', provenance);
+    const session = store.createSession({
+      seedAvatar: 'Alice.png',
+      stash,
+      baseline: baseline(),
+      avatar: 'inherited.png',
+    });
+    expect(session.stash.description?.text).toBe('  Exact\n');
+    expect(session.baseline).toEqual(baseline());
+    expect(session.targetAvatar).toBe('Alice.png');
+    expect(session.avatar).toBe('inherited.png');
+    expect(session.portraitChanged).toBe(false);
+    expect(session.messages).toEqual([]);
+  });
+  test('a saved copy becomes the target; repeated snapshots cannot resurrect renamed targets', () => {
+    const created = store.createSession({ seedAvatar: 'Alice.png', baseline: baseline() });
+    const publication = { id: 'save-once', avatar: 'Copy.png' };
+    saved(
+      store.replaceSession(created.id, {
+        revision: 1,
+        messages: [],
+        baseline: baseline(),
+        publication,
+        finishedAvatar: 'Copy.png',
+      }),
+    );
+    store.reassignSeedCard('Copy.png', 'Renamed.png');
+    const result = saved(
+      store.replaceSession(created.id, {
+        revision: 2,
+        messages: [],
+        publication,
+        finishedAvatar: 'Copy.png',
+      }),
+    );
+    expect(result.seedAvatar).toBe('Alice.png');
+    expect(result.targetAvatar).toBe('Renamed.png');
+    expect(result.finishedAvatar).toBe('Renamed.png');
+    store.reassignSeedCard('Renamed.png', null);
+    expect(store.getSession(created.id)?.targetAvatar).toBeNull();
+    expect(store.getSession(created.id)?.baseline).toEqual(baseline());
+  });
+  test('portrait writes preserve the side scratchpad and mark only the artwork dirty', () => {
+    const created = store.createSession({ seedAvatar: 'Alice.png', baseline: baseline() });
+    saved(store.replaceSession(created.id, { revision: 1, messages: [], sideChat: sideChat() }));
+    const art = store.setSessionAvatar(created.id, 'changed.png')!;
+    expect(art.sideChat?.snapshot.systemPrompt).toBe('Design a lighthouse keeper.');
+    expect(art.baseline).toEqual(baseline());
+    expect(art.portraitChanged).toBe(true);
+    expect(art.revision).toBe(1);
+    saved(
+      store.replaceSession(created.id, {
+        revision: 2,
+        messages: [],
+        publication: { id: 'p', avatar: 'Alice.png' },
+        baseline: baseline(),
+      }),
+    );
+    expect(store.getSession(created.id)?.portraitChanged).toBe(false);
+  });
+});
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -63,7 +152,7 @@ const sideChat = () => ({
     exampleBlock: 'An example frozen in time.',
     messages: [{ role: 'assistant' as const, content: 'What is her name?' }],
   },
-  settings: { connectionId: 'side', outputTokens: 2048 },
+  settings: { model: { connectionId: 'side', modelId: 'cheap' }, outputTokens: 2048 },
   messages: [message({ id: 'side-answer', mes: 'Elowen.', extra: { model: 'side-model' } })],
 });
 
@@ -122,18 +211,6 @@ describe('side scratchpad persistence', () => {
     expect(store.deleteSession(created.id)).toBe(true);
     expect(store.getSession(created.id)).toBeNull();
   });
-
-  test('migration adds a nullable scratchpad without changing existing sessions', () => {
-    database.exec(`ALTER TABLE cocreator_sessions DROP COLUMN side_chat`);
-    const created = database.query(`INSERT INTO cocreator_sessions
-      (id, title, created, modified, revision) VALUES ('legacy-side', 'Kept', 1, 2, 7)`);
-    created.run();
-    createSchema(database);
-    const migrated = createCocreatorStore(database).getSession('legacy-side')!;
-    expect(migrated.sideChat).toBeNull();
-    expect(migrated.modified).toBe(2);
-    expect(migrated.revision).toBe(7);
-  });
 });
 
 describe('creating and reading', () => {
@@ -183,11 +260,10 @@ describe('creating and reading', () => {
           fields: { ...created.examples.fields, mes_example: true },
         },
         settings: {
-          connectionId: 'c1',
+          model: { connectionId: 'c1', modelId: 'design-model' },
           presetId: null,
           systemPrompt: 'Custom.',
           analysisPrompt: 'Inspect these.',
-          modelOverride: { connectionId: 'c1', model: 'design-model' },
           outputTokens: 16384,
           contextTokens: 65536,
         },
@@ -203,11 +279,10 @@ describe('creating and reading', () => {
     expect(read.examples.cards).toEqual(['Seraphina.png']);
     expect(read.examples.fields.mes_example).toBe(true);
     expect(read.settings).toEqual({
-      connectionId: 'c1',
+      model: { connectionId: 'c1', modelId: 'design-model' },
       presetId: null,
       systemPrompt: 'Custom.',
       analysisPrompt: 'Inspect these.',
-      modelOverride: { connectionId: 'c1', model: 'design-model' },
       outputTokens: 16384,
       contextTokens: 65536,
     });
@@ -538,11 +613,11 @@ describe('repairing stored JSON', () => {
 
   test('an absent session override stays absent, so it keeps following the app setting', () => {
     expect(normalizeSessionSettings({})).toEqual({});
-    expect(normalizeSessionSettings({ connectionId: 42, presetId: 'p1' })).toEqual({
+    expect(normalizeSessionSettings({ model: 42, presetId: 'p1' })).toEqual({
       presetId: 'p1',
     });
-    // Null is a real value here — "follow the chat connection" — and must survive.
-    expect(normalizeSessionSettings({ connectionId: null })).toEqual({ connectionId: null });
+    // Null is a real value for the preset — "use the active preset" — and must survive.
+    expect(normalizeSessionSettings({ presetId: null })).toEqual({ presetId: null });
   });
 
   test('blank prompts and malformed model overrides are discarded', () => {
@@ -550,88 +625,26 @@ describe('repairing stored JSON', () => {
       normalizeSessionSettings({
         systemPrompt: '   ',
         analysisPrompt: '',
-        modelOverride: { connectionId: 'c1', model: '   ' },
+        model: { connectionId: 'c1', modelId: '   ' },
       }),
     ).toEqual({});
   });
+
+  test('a session keeps its model even when the connection is gone', () => {
+    // Resolving it reports the missing connection; normalising must not quietly drop it.
+    expect(normalizeSessionSettings({ model: { connectionId: 'gone', modelId: 'm' } })).toEqual({
+      model: { connectionId: 'gone', modelId: 'm' },
+    });
+  });
 });
 
-describe('migration', () => {
-  test('a v3 database gains both tables and is stamped with the current version', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
-      CREATE TABLE chats (
-        id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL,
-        created INTEGER NOT NULL, modified INTEGER NOT NULL,
-        revision INTEGER NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE TABLE messages (
-        chat_id TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL,
-        is_user INTEGER NOT NULL, is_system INTEGER NOT NULL, persona_id TEXT,
-        swipe_id INTEGER NOT NULL DEFAULT 0, swipes TEXT NOT NULL, swipe_info TEXT NOT NULL,
-        PRIMARY KEY (chat_id, id)
-      ) WITHOUT ROWID;
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '3');
-      INSERT INTO chats VALUES ('c1', 'a.png', 'Kept chat', 1, 2, 5, '{}');
-    `);
-
-    createSchema(legacy);
-
-    // The existing chat is untouched, and the new tables exist and work.
-    expect(legacy.query<{ title: string }, []>('SELECT title FROM chats').get()!.title).toBe(
-      'Kept chat',
-    );
-    const migrated = createCocreatorStore(legacy);
-    expect(migrated.listSessions()).toEqual([]);
-    expect(migrated.createSession({ title: 'First' }).title).toBe('First');
-    expect(
-      legacy
-        .query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?')
-        .get('schema_version')?.value,
-    ).toBe(String(SCHEMA_VERSION));
-  });
-
+describe('schema', () => {
   test('createSchema is idempotent — running it twice keeps the sessions', () => {
     const created = store.createSession({ title: 'Survivor' });
 
     createSchema(database);
 
     expect(store.getSession(created.id)?.title).toBe('Survivor');
-  });
-
-  test('a v6 database gains the seed column, and its sessions read as unseeded', () => {
-    const legacy = new Database(':memory:');
-    legacy.exec(`
-      CREATE TABLE cocreator_sessions (
-        id TEXT PRIMARY KEY, title TEXT NOT NULL, created INTEGER NOT NULL,
-        modified INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
-        stash TEXT NOT NULL DEFAULT '{"alternate_greetings":[],"tags":[]}',
-        examples TEXT NOT NULL DEFAULT '{"cards":[],"fields":{}}',
-        settings TEXT NOT NULL DEFAULT '{}', avatar TEXT, finished_avatar TEXT
-      );
-      CREATE TABLE cocreator_messages (
-        session_id TEXT NOT NULL REFERENCES cocreator_sessions(id) ON DELETE CASCADE,
-        id TEXT NOT NULL, position INTEGER NOT NULL, is_user INTEGER NOT NULL,
-        swipe_id INTEGER NOT NULL DEFAULT 0, swipes TEXT NOT NULL, swipe_info TEXT NOT NULL,
-        PRIMARY KEY (session_id, id)
-      ) WITHOUT ROWID;
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta VALUES ('schema_version', '6');
-      INSERT INTO cocreator_sessions (id, title, created, modified, revision)
-        VALUES ('s1', 'Old session', 1, 2, 3);
-    `);
-
-    createSchema(legacy);
-
-    const migrated = createCocreatorStore(legacy);
-    const old = migrated.getSession('s1')!;
-    expect(old.title).toBe('Old session');
-    expect(old.seedAvatar).toBeNull();
-    // New writes know the column, and reassigning reaches the pre-existing rows.
-    const fresh = migrated.createSession({ seedAvatar: 'Mika.png' });
-    expect(migrated.reassignSeedCard('Mika.png', 'Mika2.png')).toBe(1);
-    expect(migrated.getSession(fresh.id)!.seedAvatar).toBe('Mika2.png');
   });
 });
 

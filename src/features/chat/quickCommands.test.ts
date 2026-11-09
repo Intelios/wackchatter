@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import type { QuickCommand } from '@shared/types/settings.ts';
-import type { MenuAction, MenuEntry } from '../../components/Menu.tsx';
-import { buildQuickCommandsMenu, type QuickCommandsActions } from './QuickCommands.tsx';
 import {
   addCommand,
   commandLabel,
@@ -94,106 +92,5 @@ describe('commandLabel', () => {
   test('a blank name falls back to a snippet of the text', () => {
     const command: QuickCommand = { id: 'a', name: '   ', text: 'Do the thing.\nMore.' };
     expect(commandLabel(command)).toBe('Do the thing.');
-  });
-});
-
-const COMMANDS: QuickCommand[] = [
-  { id: 'c1', name: 'Ending', text: 'Write a definitive ending.' },
-  { id: 'c2', name: 'Recap', text: 'Summarise the story so far.' },
-];
-
-function isSeparator(entry: MenuEntry): boolean {
-  return 'kind' in entry && entry.kind === 'separator';
-}
-
-function menuActions(entries: MenuEntry[]): MenuAction[] {
-  return entries.filter((entry): entry is MenuAction => !isSeparator(entry));
-}
-
-function spies() {
-  const inserted: string[] = [];
-  const calls: string[] = [];
-  const actions: QuickCommandsActions = {
-    insertCommand: (text) => inserted.push(text),
-    editQuickCommands: () => calls.push('editQuickCommands'),
-  };
-  return { inserted, calls, actions };
-}
-
-describe('buildQuickCommandsMenu', () => {
-  test('with no commands the edit entry alone remains, as the discovery path', () => {
-    const { actions } = spies();
-    const entries = buildQuickCommandsMenu([], actions);
-    expect(entries).toHaveLength(1);
-    const [edit] = menuActions(entries);
-    expect(edit?.label).toBe('Edit quick commands…');
-  });
-
-  test('commands sit ahead of the edit entry, with a separator between', () => {
-    const { actions } = spies();
-    const entries = buildQuickCommandsMenu(COMMANDS, actions);
-    expect(entries).toHaveLength(4); // 2 commands + 1 separator + 1 edit entry
-    expect(isSeparator(entries[2]!)).toBe(true);
-    expect(menuActions(entries).map((entry) => entry.label)).toEqual([
-      'Ending',
-      'Recap',
-      'Edit quick commands…',
-    ]);
-  });
-
-  test('selecting a command inserts its text verbatim', () => {
-    const { inserted, actions } = spies();
-    const [ending, recap] = menuActions(buildQuickCommandsMenu(COMMANDS, actions));
-
-    ending!.onSelect();
-    recap!.onSelect();
-    expect(inserted).toEqual(['Write a definitive ending.', 'Summarise the story so far.']);
-  });
-
-  test('the edit entry opens the editor', () => {
-    const { calls, actions } = spies();
-    const entries = buildQuickCommandsMenu(COMMANDS, actions);
-    menuActions(entries).at(-1)!.onSelect();
-    expect(calls).toEqual(['editQuickCommands']);
-  });
-
-  test('blank commands stay out of the menu — they would insert nothing', () => {
-    const commands: QuickCommand[] = [
-      { id: 'a', name: 'Real', text: 'Do the thing.' },
-      { id: 'b', name: 'Draft', text: '   ' },
-    ];
-    const { actions } = spies();
-    const labels = menuActions(buildQuickCommandsMenu(commands, actions));
-    expect(labels.map((entry) => entry.label)).toEqual(['Real', 'Edit quick commands…']);
-  });
-
-  test('an unnamed command borrows its label from the text', () => {
-    const commands: QuickCommand[] = [{ id: 'a', name: '', text: 'Do the thing.' }];
-    const { actions } = spies();
-    const labels = menuActions(buildQuickCommandsMenu(commands, actions));
-    expect(labels.map((entry) => entry.label)).toContain('Do the thing.');
-  });
-
-  test('entries carry no hint — the label is the whole command', () => {
-    // A hint shares the label's line and does not shrink, so a long name plus a snippet
-    // stacks the label one word per line. The user wrote the command; the name is enough.
-    const { actions } = spies();
-    const entries = menuActions(buildQuickCommandsMenu(COMMANDS, actions));
-    for (const entry of entries) expect(entry.hint).toBeUndefined();
-  });
-
-  test('duplicate names both survive — entries are keyed by id, not label', () => {
-    const commands: QuickCommand[] = [
-      { id: 'a', name: 'Ending', text: 'first' },
-      { id: 'b', name: 'Ending', text: 'second' },
-    ];
-    const { inserted, actions } = spies();
-    const endings = menuActions(buildQuickCommandsMenu(commands, actions)).filter(
-      (entry) => entry.label === 'Ending',
-    );
-
-    expect(endings).toHaveLength(2);
-    for (const ending of endings) ending.onSelect();
-    expect(inserted).toEqual(['first', 'second']);
   });
 });

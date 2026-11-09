@@ -19,7 +19,7 @@ import type { ResolvedContender } from '../contenders.ts';
 function poolLabel(entry: ResolvedContender): string {
   const name = entry.contender.name.trim();
   if (name) return name;
-  return entry.contender.model.trim() || entry.connection?.model?.trim() || '';
+  return entry.contender.model?.modelId ?? '';
 }
 
 export function tournamentNameFor(

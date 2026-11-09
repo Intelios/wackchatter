@@ -1,0 +1,743 @@
+/*
+ * The home screen: a cover for the last chat (see Home.tsx).
+ *
+ * Three faces, each with one job: the display grotesque for names, a Didone italic for the
+ * cover line and the quote (magazine contrast; never used for story text), a mono for the
+ * small facts. Colour is the shell's Aura throughout, so hovering a name re-tints the page.
+ */
+
+.w3-home {
+  --w3-font-serif: "Bodoni Moda Variable", "Didot", "Bodoni 72", Georgia, serif;
+  --w3-font-label: "Martian Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.w3-home[data-dropping]::after {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  z-index: 60;
+  border: 2px dashed var(--w3-accent-line);
+  border-radius: 18px;
+  background: var(--w3-accent-soft);
+  pointer-events: none;
+}
+
+.w3-home__viewport {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+
+.w3-home__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.w3-home__panel {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+
+.w3-home__mono,
+.w3-home__kicker {
+  font-family: var(--w3-font-label);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--w3-muted);
+}
+
+/* ---------- The cover ---------- */
+
+/*
+ * Leaving for Create | Arena: the cover and the stack lift and blur away together. Hand-off
+ * is a state with transitions (data-apps), not a value written every scroll frame.
+ */
+.w3-home__cover,
+.w3-home__stack {
+  transition:
+    transform 0.7s var(--w3-out),
+    opacity 0.5s var(--w3-out),
+    filter 0.5s var(--w3-out);
+}
+
+.w3-home__cover {
+  position: absolute;
+  inset: 0;
+  animation: w3-home-in 0.6s var(--w3-out);
+}
+
+.w3-home[data-apps] :is(.w3-home__cover, .w3-home__stack) {
+  transform: translateY(-14%);
+  opacity: 0.15;
+  filter: blur(6px);
+}
+
+@keyframes w3-home-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.w3-home__portrait {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 22%;
+  width: 48%;
+  mask:
+    linear-gradient(to right, transparent 0, #000 32%, #000 70%, transparent 100%) intersect,
+    linear-gradient(to top, transparent 0, #000 30%);
+}
+
+/*
+ * Portraits and words fade in together, with the portrait layers inside one shared mask.
+ * The old portrait stays solid beneath them while the old words fade out.
+ */
+.w3-home__page {
+  position: absolute;
+  inset: 0;
+  will-change: opacity;
+}
+
+.w3-home__page[data-arriving] {
+  animation: w3-home-page-in var(--wc-duration-home-cover) var(--w3-out) both;
+}
+
+@keyframes w3-home-page-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.w3-home__page[data-leaving] {
+  pointer-events: none;
+}
+
+.w3-home__portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 12%;
+}
+
+/* No portrait: the initial, set huge in their colour. */
+.w3-home__initial,
+.w3-home__mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--w3-font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 44vw;
+  line-height: 1;
+  color: var(--w3-accent);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.w3-home__mark {
+  inset: 0 22% 0 auto;
+  width: 60%;
+  opacity: 0.12;
+}
+
+.w3-home__left {
+  position: absolute;
+  left: 4%;
+  top: 14%;
+  bottom: 8%;
+  width: 58%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.w3-home__page[data-leaving] .w3-home__left {
+  opacity: 0;
+  transition: opacity 0.25s var(--w3-out);
+}
+
+.w3-home__kicker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.w3-home__kicker::after {
+  content: "";
+  width: 70px;
+  height: 1px;
+  background: var(--w3-accent-line);
+}
+
+.w3-home__kicker--bad {
+  color: var(--w3-danger);
+}
+
+.w3-home__quote,
+.w3-home__dek {
+  font-family: var(--w3-font-serif);
+  font-style: italic;
+  font-weight: 500;
+  margin: 0;
+  text-shadow: 0 2px 20px oklch(0 0 0 / 0.55);
+}
+
+.w3-home__quote {
+  margin-bottom: auto;
+  padding-top: 18px;
+  max-width: 26ch;
+  font-size: clamp(18px, 1.9vw, 28px);
+  line-height: 1.3;
+  color: var(--w3-dialogue);
+}
+
+.w3-home__quote::before {
+  content: "\201C";
+  display: block;
+  margin-bottom: 10px;
+  font-style: normal;
+  font-size: 3.4em;
+  line-height: 0.6;
+  color: var(--w3-accent);
+}
+
+.w3-home__spacer {
+  margin-bottom: auto;
+}
+
+.w3-home__body {
+  margin: 0 0 auto;
+  padding-top: 18px;
+  max-width: 42ch;
+  font-size: clamp(16px, 1.5vw, 20px);
+  line-height: 1.5;
+  color: var(--w3-soft);
+}
+
+.w3-home__dek {
+  font-size: clamp(24px, 3.3vw, 50px);
+  line-height: 1;
+  color: var(--w3-accent);
+}
+
+.w3-home__headline {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.w3-home__name {
+  display: block;
+  font-family: var(--w3-font-display);
+  font-weight: 800;
+  font-size: 120px;
+  line-height: 0.8;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+  color: var(--w3-text);
+  text-shadow: 0 4px 40px oklch(0 0 0 / 0.4);
+}
+
+.w3-home__line {
+  display: block;
+  width: max-content;
+  white-space: nowrap;
+}
+
+.w3-home__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-top: 12px;
+}
+
+.w3-home__go,
+.w3-home__ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 18px 0 20px;
+  border-radius: 22px;
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    transform 0.3s var(--w3-spring),
+    box-shadow 0.3s,
+    background var(--w3-quick),
+    border-color var(--w3-quick);
+}
+
+.w3-home__go {
+  border: 0;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  box-shadow: 0 12px 40px -12px var(--w3-accent-line);
+}
+
+.w3-home__go:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 50px -12px var(--w3-accent-line);
+}
+
+.w3-home__go .w3-kbd {
+  color: var(--w3-accent-ink);
+  border-color: oklch(0.2 0.05 var(--w3-h) / 0.35);
+}
+
+.w3-home__ghost {
+  border: 1px solid var(--w3-line-strong);
+  background: none;
+  color: var(--w3-soft);
+  font-weight: 500;
+}
+
+.w3-home__ghost:hover {
+  border-color: var(--w3-accent-line);
+  background: var(--w3-accent-soft);
+  color: var(--w3-text);
+}
+
+/* ---------- The stack ---------- */
+
+.w3-home__stack {
+  position: absolute;
+  z-index: 3;
+  right: 3.5%;
+  top: 13%;
+  bottom: 11%;
+  width: 27%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  overflow-y: auto;
+  scrollbar-width: none;
+  text-align: right;
+  mask: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+
+.w3-home__stack::-webkit-scrollbar {
+  display: none;
+}
+
+.w3-home__stack[data-fits] {
+  mask: none;
+}
+
+/* A stack row: the name, and a delete that shows beside it while you're on it. */
+.w3-home__row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.w3-home__del {
+  flex: none;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: oklch(0 0 0 / 0.45);
+  color: var(--w3-soft);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.w3-home__row:hover .w3-home__del,
+.w3-home__del:focus-visible,
+.w3-home__del[data-armed] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.w3-home__del:hover {
+  background: oklch(0 0 0 / 0.65);
+  color: var(--w3-text);
+}
+
+.w3-home__del[data-armed] {
+  padding: 0 11px;
+  background: var(--w3-danger-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-danger);
+  color: var(--w3-text);
+}
+
+.w3-home__entry {
+  --home-c: var(--w3-soft);
+  flex: none;
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  max-width: 100%;
+  padding: calc(var(--home-fs, 40px) * 0.1) 0;
+  border: 0;
+  background: none;
+}
+
+.w3-home__entry b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--w3-font-display);
+  font-weight: 800;
+  font-size: var(--home-fs, 40px);
+  line-height: 0.84;
+  letter-spacing: -0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--home-c) 62%, transparent);
+  transition:
+    color 0.25s,
+    transform 0.45s var(--w3-spring);
+}
+
+.w3-home__entry span {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-family: var(--w3-font-label);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+  transition:
+    opacity 0.2s,
+    max-height 0.35s var(--w3-spring),
+    margin 0.35s;
+}
+
+/* The chat you were last in, marked so the way back to it is always visible. */
+.w3-home__entry[data-lead] b::before {
+  content: "";
+  display: inline-block;
+  width: 0.22em;
+  height: 0.22em;
+  margin-right: 0.3em;
+  border-radius: 50%;
+  vertical-align: 0.24em;
+  background: var(--home-c);
+}
+
+.w3-home__entry:hover b,
+.w3-home__entry[data-picked] b {
+  color: var(--home-c);
+  transform: translateX(-8px);
+}
+
+.w3-home__entry:hover span,
+.w3-home__entry[data-picked] span {
+  max-height: 20px;
+  margin-top: 4px;
+  opacity: 1;
+}
+
+.w3-home__entry:focus-visible {
+  outline-offset: 4px;
+}
+
+/* ---------- Version and the way down ---------- */
+
+.w3-home__version {
+  position: absolute;
+  left: 4%;
+  bottom: 3%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--w3-font-label);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+  transition: opacity 0.3s var(--w3-out);
+}
+
+.w3-home__version i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--w3-accent);
+  box-shadow: 0 0 10px var(--w3-accent);
+  animation: w3-home-pulse 2.4s ease-in-out infinite;
+}
+
+.w3-home__update {
+  font-weight: 500;
+  color: var(--w3-soft);
+}
+
+.w3-home__version code {
+  font-family: inherit;
+  text-transform: none;
+  color: var(--w3-accent);
+}
+
+.w3-home[data-apps] :is(.w3-home__version, .w3-home__cue) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes w3-home-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.w3-home__cue {
+  position: absolute;
+  left: 50%;
+  bottom: 3%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  border: 0;
+  background: none;
+  font-family: var(--w3-font-label);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--w3-muted);
+  transition: opacity 0.3s var(--w3-out);
+}
+
+.w3-home__cue:hover {
+  color: var(--w3-text);
+}
+
+.w3-home__cue .w3-ic {
+  animation: w3-home-bob 2.4s ease-in-out infinite;
+}
+
+@keyframes w3-home-bob {
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+/* ---------- Create | Arena ---------- */
+
+.w3-home__apps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.w3-home__half {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 6% 6% 0;
+}
+
+.w3-home__half + .w3-home__half {
+  border-left: 1px solid var(--w3-line);
+}
+
+.w3-home__app {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--w3-font-display);
+  font-weight: 800;
+  font-size: clamp(80px, 12vw, 180px);
+  line-height: 0.8;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+  color: var(--w3-text);
+  opacity: 0;
+  transition:
+    color var(--w3-quick),
+    opacity 0.5s var(--w3-out),
+    transform 0.8s var(--w3-out);
+}
+
+.w3-home__app:hover {
+  color: var(--w3-accent);
+}
+
+.w3-home__half--l .w3-home__app {
+  transform: translateX(-60%);
+}
+
+.w3-home__half--r .w3-home__app {
+  transform: translateX(60%);
+}
+
+.w3-home[data-apps] .w3-home__app {
+  opacity: 1;
+  transform: none;
+}
+
+.w3-home__italic {
+  margin: 0;
+  font-family: var(--w3-font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: clamp(22px, 2.6vw, 38px);
+  color: var(--w3-accent);
+}
+
+.w3-home__desc {
+  margin: 0;
+  max-width: 36ch;
+  font-size: 16px;
+  color: var(--w3-soft);
+}
+
+.w3-home__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.w3-home__links button {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 18px;
+  border: 1px solid var(--w3-line-strong);
+  background: none;
+  font-size: 14px;
+  color: var(--w3-soft);
+  transition:
+    background var(--w3-quick),
+    border-color var(--w3-quick),
+    color var(--w3-quick);
+}
+
+.w3-home__links button:hover {
+  border-color: var(--w3-accent-line);
+  background: var(--w3-accent-soft);
+  color: var(--w3-text);
+}
+
+/* The two Co-Creators, side by side. */
+.w3-home__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 10px;
+}
+
+.w3-home__pair button {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 14px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  text-align: left;
+  transition:
+    transform 0.25s var(--w3-spring),
+    box-shadow var(--w3-quick);
+}
+
+.w3-home__pair button:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.w3-home__pair .w3-ic {
+  color: var(--w3-accent);
+}
+
+.w3-home__pair b {
+  font-family: var(--w3-font-display);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--w3-text);
+}
+
+.w3-home__pair span {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--w3-faint);
+}
+
+/* The lines under each word follow it in, one after another. */
+:is(.w3-home__italic, .w3-home__desc, .w3-home__pair, .w3-home__links) {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.45s var(--w3-out),
+    transform 0.6s var(--w3-out);
+}
+
+.w3-home[data-apps] :is(.w3-home__italic, .w3-home__desc, .w3-home__pair, .w3-home__links) {
+  opacity: 1;
+  transform: none;
+}
+
+.w3-home[data-apps] .w3-home__italic {
+  transition-delay: 0.15s;
+}
+
+.w3-home[data-apps] :is(.w3-home__desc, .w3-home__pair) {
+  transition-delay: 0.25s;
+}
+
+.w3-home[data-apps] .w3-home__links {
+  transition-delay: 0.35s;
+}
+
+/* ---------- Island at home ---------- */
+
+.w3-home__isl-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: var(--w3-island-h);
+  padding: 0 18px;
+  font-size: 13px;
+  color: var(--w3-muted);
+}
+
+.w3-home__isl-note i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--w3-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .w3-home__page[data-leaving] .w3-home__left {
+    transition: none;
+  }
+
+  .w3-home__cover,
+  .w3-home__version i,
+  .w3-home__cue .w3-ic {
+    animation: none;
+  }
+}

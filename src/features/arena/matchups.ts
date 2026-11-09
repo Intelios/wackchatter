@@ -100,26 +100,3 @@ export function winRate(matchup: Matchup): number | null {
   if (matchup.played === 0) return null;
   return (matchup.wins + matchup.ties / 2) / matchup.played;
 }
-
-/** Every unordered pair from a set of ids, in a stable order. */
-export function allPairings(ids: readonly string[]): [string, string][] {
-  const pairs: [string, string][] = [];
-  for (let i = 0; i < ids.length; i++) {
-    for (let j = i + 1; j < ids.length; j++) {
-      const a = ids[i];
-      const b = ids[j];
-      if (a !== undefined && b !== undefined) pairs.push([a, b]);
-    }
-  }
-  return pairs;
-}
-
-/**
- * How many pairings among these entrants have never had a scored round.
- *
- * The number that answers "how much longer until this board means something" — least-played
- * pairing fills these in first, so it falls steadily rather than at random.
- */
-export function unplayedPairings(table: MatchupTable, ids: readonly string[]): number {
-  return allPairings(ids).filter(([a, b]) => matchupOf(table, a, b).played === 0).length;
-}

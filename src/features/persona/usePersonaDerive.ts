@@ -15,15 +15,13 @@ import {
 } from '@shared/persona/derive.ts';
 import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2, CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { characterApi, streamGenerate } from '../../lib/api.ts';
-
-/** A derived persona is ~150 tokens. The headroom is for a model that pads its JSON. */
-const MAX_DERIVE_TOKENS = 600;
+import { characterApi } from '../../lib/api.ts';
+import { runGeneration } from '../../lib/generation.ts';
 
 export interface DeriveResult {
   name: string;
@@ -36,7 +34,7 @@ export interface DeriveStatus {
 }
 
 interface UsePersonaDeriveOptions {
-  connection: Connection | null;
+  connection: ResolvedModel | null;
   preset: Preset | null;
   globalVariables: MacroVariableMap;
 }
@@ -117,11 +115,8 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
   const derive = useCallback(
     async (character: CharacterSummary): Promise<DeriveResult | null> => {
       if (abortRef.current) return null;
-      if (!connection?.baseUrl || !connection.model) {
-        setStatus({
-          running: false,
-          error: 'The active connection needs an endpoint and a model.',
-        });
+      if (!connection) {
+        setStatus({ running: false, error: 'Choose a chat model in Connections first.' });
         return null;
       }
       if (!preset) {
@@ -155,17 +150,17 @@ export function usePersonaDerive({ connection, preset, globalVariables }: UsePer
           preset,
           connection,
           stream: false,
-          maxTokens: MAX_DERIVE_TOKENS,
+          // No cap: a thinking model spends tokens before the JSON, and a cap cut it off.
+          maxTokens: null,
         });
 
-        const result = await streamGenerate(
+        const result = await runGeneration({
+          model: connection,
           body,
-          controller.signal,
-          { onTick: () => {} },
-          '',
-          connection.id,
-          { feature: 'persona', sessionId: cached.sessionId },
-        );
+          signal: controller.signal,
+          usage: { feature: 'persona', sessionId: cached.sessionId },
+          onTick: () => {},
+        });
         // A non-streaming reply can resolve in the same turn as the abort, so the signal is
         // re-read after the await rather than only before it.
         if (controller.signal.aborted) return null;

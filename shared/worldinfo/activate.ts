@@ -45,8 +45,9 @@ import { WI_POSITION, WI_ROLE_TO_STRING } from '../types/worldinfo.ts';
 import {
   createRegexCache,
   evaluateSecondary,
+  firstMatchingKey,
   type MatchSettings,
-  matchAny,
+  matchKey,
   matchSettingsFor,
   type RegexCache,
 } from './match.ts';
@@ -108,6 +109,13 @@ export interface ActivatedEntry extends EntryRef {
   depth?: number;
   role?: 'system' | 'user' | 'assistant';
   reason: ActivationReason;
+  /** For a keyword or recursion activation: the first of its keys that matched. */
+  matchedKey?: string;
+  /**
+   * For a keyword activation: the newest scanned message holding that key, counted back
+   * from the newest (0), and who wrote it. Display only; nothing reads it to decide.
+   */
+  matchedIn?: { back: number; name: string; isUser: boolean };
   /** Which pass it fired on. 0 is the chat itself; 1+ are recursion. */
   pass: number;
   /** Set when `position` was unsupported and folded — the inspector says so. */
@@ -205,6 +213,7 @@ interface Candidate {
 interface Match {
   candidate: Candidate;
   reason: ActivationReason;
+  matchedKey?: string;
 }
 
 /** Entries as a flat list, sorted by the rule the whole engine depends on. */
@@ -316,6 +325,16 @@ function passesProbability(entry: WorldInfoEntry, rng: Rng): boolean {
 }
 
 export function activateWorldInfo(options: ActivateOptions): ActivationResult {
+  /** Where a keyword activation's key was found, for the inspector and the Lorebooks tool. */
+  function matchedIn(match: Match): Pick<ActivatedEntry, 'matchedIn'> {
+    if (match.reason !== 'keyword' || match.matchedKey === undefined) return {};
+    const key = match.matchedKey;
+    const found = buffer.findMessage(match.candidate.scanDepth, (line) =>
+      matchKey(line, key, match.candidate.match, cache),
+    );
+    return found ? { matchedIn: found } : {};
+  }
+
   const { sources, messages, settings, budget, countTokens } = options;
 
   const skipped: SkippedEntry[] = [];
@@ -394,7 +413,8 @@ export function activateWorldInfo(options: ActivateOptions): ActivationResult {
 
       const haystack = buffer.get(candidate.scanDepth);
       if (!haystack) continue;
-      if (!matchAny(haystack, entry.key, candidate.match, cache)) continue;
+      const matchedKey = firstMatchingKey(haystack, entry.key, candidate.match, cache);
+      if (matchedKey === null) continue;
       if (
         entry.selective &&
         !evaluateSecondary(
@@ -408,7 +428,7 @@ export function activateWorldInfo(options: ActivateOptions): ActivationResult {
         continue;
       }
 
-      matches.push({ candidate, reason: pass === 0 ? 'keyword' : 'recursion' });
+      matches.push({ candidate, reason: pass === 0 ? 'keyword' : 'recursion', matchedKey });
     }
 
     if (matches.length === 0) break;
@@ -450,6 +470,8 @@ export function activateWorldInfo(options: ActivateOptions): ActivationResult {
           ? { depth: entry.depth, role: WI_ROLE_TO_STRING[entry.role] ?? 'system' }
           : {}),
         reason: match.reason,
+        ...(match.matchedKey !== undefined ? { matchedKey: match.matchedKey } : {}),
+        ...matchedIn(match),
         pass,
         ...(foldedFrom ? { foldedFrom } : {}),
         content: entry.content,

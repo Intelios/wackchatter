@@ -7,8 +7,7 @@
  * with alternate greetings answer that in their notes and nowhere else.
  *
  * So the trigger sits in the greeting's swipe group, beside the counter it explains. It is
- * there only while the greeting is still the last message — see `canReply` in
- * `MessageBubble` — which is exactly the window in which greetings are being chosen, and
+ * there only while the greeting is still the last message, which is exactly the window in which greetings are being chosen, and
  * costs the transcript no permanent chrome once the chat is under way.
  *
  * When the notes resolve into one line per greeting the list is numbered to match the

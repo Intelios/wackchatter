@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { Buffer } from 'node:buffer';
-import { readFileSync } from 'node:fs';
 import { toCharacterBook, toWorldInfoBook } from '../../shared/worldinfo/convert.ts';
 import {
   createBlankCard,
@@ -12,21 +11,83 @@ import {
 } from './card.ts';
 import { encodeChunks, extractChunks, readTextChunks, replaceTextChunks } from './png.ts';
 
-/**
- * The real card shipped with SillyTavern. Round-tripping it is the compatibility gate:
- * it is a genuine V2+V3 dual-chunk card with an embedded 4-entry lorebook and at least
- * one field (group_only_greetings) that ST itself never writes but does preserve.
- */
-const SERAPHINA_PATH =
-  '/Users/jack/Documents/GitHub/SillyTavernSource/default/content/default_Seraphina.png';
+/** A 1x1 PNG with no text chunks — the same carrier the app uses for artless cards. */
+const CARRIER = Uint8Array.from(
+  atob(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  ),
+  (c) => c.charCodeAt(0),
+);
 
-function loadSeraphina(): Uint8Array {
-  return new Uint8Array(readFileSync(SERAPHINA_PATH));
+/**
+ * A V2+V3 dual-chunk card in the shape SillyTavern ships: an embedded 4-entry lorebook
+ * whose entries carry ST's extension keys, and `group_only_greetings`, a field ST never
+ * writes but does preserve.
+ */
+function sampleCard(): Uint8Array {
+  const entry = (id: number, key: string) => ({
+    id,
+    keys: [key],
+    secondary_keys: [],
+    comment: key,
+    content: `Lore about ${key}.`,
+    constant: false,
+    selective: false,
+    insertion_order: 100,
+    enabled: true,
+    position: 'before_char',
+    use_regex: true,
+    extensions: {
+      position: 0,
+      exclude_recursion: false,
+      display_index: id,
+      probability: 100,
+      useProbability: true,
+      depth: 4,
+      selectiveLogic: 0,
+      group: '',
+      group_override: false,
+      group_weight: 100,
+      prevent_recursion: false,
+      delay_until_recursion: false,
+      scan_depth: null,
+      match_whole_words: null,
+      use_group_scoring: false,
+      case_sensitive: null,
+      automation_id: '',
+      role: 0,
+      vectorized: false,
+      sticky: 0,
+      cooldown: 0,
+      delay: 0,
+    },
+  });
+  const card = normalizeCard({
+    spec: 'chara_card_v3',
+    spec_version: '3.0',
+    data: {
+      name: 'Seraphina',
+      description: 'A guardian of the glade.',
+      first_mes: 'You wake in a forest clearing.',
+      group_only_greetings: [],
+      character_book: {
+        name: 'Eldoria',
+        extensions: {},
+        entries: [
+          entry(1, 'glade'),
+          entry(2, 'forest'),
+          entry(3, 'eldoria'),
+          entry(4, 'shadowclaw'),
+        ],
+      },
+    },
+  });
+  return writeCard(CARRIER, card);
 }
 
 describe('png chunks', () => {
-  test('extracts the expected chunk layout from a real card', () => {
-    const chunks = extractChunks(loadSeraphina());
+  test('extracts the expected chunk layout from a card', () => {
+    const chunks = extractChunks(sampleCard());
     const names = chunks.map((c) => c.name);
 
     expect(names[0]).toBe('IHDR');
@@ -35,19 +96,19 @@ describe('png chunks', () => {
   });
 
   test('re-encoding chunks reproduces the file byte for byte', () => {
-    const original = loadSeraphina();
+    const original = sampleCard();
     const roundTripped = encodeChunks(extractChunks(original));
     expect(roundTripped).toEqual(original);
   });
 
   test('reads both chara and ccv3 keywords', () => {
-    const keywords = readTextChunks(loadSeraphina()).map((c) => c.keyword.toLowerCase());
+    const keywords = readTextChunks(sampleCard()).map((c) => c.keyword.toLowerCase());
     expect(keywords).toContain('chara');
     expect(keywords).toContain('ccv3');
   });
 
   test('replaceTextChunks splices before IEND and leaves image data intact', () => {
-    const original = loadSeraphina();
+    const original = sampleCard();
     const updated = replaceTextChunks(
       original,
       ['chara', 'ccv3'],
@@ -71,7 +132,7 @@ describe('png chunks', () => {
 
 describe('reading cards', () => {
   test('ccv3 takes precedence over chara', () => {
-    const base = loadSeraphina();
+    const base = sampleCard();
     const v2Payload = Buffer.from(
       JSON.stringify({ spec: 'chara_card_v2', spec_version: '2.0', data: { name: 'FromV2' } }),
       'utf8',
@@ -100,7 +161,7 @@ describe('reading cards', () => {
       'utf8',
     ).toString('base64');
     const png = replaceTextChunks(
-      loadSeraphina(),
+      sampleCard(),
       ['chara', 'ccv3'],
       [{ keyword: 'chara', text: payload }],
     );
@@ -113,7 +174,7 @@ describe('reading cards', () => {
       'base64',
     );
     const png = replaceTextChunks(
-      loadSeraphina(),
+      sampleCard(),
       ['chara', 'ccv3'],
       [{ keyword: 'CHARA', text: payload }],
     );
@@ -121,18 +182,8 @@ describe('reading cards', () => {
     expect(JSON.parse(readCardJson(png)).data.name).toBe('Shouty');
   });
 
-  test('parses the real Seraphina card in full', () => {
-    const card = readCard(loadSeraphina());
-
-    expect(card.data.name).toBe('Seraphina');
-    expect(card.data.description.length).toBeGreaterThan(100);
-    expect(card.data.first_mes.length).toBeGreaterThan(100);
-    expect(card.data.character_book?.entries).toHaveLength(4);
-    expect(card.data.character_book?.name).toBe('Eldoria');
-  });
-
   test('throws a useful error for an image with no card metadata', () => {
-    const stripped = replaceTextChunks(loadSeraphina(), ['chara', 'ccv3'], []);
+    const stripped = replaceTextChunks(sampleCard(), ['chara', 'ccv3'], []);
     expect(() => readCard(stripped)).toThrow(/not a character card|no character metadata/i);
   });
 });
@@ -213,7 +264,7 @@ describe('unknown-key preservation', () => {
     });
 
     const edited = mergeCardData(original, { description: 'edited description' });
-    const png = writeCard(loadSeraphina(), edited);
+    const png = writeCard(CARRIER, edited);
     const readBack = readCard(png);
 
     expect(readBack.data.description).toBe('edited description');
@@ -228,13 +279,13 @@ describe('unknown-key preservation', () => {
     expect(readBack.topLevelStranger).toBe('keep me');
   });
 
-  test('editing the real Seraphina card preserves group_only_greetings', () => {
-    const original = readCard(loadSeraphina());
-    // Present in the shipped file even though ST's own code never writes it.
+  test('editing a card preserves group_only_greetings', () => {
+    const original = readCard(sampleCard());
+    // A field ST's own code never writes but preserves.
     expect(original.data.group_only_greetings).toBeDefined();
 
     const edited = mergeCardData(original, { name: 'Seraphina Edited' });
-    const readBack = readCard(writeCard(loadSeraphina(), edited));
+    const readBack = readCard(writeCard(CARRIER, edited));
 
     expect(readBack.data.name).toBe('Seraphina Edited');
     expect(readBack.data.group_only_greetings).toEqual(original.data.group_only_greetings!);
@@ -245,7 +296,7 @@ describe('unknown-key preservation', () => {
 describe('mergeCardData and character_book', () => {
   test('an update that omits character_book leaves the stored book intact', () => {
     // CharacterEditor's autosave field list omits it for exactly this reason.
-    const original = readCard(loadSeraphina());
+    const original = readCard(sampleCard());
     const edited = mergeCardData(original, { description: 'edited' });
 
     expect(edited.data.character_book?.entries).toHaveLength(4);
@@ -260,7 +311,7 @@ describe('mergeCardData and character_book', () => {
     // The consequence is that a caller must never pass a book the client assembled. If
     // this test ever starts failing because someone deep-merged character_book, the
     // endpoints in routes/characters.ts need rethinking, not this test.
-    const original = readCard(loadSeraphina());
+    const original = readCard(sampleCard());
     expect(original.data.character_book?.entries.length).toBeGreaterThan(1);
 
     const edited = mergeCardData(original, {
@@ -277,7 +328,7 @@ describe('mergeCardData and character_book', () => {
   });
 
   test('a book edited through the converter survives the PNG round-trip with its unknown keys', () => {
-    const original = readCard(loadSeraphina());
+    const original = readCard(sampleCard());
     const book = toWorldInfoBook(original.data.character_book!);
 
     const first = Object.keys(book.entries)[0]!;
@@ -286,7 +337,7 @@ describe('mergeCardData and character_book', () => {
     const edited = mergeCardData(original, {
       character_book: toCharacterBook(book, original.data.character_book!.name ?? 'Book'),
     });
-    const readBack = readCard(writeCard(loadSeraphina(), edited));
+    const readBack = readCard(writeCard(CARRIER, edited));
 
     const entries = readBack.data.character_book!.entries;
     expect(entries).toHaveLength(original.data.character_book!.entries.length);
@@ -304,7 +355,7 @@ describe('mergeCardData and character_book', () => {
 describe('writing', () => {
   test('writes both chunks with matching data and differing spec', () => {
     const card = createBlankCard('Dual');
-    const png = writeCard(loadSeraphina(), card);
+    const png = writeCard(CARRIER, card);
     const chunks = readTextChunks(png);
 
     const chara = chunks.find((c) => c.keyword === 'chara')!;
@@ -328,7 +379,7 @@ describe('writing', () => {
   });
 
   test('rewriting does not accumulate duplicate chunks', () => {
-    let png = loadSeraphina();
+    let png = sampleCard();
     for (let i = 0; i < 3; i++) {
       png = writeCard(png, readCard(png));
     }
@@ -340,7 +391,7 @@ describe('writing', () => {
     const merged = mergeCardData(card, {
       description: 'émoji 🎭 and “smart quotes” — plus ünïcödé',
     });
-    const readBack = readCard(writeCard(loadSeraphina(), merged));
+    const readBack = readCard(writeCard(CARRIER, merged));
 
     expect(readBack.data.name).toBe('日本語');
     expect(readBack.data.description).toBe('émoji 🎭 and “smart quotes” — plus ünïcödé');

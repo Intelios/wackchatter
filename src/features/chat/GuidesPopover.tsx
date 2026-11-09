@@ -10,9 +10,9 @@
 
 import type { PersistentGuide } from '@shared/types/chat.ts';
 import { DEFAULT_GUIDANCE, type GuidanceSettings } from '@shared/types/settings.ts';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { NumberField, SelectField, TextField } from '../../components/Field.tsx';
-import { Popover } from '../../components/Popover.tsx';
+import { Popover, type PopoverTriggerProps } from '../../components/Popover.tsx';
 import { Section } from '../../components/Section.tsx';
 import { BookIcon, PlusIcon, TrashIcon } from '../../layout/icons.tsx';
 import { addGuide, countEnabledGuides, removeGuide, updateGuide } from './guides.ts';
@@ -32,6 +32,8 @@ interface GuidesPopoverProps {
   /** No open chat means nowhere to store a guide. */
   disabled?: boolean;
   showLabel?: boolean;
+  /** A trigger of the host's own, in place of the toolbar button (the 3.0 Line). */
+  renderTrigger?: (props: PopoverTriggerProps, toggle: () => void) => ReactNode;
 }
 
 export function GuidesPopover({
@@ -41,6 +43,7 @@ export function GuidesPopover({
   onGuidanceChange,
   disabled,
   showLabel,
+  renderTrigger,
 }: GuidesPopoverProps) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
@@ -61,6 +64,9 @@ export function GuidesPopover({
         if (!next) setConfirmingDelete(null);
       }}
       popupClassName="guides"
+      renderTrigger={
+        renderTrigger ? (props) => renderTrigger(props, () => setOpen((o) => !o)) : undefined
+      }
       placement="top-start"
       disabled={disabled}
       disabledReason="Open a chat first — guides are stored with the chat."
@@ -149,8 +155,7 @@ export function GuidesPopover({
       </button>
 
       {/*
-       * The app-wide knobs live here, with the feature, rather than in a settings panel —
-       * the same call LorePanel makes for the global World Info settings.
+       * The app-wide knobs live here, with the feature, rather than in Settings.
        */}
       <Section title="Guidance settings">
         <TextField

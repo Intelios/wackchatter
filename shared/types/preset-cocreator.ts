@@ -1,5 +1,12 @@
+import type { CompactionState } from '../cocreator/compaction.ts';
+import type { ModelRef } from '../models/slots.ts';
 import type { JsonPatchOperation, PresetDiffEntry } from '../preset-cocreator/patch.ts';
-import type { ChatCompletionBody, ProviderToolCall } from '../providers/types.ts';
+import type {
+  ChatCompletionBody,
+  ProviderReasoningFields,
+  ProviderReplaySource,
+  ProviderToolCall,
+} from '../providers/types.ts';
 import type { WorldInfoSource } from '../worldinfo/activate.ts';
 import type { CardDataV2 } from './card.ts';
 import type { ApiMessage, ChatMessage, MacroVariableMap, Persona } from './chat.ts';
@@ -13,8 +20,18 @@ export interface PresetCocreatorMessage {
   role: 'user' | 'assistant' | 'tool' | 'report';
   content: string;
   created: number;
+  /** App-generated continuation text, not words to quote as the user's original brief. */
+  appAction?: 'continue';
+  /** Links assistant tool calls to their durable draft operation ids after interruption. */
+  turnId?: string;
   reasoning?: string;
+  /** Exact API thought fields; display reasoning can also contain inline thoughts. */
+  reasoningFields?: ProviderReasoningFields;
+  /** Present even when usage reporting is off; provider state belongs to this source. */
+  providerSource?: ProviderReplaySource;
   reasoningDetails?: unknown[];
+  /** Opaque provider metadata to preserve when replaying the assistant message. */
+  extraContent?: Record<string, unknown>;
   incomplete?: 'length' | 'stopped' | 'error';
   /** Retained for inspection, never executed or sent as pending tool calls. */
   incompleteToolCalls?: ProviderToolCall[];
@@ -25,6 +42,8 @@ export interface PresetCocreatorMessage {
   report?: PresetTestReport;
   batch?: PresetTestBatch;
   comparison?: PresetComparison;
+  /** The provider's token count for this reply, kept for the session's cost. */
+  usage?: { connectionId: string; model: string; inputTokens: number; outputTokens: number };
 }
 
 export type PresetComparisonSource =
@@ -49,8 +68,8 @@ export interface PresetComparison {
 }
 
 export interface PresetCocreatorModelSettings {
-  connectionId: string | null;
-  model: string;
+  /** This document's pick for the assistant or the tester. Null is unconfigured. */
+  model: ModelRef | null;
   maxTokens: number;
   contextTokens?: number;
   temperature: number;
@@ -171,6 +190,7 @@ export interface PresetTestBatch {
 
 /** Autosaved independently from the immutable preset revision history. */
 export interface PresetCocreatorDocument {
+  compaction?: CompactionState;
   settings: PresetCocreatorSettings;
   messages: PresetCocreatorMessage[];
   tests: PresetTest[];

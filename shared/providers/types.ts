@@ -19,9 +19,29 @@ export interface ProviderToolCall {
   id: string;
   type: 'function';
   function: { name: string; arguments: string };
+  /** Opaque provider state, including Google's required thought signature. Echo unchanged. */
+  extra_content?: Record<string, unknown>;
 }
 
 export type ProviderId = 'custom' | 'openrouter';
+
+export const PROVIDER_REASONING_FIELDS = [
+  'reasoning_content',
+  'reasoning',
+  'reasoning_text',
+] as const;
+/** Original API fields, kept apart from the display's merged/inline thought text. */
+export type ProviderReasoningFields = Partial<
+  Record<(typeof PROVIDER_REASONING_FIELDS)[number], string>
+>;
+
+/** Requested model and endpoint that own opaque reasoning/signature state. Never credentials. */
+export interface ProviderReplaySource {
+  connectionId: string;
+  modelId: string;
+  provider: ProviderId;
+  baseUrl: string;
+}
 
 /** OpenRouter's provider-routing preferences. */
 export interface OpenRouterRouting {
@@ -34,11 +54,15 @@ export interface OpenRouterRouting {
   middleOut?: boolean;
 }
 
+/**
+ * An endpoint: where requests go and how they are shaped. Deliberately without a model —
+ * models are chosen per slot as a `ModelRef` (`shared/models/`), so picking one never
+ * rewrites the connection and no slot can spring back to a model another slot left there.
+ */
 export interface ConnectionSettings {
   provider: ProviderId;
   /** Base URL with no trailing slash and no /chat/completions suffix. */
   baseUrl: string;
-  model: string;
   routing?: OpenRouterRouting;
   /** Extra headers the user configured. Merged last, so they can override ours. */
   headers?: Record<string, string>;
@@ -69,13 +93,25 @@ export interface Connection extends ConnectionSettings {
   name: string;
 }
 
+/**
+ * A saved connection bound to one model: what a generation actually runs on. Built only by
+ * resolving a `ModelRef` (`resolveModel`), never stored. `id` stays the connection's id, so
+ * the server-side key lookup and the usage log need nothing new.
+ */
+export interface ResolvedModel extends Connection {
+  model: string;
+}
+
 export interface GenerationRequest {
   messages: ApiMessage[];
   preset: Preset;
-  connection: ConnectionSettings;
+  connection: ConnectionSettings & { model: string };
   stream: boolean;
-  /** Overrides the preset's openai_max_tokens. */
-  maxTokens?: number;
+  /**
+   * Overrides the preset's reply cap: a number caps the reply, `null` sends no cap. Absent,
+   * the preset decides (`responseCap`).
+   */
+  maxTokens?: number | null;
   stop?: string[];
   /**
    * How many completions to ask for. Opt-in per request rather than read from `preset.n`,
@@ -143,6 +179,5 @@ export interface ProviderModel {
 export const DEFAULT_CONNECTION: ConnectionSettings = {
   provider: 'custom',
   baseUrl: PROVIDERS.custom.defaultBaseUrl,
-  model: '',
   showReasoning: true,
 };

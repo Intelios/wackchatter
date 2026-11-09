@@ -1,0 +1,237 @@
+/*
+ * The functional model picker. The popup shell (anchoring, sides, flip) belongs to
+ * Popover.css — this file is the trigger, the search row and the sectioned list.
+ * Structural only: every colour, space and duration comes from tokens.css.
+ */
+
+.model-picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-picker__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-2);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-picker__trigger:disabled {
+  cursor: not-allowed;
+}
+
+.model-picker__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wc-space-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.model-picker__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker__connection,
+.model-picker__placeholder {
+  color: var(--wc-text-faint);
+  font-size: var(--wc-text-xs);
+  white-space: nowrap;
+}
+
+.model-picker__placeholder {
+  font-size: inherit;
+}
+
+.model-picker__chevron {
+  flex-shrink: 0;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  transform: rotate(90deg);
+  transition: transform var(--wc-duration-fast) var(--wc-ease);
+}
+
+.model-picker__trigger[aria-expanded="true"] .model-picker__chevron {
+  transform: rotate(-90deg);
+}
+
+/* As wide as the field: pickers sit in narrow side panels, and a popup wider than the
+   panel is clipped by it. */
+.model-picker__popup {
+  width: 100%;
+  min-width: 240px;
+  box-sizing: border-box;
+}
+
+.model-picker__search {
+  display: flex;
+  gap: var(--wc-space-2);
+  margin-bottom: var(--wc-space-2);
+}
+
+.model-picker__search .wc-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+}
+
+.model-picker__section + .model-picker__section {
+  margin-top: var(--wc-space-2);
+}
+
+.model-picker__section-title {
+  padding: var(--wc-space-1) var(--wc-space-3);
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* A heading that folds its group away. Same type as a plain heading, plus a chevron and
+   the group's size, so a folded group still says what it holds. */
+.model-picker__fold {
+  display: flex;
+  align-items: center;
+  gap: var(--wc-space-1);
+  width: 100%;
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-picker__fold:hover,
+.model-picker__fold:focus-visible {
+  color: var(--wc-text);
+  background: var(--wc-surface-hover);
+}
+
+.model-picker__fold-chevron {
+  flex-shrink: 0;
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  transition: transform var(--wc-duration-fast) var(--wc-ease);
+}
+
+.model-picker__fold[aria-expanded="true"] .model-picker__fold-chevron {
+  transform: rotate(90deg);
+}
+
+.model-picker__count {
+  margin-left: auto;
+  color: var(--wc-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Vendor groups inside a connection: indented, and not shouted in capitals. */
+.model-picker__section[data-depth] {
+  margin-top: 0;
+  padding-left: var(--wc-space-3);
+}
+
+.model-picker__section[data-depth] > .model-picker__section-title {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.model-picker__note {
+  padding: var(--wc-space-1) var(--wc-space-3);
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text-faint);
+}
+
+.model-picker__row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.model-picker__option {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: var(--wc-space-2) var(--wc-space-3);
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: transparent;
+  text-align: left;
+  font-size: var(--wc-text-sm);
+  color: var(--wc-text);
+  transition: background var(--wc-duration-fast) ease;
+}
+
+.model-picker__option:hover,
+.model-picker__option:focus-visible {
+  background: var(--wc-surface-hover);
+}
+
+/* The current pick, visible at a glance. */
+.model-picker__option[data-active] {
+  box-shadow: inset 2px 0 0 var(--wc-accent);
+}
+
+.model-picker__option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker__option-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wc-text-xs);
+  color: var(--wc-text-faint);
+}
+
+/* The star sits at the row's end: shown on hover or focus, always shown once starred. */
+.model-picker__star {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: calc(var(--wc-icon-sm) + var(--wc-space-3) * 2);
+  border: 0;
+  border-radius: var(--wc-radius-sm);
+  background: transparent;
+  color: var(--wc-star-empty);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--wc-duration-fast) ease,
+    color var(--wc-duration-fast) ease;
+}
+
+.model-picker__star svg {
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+}
+
+.model-picker__row:hover .model-picker__star,
+.model-picker__star:focus-visible,
+.model-picker__row[data-favorite] .model-picker__star {
+  opacity: 1;
+}
+
+.model-picker__star:hover,
+.model-picker__row[data-favorite] .model-picker__star {
+  color: var(--wc-star);
+}

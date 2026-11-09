@@ -16,7 +16,7 @@ import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, SwipeInfo } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -33,6 +33,9 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { worldInfoForChat } from '../lore/worldInfoForChat.ts';
+import { REPORT_DEFAULT_REQUEST } from './reportWire.ts';
+
+export { REPORT_DEFAULT_REQUEST } from './reportWire.ts';
 
 /** What `{{char}}` becomes in a test with no character card, unless the user names it. */
 export const NO_CARD_DEFAULT_NAME = 'Assistant';
@@ -82,8 +85,7 @@ export function createPresetTest(
     presetSource: structuredClone(options.presetSource ?? { kind: 'draft' }),
     testingSettings: structuredClone(
       options.testingSettings ?? {
-        connectionId: null,
-        model: '',
+        model: null,
         maxTokens: 1024,
         temperature: 0.2,
         reasoningEffort: 'auto',
@@ -149,7 +151,7 @@ export function preparePresetTestRequest(options: {
   test: PresetTest;
   kind: PresetTestGenerationKind;
   preset: Preset;
-  connection: Connection;
+  connection: ResolvedModel;
   countTokens: TokenCounter;
 }): PreparedPresetTestRequest | null {
   const prepared = preparePresetTestGeneration(options.test, options.kind);
@@ -394,10 +396,6 @@ export function buildPresetTestReport(options: {
   };
 }
 
-/** What a report says on the user's behalf when they sent it without a note. */
-export const REPORT_DEFAULT_REQUEST =
-  'Here is a test report from the testing panel. Review how the draft behaved.';
-
 /**
  * A shared report is the user's whole turn — the Co-Creator answers it directly, with no
  * follow-up "here it is" message. So the note leads, as the user's own words, and the
@@ -483,55 +481,6 @@ export function batchConversationMessage(batch: PresetTestBatch): PresetCocreato
 }
 
 export type ReportSection = 'conversation' | 'assembled prompt' | 'diagnostics';
-
-export interface ReportSummary {
-  /** Null when the test has since been deleted from the session. */
-  testTitle: string | null;
-  /** Which generated reply the report runs up to; 0 means the greeting; null if unknown. */
-  replyNumber: number | null;
-  /** The draft revision that produced that reply, when it is known. */
-  revision: number | null;
-  sections: ReportSection[];
-}
-
-/**
- * The one-line account of a report the conversation shows in place of its JSON.
- *
- * Read from the report's own transcript when it carries one — that is what was shared,
- * however the test has moved on since — and from the live test otherwise. Only generated
- * replies count: the greeting carries no preset revision, so it is reply 0, not reply 1.
- */
-export function summarizeReport(
-  report: PresetTestReport,
-  tests: readonly PresetTest[],
-): ReportSummary {
-  const test = tests.find((entry) => entry.id === report.testId) ?? null;
-  const messages = report.transcript ?? test?.messages ?? [];
-  const index = messages.findIndex((message) => message.id === report.throughMessageId);
-  const through = index >= 0 ? messages[index] : undefined;
-  const generated = (message: ChatMessage) =>
-    !message.is_user &&
-    (typeof message.extra?.preset_revision === 'number' ||
-      typeof message.extra?.preset_test_evidence_id === 'string');
-
-  const revision = report.presetUsed ? report.presetUsed.revision : through?.extra?.preset_revision;
-  const sections: ReportSection[] = [];
-  if (report.includeTranscript) sections.push('conversation');
-  if (report.includePrompt) sections.push('assembled prompt');
-  if (report.includeDiagnostics) sections.push('diagnostics');
-
-  return {
-    testTitle: report.testTitle ?? test?.title ?? null,
-    replyNumber: through ? messages.slice(0, index + 1).filter(generated).length : null,
-    revision:
-      typeof revision === 'number'
-        ? revision
-        : report.presetUsed
-          ? null
-          : (report.evidence?.draftRevision ?? null),
-    sections,
-  };
-}
 
 export function updateProposedTest(
   proposals: ProposedPresetTest[],

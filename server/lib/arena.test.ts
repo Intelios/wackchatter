@@ -197,3 +197,73 @@ describe('isVerdict', () => {
     expect(isVerdict(null)).toBe(false);
   });
 });
+
+describe('round usage', () => {
+  const usage = {
+    connectionId: 'conn-1',
+    promptTokens: 1200,
+    completionTokens: 340,
+    ms: 9800,
+    firstTokenMs: 700,
+  };
+
+  test('a side’s usage round-trips, and a side without it reads back without it', () => {
+    const written = store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ contenderId: 'a', usage }),
+      right: side({ contenderId: 'b' }),
+      verdict: 'left',
+    });
+    const [read] = store.listRounds();
+    expect(read).toEqual(written);
+    expect(read?.left.usage).toEqual(usage);
+    expect(read?.right.usage).toBeUndefined();
+  });
+
+  test('malformed usage is dropped or coerced, never stored as nonsense', () => {
+    store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ usage: { ...usage, promptTokens: -5, ms: Number.NaN } }),
+      right: side({ usage: { ...usage, connectionId: '' } }),
+      verdict: 'tie',
+    });
+    const [read] = store.listRounds();
+    expect(read?.left.usage).toEqual({ ...usage, promptTokens: null, ms: null });
+    expect(read?.right.usage).toBeUndefined();
+  });
+
+  test('deleting rounds takes their usage with them', () => {
+    const one = store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ contenderId: 'a', usage }),
+      right: side({ contenderId: 'b', usage }),
+      verdict: 'left',
+    });
+    store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ contenderId: 'c', usage }),
+      right: side({ contenderId: 'd', usage }),
+      verdict: 'left',
+    });
+    const rows = () =>
+      database.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM arena_round_usage').get()?.n;
+    expect(rows()).toBe(4);
+    store.deleteRound(one.id);
+    expect(rows()).toBe(2);
+    store.deleteContender('c');
+    expect(rows()).toBe(0);
+    store.recordRound({
+      characterId: 'a.png',
+      probe: '',
+      left: side({ usage }),
+      right: side(),
+      verdict: 'left',
+    });
+    store.clearRounds();
+    expect(rows()).toBe(0);
+  });
+});

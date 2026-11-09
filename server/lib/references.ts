@@ -21,6 +21,7 @@ import { failAfterRollback, type Rollback, rollbackAll } from './rollback.ts';
 import {
   getSettings,
   reassignArenaCardPool,
+  reassignCharacterCrop,
   reassignCharacterDialogueColor,
   reassignCharacterExampleSets,
   reassignCharacterRating,
@@ -39,6 +40,8 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
   if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
   const updatedRatings = reassignCharacterRating(current, oldAvatar, newAvatar);
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
+  const updatedCrops = reassignCharacterCrop(current, oldAvatar, newAvatar);
+  if (updatedCrops) saveSettings({ characterCrops: updatedCrops.characterCrops });
   const updatedSets = reassignCharacterExampleSets(current, oldAvatar, newAvatar);
   if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
   const updatedPool = reassignArenaCardPool(current, oldAvatar, newAvatar);
@@ -53,6 +56,7 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
+    if (updatedCrops) saveSettings({ characterCrops: current.characterCrops });
     if (updatedSets) saveSettings({ coCreator: current.coCreator });
     if (updatedPool) saveSettings({ arena: current.arena });
     throw error;
@@ -72,6 +76,13 @@ export function cascadeCharacterRename(oldAvatar: string, newAvatar: string): Ro
           ? [
               () => {
                 saveSettings({ characterRatings: current.characterRatings });
+              },
+            ]
+          : []),
+        ...(updatedCrops
+          ? [
+              () => {
+                saveSettings({ characterCrops: current.characterCrops });
               },
             ]
           : []),
@@ -114,6 +125,8 @@ export function cascadeCharacterDelete(avatar: string): void {
   if (updatedColors) saveSettings({ dialogueColors: updatedColors.dialogueColors });
   const updatedRatings = reassignCharacterRating(current, avatar, null);
   if (updatedRatings) saveSettings({ characterRatings: updatedRatings.characterRatings });
+  const updatedCrops = reassignCharacterCrop(current, avatar, null);
+  if (updatedCrops) saveSettings({ characterCrops: updatedCrops.characterCrops });
   const updatedSets = reassignCharacterExampleSets(current, avatar, null);
   if (updatedSets) saveSettings({ coCreator: updatedSets.coCreator });
   const updatedPool = reassignArenaCardPool(current, avatar, null);
@@ -130,6 +143,7 @@ export function cascadeCharacterDelete(avatar: string): void {
   } catch (error) {
     if (updatedColors) saveSettings({ dialogueColors: current.dialogueColors });
     if (updatedRatings) saveSettings({ characterRatings: current.characterRatings });
+    if (updatedCrops) saveSettings({ characterCrops: current.characterCrops });
     if (updatedSets) saveSettings({ coCreator: current.coCreator });
     if (updatedPool) saveSettings({ arena: current.arena });
     throw error;

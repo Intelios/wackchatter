@@ -3,7 +3,7 @@
  *
  * Lives beside the SSE parser rather than with prompt assembly: this is the reading half of
  * talking to a provider, and it is shared by every feature that asks a model for structured
- * output (`shared/memory/extract.ts`, `shared/persona/derive.ts`). One copy on purpose — the
+ * output (`shared/nexus/extract.ts`, `shared/persona/derive.ts`). One copy on purpose — the
  * trailing-comma retry below is exactly the quirk someone would "fix" in one copy and not
  * the other, and the resulting divergence would only show up on whichever model happens to
  * emit trailing commas.

@@ -1,0 +1,244 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api (repo data)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "WC_DATA_DIR=/Users/jack/Documents/GitHub/wackchatter/data",
+        "WC_NO_OPEN=1",
+        "bun",
+        "run",
+        "dev:server"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "dev:client"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "mockup (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8790",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/home"
+      ],
+      "port": 8790
+    },
+    {
+      "name": "api (scratch empty)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "WC_DATA_DIR=/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/lib-empty",
+        "WC_NO_OPEN=1",
+        "bun",
+        "run",
+        "dev:server"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "api (scratch cast)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "WC_DATA_DIR=/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/lib-cast",
+        "WC_NO_OPEN=1",
+        "bun",
+        "run",
+        "dev:server"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "api (scratch old)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "WC_DATA_DIR=/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/lib-old",
+        "WC_NO_OPEN=1",
+        "bun",
+        "run",
+        "dev:server"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "api (repo data, 8788)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "WC_DATA_DIR=/Users/jack/Documents/GitHub/wackchatter/data",
+        "WC_NO_OPEN=1",
+        "WC_PORT=8788",
+        "bun",
+        "run",
+        "dev:server"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "client (5174 \u2192 8788)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "WC_PORT=8788",
+        "bun",
+        "run",
+        "dev:client",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "mockup chars (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8791",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/chars"
+      ],
+      "port": 8791
+    },
+    {
+      "name": "mockup personas (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8792",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/personas"
+      ],
+      "port": 8792
+    },
+    {
+      "name": "mockup preset (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8793",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/preset"
+      ],
+      "port": 8793
+    },
+    {
+      "name": "mockup lore (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8794",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/lore"
+      ],
+      "port": 8794
+    },
+    {
+      "name": "mockup inspect (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8795",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/inspect"
+      ],
+      "port": 8795
+    },
+    {
+      "name": "mockup settings (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8796",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/settings"
+      ],
+      "port": 8796
+    },
+    {
+      "name": "mockup memory (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8797",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/memory"
+      ],
+      "port": 8797
+    },
+    {
+      "name": "mockup studio (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8798",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/studio"
+      ],
+      "port": 8798
+    },
+    {
+      "name": "mockup cocreator (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8799",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/b5ab401e-096b-4540-83d0-7302a93d3c09/scratchpad/cocreator"
+      ],
+      "port": 8799
+    },
+    {
+      "name": "mockup polish (scratchpad)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8800",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/private/tmp/claude-501/-Users-jack-Documents-GitHub-wackchatter/dfc0a214-87a7-4af0-b6c5-4ad396938132/scratchpad/polish"
+      ],
+      "port": 8800
+    }
+  ]
+}

@@ -9,6 +9,7 @@
  * rather than by joining it onto the root. See folders.ts for why that matters.
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { rename, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
@@ -43,6 +44,7 @@ import {
   sanitizeFolderPath,
   uniqueName,
 } from './paths.ts';
+import { encodeChunks, extractChunks } from './png.ts';
 
 /**
  * Placeholder used when a character is created without an uploaded image.
@@ -68,6 +70,10 @@ function summarize(
     tags: card.data.tags,
     character_version: card.data.character_version,
     hasLorebook: Boolean(card.data.character_book?.entries?.length),
+    ...(typeof card.data.extensions?.world === 'string' && card.data.extensions.world
+      ? { linkedBook: card.data.extensions.world }
+      : {}),
+    greeting: (card.data.first_mes ?? '').slice(0, 600),
     modified,
   };
 }
@@ -104,9 +110,45 @@ export function listCharacters(): CharacterSummary[] {
 export function getCharacter(avatar: string): CharacterDetail | null {
   const path = resolveCharacterFile(avatar);
   if (!path) return null;
-
   const card = readCard(new Uint8Array(readFileSync(path)));
   return { ...summarize(avatar, card, statSync(path).mtimeMs, folderOf(path)), card };
+}
+
+const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+export function portraitVersion(image: Uint8Array): string {
+  return hash(
+    encodeChunks(
+      extractChunks(image).filter(
+        (c) => c.name !== 'tEXt' && c.name !== 'iTXt' && c.name !== 'zTXt',
+      ),
+    ),
+  );
+}
+
+export interface CharacterRecord {
+  detail: CharacterDetail;
+  version: string;
+  portraitVersion: string;
+}
+
+export class CharacterConflictError extends Error {
+  readonly code = 'character_conflict';
+  constructor() {
+    super('The character changed elsewhere. Review the newer version before saving.');
+  }
+}
+
+/** One read supplies both the card and its conditional-save version. */
+export function getCharacterRecord(avatar: string): CharacterRecord | null {
+  const path = resolveCharacterFile(avatar);
+  if (!path) return null;
+  const bytes = new Uint8Array(readFileSync(path));
+  const card = readCard(bytes);
+  return {
+    detail: { ...summarize(avatar, card, statSync(path).mtimeMs, folderOf(path)), card },
+    version: hash(bytes),
+    portraitVersion: portraitVersion(bytes),
+  };
 }
 
 /** Raw PNG bytes, for serving the avatar image. */
@@ -179,6 +221,71 @@ export async function updateCharacter(
 
     await replace(writeCard(image ?? existing, merged));
     return { ...summarize(avatar, merged, Date.now(), folderOf(path)), card: merged };
+  });
+}
+
+/** Conditional fields/art/identity save. Stage the complete new PNG before references move. */
+export async function saveCharacterConditional(
+  avatar: string,
+  updates: Partial<CardDataV2>,
+  expectedVersion: string,
+  options: {
+    name?: string;
+    image?: Uint8Array | null;
+    onStaged?: (avatar: string) => Promise<Rollback | undefined>;
+  } = {},
+): Promise<CharacterRecord | null> {
+  return withResourceLock(CHARACTER_IDENTITIES, async () => {
+    const path = resolveCharacterFile(avatar);
+    if (!path) return null;
+    const name = options.name?.trim();
+    const taken = takenAvatars();
+    taken.delete(avatar.toLowerCase());
+    const safeName = name ? sanitizeFilename(name) : null;
+    if (name && !safeName) throw new Error('A usable character name is required.');
+    let filename = safeName
+      ? `${uniqueName(safeName, (candidate) => taken.has(`${candidate.toLowerCase()}.png`))}.png`
+      : avatar;
+    // macOS may resolve differently-cased paths to the same file. Keep its identity rather
+    // than staging and then unlinking that same PNG through another spelling.
+    if (filename.toLowerCase() === avatar.toLowerCase()) filename = avatar;
+    const newPath = join(dirname(path), filename);
+    return withFileLocks([path, newPath], async (replace) => {
+      if (!existsSync(path)) return null;
+      const before = new Uint8Array(readFileSync(path));
+      if (hash(before) !== expectedVersion) throw new CharacterConflictError();
+      const patch = { ...updates };
+      delete patch.name;
+      const card = mergeCardData(readCard(before), { ...patch, ...(name ? { name } : {}) });
+      const image = options.image === null ? loadBlankAvatar() : (options.image ?? before);
+      const written = writeCard(image, card);
+      await replace(newPath, written);
+      let rollback: Rollback | undefined;
+      try {
+        if (filename !== avatar) rollback = await options.onStaged?.(filename);
+        if (newPath !== path) await unlink(path);
+      } catch (error) {
+        const errors: unknown[] = [error];
+        try {
+          await rollback?.();
+        } catch (err) {
+          errors.push(err);
+        }
+        try {
+          if (newPath === path) await replace(path, before);
+          else await unlink(newPath);
+        } catch (err) {
+          errors.push(err);
+        }
+        if (errors.length > 1) throw new AggregateError(errors, 'Character save rollback failed.');
+        throw error;
+      }
+      return {
+        detail: { ...summarize(filename, card, Date.now(), folderOf(newPath)), card },
+        version: hash(written),
+        portraitVersion: portraitVersion(written),
+      };
+    });
   });
 }
 

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { ImageIcon, UploadIcon } from '../../layout/icons.tsx';
+import './AvatarStudio.css';
 
 interface AvatarStudioProps {
   avatarUrl: string;

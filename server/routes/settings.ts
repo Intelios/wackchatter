@@ -53,7 +53,7 @@ export async function handleSettingsRoute(
     return json(withKeys(addConnection(provider)));
   }
 
-  // /api/settings/connections/:id/models — catalogue without activating the connection.
+  // /api/settings/connections/:id/models — one connection's model catalogue.
   if (
     segments[0] === 'connections' &&
     segments.length === 3 &&
@@ -121,15 +121,6 @@ export async function handleSettingsRoute(
 
     setApiKey(connectionId, body.key ?? null);
     return json({ ok: true, present: Boolean(body.key?.trim()) });
-  }
-
-  // /api/settings/models — the catalogue of the active connection.
-  if (segments[0] === 'models' && method === 'GET') {
-    try {
-      return json({ models: await listModels() });
-    } catch (error) {
-      return errorResponse((error as Error).message, 502);
-    }
   }
 
   // /api/settings/test — the one place a client-supplied URL is accepted, and only to

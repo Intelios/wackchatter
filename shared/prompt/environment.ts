@@ -12,6 +12,7 @@
  * greeting quoting a different message than the prompt did.
  */
 
+import { responseReserve } from '../providers/responseLength.ts';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage, ChatMetadata, MacroVariableMap, Persona } from '../types/chat.ts';
 import type { Preset } from '../types/preset.ts';
@@ -32,12 +33,10 @@ export interface ChatMacroOptions {
 export function chatEnvironment(options: ChatMacroOptions): MacroEnvironment {
   const { character, preset, persona, messages, metadata = {} } = options;
   const effectiveScenario =
-    metadata.group?.scenario ??
-    (typeof metadata.scenario === 'string' ? metadata.scenario : character.scenario);
+    typeof metadata.scenario === 'string' ? metadata.scenario : character.scenario;
 
   return {
     char: character.name,
-    groupNames: metadata.group?.members.map((m) => m.name).join(', '),
     user: persona?.name ?? DEFAULT_USER_NAME,
     description: character.description,
     personality: character.personality,
@@ -49,7 +48,7 @@ export function chatEnvironment(options: ChatMacroOptions): MacroEnvironment {
     charJailbreak: character.post_history_instructions,
     creatorNotes: character.creator_notes,
     maxContext: preset.openai_max_context ?? 4095,
-    maxResponse: preset.openai_max_tokens ?? 300,
+    maxResponse: responseReserve(preset),
     lastMessage: messages.at(-1)?.mes ?? '',
     lastUserMessage: [...messages].reverse().find((message) => message.is_user)?.mes ?? '',
     lastCharMessage: [...messages].reverse().find((message) => !message.is_user)?.mes ?? '',

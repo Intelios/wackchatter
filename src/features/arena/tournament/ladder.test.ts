@@ -64,7 +64,7 @@ function cup(
 }
 
 function contender(id: string, model = `model-${id}`): Contender {
-  return { id, name: id, connectionId: 'conn', model, enabled: true };
+  return { id, name: id, model: { connectionId: 'conn', modelId: model }, enabled: true };
 }
 
 describe('tournamentLadder points', () => {

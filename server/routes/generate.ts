@@ -31,7 +31,7 @@ export async function handleGenerateRoute(
   if (!payload?.body || typeof payload.body !== 'object') {
     return errorResponse('Expected a JSON object with a "body" property.');
   }
-  if (payload.connectionId !== undefined && typeof payload.connectionId !== 'string') {
+  if (typeof payload.connectionId !== 'string' || !payload.connectionId) {
     return errorResponse('"connectionId" must be a saved connection id.');
   }
   if (

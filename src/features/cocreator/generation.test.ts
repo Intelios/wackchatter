@@ -72,13 +72,13 @@ describe('design generation requests and recovery', () => {
       }),
     ).toThrow('latest side message');
   });
-  test('a send reserves reasoning room and replaces the chat preset’s tiny reply limit', () => {
+  test('a send carries no reply cap, whatever the chat preset says', () => {
     const result = buildDesignGeneration({
       ...request,
       mode: 'send',
       messages: [user, assistantPlaceholder('a', 'Assistant')],
     });
-    expect(result.body.max_tokens).toBe(16384);
+    expect(Object.hasOwn(result.body, 'max_tokens')).toBe(false);
     expect(result.body.messages.at(-1)).toEqual({ role: 'user', content: 'Write the character.' });
     expect(result.prefix).toBe('');
   });

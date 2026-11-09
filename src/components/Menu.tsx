@@ -620,9 +620,8 @@ interface SubmenuProps {
  *
  * `position: fixed` rather than a nested Popover: the menu popup scrolls when it is taller
  * than its room, and anything absolutely positioned inside it would be clipped by that
- * scroll container. No ancestor of the popup carries a transform or a filter — glass puts
- * its backdrop-filter on the bar and the panels, never here — so fixed is anchored to the
- * viewport and escapes the clipping, while staying a DOM child of the menu: the parent's
+ * scroll container. No ancestor of the popup carries a transform or a filter, so fixed is
+ * anchored to the viewport and escapes the clipping, while staying a DOM child of the menu: the parent's
  * outside-click dismissal still contains it, and closing the menu unmounts it.
  */
 function Submenu({

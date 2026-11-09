@@ -9,7 +9,7 @@
  */
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { Connection } from '@shared/providers/types.ts';
+import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
@@ -20,7 +20,7 @@ import { characterApi, personaApi } from '../../lib/api.ts';
 import { fetchPngFile } from '../../lib/imageFile.ts';
 import { matchesQuery, visibleTagsOf } from '../character/characterTree.ts';
 import './PersonaConverter.css';
-import { appendTake, editTake, hasDirtyTake, stepTake, type Take } from './takes.ts';
+import { appendTake, editTake, hasDirtyTake, type Take } from './takes.ts';
 import { usePersonaDerive } from './usePersonaDerive.ts';
 
 /** A real library is hundreds of cards; the list is a means of finding one, not of browsing. */
@@ -31,7 +31,7 @@ const LONG_DESCRIPTION_TOKENS = 200;
 interface PersonaConverterProps {
   characters: CharacterSummary[];
   hiddenTags: readonly string[];
-  connection: Connection | null;
+  connection: ResolvedModel | null;
   preset: Preset | null;
   globalVariables: MacroVariableMap;
   countTokens: TokenCounter;
@@ -185,6 +185,7 @@ export function PersonaConverter({
           <img src={characterApi.imageUrl(card.avatar, card.modified)} alt="" loading="lazy" />
         </span>
         <span className="persona-convert__source-text">
+          <span className="persona-convert__source-kicker">Made from</span>
           <span className="persona-convert__source-name">{card.name}</span>
           <span className="persona-convert__source-hint">
             Only what the card actually states — anything it leaves out is left blank.
@@ -196,7 +197,7 @@ export function PersonaConverter({
         <div className="persona-convert__status" role="status">
           <span>
             Reading {card.name}’s card
-            {connection?.name ? ` with ${connection.name}` : ''}…
+            {connection?.model ? ` with ${connection.model.split('/').pop()}` : ''}…
           </span>
           <button type="button" className="wc-button wc-button--ghost" onClick={cancel}>
             Cancel
@@ -226,28 +227,22 @@ export function PersonaConverter({
       {take ? (
         <div className="persona-convert__draft">
           {takes.length > 1 ? (
+            // Numbered, so any take is one click away; each keeps its own edits.
             <div className="persona-convert__takes">
-              <button
-                type="button"
-                className="wc-button wc-button--ghost"
-                disabled={index === 0}
-                onClick={() => setIndex(stepTake(takes, index, -1))}
-                aria-label="Previous take"
-              >
-                ‹
-              </button>
-              <span>
-                Take {index + 1} of {takes.length}
-              </span>
-              <button
-                type="button"
-                className="wc-button wc-button--ghost"
-                disabled={index === takes.length - 1}
-                onClick={() => setIndex(stepTake(takes, index, 1))}
-                aria-label="Next take"
-              >
-                ›
-              </button>
+              {takes.map((entry, at) => (
+                <button
+                  // biome-ignore lint/suspicious/noArrayIndexKey: takes only ever append
+                  key={at}
+                  type="button"
+                  className="persona-convert__take"
+                  aria-pressed={at === index}
+                  aria-label={`Take ${at + 1}${entry.dirty ? ', edited' : ''}`}
+                  onClick={() => setIndex(at)}
+                >
+                  {at + 1}
+                </button>
+              ))}
+              <span>Every take is kept, edits too</span>
             </div>
           ) : null}
 
@@ -298,7 +293,7 @@ export function PersonaConverter({
               onClick={() => void roll(card)}
               title="Ask again — this keeps the take you have"
             >
-              Re-roll
+              Ask again
             </button>
           </div>
         </div>
@@ -319,10 +314,8 @@ interface PickerStepProps {
 /**
  * A searchable row list, not a popover.
  *
- * The Arena's medallion picker is not reused: its every class name is `arena-*` with the
- * styles in `ArenaShell.css`, its trigger hardcodes a VS badge and Arena wording, and it does
- * not honour `hiddenTags`. The part that could meaningfully drift — what matches a query,
- * which tags are visible — is `characterTree.ts`, and that *is* shared.
+ * The part that could meaningfully drift from the other character pickers (what matches a
+ * query, which tags are visible) is `characterTree.ts`, and that is shared.
  */
 function PickerStep({ characters, hiddenTags, query, onQuery, onPick, onClose }: PickerStepProps) {
   const searchRef = useRef<HTMLInputElement>(null);

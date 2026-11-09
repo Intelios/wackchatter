@@ -16,9 +16,9 @@
  *  - **The model returns facts, not prose.** It answers with labelled fields and
  *    `renderPersonaDescription` writes the house format. A finished string could not be
  *    clamped per fact, and the format would drift model to model.
- *  - **The contract is strict; the parser is tolerant, then clamped.** Same shape as
- *    `shared/memory/extract.ts`. A model that ignores the contract produces a messier draft,
- *    never a broken one and never one that blows the token budget.
+ *  - **The contract is strict; the parser is tolerant, then clamped.** A model that ignores
+ *    the contract produces a messier draft, never a broken one and never one that blows the
+ *    token budget.
  */
 
 import { looseParseJson } from '../providers/looseJson.ts';
@@ -340,7 +340,7 @@ function truncateOpening(text: string): string {
  * The full request, hand-built rather than assembled.
  *
  * `assemblePrompt` is deliberately not used, for the reason given in
- * `shared/memory/extract.ts`: it exists to apply the user's preset, and the whole point of
+ * `shared/chat/recap.ts`: it exists to apply the user's preset, and the whole point of
  * this call is that the preset's main prompt, jailbreak and post-history instructions are
  * absent. The classic summariser goes through assembly and has to open with "Ignore previous
  * instructions" to claw its way back out from underneath them — that is the wart this

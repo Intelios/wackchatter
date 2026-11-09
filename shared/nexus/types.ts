@@ -55,16 +55,19 @@ export interface NexusState {
   initialized: boolean;
   paused: boolean;
 }
+/**
+ * One Nexus run: its settings plus the context its model takes, looked up from the model's
+ * catalogue when the run starts (never a setting).
+ */
+export type NexusRun = NexusSettings & { contextTokens: number };
+
+/** Nexus's model is the `nexus` slot in `AppSettings.models`. */
 export interface NexusSettings extends StoryMemoryPlacement {
-  connectionId: string | null;
-  model: string;
   extractPrompt: string;
   autoInterval: number;
-  /** The memory model's context: the packing target for transcript windows. Not capped. */
-  inputTokens: number;
   /**
-   * The visible-JSON allowance. Reasoning never comes out of it — `nexusMaxTokens` buys
-   * thinking room on top, sized by `reasoningEffort` and clamped to the context's slack.
+   * Room kept free in the context for the JSON while packing. Never sent as a cap, and no
+   * longer shown in settings; a stored value still sizes the reserve.
    */
   outputTokens: number;
   budgetTokens: number;
@@ -124,11 +127,8 @@ export const NEXUS_PROMPT = `You maintain a faithful memory of an ongoing story.
 Use the supplied existing IDs when the evidence clearly identifies the same entity. Equal names alone do not prove identity. Add aliases only when explicitly established. Preserve exact names. Give every fact 2–4 useful search cues — names, places, topics, not words already in its text — and state how entities stand to each other as relations wherever the transcript supports it. Update clear changes by revising an existing generated record, preserving its identity; do not combine different predicates (hometown and current residence differ). Mark unresolved contradictions as conflict and name the conflicting record IDs. Leave manually edited, disabled and deleted records alone. Facts may overlap in source messages. Do not wait for a scene to finish. Never mention this application, extraction, or message numbering in memory text.`;
 
 export const DEFAULT_NEXUS: Readonly<NexusSettings> = {
-  connectionId: null,
-  model: '',
   extractPrompt: NEXUS_PROMPT,
   autoInterval: 12,
-  inputTokens: 8192,
   outputTokens: 2048,
   budgetTokens: 1200,
   temperature: 0.2,

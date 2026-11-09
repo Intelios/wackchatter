@@ -2,12 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { Preset, Prompt, PromptOrderList } from '@shared/types/preset.ts';
 import { PROMPT_ORDER_LIVE_ID } from '@shared/types/preset.ts';
-import {
-  describeDiffEntries,
-  describeOrderChange,
-  describePresetChanges,
-  formatValue,
-} from './presetChanges.ts';
+import { describeOrderChange, describePresetChanges, formatValue } from './presetChanges.ts';
 
 function liveOrder(preset: Preset): PromptOrderList {
   const list = (preset.prompt_order as PromptOrderList[]).find(
@@ -133,32 +128,6 @@ describe('describeOrderChange', () => {
     expect(describeOrderChange(entries('a', 'b'), after, nameOf)).toEqual([
       'Added Z at position 2, disabled',
       'Removed B',
-    ]);
-  });
-});
-
-describe('describeDiffEntries', () => {
-  test('resolves prompt indices to names and keeps text as text', () => {
-    const preset = createDefaultPreset();
-    const index = (preset.prompts as Prompt[]).findIndex((entry) => entry.identifier === 'main');
-    const changes = describeDiffEntries(
-      [
-        {
-          path: `/prompts/${index}/content`,
-          kind: 'replace',
-          before: 'Write the next reply.\nStay in character.',
-          after: 'Write the next reply.\nStay in character, always.',
-        },
-        { path: '/temperature', kind: 'replace', before: 1, after: 0.9 },
-        { path: '/reasoning_effort', kind: 'replace', before: 'high', after: 'medium' },
-      ],
-      preset,
-    );
-    expect(changes.map((change) => [change.kind, change.label])).toEqual([
-      ['text', `${prompt(preset, 'main').name} › content`],
-      ['value', 'Temperature'],
-      // Short one-line text is a value: "high → medium", not a word diff.
-      ['value', 'Reasoning effort'],
     ]);
   });
 });

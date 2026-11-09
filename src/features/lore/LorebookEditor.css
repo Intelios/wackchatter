@@ -1,7 +1,6 @@
 /*
  * The lorebook editor. Structural only — every colour, space and duration comes from
- * tokens.css. The row layout deliberately mirrors PromptManager's, since both are
- * "drag-reorderable list with a checkbox and a trailing number".
+ * tokens.css.
  */
 
 .lore-editor {

@@ -1,0 +1,29 @@
+/* Text still arriving: plain, line breaks kept, never collapsing to nothing. */
+
+.message__text--streaming {
+  white-space: pre-wrap;
+  min-height: 1em;
+}
+
+/* The caret at the end of text still arriving. */
+.message__caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--wc-accent);
+  animation: wc-caret 1s steps(2, start) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message__caret {
+    animation: none;
+  }
+}
+
+@keyframes wc-caret {
+  to {
+    visibility: hidden;
+  }
+}

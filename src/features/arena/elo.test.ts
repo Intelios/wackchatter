@@ -26,7 +26,7 @@ function round(left: string, right: string, verdict: Verdict): ArenaRound {
 }
 
 function contender(id: string): Contender {
-  return { id, name: id, connectionId: 'or', model: `${id}-model`, enabled: true };
+  return { id, name: id, model: { connectionId: 'or', modelId: `${id}-model` }, enabled: true };
 }
 
 function rowFor(rows: ReturnType<typeof replayRatings>, id: string) {

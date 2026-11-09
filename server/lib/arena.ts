@@ -17,7 +17,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import type { ArenaRound, RoundSide, Verdict } from '../../shared/types/arena.ts';
+import type { ArenaRound, RoundSide, RoundUsage, Verdict } from '../../shared/types/arena.ts';
 import { getDb } from './db.ts';
 
 const VERDICTS: readonly Verdict[] = ['left', 'right', 'tie', 'bad'];
@@ -40,6 +40,46 @@ interface RoundRow {
   right_provider: string;
   right_text: string;
   verdict: string;
+}
+
+interface UsageRow {
+  round_id: string;
+  side: string;
+  connection_id: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  ms: number | null;
+  first_token_ms: number | null;
+}
+
+/** A count or a duration: a finite, non-negative whole number, or null. */
+function measure(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : null;
+}
+
+function normalizeUsage(value: unknown): RoundUsage | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const usage = value as Record<string, unknown>;
+  if (typeof usage.connectionId !== 'string' || !usage.connectionId) return undefined;
+  return {
+    connectionId: usage.connectionId,
+    promptTokens: measure(usage.promptTokens),
+    completionTokens: measure(usage.completionTokens),
+    ms: measure(usage.ms),
+    firstTokenMs: measure(usage.firstTokenMs),
+  };
+}
+
+function rowToUsage(row: UsageRow): RoundUsage {
+  return {
+    connectionId: row.connection_id,
+    promptTokens: row.prompt_tokens,
+    completionTokens: row.completion_tokens,
+    ms: row.ms,
+    firstTokenMs: row.first_token_ms,
+  };
 }
 
 /** What a caller supplies. The id and timestamp are the server's to mint. */
@@ -91,11 +131,13 @@ function rowToRound(row: RoundRow): ArenaRound {
 }
 
 function normalizeSide(value: RoundSide | undefined): RoundSide {
+  const usage = normalizeUsage(value?.usage);
   return {
     contenderId: text(value?.contenderId),
     model: text(value?.model),
     provider: text(value?.provider),
     text: text(value?.text),
+    ...(usage ? { usage } : {}),
   };
 }
 
@@ -115,6 +157,20 @@ export function createArenaStore(database: Database): ArenaStore {
          $verdict
        )`,
     ),
+    selectUsage: database.query<UsageRow, []>('SELECT * FROM arena_round_usage'),
+    insertUsage: database.query(
+      `INSERT INTO arena_round_usage (
+         round_id, side, connection_id, prompt_tokens, completion_tokens, ms, first_token_ms
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    // The usage rows go first and by hand: ON DELETE CASCADE only fires on a connection
+    // with foreign_keys on, and a store must not depend on who opened its database.
+    deleteUsage: database.query('DELETE FROM arena_round_usage WHERE round_id = ?'),
+    deleteUsageByContender: database.query(
+      `DELETE FROM arena_round_usage WHERE round_id IN
+         (SELECT id FROM arena_rounds WHERE left_id = ? OR right_id = ?)`,
+    ),
+    clearUsage: database.query('DELETE FROM arena_round_usage'),
     delete: database.query('DELETE FROM arena_rounds WHERE id = ?'),
     deleteByContender: database.query('DELETE FROM arena_rounds WHERE left_id = ? OR right_id = ?'),
     clear: database.query('DELETE FROM arena_rounds'),
@@ -123,7 +179,18 @@ export function createArenaStore(database: Database): ArenaStore {
 
   return {
     listRounds(): ArenaRound[] {
-      return statements.selectAll.all().map(rowToRound);
+      const usage = new Map<string, RoundUsage>();
+      for (const row of statements.selectUsage.all()) {
+        usage.set(`${row.round_id}:${row.side}`, rowToUsage(row));
+      }
+      return statements.selectAll.all().map((row) => {
+        const round = rowToRound(row);
+        const left = usage.get(`${round.id}:left`);
+        const right = usage.get(`${round.id}:right`);
+        if (left) round.left.usage = left;
+        if (right) round.right.usage = right;
+        return round;
+      });
     },
 
     recordRound(input): ArenaRound {
@@ -137,35 +204,57 @@ export function createArenaStore(database: Database): ArenaStore {
         verdict: isVerdict(input.verdict) ? input.verdict : 'bad',
       };
 
-      statements.insert.run({
-        $id: round.id,
-        $created: round.created,
-        $characterId: round.characterId,
-        $probe: round.probe,
-        $leftId: round.left.contenderId,
-        $leftModel: round.left.model,
-        $leftProvider: round.left.provider,
-        $leftText: round.left.text,
-        $rightId: round.right.contenderId,
-        $rightModel: round.right.model,
-        $rightProvider: round.right.provider,
-        $rightText: round.right.text,
-        $verdict: round.verdict,
+      const write = database.transaction(() => {
+        statements.insert.run({
+          $id: round.id,
+          $created: round.created,
+          $characterId: round.characterId,
+          $probe: round.probe,
+          $leftId: round.left.contenderId,
+          $leftModel: round.left.model,
+          $leftProvider: round.left.provider,
+          $leftText: round.left.text,
+          $rightId: round.right.contenderId,
+          $rightModel: round.right.model,
+          $rightProvider: round.right.provider,
+          $rightText: round.right.text,
+          $verdict: round.verdict,
+        });
+        for (const [name, side] of [
+          ['left', round.left],
+          ['right', round.right],
+        ] as const) {
+          const usage = side.usage;
+          if (!usage) continue;
+          statements.insertUsage.run(
+            round.id,
+            name,
+            usage.connectionId,
+            usage.promptTokens,
+            usage.completionTokens,
+            usage.ms,
+            usage.firstTokenMs,
+          );
+        }
       });
+      write();
 
       return round;
     },
 
     deleteRound(id): boolean {
+      statements.deleteUsage.run(id);
       return statements.delete.run(id).changes > 0;
     },
 
     deleteContender(contenderId): number {
+      statements.deleteUsageByContender.run(contenderId, contenderId);
       return statements.deleteByContender.run(contenderId, contenderId).changes;
     },
 
     clearRounds(): number {
       const { count } = statements.count.get() ?? { count: 0 };
+      statements.clearUsage.run();
       statements.clear.run();
       return count;
     },

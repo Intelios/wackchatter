@@ -1,7 +1,8 @@
 import type { JsonPatchOperation } from '@shared/preset-cocreator/patch.ts';
 import { getPromptOrder } from '@shared/prompt/preset-io.ts';
+import { normalizeBase } from '@shared/providers/request.ts';
 import { isLengthCutoff, type StreamState } from '@shared/providers/sse.ts';
-import type { ProviderToolCall } from '@shared/providers/types.ts';
+import type { ProviderToolCall, ResolvedModel } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { PROMPT_ORDER_LIVE_ID } from '@shared/types/preset.ts';
 import type {
@@ -13,6 +14,14 @@ import type {
   ProposedPresetTest,
 } from '@shared/types/preset-cocreator.ts';
 import { ApiError } from '../../lib/api.ts';
+import { type AssistantProviderState, replayAssistantProviderState } from './reasoningReplay.ts';
+import { presetBatchWireContent, presetReportWireContent } from './reportWire.ts';
+import {
+  type PresetToolRevision,
+  presetToolHistory,
+  presetToolOperationId,
+  validPresetToolCallIds,
+} from './toolHistory.ts';
 
 export const ASSISTANT_REQUEST_LIMIT = 6;
 
@@ -20,17 +29,36 @@ export const ASSISTANT_REQUEST_LIMIT = 6;
 export function assistantResponseMessage(
   response: StreamState,
   interrupted?: 'stopped' | 'error',
+  source?: ResolvedModel,
 ): PresetCocreatorMessage {
-  const incomplete = interrupted ?? (isLengthCutoff(response.finishReason) ? 'length' : undefined);
+  const incomplete =
+    interrupted ??
+    (isLengthCutoff(response.finishReason)
+      ? 'length'
+      : response.toolCalls && !validPresetToolCallIds(response.toolCalls)
+        ? 'error'
+        : undefined);
   return {
     id: crypto.randomUUID(),
     role: 'assistant',
     created: Date.now(),
     content: response.content,
     ...(response.reasoning ? { reasoning: response.reasoning } : {}),
+    ...(response.reasoningFields ? { reasoningFields: { ...response.reasoningFields } } : {}),
+    ...(source
+      ? {
+          providerSource: {
+            connectionId: source.id,
+            modelId: source.model,
+            provider: source.provider,
+            baseUrl: normalizeBase(source.baseUrl),
+          },
+        }
+      : {}),
     ...(response.reasoningDetails?.length
       ? { reasoningDetails: structuredClone(response.reasoningDetails) }
       : {}),
+    ...(response.extraContent ? { extraContent: structuredClone(response.extraContent) } : {}),
     ...(incomplete ? { incomplete } : {}),
     ...(response.toolCalls?.length
       ? incomplete
@@ -338,26 +366,23 @@ export function referencePresetView(name: string, version: string, preset: Prese
 
 export type AssistantWireMessage =
   | { role: 'system' | 'user'; content: string }
-  | {
+  | ({
       role: 'assistant';
       content: string | null;
-      tool_calls?: ProviderToolCall[];
-      reasoning_details?: unknown[];
-    }
+    } & AssistantProviderState)
   | { role: 'tool'; content: string; tool_call_id: string; name?: string };
 
 export function assistantWireMessages(
   messages: readonly PresetCocreatorMessage[],
+  history: readonly PresetToolRevision[] = [],
+  target?: ResolvedModel,
 ): AssistantWireMessage[] {
-  return messages.map((message): AssistantWireMessage => {
+  return presetToolHistory(messages, history).map((message): AssistantWireMessage => {
     if (message.role === 'assistant') {
       return {
         role: 'assistant',
         content: message.content || null,
-        ...(message.toolCalls?.length ? { tool_calls: structuredClone(message.toolCalls) } : {}),
-        ...(message.reasoningDetails?.length
-          ? { reasoning_details: structuredClone(message.reasoningDetails) }
-          : {}),
+        ...replayAssistantProviderState(message, target),
       };
     }
     if (message.role === 'tool') {
@@ -371,7 +396,13 @@ export function assistantWireMessages(
     }
     return {
       role: 'user',
-      content: message.comparison ? comparisonWireContent(message.comparison) : message.content,
+      content: message.comparison
+        ? comparisonWireContent(message.comparison)
+        : message.report
+          ? presetReportWireContent(message.report)
+          : message.batch
+            ? presetBatchWireContent(message.batch)
+            : message.content,
     };
   });
 }
@@ -405,10 +436,12 @@ export interface PresetToolDeps {
   patchDraft(
     input: PatchPresetDraftRequest,
   ): Promise<Pick<PresetDraftRevision, 'revision' | 'diff'>>;
+  /** Drain pending saves before editing. Cancellation is checked again after this await. */
+  beforePatch?(): Promise<void>;
   /** Files an assistant-proposed test for the user to run. */
   proposeTest(proposal: ProposedPresetTest): void;
   /** Reads one named reference preset — resolves to its view, rejects when absent. */
-  readReference(name: string): Promise<unknown>;
+  readReference(name: string, signal?: AbortSignal): Promise<unknown>;
 }
 
 /**
@@ -420,17 +453,21 @@ export async function executePresetToolCall(
   call: ProviderToolCall,
   turnId: string,
   deps: PresetToolDeps,
+  signal?: AbortSignal,
 ): Promise<unknown> {
+  signal?.throwIfAborted();
   const parsed = parsePresetToolCall(call);
   if (parsed.name === 'read_preset') {
     const latest = deps.currentRevision();
     return presetReference(latest.preset, latest.revision, deps.identity().targetPresetId);
   }
   if (parsed.name === 'patch_preset') {
+    await deps.beforePatch?.();
+    signal?.throwIfAborted();
     const saved = await deps.patchDraft({
       expectedRevision: parsed.expectedRevision,
       // The call id makes the operation idempotent: a retried request cannot apply twice.
-      operationId: `tool:${turnId}:${call.id}`,
+      operationId: presetToolOperationId(turnId, call.id),
       source: 'assistant',
       summary: parsed.summary,
       turnId,
@@ -439,7 +476,7 @@ export async function executePresetToolCall(
     return { ok: true, revision: saved.revision, diff: saved.diff };
   }
   if (parsed.name === 'read_reference_preset') {
-    return deps.readReference(parsed.presetName);
+    return deps.readReference(parsed.presetName, signal);
   }
   const proposal: ProposedPresetTest = {
     id: crypto.randomUUID(),
@@ -453,6 +490,18 @@ export async function executePresetToolCall(
   return { ok: true, proposalId: proposal.id, awaitingUserRun: true };
 }
 
+/** A transport failure cannot establish whether an already-dispatched edit committed. */
+export class UnconfirmedPresetPatchError extends Error {
+  constructor(cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `The edit's acknowledgement was lost: ${detail}. It may already have committed. ` +
+        'Inspect the current draft before deciding whether another edit is needed.',
+      { cause },
+    );
+  }
+}
+
 /** The tool result a model sees when its call failed: the message, plus the live revision
  *  when the failure was a stale-expectedRevision conflict, so the retry can aim correctly. */
 export function toolFailureResult(error: unknown): Record<string, unknown> {
@@ -460,6 +509,7 @@ export function toolFailureResult(error: unknown): Record<string, unknown> {
     ok: false,
     error: error instanceof Error && error.message ? error.message : String(error),
   };
+  if (error instanceof UnconfirmedPresetPatchError) result.outcomeUnknown = true;
   if (error instanceof ApiError) {
     const revision = (error.body as { currentRevision?: unknown } | null)?.currentRevision;
     if (typeof revision === 'number') result.currentRevision = revision;

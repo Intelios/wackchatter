@@ -28,6 +28,13 @@ import {
   userMessage,
 } from '@shared/chat/message.ts';
 import {
+  type CompactionRecord,
+  type CompactionState,
+  createCompactionState,
+  normalizeCompaction,
+} from '@shared/cocreator/compaction.ts';
+import { replaceGreeting } from '@shared/cocreator/draft.ts';
+import {
   clearAll,
   clearSlot,
   editGreeting,
@@ -44,6 +51,8 @@ import type { ChatMessage, MessageExtra } from '@shared/types/chat.ts';
 import {
   type CardSlot,
   type CardStash,
+  type CocreatorCardBaseline,
+  type CocreatorPublication,
   type CocreatorSession,
   type CocreatorSideChat,
   DEFAULT_EXAMPLE_FIELDS,
@@ -87,6 +96,7 @@ export interface SideChatState extends Omit<CocreatorSideChat, 'messages'> {
 }
 
 export interface CocreatorState {
+  compaction: CompactionState;
   sessionId: string | null;
   title: string;
   messages: MessageState[];
@@ -98,6 +108,10 @@ export interface CocreatorState {
   /** Filename under data/cocreator/avatars, or null. */
   avatar: string | null;
   finishedAvatar: string | null;
+  baseline: CocreatorCardBaseline | null;
+  targetAvatar: string | null;
+  portraitChanged: boolean;
+  publication: CocreatorPublication | null;
   status: CoStatus;
   /** The message being generated into. An id, because indices shift. */
   streamingId: string | null;
@@ -119,6 +133,7 @@ export interface CocreatorState {
 }
 
 export const initialCocreatorState: CocreatorState = {
+  compaction: createCompactionState(false),
   sessionId: null,
   title: '',
   messages: [],
@@ -129,6 +144,10 @@ export const initialCocreatorState: CocreatorState = {
   settings: {},
   avatar: null,
   finishedAvatar: null,
+  baseline: null,
+  targetAvatar: null,
+  portraitChanged: false,
+  publication: null,
   status: 'idle',
   streamingId: null,
   mode: null,
@@ -139,6 +158,9 @@ export const initialCocreatorState: CocreatorState = {
 };
 
 type BaseCocreatorAction =
+  | { type: 'compaction/automatic'; automatic: boolean }
+  | { type: 'compaction/recorded'; record: CompactionRecord }
+  | { type: 'error/set'; message: string }
   | { type: 'side/opened' | 'side/reset'; snapshot: SideChatSnapshot }
   | { type: 'side/settings'; patch: SideChatModelSettings }
   | { type: 'session/loaded'; session: CocreatorSession }
@@ -180,6 +202,7 @@ type BaseCocreatorAction =
   | { type: 'stash/set'; slot: CardSlot; text: string; provenance: StashProvenance }
   | { type: 'stash/editSlot'; slot: SingleCardSlot; text: string }
   | { type: 'stash/editGreeting'; index: number; text: string }
+  | { type: 'stash/replaceGreeting'; id: string; text: string; provenance: StashProvenance }
   | { type: 'stash/reorderGreetings'; from: number; to: number }
   | { type: 'stash/removeGreeting'; index: number }
   | { type: 'stash/removeTag'; index: number }
@@ -193,7 +216,14 @@ type BaseCocreatorAction =
   | { type: 'settings/patch'; patch: SessionModelSettings }
   | { type: 'avatar/set'; filename: string }
   | { type: 'avatar/cleared' }
-  | { type: 'finished/recorded'; avatar: string }
+  | {
+      type: 'finished/recorded';
+      avatar: string;
+      baseline?: CocreatorCardBaseline;
+      stash?: CardStash;
+      publicationId?: string;
+    }
+  | { type: 'target/updated'; avatar: string | null }
   | { type: 'error/cleared' };
 
 export type CocreatorAction = BaseCocreatorAction & { target?: ConversationTarget };
@@ -280,6 +310,9 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
       ...state,
       revision: state.revision + 1,
       sideChat: {
+        compaction: createCompactionState(
+          state.sideChat?.compaction?.automatic ?? state.compaction.automatic,
+        ),
         snapshot: structuredClone(action.snapshot),
         settings: state.sideChat?.settings ?? {},
         messages: [],
@@ -312,15 +345,26 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
     return state;
   if (target === 'side') {
     if (!state.sideChat) return state;
-    const projected = { ...state, messages: state.sideChat.messages, error: state.sideChat.error };
+    const projected = {
+      ...state,
+      messages: state.sideChat.messages,
+      error: state.sideChat.error,
+      compaction: normalizeCompaction(state.sideChat.compaction),
+    };
     const next = reduceConversation(projected, action);
     if (next === projected) return state;
     return {
       ...next,
       messages: state.messages,
+      compaction: state.compaction,
       error: state.error,
       activeConversation: next.status === 'idle' ? null : 'side',
-      sideChat: { ...state.sideChat, messages: next.messages, error: next.error },
+      sideChat: {
+        ...state.sideChat,
+        messages: next.messages,
+        error: next.error,
+        compaction: next.compaction,
+      },
     };
   }
   const next = reduceConversation(state, action);
@@ -333,15 +377,32 @@ export function cocreatorReducer(state: CocreatorState, action: CocreatorAction)
 
 function reduceConversation(state: CocreatorState, action: CocreatorAction): CocreatorState {
   switch (action.type) {
+    case 'compaction/automatic':
+      return {
+        ...state,
+        compaction: { ...state.compaction, automatic: action.automatic },
+        revision: state.revision + 1,
+      };
+    case 'compaction/recorded':
+      return {
+        ...state,
+        compaction: { ...state.compaction, history: [...state.compaction.history, action.record] },
+        revision: state.revision + 1,
+        error: action.record.error ?? null,
+      };
+    case 'error/set':
+      return { ...state, error: action.message };
     case 'session/loaded':
       return {
         ...initialCocreatorState,
         sessionId: action.session.id,
+        compaction: normalizeCompaction(action.session.compaction),
         title: action.session.title,
         messages: action.session.messages.map(fromChatMessage),
         sideChat: action.session.sideChat
           ? {
               ...action.session.sideChat,
+              compaction: normalizeCompaction(action.session.sideChat.compaction),
               messages: action.session.sideChat.messages.map(fromChatMessage),
               error: null,
             }
@@ -351,6 +412,10 @@ function reduceConversation(state: CocreatorState, action: CocreatorAction): Coc
         settings: action.session.settings,
         avatar: action.session.avatar,
         finishedAvatar: action.session.finishedAvatar,
+        baseline: action.session.baseline ?? null,
+        targetAvatar: action.session.targetAvatar ?? null,
+        portraitChanged: action.session.portraitChanged ?? false,
+        publication: action.session.publication ?? null,
         revision: action.session.revision,
         persistedRevision: action.session.revision,
       };
@@ -515,6 +580,12 @@ function reduceConversation(state: CocreatorState, action: CocreatorAction): Coc
     case 'stash/editGreeting':
       return withStash(state, editGreeting(state.stash, action.index, action.text));
 
+    case 'stash/replaceGreeting':
+      return withStash(
+        state,
+        replaceGreeting(state.stash, action.id, action.text, action.provenance),
+      );
+
     case 'stash/reorderGreetings':
       return withStash(state, reorderGreetings(state.stash, action.from, action.to));
 
@@ -601,14 +672,28 @@ function reduceConversation(state: CocreatorState, action: CocreatorAction): Coc
     // there is nothing left for the save queue to flush. Bumping anyway used to mint phantom
     // revisions that raced the server's own avatar bump and left Finish dying on a 409.
     case 'avatar/set':
-      return { ...state, avatar: action.filename };
+      return { ...state, avatar: action.filename, portraitChanged: true };
 
     case 'avatar/cleared':
       if (state.avatar === null) return state;
-      return { ...state, avatar: null };
+      return { ...state, avatar: null, portraitChanged: true };
 
     case 'finished/recorded':
-      return { ...state, finishedAvatar: action.avatar, revision: state.revision + 1 };
+      return {
+        ...state,
+        finishedAvatar: action.avatar,
+        targetAvatar: action.avatar,
+        baseline: action.baseline ?? state.baseline,
+        stash: action.stash ?? state.stash,
+        publication: action.publicationId
+          ? { id: action.publicationId, avatar: action.avatar }
+          : state.publication,
+        portraitChanged: false,
+        revision: state.revision + 1,
+      };
+
+    case 'target/updated':
+      return { ...state, targetAvatar: action.avatar };
 
     case 'error/cleared':
       return state.error === null ? state : { ...state, error: null };
@@ -660,6 +745,7 @@ export function toPersistedSideChat(state: CocreatorState): CocreatorSideChat | 
   if (!state.sideChat) return null;
   return {
     snapshot: state.sideChat.snapshot,
+    compaction: state.sideChat.compaction,
     settings: state.sideChat.settings,
     messages: toPersistedMessages(state, 'side'),
   };

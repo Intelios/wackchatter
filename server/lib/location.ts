@@ -40,6 +40,7 @@ import type {
   UnreachableReason,
 } from '../../shared/types/location.ts';
 import { atomicWrite } from './fs.ts';
+import { LIBRARY_TOO_OLD_MESSAGE, libraryTooOld } from './libraryVersion.ts';
 import { DEFAULT_DATA_DIR, MARKER_FILENAME, PATHS, PROJECT_ROOT, setDataDir } from './paths.ts';
 
 export type { LocationVerdict, LocationWarning };
@@ -568,6 +569,9 @@ export function inspectLocation(input: string, currentRoot: string = PATHS.root)
   const legacy = exists && looksLikeLibrary(path);
   const entries = exists ? meaningfulEntries(path) : [];
 
+  if ((marker || legacy) && libraryTooOld(path)) {
+    return reject('too-old', LIBRARY_TOO_OLD_MESSAGE, path);
+  }
   if (!marker && !legacy && entries.length > 0) {
     const sample = entries.slice(0, 3).join(', ');
     return reject(

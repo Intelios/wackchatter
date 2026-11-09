@@ -45,7 +45,7 @@ import { Select } from '../../components/Select.tsx';
 import { TrashIcon } from '../../layout/icons.tsx';
 import './LorebookEditor.css';
 
-const POSITION_OPTIONS: ReadonlyArray<{ label: string; value: WiPosition }> = [
+export const POSITION_OPTIONS: ReadonlyArray<{ label: string; value: WiPosition }> = [
   { label: 'Before character', value: WI_POSITION.before },
   { label: 'After character', value: WI_POSITION.after },
   { label: 'At depth', value: WI_POSITION.atDepth },
@@ -56,14 +56,14 @@ const POSITION_OPTIONS: ReadonlyArray<{ label: string; value: WiPosition }> = [
   { label: 'Outlet (→ before)', value: WI_POSITION.outlet },
 ];
 
-const LOGIC_OPTIONS: ReadonlyArray<{ label: string; value: WiLogic }> = [
+export const LOGIC_OPTIONS: ReadonlyArray<{ label: string; value: WiLogic }> = [
   { label: 'AND ANY — at least one secondary', value: WI_LOGIC.AND_ANY },
   { label: 'AND ALL — every secondary', value: WI_LOGIC.AND_ALL },
   { label: 'NOT ANY — no secondary', value: WI_LOGIC.NOT_ANY },
   { label: 'NOT ALL — at least one missing', value: WI_LOGIC.NOT_ALL },
 ];
 
-const ROLE_OPTIONS: ReadonlyArray<{ label: string; value: WiRole }> = [
+export const ROLE_OPTIONS: ReadonlyArray<{ label: string; value: WiRole }> = [
   { label: 'System', value: WI_ROLE.SYSTEM },
   { label: 'User', value: WI_ROLE.USER },
   { label: 'Assistant', value: WI_ROLE.ASSISTANT },
@@ -77,7 +77,7 @@ const SORT_OPTIONS: ReadonlyArray<{ label: string; value: SortMode }> = [
   { label: 'Alphabetical', value: 'label' },
 ];
 
-function labelFor(entry: WorldInfoEntry): string {
+export function labelFor(entry: WorldInfoEntry): string {
   return (
     entry.comment?.trim() || entry.key.find((key) => key.trim())?.trim() || `Entry ${entry.uid}`
   );
@@ -149,6 +149,140 @@ function EntryRow({ entry, selected, draggable, onSelect, onToggle }: EntryRowPr
 
       <span className="lore-row__order">{entry.order}</span>
     </li>
+  );
+}
+
+/* --- the entry's folded sections, shared with the 3.0 Lorebooks tool ------------- */
+
+interface EntryFieldsProps {
+  entry: WorldInfoEntry;
+  onChange: (patch: Partial<WorldInfoEntry>) => void;
+}
+
+/** Scan depth and the two matching switches, each inheriting the book-wide default. */
+export function EntryMatchingFields({
+  entry,
+  globals,
+  onChange,
+}: EntryFieldsProps & {
+  globals: { caseSensitive: boolean; matchWholeWords: boolean; depth: number };
+}) {
+  return (
+    <>
+      <NumberField
+        label="Scan depth"
+        value={entry.scanDepth ?? globals.depth}
+        min={0}
+        onChange={(scanDepth) => onChange({ scanDepth })}
+        hint={`Messages to search. Global default is ${globals.depth}. 0 means this entry never scans.`}
+      />
+      {entry.scanDepth !== null ? (
+        <button
+          type="button"
+          className="wc-button wc-button--ghost lore-form__inherit"
+          onClick={() => onChange({ scanDepth: null })}
+        >
+          Inherit the global scan depth
+        </button>
+      ) : null}
+
+      <TriCheckField
+        label="Case sensitive"
+        value={entry.caseSensitive}
+        inherited={globals.caseSensitive}
+        onChange={(caseSensitive) => onChange({ caseSensitive })}
+      />
+      <TriCheckField
+        label="Match whole words"
+        value={entry.matchWholeWords}
+        inherited={globals.matchWholeWords}
+        onChange={(matchWholeWords) => onChange({ matchWholeWords })}
+        hint="Multi-word keys ignore this and match as substrings, matching SillyTavern."
+      />
+    </>
+  );
+}
+
+/** Probability, and the inclusion group with its weight. */
+export function EntryChanceFields({ entry, onChange }: EntryFieldsProps) {
+  return (
+    <>
+      <CheckField
+        label="Use probability"
+        checked={entry.useProbability}
+        onChange={(useProbability) => onChange({ useProbability })}
+      />
+      {entry.useProbability ? (
+        <NumberField
+          label="Probability (%)"
+          value={entry.probability}
+          min={0}
+          max={100}
+          onChange={(probability) => onChange({ probability })}
+          hint="Rolled once per turn, seeded — a regenerate sees the same result."
+        />
+      ) : null}
+
+      <TextField
+        label="Inclusion group"
+        value={entry.group}
+        onChange={(group) => onChange({ group })}
+        placeholder="weather"
+        hint="Only one entry from a group fires per turn. Comma-separate for several groups."
+      />
+
+      {entry.group ? (
+        <div className="field-row">
+          <NumberField
+            label="Group weight"
+            value={entry.groupWeight}
+            min={0}
+            onChange={(groupWeight) => onChange({ groupWeight })}
+          />
+          <CheckField
+            label="Always win"
+            checked={entry.groupOverride}
+            onChange={(groupOverride) => onChange({ groupOverride })}
+            hint="Beats weight. Highest order wins among several."
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** What may set this entry off, what it may set off, and the budget. */
+export function EntryRecursionFields({ entry, onChange }: EntryFieldsProps) {
+  return (
+    <>
+      <CheckField
+        label="Cannot be triggered by other entries"
+        checked={entry.excludeRecursion}
+        onChange={(excludeRecursion) => onChange({ excludeRecursion })}
+      />
+      <CheckField
+        label="Cannot trigger other entries"
+        checked={entry.preventRecursion}
+        onChange={(preventRecursion) => onChange({ preventRecursion })}
+      />
+      <CheckField
+        label="Only after recursion has started"
+        checked={Boolean(entry.delayUntilRecursion)}
+        onChange={(on) => onChange({ delayUntilRecursion: on })}
+      />
+      <CheckField
+        label="Ignore the token budget"
+        checked={entry.ignoreBudget}
+        onChange={(ignoreBudget) => onChange({ ignoreBudget })}
+        hint="Always included, even once the lore budget is spent."
+      />
+      {entry.vectorized ? (
+        <p className="wc-hint lore-form__warn">
+          This entry is marked for vector search, which this app does not do — so it will never
+          fire. It is preserved exactly as it was for SillyTavern.
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -264,109 +398,15 @@ function EntryForm({ entry, globals, onChange, onDelete }: EntryFormProps) {
       </Section>
 
       <Section title="Matching">
-        <NumberField
-          label="Scan depth"
-          value={entry.scanDepth ?? globals.depth}
-          min={0}
-          onChange={(scanDepth) => onChange({ scanDepth })}
-          hint={`Messages to search. Global default is ${globals.depth}. 0 means this entry never scans.`}
-        />
-        {entry.scanDepth !== null ? (
-          <button
-            type="button"
-            className="wc-button wc-button--ghost lore-form__inherit"
-            onClick={() => onChange({ scanDepth: null })}
-          >
-            Inherit the global scan depth
-          </button>
-        ) : null}
-
-        <TriCheckField
-          label="Case sensitive"
-          value={entry.caseSensitive}
-          inherited={globals.caseSensitive}
-          onChange={(caseSensitive) => onChange({ caseSensitive })}
-        />
-        <TriCheckField
-          label="Match whole words"
-          value={entry.matchWholeWords}
-          inherited={globals.matchWholeWords}
-          onChange={(matchWholeWords) => onChange({ matchWholeWords })}
-          hint="Multi-word keys ignore this and match as substrings, matching SillyTavern."
-        />
+        <EntryMatchingFields entry={entry} globals={globals} onChange={onChange} />
       </Section>
 
       <Section title="Chance and groups">
-        <CheckField
-          label="Use probability"
-          checked={entry.useProbability}
-          onChange={(useProbability) => onChange({ useProbability })}
-        />
-        {entry.useProbability ? (
-          <NumberField
-            label="Probability (%)"
-            value={entry.probability}
-            min={0}
-            max={100}
-            onChange={(probability) => onChange({ probability })}
-            hint="Rolled once per turn, seeded — a regenerate sees the same result."
-          />
-        ) : null}
-
-        <TextField
-          label="Inclusion group"
-          value={entry.group}
-          onChange={(group) => onChange({ group })}
-          placeholder="weather"
-          hint="Only one entry from a group fires per turn. Comma-separate for several groups."
-        />
-
-        {entry.group ? (
-          <div className="field-row">
-            <NumberField
-              label="Group weight"
-              value={entry.groupWeight}
-              min={0}
-              onChange={(groupWeight) => onChange({ groupWeight })}
-            />
-            <CheckField
-              label="Always win"
-              checked={entry.groupOverride}
-              onChange={(groupOverride) => onChange({ groupOverride })}
-              hint="Beats weight. Highest order wins among several."
-            />
-          </div>
-        ) : null}
+        <EntryChanceFields entry={entry} onChange={onChange} />
       </Section>
 
       <Section title="Recursion and budget">
-        <CheckField
-          label="Cannot be triggered by other entries"
-          checked={entry.excludeRecursion}
-          onChange={(excludeRecursion) => onChange({ excludeRecursion })}
-        />
-        <CheckField
-          label="Cannot trigger other entries"
-          checked={entry.preventRecursion}
-          onChange={(preventRecursion) => onChange({ preventRecursion })}
-        />
-        <CheckField
-          label="Only after recursion has started"
-          checked={Boolean(entry.delayUntilRecursion)}
-          onChange={(on) => onChange({ delayUntilRecursion: on })}
-        />
-        <CheckField
-          label="Ignore the token budget"
-          checked={entry.ignoreBudget}
-          onChange={(ignoreBudget) => onChange({ ignoreBudget })}
-          hint="Always included, even once the lore budget is spent."
-        />
-        {entry.vectorized ? (
-          <p className="wc-hint lore-form__warn">
-            This entry is marked for vector search, which this app does not do — so it will never
-            fire. It is preserved exactly as it was for SillyTavern.
-          </p>
-        ) : null}
+        <EntryRecursionFields entry={entry} onChange={onChange} />
       </Section>
 
       <div className="lore-form__footer">

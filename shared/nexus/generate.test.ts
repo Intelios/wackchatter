@@ -1,16 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { nexusMaxTokens, nexusPreset, nexusRequestError } from './generate.ts';
+import { responseCap } from '../providers/responseLength.ts';
+import { nexusPreset, nexusRequestError } from './generate.ts';
 import { DEFAULT_NEXUS } from './types.ts';
 
-const openai = { provider: 'custom', model: 'gpt-5' } as const;
-const claude = { provider: 'openrouter', model: 'anthropic/claude-sonnet-4' } as const;
-
 describe('nexusPreset', () => {
+  test('sends no reply cap', () => {
+    expect(responseCap(nexusPreset({ ...DEFAULT_NEXUS, contextTokens: 8192 }))).toBeNull();
+  });
+
   test('carries the Nexus settings onto the synthetic preset', () => {
     const preset = nexusPreset({
       ...DEFAULT_NEXUS,
       temperature: 0.7,
-      inputTokens: 4096,
+      contextTokens: 4096,
       outputTokens: 1024,
       reasoningEffort: 'medium',
     });
@@ -25,41 +27,7 @@ describe('nexusPreset', () => {
   });
 
   test('the default effort is low, so reasoning is asked for explicitly and kept small', () => {
-    expect(nexusPreset(DEFAULT_NEXUS).reasoning_effort).toBe('low');
-  });
-});
-
-describe('nexusMaxTokens', () => {
-  test('reasoning rides on top of the output allowance, sized by effort', () => {
-    const big = { ...DEFAULT_NEXUS, inputTokens: 1_000_000, outputTokens: 2048 };
-    expect(nexusMaxTokens({ ...big, reasoningEffort: 'low' }, openai)).toBe(2048 + 8192);
-    expect(nexusMaxTokens({ ...big, reasoningEffort: 'min' }, openai)).toBe(2048 + 4096);
-    expect(nexusMaxTokens({ ...big, reasoningEffort: 'medium' }, openai)).toBe(2048 + 16384);
-    expect(nexusMaxTokens({ ...big, reasoningEffort: 'high' }, openai)).toBe(2048 + 32768);
-    expect(nexusMaxTokens({ ...big, reasoningEffort: 'max' }, openai)).toBe(2048 + 65536);
-  });
-
-  test('auto still buys headroom — the endpoint default effort is not nothing', () => {
-    const s = { ...DEFAULT_NEXUS, inputTokens: 1_000_000 };
-    expect(nexusMaxTokens({ ...s, reasoningEffort: 'auto' }, openai)).toBe(2048 + 8192);
-  });
-
-  test('the headroom never pushes the ask past the declared context', () => {
-    // The default config: 8192 context, 2048 output — headroom clamps to the slack.
-    expect(nexusMaxTokens(DEFAULT_NEXUS, openai)).toBe(8192 - 128);
-    // A tight context with no slack at all still asks for the full reply budget.
-    expect(nexusMaxTokens({ ...DEFAULT_NEXUS, inputTokens: 2048 }, openai)).toBe(2048);
-    expect(nexusMaxTokens({ ...DEFAULT_NEXUS, inputTokens: 1024 }, openai)).toBe(2048);
-  });
-
-  test('Claude on OpenRouter asks for the reply alone — buildRequestBody adds its thinking budget', () => {
-    const big = { ...DEFAULT_NEXUS, inputTokens: 1_000_000, outputTokens: 2048 };
-    expect(nexusMaxTokens(big, claude)).toBe(2048);
-  });
-
-  test('a missing connection is treated like any other endpoint', () => {
-    const big = { ...DEFAULT_NEXUS, inputTokens: 1_000_000, outputTokens: 2048 };
-    expect(nexusMaxTokens(big, null)).toBe(2048 + 8192);
+    expect(nexusPreset({ ...DEFAULT_NEXUS, contextTokens: 8192 }).reasoning_effort).toBe('low');
   });
 });
 
@@ -70,12 +38,10 @@ describe('nexusRequestError', () => {
     ).toBeNull();
   });
 
-  test('a length cut with text asks for a bigger allowance', () => {
+  test('a length cut with text says the JSON was cut off', () => {
     expect(
       nexusRequestError({ finishReason: 'length', content: '{"records"', reasoning: '' }),
-    ).toBe(
-      'The memory model reached its output limit. Increase the Nexus output allowance and retry.',
-    );
+    ).toContain('cut off before the JSON finished');
   });
 
   test('a length cut that is nothing but reasoning says what actually happened', () => {

@@ -11,7 +11,11 @@
  *    consumer assigns instead of appending, so dropping frames can never lose content.
  */
 
-import type { ProviderToolCall } from './types.ts';
+import {
+  PROVIDER_REASONING_FIELDS,
+  type ProviderReasoningFields,
+  type ProviderToolCall,
+} from './types.ts';
 
 export interface SseFrame {
   event?: string;
@@ -112,15 +116,19 @@ export interface StreamChoice {
   /** The FULL text so far, never a delta. */
   content: string;
   reasoning: string;
+  reasoningFields?: ProviderReasoningFields;
   finishReason: string | null;
   toolCalls?: ProviderToolCall[];
   reasoningDetails?: unknown[];
+  extraContent?: Record<string, unknown>;
 }
 
 export interface StreamState {
   /** The FULL text so far, never a delta. Always choice 0 — the reply on screen. */
   content: string;
   reasoning: string;
+  /** Exact explicit fields for provider replay, separate from display reasoning. */
+  reasoningFields?: ProviderReasoningFields;
   finishReason: string | null;
   model?: string;
   /**
@@ -130,7 +138,7 @@ export interface StreamState {
   id?: string;
   /**
    * Stable identity for this generation: `id` when the provider gave one, otherwise a
-   * uuid minted before the request. Assigned by the transport (src/lib/api.ts), not by
+   * uuid minted before the request. Assigned by the transport (src/lib/generation.ts), not by
    * the parser, because only the transport knows a request was made at all — a body
    * parsed straight out of a fixture has no generation behind it.
    */
@@ -143,6 +151,8 @@ export interface StreamState {
   toolCalls?: ProviderToolCall[];
   /** Opaque provider reasoning blocks echoed unchanged into a following tool request. */
   reasoningDetails?: unknown[];
+  /** Opaque message-level provider state, returned on the next assistant message. */
+  extraContent?: Record<string, unknown>;
   /**
    * Completions AFTER the first, in provider index order. Absent unless `n > 1` was both
    * asked for and honoured, so every existing consumer sees exactly what it saw before.
@@ -168,6 +178,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 /** Pull an error message out of the several shapes providers use for it. */
 export function extractError(payload: unknown): string | null {
+  return readError(payload, 0);
+}
+
+function readError(payload: unknown, depth: number): string | null {
+  if (depth > 3) return null;
+  // Google's streaming endpoint can return an array of error objects.
+  if (Array.isArray(payload)) {
+    for (const entry of payload) {
+      const message = readError(entry, depth + 1);
+      if (message) return message;
+    }
+    return null;
+  }
   const root = asRecord(payload);
   if (!root) return null;
 
@@ -175,10 +198,25 @@ export function extractError(payload: unknown): string | null {
   if (typeof error === 'string') return error;
 
   const record = asRecord(error);
-  if (record && typeof record.message === 'string') return record.message;
-
-  if (typeof root.message === 'string' && root.error !== undefined) return root.message;
-  return null;
+  const message =
+    record && typeof record.message === 'string'
+      ? record.message
+      : typeof root.message === 'string' && root.error !== undefined
+        ? root.message
+        : null;
+  // Gateways often hide Google's actual rejection behind "Provider returned error".
+  const raw = asRecord(record?.metadata)?.raw;
+  let detail: string | null = null;
+  if (typeof raw === 'string') {
+    try {
+      detail = readError(JSON.parse(raw), depth + 1);
+    } catch {
+      detail = raw.trim().slice(0, 500) || null;
+    }
+  } else if (raw) {
+    detail = readError(raw, depth + 1);
+  }
+  return detail && message && detail !== message ? `${message}: ${detail}` : (detail ?? message);
 }
 
 function readUsage(value: unknown): StreamUsage | undefined {
@@ -275,10 +313,12 @@ function publicChoice(choice: AccumulatedChoice): StreamChoice {
     reasoning: choice.reasoning,
     finishReason: choice.finishReason,
   };
+  if (choice.reasoningFields) result.reasoningFields = { ...choice.reasoningFields };
   if (choice.toolCallsMutable.length) result.toolCalls = structuredClone(choice.toolCallsMutable);
   if (choice.reasoningDetailsMutable.length) {
     result.reasoningDetails = structuredClone(choice.reasoningDetailsMutable);
   }
+  if (choice.extraContent) result.extraContent = structuredClone(choice.extraContent);
   return result;
 }
 
@@ -307,6 +347,11 @@ function appendToolCalls(choice: AccumulatedChoice, value: unknown): boolean {
       target.id = target.id || call.id;
       changed = true;
     }
+    const extraContent = asRecord(call.extra_content);
+    if (extraContent) {
+      target.extra_content = { ...target.extra_content, ...structuredClone(extraContent) };
+      changed = true;
+    }
     const fn = asRecord(call.function);
     if (fn) {
       if (typeof fn.name === 'string' && fn.name) {
@@ -320,6 +365,14 @@ function appendToolCalls(choice: AccumulatedChoice, value: unknown): boolean {
     }
   }
   return changed;
+}
+
+function appendExtraContent(choice: AccumulatedChoice, value: unknown): boolean {
+  const extraContent = asRecord(value);
+  if (!extraContent) return false;
+  // Signatures are opaque complete values, never text fragments to concatenate.
+  choice.extraContent = { ...choice.extraContent, ...structuredClone(extraContent) };
+  return true;
 }
 
 function appendReasoningDetails(choice: AccumulatedChoice, value: unknown): boolean {
@@ -365,6 +418,33 @@ function appendReasoning(choice: AccumulatedChoice, text: string): void {
   const split = splitInlineThoughts(choice.rawContent);
   choice.content = split.content;
   choice.reasoning = choice.explicitReasoning + split.reasoning;
+}
+
+function appendProviderReasoning(
+  choice: AccumulatedChoice,
+  source: Record<string, unknown>,
+): boolean {
+  let changed = false;
+  for (const field of PROVIDER_REASONING_FIELDS) {
+    const incoming = source[field];
+    if (typeof incoming !== 'string') continue;
+    choice.reasoningFields ??= {};
+    const fields = choice.reasoningFields;
+    fields[field] = (fields[field] ?? '') + incoming;
+    changed = true;
+  }
+  // Preserve the display's existing preference, with reasoning_text as an additional
+  // compatible alias. Mirror fields are never concatenated into the visible thought twice.
+  const thought =
+    typeof source.reasoning === 'string'
+      ? source.reasoning
+      : typeof source.reasoning_content === 'string'
+        ? source.reasoning_content
+        : typeof source.reasoning_text === 'string'
+          ? source.reasoning_text
+          : '';
+  if (thought) appendReasoning(choice, thought);
+  return changed;
 }
 
 /**
@@ -419,12 +499,14 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
     if (state.model !== undefined) result.model = state.model;
     if (state.id !== undefined) result.id = state.id;
     if (state.error !== undefined) result.error = state.error;
+    if (primary.reasoningFields) result.reasoningFields = { ...primary.reasoningFields };
     if (primary.toolCallsMutable.length) {
       result.toolCalls = structuredClone(primary.toolCallsMutable);
     }
     if (primary.reasoningDetailsMutable.length) {
       result.reasoningDetails = structuredClone(primary.reasoningDetailsMutable);
     }
+    if (primary.extraContent) result.extraContent = structuredClone(primary.extraContent);
     if (choices.length > 1) result.alternates = choices.slice(1).map(publicChoice);
     return result;
   }
@@ -508,22 +590,12 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
           changed = true;
         }
 
-        // OpenRouter uses `reasoning`; most others use `reasoning_content`.
         const source = delta ?? message;
-        const thought =
-          source && typeof source.reasoning === 'string'
-            ? source.reasoning
-            : source && typeof source.reasoning_content === 'string'
-              ? source.reasoning_content
-              : null;
-
-        if (thought) {
-          appendReasoning(target, thought);
-          changed = true;
-        }
+        if (source && appendProviderReasoning(target, source)) changed = true;
 
         if (source && appendToolCalls(target, source.tool_calls)) changed = true;
         if (source && appendReasoningDetails(target, source.reasoning_details)) changed = true;
+        if (source && appendExtraContent(target, source.extra_content)) changed = true;
 
         if (typeof choice.finish_reason === 'string') {
           target.finishReason = choice.finish_reason;
@@ -584,15 +656,10 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
     const message = asRecord(choice.message);
     if (message) {
       if (typeof message.content === 'string') appendContent(result, message.content);
-      const thought =
-        typeof message.reasoning === 'string'
-          ? message.reasoning
-          : typeof message.reasoning_content === 'string'
-            ? message.reasoning_content
-            : null;
-      if (thought) appendReasoning(result, thought);
+      appendProviderReasoning(result, message);
       appendToolCalls(result, message.tool_calls);
       appendReasoningDetails(result, message.reasoning_details);
+      appendExtraContent(result, message.extra_content);
     }
     if (typeof choice.finish_reason === 'string') result.finishReason = choice.finish_reason;
     return result;
@@ -602,11 +669,13 @@ export function parseCompletion(body: unknown, seed = ''): StreamState {
   // `+=` keeps the seed in front, for a non-streamed continue.
   state.content += primary.content;
   state.reasoning = primary.reasoning;
+  if (primary.reasoningFields) state.reasoningFields = { ...primary.reasoningFields };
   state.finishReason = primary.finishReason;
   if (primary.toolCallsMutable.length) state.toolCalls = structuredClone(primary.toolCallsMutable);
   if (primary.reasoningDetailsMutable.length) {
     state.reasoningDetails = structuredClone(primary.reasoningDetailsMutable);
   }
+  if (primary.extraContent) state.extraContent = structuredClone(primary.extraContent);
   if (parsed.length > 1) state.alternates = parsed.slice(1).map(publicChoice);
 
   return state;

@@ -1,11 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  dialogueRanges,
-  dialogueSegments,
-  emphasisRanges,
-  rehypeDialogue,
-  streamSegments,
-} from './dialogue.ts';
+import { dialogueRanges, emphasisRanges, rehypeDialogue, streamSegments } from './dialogue.ts';
 
 describe('dialogueRanges', () => {
   test('recognises straight and curly English double quotes', () => {
@@ -24,34 +18,6 @@ describe('dialogueRanges', () => {
 
   test('never carries a pair across a line boundary', () => {
     expect(dialogueRanges('"first\nsecond"')).toEqual([]);
-  });
-});
-
-describe('dialogueSegments', () => {
-  test('preserves every character while marking completed dialogue', () => {
-    expect(dialogueSegments('Before "hello" after')).toEqual([
-      { text: 'Before ', dialogue: false },
-      { text: '"hello"', dialogue: true },
-      { text: ' after', dialogue: false },
-    ]);
-  });
-
-  test('ignores quotes inside inline and fenced code', () => {
-    const source = 'Say `"not dialogue"` then "yes".\n```txt\n"also not"\n```';
-    expect(
-      dialogueSegments(source)
-        .filter((part) => part.dialogue)
-        .map((part) => part.text),
-    ).toEqual(['"yes"']);
-    expect(
-      dialogueSegments(source)
-        .map((part) => part.text)
-        .join(''),
-    ).toBe(source);
-  });
-
-  test('does not pair across an inline-code barrier', () => {
-    expect(dialogueSegments('"hello `code` world"').some((part) => part.dialogue)).toBeFalse();
   });
 });
 

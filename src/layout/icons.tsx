@@ -14,37 +14,6 @@ const base = {
   strokeLinejoin: 'round' as const,
 };
 
-export function SlidersIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <line x1="4" y1="7" x2="20" y2="7" />
-      <circle cx="9" cy="7" r="2.5" fill="var(--wc-surface)" />
-      <line x1="4" y1="17" x2="20" y2="17" />
-      <circle cx="16" cy="17" r="2.5" fill="var(--wc-surface)" />
-    </svg>
-  );
-}
-
-export function UsersIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M15 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20" />
-      <circle cx="8.5" cy="7" r="3.5" />
-      <path d="M22 20v-1.5a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.63a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
-export function SendIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M4 12h15" />
-      <path d="m13 6 6 6-6 6" />
-    </svg>
-  );
-}
-
 export function PlusIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">
@@ -58,20 +27,6 @@ export function FolderIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">
       <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18Z" />
-    </svg>
-  );
-}
-
-/** Six dots — the drag affordance, matching the Prompt Manager's grip. */
-export function GripIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true" strokeWidth="0" fill="currentColor">
-      <circle cx="9" cy="6" r="1.4" />
-      <circle cx="15" cy="6" r="1.4" />
-      <circle cx="9" cy="12" r="1.4" />
-      <circle cx="15" cy="12" r="1.4" />
-      <circle cx="9" cy="18" r="1.4" />
-      <circle cx="15" cy="18" r="1.4" />
     </svg>
   );
 }
@@ -114,14 +69,6 @@ export function DownloadIcon({ className }: IconProps) {
   );
 }
 
-export function ChevronLeftIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
-}
-
 /** Regenerate — a circular arrow. */
 export function RefreshIcon({ className }: IconProps) {
   return (
@@ -134,116 +81,11 @@ export function RefreshIcon({ className }: IconProps) {
   );
 }
 
-/** Continue — a fast-forward. */
-export function ContinueIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="m4 6 7 6-7 6" />
-      <path d="m13 6 7 6-7 6" />
-    </svg>
-  );
-}
-
-/**
- * Pause — two bars. Not `StopIcon`'s square: a paused exchange keeps its schedule and the
- * replies already running, while Stop ends the exchange, and the two sit side by side.
- */
-export function PauseIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M9 5v14" />
-      <path d="M15 5v14" />
-    </svg>
-  );
-}
-
 export function EditIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-/** Hide from prompt — a struck-through eye. */
-export function EyeOffIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a18 18 0 0 1-2.16 3.19" />
-      <path d="M6.6 6.6A18 18 0 0 0 2 12s3 8 10 8a9 9 0 0 0 5.4-1.6" />
-      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-      <line x1="2" y1="2" x2="22" y2="22" />
-    </svg>
-  );
-}
-
-export function EyeIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-/** A pushpin: this memory is always in the prompt, not waiting on a keyword. */
-export function PinIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M12 17v5" />
-      <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
-    </svg>
-  );
-}
-
-/** Stop generation — a filled square. */
-export function StopIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** Branch a chat from a message. */
-export function BranchIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <circle cx="6" cy="5" r="2.5" />
-      <circle cx="6" cy="19" r="2.5" />
-      <circle cx="18" cy="12" r="2.5" />
-      <path d="M6 7.5v9" />
-      <path d="M8.5 19h2a5 5 0 0 0 5-5v-1" />
-    </svg>
-  );
-}
-
-export function PlugIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M9 2v6" />
-      <path d="M15 2v6" />
-      <path d="M6 8h12v3a6 6 0 0 1-6 6 6 6 0 0 1-6-6Z" />
-      <path d="M12 17v5" />
-    </svg>
-  );
-}
-
-export function MessagesIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M21 11.5a8.4 8.4 0 0 1-9 8.3 9 9 0 0 1-3.7-.8L3 21l1.9-4.6A8.4 8.4 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
-    </svg>
-  );
-}
-
-export function MenuIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <line x1="4" y1="7" x2="20" y2="7" />
-      <line x1="4" y1="12" x2="20" y2="12" />
-      <line x1="4" y1="17" x2="20" y2="17" />
     </svg>
   );
 }
@@ -299,21 +141,6 @@ export function BookIcon({ className }: IconProps) {
   );
 }
 
-/* A portrait card: a frame with a head and shoulders in it, and ruled lines beside them.
-   Every nearer shape is taken — UserIcon is the persona, BookIcon is lore, NotesIcon is the
-   creator's notes — and this one has to read as "the character's card" at 15px. */
-export function CardIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <circle cx="9" cy="10" r="2" />
-      <path d="M6 16.5a3 3 0 0 1 6 0" />
-      <path d="M15 9.5h3" />
-      <path d="M15 13h3" />
-    </svg>
-  );
-}
-
 /* A circled i rather than another sheet of paper: SummaryIcon already owns that shape, and
    at 16px in a message footer the two would be indistinguishable. */
 export function NotesIcon({ className }: IconProps) {
@@ -333,24 +160,6 @@ export function SummaryIcon({ className }: IconProps) {
       <path d="M8 8h8" />
       <path d="M8 12h8" />
       <path d="M8 16h5" />
-    </svg>
-  );
-}
-
-export function UserIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
-    </svg>
-  );
-}
-
-export function GearIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <circle cx="12" cy="12" r="3.25" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z" />
     </svg>
   );
 }
@@ -386,126 +195,6 @@ export function MoreIcon({ className }: IconProps) {
   );
 }
 
-/** Guide the next reply — a wand. */
-export function WandIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M4 20 14 10" />
-      <path d="m12.4 8.4 3.2 3.2" />
-      <path d="M17 3v4" />
-      <path d="M15 5h4" />
-      <path d="M19.5 10.5v3" />
-      <path d="M18 12h3" />
-    </svg>
-  );
-}
-
-/**
- * Guided swipe — a fast-forward with a spark.
- *
- * Deliberately not `ContinueIcon`, which is the same double chevron: these sit two buttons
- * apart in the composer and Continue means something else entirely.
- */
-export function GuidedSwipeIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="m4 8 5 4-5 4" />
-      <path d="m11 8 5 4-5 4" />
-      <path d="M20 4v4" />
-      <path d="M18 6h4" />
-    </svg>
-  );
-}
-
-/**
- * Impersonate — a figure in a hat: the model writes the user's next message, so this is
- * "who you are, at one remove".
- */
-export function ImpersonateIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <circle cx="12" cy="10" r="3.2" />
-      <path d="M5.5 20c.9-3.2 3.4-4.8 6.5-4.8s5.6 1.6 6.5 4.8" />
-      <path d="M4 8.6h16" />
-      <path d="M9 8.6 9.7 5h4.6l.7 3.6" />
-    </svg>
-  );
-}
-
-/**
- * Previously on… — a screen with a play triangle: the story so far, played back rather
- * than read.
- */
-export function RecapIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <rect x="3" y="5" width="18" height="12" rx="2" />
-      <path d="m10 8.5 4 2.5-4 2.5Z" />
-      <path d="M8 20h8" />
-    </svg>
-  );
-}
-
-/** Quick commands — a bolt. */
-export function BoltIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
-    </svg>
-  );
-}
-
-/** Character Creator Studio — an artist palette for manual card crafting. */
-export function StudioIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.12 0-.92.75-1.67 1.67-1.67h1.99c3.05 0 5.56-2.5 5.56-5.55C21.97 6 17.46 2 12 2Z" />
-      <circle cx="7.5" cy="10.5" r="1" fill="currentColor" />
-      <circle cx="12" cy="7.5" r="1" fill="currentColor" />
-      <circle cx="16.5" cy="10.5" r="1" fill="currentColor" />
-      <circle cx="9" cy="15.5" r="1" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** Character Co-Creator — a dialogue bubble with a creation sparkle for conversational design. */
-export function CoCreatorIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-      <path d="M12 7.5c0 1.8-1.2 3-3 3 1.8 0 3 1.2 3 3 0-1.8 1.2-3 3-3-1.8 0-3-1.2-3-3Z" />
-    </svg>
-  );
-}
-
-/**
- * Model Arena — two panels facing each other across a divider.
- *
- * Not a trophy or a medal: the sub-app is a test bench first and a leaderboard second, and
- * the icon should say "compare these two" rather than "win".
- */
-export function ArenaIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <rect x="2" y="5" width="8" height="14" rx="1.5" />
-      <rect x="14" y="5" width="8" height="14" rx="1.5" />
-      <path d="M12 3v18" />
-    </svg>
-  );
-}
-
-/** Stats — a column chart with axes for library analytics. */
-export function StatsIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <path d="M3 3v16a2 2 0 0 0 2 2h16" />
-      <path d="M18 17V9" />
-      <path d="M13 17V5" />
-      <path d="M8 17v-4" />
-    </svg>
-  );
-}
-
 /**
  * A star, for the character rating. `filled` paints the whole star so a rating reads at a
  * glance; otherwise it is an outline for the unearned slots.
@@ -531,42 +220,6 @@ export function LayersIcon({ className }: IconProps) {
       <path d="m12 2 10 5-10 5-10-5Z" />
       <path d="m2 12 10 5 10-5" />
       <path d="m2 17 10 5 10-5" />
-    </svg>
-  );
-}
-
-/**
- * A four-cell grid — the persona panel's density toggle, paired with `MenuIcon` for rows.
- *
- * Squares rather than the portrait tiles the old persona grid used: the gallery crops
- * avatars 1:1, and the icon should say what you are switching to.
- */
-export function GridIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
-    </svg>
-  );
-}
-
-/**
- * Memory Nexus — an interconnected graph constellation of story knowledge.
- */
-export function NexusIcon({ className }: IconProps) {
-  return (
-    <svg {...base} className={className} aria-hidden="true">
-      <circle cx="9" cy="8" r="2.5" />
-      <circle cx="18" cy="5" r="2" />
-      <circle cx="17" cy="18" r="2" />
-      <circle cx="5" cy="17" r="2" />
-      <line x1="11.4" y1="7.2" x2="16.1" y2="5.6" />
-      <line x1="10.6" y1="10" x2="15.7" y2="16.4" />
-      <line x1="8" y1="10.3" x2="5.8" y2="15.2" />
-      <line x1="17.9" y1="7" x2="17.1" y2="16" />
-      <line x1="7" y1="17.1" x2="15" y2="17.9" />
     </svg>
   );
 }

@@ -145,28 +145,6 @@ export function recentGroupIds(
 }
 
 /**
- * Group variants under their base for a flat list: variants leave their alphabetical slot
- * and follow their base, label-first. A variant whose base is not in the same list keeps
- * its own position and reads as the standalone row it effectively is.
- */
-export function groupVariantsUnderBase(personas: readonly Persona[]): Persona[] {
-  const groups = variantsByBase(personas);
-  const absorbed = new Set<string>();
-  for (const siblings of groups.values()) {
-    for (const persona of siblings) absorbed.add(persona.id);
-  }
-
-  const out: Persona[] = [];
-  for (const persona of personas) {
-    if (absorbed.has(persona.id)) continue;
-    out.push(persona);
-    const siblings = groups.get(persona.id);
-    if (siblings) out.push(...siblings);
-  }
-  return out;
-}
-
-/**
  * The persona's name as plain text — `Name` or `Name (Label)` — for places that cannot show
  * a label chip: a `<select>`, a stats table, an error message. Parenthesised here only;
  * this must never feed a prompt, where the whole point of a variant is a clean name.

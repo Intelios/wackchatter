@@ -15,7 +15,6 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     name: 'OpenRouter',
     provider: 'openrouter',
     baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'connection/default',
     ...overrides,
   };
 }
@@ -24,11 +23,15 @@ function contender(overrides: Partial<Contender> = {}): Contender {
   return {
     id: 'k1',
     name: 'Sonnet',
-    connectionId: 'or',
-    model: 'anthropic/sonnet',
+    model: { connectionId: 'or', modelId: 'anthropic/sonnet' },
     enabled: true,
     ...overrides,
   };
+}
+
+/** A contender whose model ran on a connection that has since been deleted. */
+function gone(overrides: Partial<Contender> = {}): Contender {
+  return contender({ model: { connectionId: 'gone', modelId: 'anthropic/sonnet' }, ...overrides });
 }
 
 describe('resolveContender', () => {
@@ -42,17 +45,11 @@ describe('resolveContender', () => {
     expect(resolved.connection?.provider).toBe('openrouter');
   });
 
-  test('an empty model follows the connection default', () => {
-    const resolved = resolveContender(contender({ model: '  ' }), [connection()]);
-
-    expect(resolved.connection?.model).toBe('connection/default');
-  });
-
   test('a deleted connection makes it unavailable, not absent', () => {
-    const resolved = resolveContender(contender({ connectionId: 'gone' }), [connection()]);
+    const resolved = resolveContender(gone(), [connection()]);
 
     expect(resolved.connection).toBeNull();
-    expect(resolved.unavailableReason).toBe('Its connection has been deleted.');
+    expect(resolved.unavailableReason).toContain('was deleted');
     // The entry itself survives, so the pool does not silently lose a row.
     expect(resolved.contender.id).toBe('k1');
   });
@@ -64,11 +61,11 @@ describe('resolveContender', () => {
     expect(resolved.unavailableReason).toContain('OpenRouter');
   });
 
-  test('no model anywhere is unavailable', () => {
-    const resolved = resolveContender(contender({ model: '' }), [connection({ model: '' })]);
+  test('a contender with no model picked is unavailable', () => {
+    const resolved = resolveContender(contender({ model: null }), [connection()]);
 
     expect(resolved.connection).toBeNull();
-    expect(resolved.unavailableReason).toContain('No model is set');
+    expect(resolved.unavailableReason).toContain('Choose a contender model');
   });
 });
 
@@ -77,7 +74,7 @@ describe('eligibleContenders', () => {
     const pool = [
       contender({ id: 'ok' }),
       contender({ id: 'off', enabled: false }),
-      contender({ id: 'broken', connectionId: 'gone' }),
+      gone({ id: 'broken' }),
     ];
 
     const eligible = eligibleContenders(resolveContenders(pool, [connection()]));
@@ -96,13 +93,13 @@ describe('blockedEntrantReason', () => {
   });
 
   test('an entrant whose connection was deleted names it and the entrant', () => {
-    const pool = [contender({ id: 'a' }), contender({ id: 'b', connectionId: 'gone' })];
+    const pool = [contender({ id: 'a' }), gone({ id: 'b' })];
     const resolved = resolveContenders(pool, [connection()]);
 
     const reason = blockedEntrantReason(['a', 'b'], resolved, nameFor);
     // The label, not the id: a tournament entrant is often a bare id the user never sees.
     expect(reason).toContain('label:b');
-    expect(reason).toContain('Its connection has been deleted.');
+    expect(reason).toContain('was deleted');
   });
 
   test('an entrant removed from the pool since the draw is blocked', () => {
@@ -129,9 +126,6 @@ describe('contenderLabel', () => {
   test('prefers the name, then the model, then anything but blank', () => {
     expect(contenderLabel(contender())).toBe('Sonnet');
     expect(contenderLabel(contender({ name: '  ' }))).toBe('anthropic/sonnet');
-    expect(contenderLabel(contender({ name: '', model: '' }), connection())).toBe(
-      'connection/default',
-    );
-    expect(contenderLabel(contender({ name: '', model: '' }))).toBe('Unnamed contender');
+    expect(contenderLabel(contender({ name: '', model: null }))).toBe('Unnamed contender');
   });
 });

@@ -1,0 +1,1035 @@
+/* The island, its panes, its wings and its notices. */
+
+.w3-island-anchor {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  transition:
+    right var(--w3-morph) var(--w3-spring),
+    left var(--w3-morph) var(--w3-spring);
+}
+
+.wc3[data-margin="R"] .w3-island-anchor {
+  right: var(--w3-margin-w);
+}
+
+.wc3[data-margin="L"] .w3-island-anchor {
+  left: var(--w3-margin-w);
+}
+
+.w3-island-wrap {
+  position: relative;
+  pointer-events: auto;
+}
+
+.w3-island-accessory {
+  position: absolute;
+  right: var(--wc-space-2);
+  top: 0;
+  height: var(--w3-island-h);
+  display: flex;
+  align-items: center;
+}
+
+.w3-island {
+  position: relative;
+  overflow: hidden;
+  width: 300px;
+  height: var(--w3-island-h);
+  border-radius: 25px;
+  background: var(--w3-island);
+  border: 1px solid var(--w3-island-edge);
+  box-shadow: var(--w3-shadow-island);
+}
+
+.w3-island[data-ready] {
+  transition:
+    width var(--w3-morph) var(--w3-spring),
+    height var(--w3-morph) var(--w3-spring),
+    border-radius var(--w3-morph) var(--w3-spring),
+    box-shadow 0.5s;
+}
+
+.w3-island[data-open] {
+  border-radius: 28px;
+  box-shadow:
+    0 30px 80px -20px oklch(0 0 0 / 0.85),
+    0 0 0 1px oklch(0 0 0 / 0.5),
+    0 0 60px -20px var(--w3-accent-line);
+}
+
+/* Panes: all mounted, one shown, cross-fading as the island changes shape. */
+.w3-pane {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) scale(0.94);
+  opacity: 0;
+  filter: blur(6px);
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.5s var(--w3-spring),
+    filter 0.25s ease;
+}
+
+.w3-pane[data-on] {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+  filter: none;
+  pointer-events: auto;
+  transition-delay: 0.07s, 0s, 0.07s;
+}
+
+.w3-pane--rest,
+.w3-pane--gen {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--w3-island-h);
+  padding: 0 6px;
+  white-space: nowrap;
+  width: max-content;
+}
+
+.w3-island[data-accessory] .w3-pane--rest {
+  padding-right: calc(var(--wc-control-lg) + var(--wc-space-2));
+}
+
+.w3-pane--gen {
+  gap: 12px;
+  padding: 0 6px 0 10px;
+}
+
+.w3-pane--cast {
+  width: 580px;
+}
+.w3-pane--persona {
+  width: 440px;
+}
+.w3-pane--search {
+  width: 600px;
+}
+.w3-pane--recap {
+  width: 620px;
+}
+
+.w3-pane--cast,
+.w3-pane--persona,
+.w3-pane--search,
+.w3-pane--recap {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.w3-isl-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 38px;
+  max-width: 280px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  text-align: left;
+  transition: background var(--w3-quick);
+}
+
+.w3-isl-btn:hover {
+  background: var(--w3-island-hover);
+}
+
+.w3-isl-stack {
+  display: grid;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.w3-isl-stack > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-who-name {
+  font-family: var(--w3-font-display);
+  font-weight: 650;
+  font-size: 14.5px;
+  color: var(--w3-text);
+}
+
+.w3-me-name {
+  font-family: var(--w3-font-display);
+  font-weight: 650;
+  font-size: 14px;
+  color: var(--w3-me);
+}
+
+.w3-who-sub {
+  font-size: 11.5px;
+  color: var(--w3-muted);
+}
+
+.w3-isl-sep {
+  width: 1px;
+  height: 22px;
+  background: oklch(1 0 0 / 0.1);
+  margin: 0 2px;
+}
+
+.w3-isl-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--w3-muted);
+}
+
+.w3-isl-search:hover {
+  background: var(--w3-island-hover);
+  color: var(--w3-text);
+}
+
+.w3-kbd {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--w3-line-strong);
+  color: var(--w3-muted);
+}
+
+/* Generating */
+.w3-gen-av {
+  position: relative;
+  display: inline-flex;
+}
+
+.w3-gen-av::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--w3-accent);
+  animation: w3-ping 1.6s var(--w3-out) infinite;
+}
+
+@keyframes w3-ping {
+  from {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.w3-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+}
+
+.w3-wave i {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--w3-accent);
+  animation: w3-bar 1s ease-in-out infinite;
+}
+
+.w3-wave i:nth-child(2) {
+  animation-delay: -0.2s;
+}
+.w3-wave i:nth-child(3) {
+  animation-delay: -0.45s;
+}
+.w3-wave i:nth-child(4) {
+  animation-delay: -0.7s;
+}
+.w3-wave i:nth-child(5) {
+  animation-delay: -0.85s;
+}
+
+@keyframes w3-bar {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.w3-gen-label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.w3-gen-count {
+  font-size: 11.5px;
+  color: var(--w3-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The reply's lore: names spelled out for a moment, then a small book with the count. */
+.w3-lore-unfurl,
+.w3-lore-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  font: inherit;
+  color: var(--w3-lore);
+  cursor: pointer;
+}
+
+.w3-lore-unfurl {
+  gap: 8px;
+  max-width: 420px;
+  padding: 0 4px;
+  background: none;
+  font-size: 12.5px;
+  animation: w3-lore-unfurl 0.45s var(--w3-spring) both;
+}
+
+.w3-lore-unfurl b {
+  flex: none;
+  font-weight: 600;
+}
+
+.w3-lore-unfurl span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--w3-soft);
+}
+
+.w3-lore-unfurl em {
+  flex: none;
+  font-style: normal;
+  color: var(--w3-faint);
+}
+
+@keyframes w3-lore-unfurl {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.w3-lore-chip {
+  gap: 5px;
+  height: 28px;
+  margin-right: -6px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: var(--w3-lore-soft);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  animation: w3-lore-chip 0.5s var(--w3-spring) both;
+}
+
+.w3-lore-chip:hover {
+  box-shadow: inset 0 0 0 1px var(--w3-lore-line);
+}
+
+@keyframes w3-lore-chip {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+.w3-isl-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--w3-accent-soft);
+  color: var(--w3-accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.w3-isl-stop:hover {
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+}
+
+.w3-isl-stop .w3-ic {
+  width: 14px;
+  height: 14px;
+}
+
+/* Opened panes: headings, lists, fields */
+.w3-p-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 0;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+  font-weight: 600;
+}
+
+.w3-p-head span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.w3-opt-list {
+  display: grid;
+  gap: 2px;
+  max-height: 300px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+}
+
+.w3-opt {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.w3-opt:hover,
+.w3-opt:focus-visible,
+.w3-opt[data-hot] {
+  background: var(--w3-island-hover);
+  outline: none;
+}
+
+.w3-opt:disabled {
+  opacity: 0.45;
+}
+
+.w3-opt__grow {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  line-height: 1.25;
+}
+
+.w3-opt__t {
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-opt__s {
+  font-size: 11.5px;
+  color: var(--w3-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-opt__k {
+  font-size: 11px;
+  color: var(--w3-faint);
+  white-space: nowrap;
+}
+
+.w3-opt__ok {
+  color: var(--w3-accent);
+  display: inline-flex;
+}
+
+.w3-opt__ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: oklch(1 0 0 / 0.05);
+  color: var(--w3-muted);
+  flex: none;
+}
+
+.w3-p-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: oklch(1 0 0 / 0.05);
+  border: 1px solid oklch(1 0 0 / 0.06);
+  color: var(--w3-muted);
+}
+
+.w3-p-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: var(--w3-text);
+}
+
+.w3-p-field:focus-within {
+  border-color: var(--w3-accent-line);
+}
+
+.wc3 .w3-p-field input:focus-visible {
+  outline: none;
+}
+
+.w3-p-field input::placeholder {
+  color: var(--w3-faint);
+}
+
+.w3-p-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px 0;
+  font-size: 12px;
+  color: var(--w3-faint);
+}
+
+.w3-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--w3-line-strong);
+  background: none;
+  font-size: 12.5px;
+  color: var(--w3-soft);
+  white-space: nowrap;
+}
+
+.w3-pill:hover:not(:disabled) {
+  border-color: var(--w3-accent-line);
+  color: var(--w3-accent);
+}
+
+.w3-pill:disabled {
+  opacity: 0.45;
+}
+
+/* The character pane */
+.w3-cast-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 4px 4px;
+}
+
+.w3-cast-top__grow {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  line-height: 1.3;
+}
+
+.w3-cast-top b {
+  font-family: var(--w3-font-display);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.w3-cast-top__grow span {
+  font-size: 12.5px;
+  color: var(--w3-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.w3-cast-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.w3-cast-pick {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 12px 4px 10px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  background: oklch(1 0 0 / 0.03);
+  min-width: 0;
+  transition:
+    background var(--w3-quick),
+    border-color var(--w3-quick),
+    transform 0.3s var(--w3-spring);
+}
+
+.w3-cast-pick:hover {
+  background: var(--w3-island-hover);
+  transform: translateY(-2px);
+}
+
+.w3-cast-pick[aria-current="true"] {
+  border-color: var(--w3-accent-line);
+  background: var(--w3-accent-soft);
+}
+
+.w3-cast-pick span:last-child {
+  font-size: 12.5px;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w3-chat-title {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  min-height: 36px;
+}
+
+.w3-ct {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  margin-left: -6px;
+  border-radius: 8px;
+  font-family: var(--w3-font-display);
+  font-weight: 650;
+  font-size: 18px;
+  color: var(--w3-text);
+  text-align: left;
+}
+
+.w3-ct span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w3-ct .w3-ic {
+  color: var(--w3-faint);
+}
+
+.w3-ct:hover {
+  background: oklch(1 0 0 / 0.06);
+}
+
+.w3-ct:hover .w3-ic {
+  color: var(--w3-accent);
+}
+
+.w3-ct-in {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--w3-accent-line);
+  background: oklch(1 0 0 / 0.05);
+  font-family: var(--w3-font-display);
+  font-weight: 650;
+  font-size: 17px;
+  color: var(--w3-text);
+  outline: none;
+}
+
+.w3-chat-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 2px;
+}
+
+/* The recap: the island opened into a title card */
+.w3-pane--recap {
+  padding: 22px 24px 16px;
+  gap: 8px;
+}
+
+.w3-recap-eyebrow {
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--w3-accent);
+  font-weight: 600;
+}
+
+.w3-recap-title {
+  margin: 0;
+  font-family: var(--w3-font-display);
+  font-weight: 750;
+  font-size: 28px;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.w3-recap-text {
+  margin: 4px 0 6px;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--w3-soft);
+  min-height: 3.4em;
+  max-height: 52vh;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.w3-recap-text[data-failed] {
+  color: var(--w3-danger);
+}
+
+/* Wings: the tools, folded out of the island's sides */
+.w3-wing {
+  position: absolute;
+  top: 0;
+  height: var(--w3-island-h);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-radius: 25px;
+  background: var(--w3-island);
+  border: 1px solid var(--w3-island-edge);
+  box-shadow: var(--w3-shadow-island);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.22s ease,
+    transform 0.5s var(--w3-spring);
+}
+
+.w3-wing--left {
+  right: calc(100% + 8px);
+  transform: translateX(46px) scale(0.4);
+  transform-origin: 100% 50%;
+}
+
+.w3-wing--right {
+  left: calc(100% + 8px);
+  transform: translateX(-46px) scale(0.4);
+  transform-origin: 0 50%;
+}
+
+.w3-island-wrap[data-wings] .w3-wing {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.w3-wing__btn {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 0;
+  background: none;
+  color: var(--w3-muted);
+  display: grid;
+  place-items: center;
+  transition:
+    background var(--w3-quick),
+    color var(--w3-quick);
+}
+
+.w3-wing__btn:hover {
+  background: var(--w3-island-hover);
+  color: var(--w3-text);
+}
+
+.w3-wing__btn[aria-pressed="true"] {
+  background: var(--w3-accent-soft);
+  color: var(--w3-accent);
+}
+
+.w3-wing__btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translate(-50%, -4px);
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: var(--w3-island);
+  color: var(--w3-soft);
+  border: 1px solid var(--w3-line);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    transform 0.2s var(--w3-out);
+}
+
+.w3-wing__btn:hover::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: 0.35s;
+}
+
+/* Notices: split off below the island, then fold back in */
+.w3-notice {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  max-width: 560px;
+  padding: 0 10px 0 13px;
+  border-radius: 21px;
+  background: var(--w3-island);
+  border: 1px solid var(--w3-island-edge);
+  box-shadow: var(--w3-shadow-island);
+  font-size: 13px;
+  color: var(--w3-soft);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -18px) scale(0.6);
+  transform-origin: 50% 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s,
+    transform 0.55s var(--w3-spring);
+}
+
+.w3-notice[data-on] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.w3-notice > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w3-island-wrap .w3-notice > .w3-ic {
+  color: var(--w3-accent);
+}
+
+.w3-island-wrap .w3-notice[data-tone="bad"] > .w3-ic {
+  color: var(--w3-danger);
+}
+
+.w3-notice b {
+  color: var(--w3-text);
+  font-weight: 600;
+}
+
+.w3-notice__action {
+  border: 0;
+  background: var(--w3-accent-soft);
+  color: var(--w3-accent);
+  font-weight: 600;
+  font-size: 12.5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+}
+
+.w3-notice__close {
+  border: 0;
+  background: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--w3-faint);
+}
+
+.w3-notice__close:hover {
+  color: var(--w3-text);
+  background: var(--w3-island-hover);
+}
+
+/* Avatars */
+.w3-av {
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: 50%;
+  font-family: var(--w3-font-display);
+  font-weight: 750;
+  color: oklch(0.2 calc(0.06 * var(--w3-c)) var(--w3-h));
+  background: radial-gradient(
+    circle at 32% 28%,
+    oklch(0.9 calc(0.09 * var(--w3-c)) var(--w3-h)) 0,
+    oklch(0.66 calc(0.17 * var(--w3-c)) var(--w3-h)) 46%,
+    oklch(0.34 calc(0.11 * var(--w3-c)) var(--w3-h)) 100%
+  );
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14);
+}
+
+.w3-av[data-who="me"] {
+  color: oklch(0.2 calc(0.06 * var(--w3-pc)) var(--w3-ph));
+  background: radial-gradient(
+    circle at 32% 28%,
+    oklch(0.9 calc(0.09 * var(--w3-pc)) var(--w3-ph)) 0,
+    oklch(0.66 calc(0.17 * var(--w3-pc)) var(--w3-ph)) 46%,
+    oklch(0.34 calc(0.11 * var(--w3-pc)) var(--w3-ph)) 100%
+  );
+}
+
+.w3-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 20%;
+}
+
+.w3-av--xs {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+.w3-av--sm {
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+}
+.w3-av--md {
+  width: 40px;
+  height: 40px;
+  font-size: 17px;
+}
+.w3-av--lg {
+  width: 50px;
+  height: 50px;
+  font-size: 21px;
+}
+.w3-av--xl {
+  width: 80px;
+  height: 80px;
+  font-size: 34px;
+}
+
+/* A chat row with its delete beside it: the trash shows on hover, a click arms it. */
+.w3-opt-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.w3-opt-row > .w3-opt {
+  padding-right: 46px;
+}
+
+.w3-opt-x {
+  position: absolute;
+  right: 6px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: var(--w3-island);
+  color: var(--w3-faint);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.w3-opt-row:hover .w3-opt-x,
+.w3-opt-x:focus-visible,
+.w3-opt-x[data-armed] {
+  opacity: 1;
+}
+
+.w3-opt-x:hover:not(:disabled) {
+  background: var(--w3-island-hover);
+  color: var(--w3-text);
+}
+
+.w3-opt-x[data-armed],
+.w3-pill[data-armed] {
+  padding: 0 10px;
+  background: var(--w3-danger-soft);
+  border-color: var(--w3-danger);
+  box-shadow: inset 0 0 0 1px var(--w3-danger);
+  color: var(--w3-text);
+}
+
+/* The chat's model, between the character and your persona. */
+.w3-isl-model {
+  max-width: 240px;
+}
+
+.w3-isl-model > i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--w3-accent);
+  box-shadow: 0 0 8px var(--w3-accent);
+}
+
+.w3-isl-model__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--w3-text);
+}
+
+.w3-isl-model[data-missing] > i {
+  background: var(--w3-danger);
+  box-shadow: 0 0 8px var(--w3-danger);
+}
+
+.w3-isl-model[data-missing] .w3-isl-model__name {
+  color: var(--w3-accent);
+}
+
+.w3-isl-model__head {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}

@@ -26,7 +26,7 @@ export interface CrashReportInput {
   error: unknown;
   /** React's own component stack, from `componentDidCatch`. */
   componentStack?: string | null;
-  /** The region that died, in the app's words: 'the chat', 'the left panel'. */
+  /** The region that died, in the app's words: 'the chat', 'the Studio'. */
   where?: string | null;
   /** Null when the version fetch has not landed, or the server is down. */
   version?: VersionInfo | null;

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Persona } from '@shared/types/chat.ts';
 import {
-  groupVariantsUnderBase,
   matchesPersonaQuery,
   matchPersonaByName,
   orderPersonas,
@@ -206,50 +205,6 @@ describe('matchPersonaByName with variants', () => {
 
     const prefix = matchPersonaByName(GROUP, 'john');
     expect(prefix.ok === false && prefix.reason).toBe('ambiguous');
-  });
-});
-
-describe('groupVariantsUnderBase', () => {
-  const rows: Persona[] = [
-    persona('a', 'Aria Vance'),
-    persona('j', 'John Doe'),
-    variant('jf', 'John Doe', 'j', 'Fantasy'),
-    variant('js', 'John Doe', 'j', 'Sci-fi'),
-    persona('k', 'Kestrel'),
-  ];
-
-  test('variants leave their alphabetical slot and follow their base', () => {
-    const ids = groupVariantsUnderBase(rows).map((p) => p.id);
-    expect(ids).toEqual(['a', 'j', 'jf', 'js', 'k']);
-  });
-
-  test('siblings are ordered by label, not by name or arrival', () => {
-    const scrambled: Persona[] = [
-      persona('j', 'John Doe'),
-      variant('jz', 'John Doe', 'j', 'Zombie'),
-      variant('jf', 'John Doe', 'j', 'Fantasy'),
-    ];
-    expect(groupVariantsUnderBase(scrambled).map((p) => p.id)).toEqual(['j', 'jf', 'jz']);
-  });
-
-  test('a base that is not in the list leaves its variant standing alone', () => {
-    // The base was hoisted into "Recent", or deleted: either way the list the roster
-    // renders does not contain it, and the variant must not vanish with it.
-    const withoutBase = rows.filter((p) => p.id !== 'j');
-    expect(groupVariantsUnderBase(withoutBase).map((p) => p.id)).toEqual(['a', 'jf', 'js', 'k']);
-  });
-
-  test('a chain — only possible through a hand edit — degrades to standalone rows', () => {
-    const chained: Persona[] = [
-      persona('j', 'John Doe'),
-      variant('j1', 'John Doe', 'j', 'Fantasy'),
-      variant('j2', 'John Doe', 'j1', 'Sci-fi'), // points at a variant, not a base
-    ];
-    expect(groupVariantsUnderBase(chained).map((p) => p.id)).toEqual(['j', 'j1', 'j2']);
-  });
-
-  test('no variants, no change — the input order is its own answer', () => {
-    expect(groupVariantsUnderBase(LIBRARY)).toEqual(LIBRARY);
   });
 });
 

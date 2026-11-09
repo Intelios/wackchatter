@@ -1,7 +1,6 @@
 export const COMPOSER_AREAS = ['left', 'centre', 'right'] as const;
 export type ComposerArea = (typeof COMPOSER_AREAS)[number];
 export type ComposerLabelMode = 'icon' | 'label';
-export type ComposerKind = 'single' | 'group';
 
 export interface ComposerLayoutItem {
   /** A catalog id, or `quick:<opaque quick-command id>`. */
@@ -22,7 +21,6 @@ export interface ComposerLayout {
 
 export interface ComposerLayouts {
   single: ComposerLayout;
-  group: ComposerLayout;
 }
 
 export const MAX_COMPOSER_ROWS = 3;
@@ -54,26 +52,6 @@ export const SINGLE_COMPOSER_CONTROLS = [
   'close',
 ] as const;
 
-export const GROUP_COMPOSER_CONTROLS = [
-  'persona',
-  'menu',
-  'quickCommands',
-  'nexus',
-  'guide',
-  'send',
-  'continueConversation',
-  'pauseConversation',
-  'speakNext',
-  'cast',
-  'memory',
-  'inspect',
-  'branches',
-  'rename',
-  'export',
-  'macroCharacter',
-  'close',
-] as const;
-
 const item = (id: string, display: ComposerLabelMode = 'icon'): ComposerLayoutItem => ({
   id,
   display,
@@ -96,26 +74,8 @@ export const DEFAULT_SINGLE_COMPOSER_LAYOUT: Readonly<ComposerLayout> = {
   ],
 };
 
-export const DEFAULT_GROUP_COMPOSER_LAYOUT: Readonly<ComposerLayout> = {
-  rows: [
-    {
-      id: 'group-main',
-      left: [item('persona', 'label'), item('menu'), item('quickCommands'), item('nexus')],
-      centre: [],
-      right: [
-        item('continueConversation', 'label'),
-        item('pauseConversation', 'label'),
-        item('speakNext', 'label'),
-        item('guide'),
-        item('send', 'label'),
-      ],
-    },
-  ],
-};
-
 export const DEFAULT_COMPOSER_LAYOUTS: Readonly<ComposerLayouts> = {
   single: DEFAULT_SINGLE_COMPOSER_LAYOUT,
-  group: DEFAULT_GROUP_COMPOSER_LAYOUT,
 };
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -133,22 +93,18 @@ export function cloneComposerLayout(layout: ComposerLayout): ComposerLayout {
   };
 }
 
-export function composerControlIds(kind: ComposerKind): ReadonlySet<string> {
-  return new Set(kind === 'single' ? SINGLE_COMPOSER_CONTROLS : GROUP_COMPOSER_CONTROLS);
-}
+const COMPOSER_CONTROL_IDS: ReadonlySet<string> = new Set(SINGLE_COMPOSER_CONTROLS);
 
 export function isComposerControlId(
   id: string,
-  kind: ComposerKind,
   quickIds: ReadonlySet<string> = new Set(),
 ): boolean {
-  return composerControlIds(kind).has(id) || (id.startsWith('quick:') && quickIds.has(id.slice(6)));
+  return COMPOSER_CONTROL_IDS.has(id) || (id.startsWith('quick:') && quickIds.has(id.slice(6)));
 }
 
 /** Strict enough for storage, forgiving enough that one bad tile cannot erase the layout. */
 export function normalizeComposerLayout(
   value: unknown,
-  kind: ComposerKind,
   fallback: ComposerLayout,
   quickIds: ReadonlySet<string> = new Set(),
 ): ComposerLayout {
@@ -174,7 +130,7 @@ export function normalizeComposerLayout(
       for (const rawItem of rawRow[area]) {
         if (!record(rawItem) || typeof rawItem.id !== 'string') continue;
         const controlId = rawItem.id.trim();
-        if (!controlId || seen.has(controlId) || !isComposerControlId(controlId, kind, quickIds))
+        if (!controlId || seen.has(controlId) || !isComposerControlId(controlId, quickIds))
           continue;
         seen.add(controlId);
         row[area].push({ id: controlId, display: rawItem.display === 'label' ? 'label' : 'icon' });

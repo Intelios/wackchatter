@@ -1,0 +1,813 @@
+/*
+ * The older shared popups: creator notes, quick commands, example sets and guides. Their
+ * base styles sit beside each component; here they wear the shell's popup: the island's
+ * material, display type for names, small caps for labels, pill buttons and borderless
+ * fields.
+ */
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) {
+  padding: 16px;
+  border: 1px solid var(--w3-line-strong);
+  border-radius: 20px;
+  background: var(--w3-island);
+  box-shadow: 0 24px 60px -10px oklch(0 0 0 / 0.8);
+  color: var(--w3-soft);
+  font-family: var(--w3-font);
+}
+
+/* Titles in the display face; hints quiet and short. */
+.wc3 :is(.creator-notes__title, .quick-commands__title, .example-sets__header h3, .guides__title) {
+  margin: 0;
+  font-family: var(--w3-font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--w3-text);
+}
+
+.wc3 :is(.creator-notes__hint, .quick-commands__hint, .example-sets__hint, .guides__hint) {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--w3-faint);
+}
+
+.wc3 :is(.example-sets__section-label, .guides__section-label) {
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}
+
+/* Fields: no box, a hairline that lights in the accent. */
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-input {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-text);
+  font: inherit;
+  font-size: 13.5px;
+  transition: box-shadow var(--w3-quick);
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-input:focus {
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-input::placeholder {
+  color: var(--w3-faint);
+}
+
+/* Buttons: pills. The primary one carries the accent. */
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-button:hover:not(:disabled) {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-button--ghost {
+  box-shadow: none;
+  color: var(--w3-faint);
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-button--primary {
+  background: var(--w3-accent);
+  box-shadow: none;
+  color: var(--w3-accent-ink);
+}
+
+.wc3
+  :is(.creator-notes, .quick-commands, .example-sets, .guides)
+  .wc-button--primary:hover:not(:disabled) {
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  filter: brightness(1.08);
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) .wc-button:disabled {
+  opacity: 0.45;
+}
+
+/* A two-click delete wears the danger colour once armed. */
+.wc3
+  :is(.quick-commands, .example-sets, .guides)
+  :is(.wc-button[data-confirming], .wc-button--danger[data-confirming]) {
+  background: var(--w3-danger-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-danger);
+  color: var(--w3-text);
+}
+
+.wc3 :is(.creator-notes, .quick-commands, .example-sets, .guides) svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---------- Creator notes ---------- */
+
+.wc3 .creator-notes {
+  width: clamp(340px, 30vw, 460px);
+  gap: 12px;
+}
+
+.wc3 .creator-notes__body {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--w3-soft);
+}
+
+.wc3 .creator-notes__body a {
+  color: var(--w3-accent);
+}
+
+.wc3 .creator-notes__scenario {
+  padding: 7px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--w3-soft);
+}
+
+.wc3 .creator-notes__scenario::before {
+  font-family: var(--w3-font-mono);
+  color: var(--w3-faint);
+}
+
+.wc3 .creator-notes__scenario:hover:not(:disabled):not([data-current]) {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.wc3 .creator-notes__scenario[data-current] {
+  border-left-color: var(--w3-accent);
+  background: var(--w3-accent-soft);
+  color: var(--w3-text);
+}
+
+.wc3 .creator-notes__scenario[data-current]::before {
+  color: var(--w3-accent);
+}
+
+/* ---------- Quick commands ---------- */
+
+.wc3 .quick-commands {
+  width: clamp(340px, 30vw, 460px);
+}
+
+.wc3 .quick-commands__body {
+  gap: 14px;
+}
+
+.wc3 .quick-commands__empty {
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-faint);
+}
+
+.wc3 .quick-command {
+  gap: 8px;
+  padding: 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--w3-solid);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .quick-command__name {
+  font-family: var(--w3-font-display);
+  font-weight: 600;
+}
+
+.wc3 .quick-command__text {
+  resize: vertical;
+}
+
+/* ---------- Example sets ---------- */
+
+.wc3 .example-sets {
+  width: 400px;
+  gap: 14px;
+}
+
+/*
+ * Opened from inside the Co-Creator's "Writing like" popup, which scrolls and so clips
+ * anything wider than itself: the sets fill its 352px content box (380px less 14px padding
+ * each side) less their own 4px padding and 1px border.
+ */
+.wc3 .w3-co-expop .example-sets {
+  width: 342px;
+}
+
+.wc3 .example-set-item {
+  gap: 8px;
+  padding: 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--w3-solid);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .example-set-item__name {
+  font-family: var(--w3-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--w3-text);
+}
+
+.wc3 .example-set-item__count,
+.wc3 .example-sets__save-meta,
+.wc3 .example-set-item__no-cards {
+  font-size: 11.5px;
+  color: var(--w3-faint);
+}
+
+.wc3 .example-set-item__thumb {
+  width: 30px;
+  height: 42px;
+  border-radius: 7px;
+  object-fit: cover;
+  object-position: 50% 15%;
+  border: 0;
+}
+
+.wc3 .example-set-item__more-cards {
+  font-family: var(--w3-font-mono);
+  font-size: 11px;
+  color: var(--w3-faint);
+}
+
+.wc3 .example-sets__empty {
+  padding: 14px;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  font-size: 12.5px;
+  color: var(--w3-faint);
+}
+
+/* ---------- Guides ---------- */
+
+.wc3 .guides {
+  width: clamp(360px, 32vw, 480px);
+}
+
+.wc3 .guides__empty {
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-faint);
+}
+
+.wc3 .guide {
+  gap: 8px;
+  padding: 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--w3-solid);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .guide__name {
+  font-family: var(--w3-font-display);
+  font-weight: 600;
+}
+
+/* The on/off box drawn as the 3.0 switch. */
+.wc3 .guide__toggle input {
+  appearance: none;
+  position: relative;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--w3-hover);
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  cursor: pointer;
+  transition: background var(--w3-quick);
+}
+
+.wc3 .guide__toggle input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--w3-muted);
+  transition:
+    transform 0.25s var(--w3-spring),
+    background var(--w3-quick);
+}
+
+.wc3 .guide__toggle input:checked {
+  background: var(--w3-accent);
+  box-shadow: none;
+}
+
+.wc3 .guide__toggle input:checked::after {
+  transform: translateX(12px);
+  background: var(--w3-accent-ink);
+}
+
+.wc3 .guides .section {
+  border-top: 1px solid var(--w3-line);
+  padding-top: 10px;
+}
+
+.wc3 .guides .section__header {
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}
+
+/* ---------- The Nexus explorer ----------
+ * Map first, HUD pills, the dock, cards on nodes; the chrome wears
+ * the island's material and the 3.0 type. */
+
+.wc3 .nexus {
+  background: var(--w3-bg);
+  color: var(--w3-text);
+  font-family: var(--w3-font);
+}
+
+.wc3 :is(.nexus-hud, .nexus-dock) {
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 1px solid var(--w3-island-edge);
+  border-radius: 999px;
+  background: var(--w3-island);
+  box-shadow: var(--w3-shadow-island);
+  gap: 4px;
+}
+
+.wc3 .nexus-hud--search {
+  padding-left: 18px;
+}
+
+.wc3 .nexus-hud--search:focus-within {
+  border-color: var(--w3-accent-line);
+}
+
+.wc3 .nexus-hud--search input[type="search"] {
+  border: 0;
+  box-shadow: none;
+  font-size: 14px;
+  color: var(--w3-text);
+}
+
+.wc3 .nexus-hud--search input[type="search"]::placeholder {
+  color: var(--w3-faint);
+}
+
+.wc3 :is(.nexus-hud, .nexus-dock) .wc-button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: none;
+  color: var(--w3-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wc3 :is(.nexus-hud, .nexus-dock) .wc-button:hover:not(:disabled) {
+  background: var(--w3-island-hover);
+  color: var(--w3-text);
+}
+
+.wc3 .nexus-hud button[aria-pressed="true"] {
+  background: var(--w3-accent-soft);
+  color: var(--w3-accent);
+}
+
+.wc3 .nexus-dock__count {
+  padding: 0 6px;
+  font-family: var(--w3-font-mono);
+  font-size: 11.5px;
+  color: var(--w3-faint);
+}
+
+.wc3 .nexus-dock__sep {
+  background: var(--w3-line);
+}
+
+.wc3 .nexus-exit {
+  color: var(--w3-accent);
+}
+
+.wc3 .nexus-whisper {
+  border-radius: 999px;
+  background: var(--w3-island);
+  border: 1px solid var(--w3-island-edge);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+}
+
+/* The card on a node, and the popovers, as the island opened up. */
+.wc3 :is(.nexus-nodecard, .nexus-pop) {
+  border: 1px solid var(--w3-line-strong);
+  border-radius: 20px;
+  background: var(--w3-island);
+  box-shadow: 0 24px 60px -10px oklch(0 0 0 / 0.8);
+}
+
+.wc3 .nexus-nodecard__head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--w3-line);
+  background: none;
+}
+
+.wc3 .nexus-nodecard__head .nexus-nodecard__name {
+  font-family: var(--w3-font-display);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--w3-text);
+}
+
+.wc3 .nexus h2 {
+  font-family: var(--w3-font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--w3-text);
+}
+
+.wc3 .nexus p {
+  color: var(--w3-soft);
+}
+
+.wc3 .nexus-kicker,
+.wc3 .nexus-field-label,
+.wc3 .nexus details > summary {
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}
+
+.wc3 .nexus-card {
+  border: 0;
+  border-radius: 16px;
+  background: var(--w3-solid);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .nexus-card[data-deleted="true"] {
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  border: 1px dashed var(--w3-line-strong);
+}
+
+/* Fields and buttons inside the pages and cards. */
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop, .nexus-empty) .wc-input,
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop) textarea {
+  border: 0;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-text);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop) .wc-input:focus,
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop) textarea:focus {
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop, .nexus-empty) .wc-button {
+  min-height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.wc3
+  .nexus
+  :is(.nexus-page, .nexus-nodecard, .nexus-pop, .nexus-empty)
+  .wc-button:hover:not(:disabled) {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop, .nexus-empty) .wc-button--primary {
+  background: var(--w3-accent);
+  box-shadow: none;
+  color: var(--w3-accent-ink);
+}
+
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop, .nexus-empty) .wc-button--ghost {
+  box-shadow: none;
+  color: var(--w3-muted);
+}
+
+.wc3 .nexus-empty {
+  font-family: var(--w3-font);
+}
+
+.wc3 .nexus-empty strong,
+.wc3 .nexus-empty h2,
+.wc3 .nexus-empty h3 {
+  font-family: var(--w3-font-display);
+}
+
+.wc3 .nexus .wc-select-trigger {
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-island-hover);
+  box-shadow: none;
+  color: var(--w3-soft);
+  font-size: 13px;
+}
+
+.wc3 .nexus :is(.nexus-page, .nexus-nodecard, .nexus-pop) .wc-select-trigger {
+  border-radius: 12px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .nexus .wc-select-popover {
+  border: 1px solid var(--w3-line-strong);
+  border-radius: 16px;
+  background: var(--w3-island);
+}
+
+/* ---------- The card: a glance from the portrait, the whole card in the margin ---------- */
+
+.w3-glance-anchor {
+  align-self: start;
+}
+
+.w3-msg__face {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  transition: transform 0.25s var(--w3-spring);
+}
+
+.w3-msg__face:hover {
+  transform: scale(1.06);
+}
+
+.w3-msg__face:hover .w3-av,
+.w3-msg__face[aria-expanded="true"] .w3-av {
+  box-shadow: 0 0 0 2px var(--w3-accent-line);
+}
+
+.wc3 .w3-glance {
+  width: 400px;
+  max-height: min(460px, 64vh);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+  padding: 0;
+  border: 1px solid var(--w3-line-strong);
+  border-radius: 22px;
+  background: var(--w3-island);
+  box-shadow: 0 30px 70px -10px oklch(0 0 0 / 0.85);
+}
+
+.w3-glance__top {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 14px 10px;
+  flex: none;
+}
+
+.w3-glance__img {
+  width: 64px;
+  height: 86px;
+  border-radius: 14px;
+  object-fit: cover;
+  object-position: 50% 15%;
+}
+
+.w3-glance__who {
+  display: grid;
+  align-content: end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.w3-glance__kicker {
+  font-family: var(--w3-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--w3-faint);
+}
+
+.w3-glance__name {
+  font-family: var(--w3-font-display);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--w3-text);
+}
+
+.w3-glance__line,
+.w3-reader__line {
+  margin: 0;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--w3-soft);
+}
+
+.w3-glance .card-sheet {
+  padding: 0 14px;
+}
+
+.w3-glance .card-sheet {
+  gap: 10px;
+}
+
+/* One row of sections that scrolls sideways, so the text gets the room. */
+.w3-glance .card-sheet__chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+}
+
+.w3-glance .card-sheet__chip {
+  flex: none;
+}
+
+.w3-glance .card-sheet__body {
+  min-height: 90px;
+  max-height: 200px;
+}
+
+.w3-glance__foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  background: var(--w3-island);
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--w3-line);
+}
+
+.w3-glance__read {
+  height: 32px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-accent);
+  color: var(--w3-accent-ink);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.w3-glance__edit,
+.w3-reader__edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line-strong);
+  color: var(--w3-soft);
+  font-size: 12.5px;
+}
+
+:is(.w3-glance__edit, .w3-reader__edit):hover:not(:disabled) {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+:is(.w3-glance__edit, .w3-reader__edit):disabled {
+  opacity: 0.45;
+}
+
+.w3-reader__head {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 18px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.w3-reader__img {
+  width: 110px;
+  height: 150px;
+  border-radius: 16px;
+  object-fit: cover;
+  object-position: 50% 15%;
+}
+
+.w3-reader__head > div {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.w3-reader__name {
+  font-family: var(--w3-font-display);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  color: var(--w3-text);
+}
+
+/* The sheet inside either, in 3.0 dress. */
+.wc3 .card-sheet__find {
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--w3-raised);
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+}
+
+.wc3 .card-sheet__find:focus-within {
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+}
+
+.wc3 .card-sheet__input {
+  font-size: 13px;
+  color: var(--w3-text);
+}
+
+.wc3 .card-sheet__chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--w3-line);
+  color: var(--w3-muted);
+  font-size: 12px;
+}
+
+.wc3 .card-sheet__chip:hover {
+  background: var(--w3-hover);
+  color: var(--w3-text);
+}
+
+.wc3 .card-sheet__chip[aria-selected="true"] {
+  background: var(--w3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+  color: var(--w3-accent);
+}
+
+.wc3 .card-sheet__body {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--w3-soft);
+  scrollbar-width: thin;
+  scrollbar-color: var(--w3-line-strong) transparent;
+}
+
+.wc3 .card-sheet[data-variant="reader"] .card-sheet__body {
+  font-size: 14.5px;
+  overflow: visible;
+}
+
+.wc3 .card-sheet__plain mark {
+  border-radius: 3px;
+  background: var(--w3-accent-soft);
+  color: var(--w3-text);
+}

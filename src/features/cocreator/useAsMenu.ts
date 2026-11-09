@@ -17,6 +17,11 @@ import { SLOT_LABELS } from './blocks.ts';
 export const BUSY_REASON = 'Generating a reply';
 export const EMPTY_REASON = 'Nothing to file';
 export const NO_SELECTION_REASON = 'Select some text in this message first';
+export interface GreetingTarget {
+  id: string;
+  label: string;
+  text: string;
+}
 
 export interface UseAsMenuState {
   /** The slot the block named, or null for prose, a whole message, or an unknown label. */
@@ -32,12 +37,14 @@ export interface UseAsMenuState {
   confirming: CardSlot | null;
   /** Set for the "Use selection as" variant, so an empty selection explains itself. */
   requiresSelection?: boolean;
+  greetings?: readonly GreetingTarget[];
 }
 
 export interface UseAsMenuActions {
   onUse: (slot: CardSlot) => void;
   /** Arm the two-click confirm for a slot that already holds something. */
   onArmConfirm: (slot: CardSlot) => void;
+  onReplaceGreeting?: (id: string) => void;
 }
 
 /**
@@ -93,5 +100,24 @@ export function buildUseAsMenu(state: UseAsMenuState, actions: UseAsMenuActions)
     });
   });
 
+  if (state.greetings?.length && actions.onReplaceGreeting) {
+    entries.push(
+      { kind: 'separator' },
+      {
+        kind: 'submenu',
+        label: 'Replace a greeting…',
+        disabled: Boolean(blockedReason),
+        disabledReason: blockedReason,
+        entries: state.greetings.map((greeting) => ({
+          key: greeting.id,
+          label: greeting.label,
+          description: greeting.text.replace(/\s+/g, ' ').slice(0, 100) || '(empty greeting)',
+          disabled: Boolean(blockedReason),
+          disabledReason: blockedReason,
+          onSelect: () => actions.onReplaceGreeting?.(greeting.id),
+        })),
+      },
+    );
+  }
   return entries;
 }

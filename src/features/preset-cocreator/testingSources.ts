@@ -19,20 +19,6 @@ export function presetTestSourceKey(source: PresetTestSource): string {
   return `${source.kind}:${source.id}`;
 }
 
-export function describePresetUsed(used: PresetTestPresetUsed): string {
-  const kind = used.source.kind;
-  if (kind === 'draft') return `Working draft · rev ${used.revision ?? '?'}`;
-  if (kind === 'revision') return `Revision ${used.revision ?? used.source.revision}`;
-  const prefix = kind === 'library' ? 'My preset' : 'Reference';
-  const version =
-    used.revision !== undefined
-      ? `rev ${used.revision}`
-      : used.version
-        ? `version ${used.version.slice(0, 8)}`
-        : '';
-  return [prefix, used.label, version].filter(Boolean).join(' · ');
-}
-
 /** Fetch external files on every dispatch; the returned preset is the entire turn's snapshot. */
 export async function resolvePresetTestSource(
   source: PresetTestSource,

@@ -202,7 +202,85 @@
   font-size: var(--wc-text-xs);
 }
 
+.persona-convert__take {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: none;
+  color: var(--wc-text-muted);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.persona-convert__take:hover {
+  color: var(--wc-text);
+}
+
+.persona-convert__take[aria-pressed="true"] {
+  border-color: var(--wc-accent-border);
+  background: var(--wc-accent-subtle);
+  color: var(--wc-text);
+}
+
+.persona-convert__takes span {
+  margin-left: var(--wc-space-1);
+}
+
+.persona-convert__source-kicker {
+  font-size: var(--wc-text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wc-text-faint);
+}
+
 .persona-convert__actions {
   display: flex;
   gap: var(--wc-space-2);
+}
+
+/* The search box over the character list. */
+.persona-roster__query {
+  width: 100%;
+  height: var(--wc-control);
+  padding: 0 var(--wc-space-2) 0 calc(var(--wc-space-4) + var(--wc-space-3));
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius-sm);
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font: inherit;
+  font-size: var(--wc-text-sm);
+}
+
+.persona-roster__query::placeholder {
+  color: var(--wc-text-faint);
+}
+
+.persona-roster__query:focus {
+  outline: none;
+  border-color: var(--wc-border-strong);
+}
+
+.persona-roster__query::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* The search field's frame and icon. */
+.persona-roster__search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.persona-roster__search svg {
+  position: absolute;
+  left: var(--wc-space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--wc-icon-sm);
+  height: var(--wc-icon-sm);
+  color: var(--wc-text-faint);
+  pointer-events: none;
 }
