@@ -166,7 +166,7 @@ export function GenPane({
   useEffect(() => {
     if (!live) return;
     setStart(Date.now());
-    const timer = setInterval(() => tick((n) => n + 1), 500);
+    const timer = setInterval(() => tick((n) => n + 1), 100);
     return () => clearInterval(timer);
   }, [live]);
 
