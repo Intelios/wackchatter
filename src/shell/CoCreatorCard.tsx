@@ -7,12 +7,20 @@
  * the top first: both versions side by side, the words that differ marked, and you choose.
  */
 
+import type { DraftChoices, DraftField, DraftValue } from '@shared/cocreator/draft.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { CardSlot, CardStash, SingleCardSlot } from '@shared/types/cocreator.ts';
+import {
+  type CardSlot,
+  type CardStash,
+  type CocreatorCardBaseline,
+  SINGLE_SLOTS,
+  type SingleCardSlot,
+} from '@shared/types/cocreator.ts';
 import { type ReactNode, useRef, useState } from 'react';
 import { SLOT_LABELS } from '../features/cocreator/blocks.ts';
+import type { FinishConflictError } from '../features/cocreator/finish.ts';
 import { cropToCardRatio } from '../features/studio/AvatarStudio.tsx';
-import { cocreatorApi } from '../lib/api.ts';
+import { characterApi, cocreatorApi } from '../lib/api.ts';
 import { cardFields, type DiffPart, filledCount, MAIN_FIELD_COUNT, wordDiff } from './cocreator.ts';
 import { Icon } from './icons.tsx';
 
@@ -21,6 +29,8 @@ export interface Pending {
   text: string;
   source: 'block' | 'message' | 'selection';
   label?: string;
+  greetingId?: string;
+  targetLabel?: string;
 }
 
 export interface CardEdits {
@@ -40,6 +50,12 @@ const ALWAYS: readonly SingleCardSlot[] = [
   'system_prompt',
   'post_history_instructions',
 ];
+
+function readableValue(value: DraftValue): string {
+  return Array.isArray(value)
+    ? value.map((text, index) => `${index + 1}. ${text}`).join('\n\n') || '(empty)'
+    : value || '(empty)';
+}
 
 function Diff({ parts, mark }: { parts: DiffPart[]; mark: 'del' | 'ins' }) {
   return (
@@ -78,7 +94,8 @@ function Compare({
       <div className="w3-co-cmp__head">
         <Icon name="pencil" size="xs" />
         <span>
-          <b>{SLOT_LABELS[pending.slot]}</b> is already in the card. Keep it, or use the new one?
+          <b>{pending.targetLabel ?? SLOT_LABELS[pending.slot]}</b> is already in the card. Keep it,
+          or use the new one?
         </span>
       </div>
       <div className="w3-co-cmp__two">
@@ -116,6 +133,7 @@ function Section({
   onEdit,
   onClear,
   children,
+  disabled = false,
 }: {
   label: string;
   text: string;
@@ -124,6 +142,7 @@ function Section({
   onEdit?: (text: string) => void;
   onClear?: () => void;
   children?: ReactNode;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -143,6 +162,7 @@ function Section({
           <button
             type="button"
             aria-label={`Edit ${label}`}
+            disabled={disabled}
             onClick={() => {
               setDraft(text);
               setEditing(true);
@@ -200,6 +220,14 @@ export function CoCreatorCard({
   stash,
   title,
   seedName,
+  canUpdate,
+  hasTarget,
+  draftBlock,
+  baseline,
+  finishReview,
+  finishChoices,
+  onFinishChoice,
+  pendingFinish,
   sessionId,
   avatar,
   cacheKey,
@@ -220,6 +248,14 @@ export function CoCreatorCard({
   title: string;
   /** The card this session writes back to, or null for a new card. */
   seedName: string | null;
+  canUpdate: boolean;
+  hasTarget: boolean;
+  draftBlock: string;
+  baseline: CocreatorCardBaseline | null;
+  finishReview: FinishConflictError | null;
+  finishChoices: DraftChoices;
+  onFinishChoice: (field: DraftField | 'portrait', choice: 'library' | 'draft') => void;
+  pendingFinish: boolean;
   sessionId: string;
   avatar: string | null;
   cacheKey: number;
@@ -236,7 +272,7 @@ export function CoCreatorCard({
   onAsk: (label: string) => void;
   onAvatar: (avatar: string | null) => void;
   onError: (message: string) => void;
-  onFinish: () => void;
+  onFinish: (mode: 'update' | 'create') => void;
 }) {
   const [greet, setGreet] = useState(0);
   const [over, setOver] = useState(false);
@@ -284,6 +320,7 @@ export function CoCreatorCard({
     if (!entry?.text) return null;
     return (
       <Section
+        disabled={busy}
         key={slot}
         label={SLOT_LABELS[slot]}
         text={entry.text}
@@ -300,10 +337,85 @@ export function CoCreatorCard({
   return (
     <section className="w3-co-card" aria-label="The card so far">
       <div className="w3-co-card__sheet">
-        {pending ? (
+        {finishReview && !pendingFinish ? (
+          <div className="w3-co-save-review">
+            <p>
+              The character changed in the library. Choose which version to keep for each
+              conflicting field, then update.
+            </p>
+            {finishReview.conflicts.map((conflict) => (
+              <div className="w3-co-cmp" key={conflict.field}>
+                <b>
+                  {conflict.field === 'alternate_greetings'
+                    ? 'Alternate greetings'
+                    : SLOT_LABELS[conflict.field]}
+                </b>
+                <div className="w3-co-cmp__two">
+                  {(['library', 'draft'] as const).map((side) => (
+                    <div className="w3-co-cmp__side" key={side}>
+                      <small>{side === 'library' ? 'In the library' : 'Your draft'}</small>
+                      <p>{readableValue(conflict[side])}</p>
+                      <button
+                        type="button"
+                        className="w3-st-ghost w3-st-ghost--sm"
+                        aria-pressed={finishChoices[conflict.field] === side}
+                        onClick={() => onFinishChoice(conflict.field, side)}
+                      >
+                        {finishChoices[conflict.field] === side ? 'Selected' : 'Keep this version'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {finishReview.portrait ? (
+              <div className="w3-co-cmp">
+                <b>Portrait</b>
+                <div className="w3-co-cmp__two">
+                  {(['library', 'draft'] as const).map((side) => (
+                    <div className="w3-co-cmp__side" key={side}>
+                      <small>{side === 'library' ? 'In the library' : 'Your draft'}</small>
+                      {side === 'draft' && !avatar ? (
+                        <p>No portrait</p>
+                      ) : (
+                        <img
+                          className="w3-co-save-review__portrait"
+                          src={
+                            side === 'library'
+                              ? characterApi.imageUrl(
+                                  finishReview.latest.detail.avatar,
+                                  finishReview.latest.detail.modified,
+                                )
+                              : cocreatorApi.avatarUrl(sessionId, cacheKey)
+                          }
+                          alt={side === 'library' ? 'Library portrait' : 'Draft portrait'}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        className="w3-st-ghost w3-st-ghost--sm"
+                        aria-pressed={finishChoices.portrait === side}
+                        onClick={() => onFinishChoice('portrait', side)}
+                      >
+                        {finishChoices.portrait === side ? 'Selected' : 'Keep this version'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {pending && !busy ? (
           <Compare
             pending={pending}
-            kept={stash[pending.slot as SingleCardSlot]?.text ?? ''}
+            kept={
+              pending.greetingId
+                ? ([stash.first_mes, ...stash.alternate_greetings].find(
+                    (e) => e?.id === pending.greetingId,
+                  )?.text ?? '')
+                : (stash[pending.slot as SingleCardSlot]?.text ?? '')
+            }
             onKeep={onKeep}
             onUse={onAccept}
           />
@@ -366,13 +478,17 @@ export function CoCreatorCard({
           <div className="w3-co-card__name">
             <h2 data-lit={lit === 'name' || undefined}>{name}</h2>
             <small>
-              {seedName ? `Writing back to ${seedName}` : 'A new card'} ·{' '}
-              <b>{always.toLocaleString()}</b> tokens always sent
+              {seedName
+                ? `Writing back to ${seedName}`
+                : hasTarget
+                  ? 'Target no longer in the library'
+                  : 'A new card'}{' '}
+              · <b>{always.toLocaleString()}</b> tokens always sent
             </small>
           </div>
         </div>
 
-        <div className="w3-co-live">
+        <div className="w3-co-live" inert={busy}>
           {single('description')}
           {single('personality')}
           {single('scenario')}
@@ -465,20 +581,89 @@ export function CoCreatorCard({
               ))}
             </div>
           ) : null}
+          <details className="w3-co-carried">
+            <summary>
+              Current card shared with the assistant ·{' '}
+              {countTokens.countText(draftBlock).toLocaleString()} tokens
+            </summary>
+            <pre>{draftBlock}</pre>
+          </details>
+          {baseline ? (
+            <details className="w3-co-carried">
+              <summary>Carried lore and metadata · read only</summary>
+              <pre>
+                {JSON.stringify(
+                  {
+                    ...Object.fromEntries(
+                      Object.entries(baseline.card).filter(
+                        ([key]) =>
+                          key !== 'data' &&
+                          !SINGLE_SLOTS.includes(key as SingleCardSlot) &&
+                          key !== 'tags',
+                      ),
+                    ),
+                    data: Object.fromEntries(
+                      Object.entries(baseline.card.data).filter(
+                        ([key]) =>
+                          !SINGLE_SLOTS.includes(key as SingleCardSlot) &&
+                          key !== 'tags' &&
+                          key !== 'alternate_greetings',
+                      ),
+                    ),
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+          ) : null}
         </div>
       </div>
       <footer className="w3-co-card__foot">
-        <span>
+        <span className="w3-co-card__foot-count">
           {filledCount(stash)} of {MAIN_FIELD_COUNT} fields
         </span>
+        {hasTarget && !pendingFinish ? (
+          <button
+            type="button"
+            className="w3-st-ghost w3-st-ghost--sm"
+            disabled={busy || working}
+            onClick={() => onFinish('create')}
+          >
+            Create a new character
+          </button>
+        ) : null}
         <button
           type="button"
           className="w3-st-pill w3-co-finish"
-          disabled={busy || finishing}
-          onClick={onFinish}
+          disabled={
+            finishing ||
+            working ||
+            (busy && !pendingFinish) ||
+            (!pendingFinish &&
+              hasTarget &&
+              (!canUpdate ||
+                Boolean(
+                  finishReview &&
+                    (finishReview.conflicts.some((c) => !finishChoices[c.field]) ||
+                      (finishReview.portrait && !finishChoices.portrait)),
+                )))
+          }
+          title={
+            !pendingFinish && hasTarget && !canUpdate
+              ? 'The target character is no longer in the library. You can create a new character.'
+              : undefined
+          }
+          onClick={() => onFinish(hasTarget ? 'update' : 'create')}
         >
           <Icon name="check" size="sm" />
-          {finishing ? 'Finishing…' : seedName ? `Update ${seedName}` : 'Create card'}
+          {finishing
+            ? 'Finishing…'
+            : pendingFinish
+              ? 'Retry finishing'
+              : hasTarget
+                ? 'Update character'
+                : 'Create a new character'}
         </button>
       </footer>
     </section>

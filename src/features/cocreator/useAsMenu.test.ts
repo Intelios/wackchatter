@@ -42,6 +42,32 @@ function build(overrides: Partial<UseAsMenuState> = {}) {
 }
 
 describe('what is offered', () => {
+  test('replacement offers stable greeting targets with previews and respects the busy gate', () => {
+    const selected: string[] = [];
+    const entries = buildUseAsMenu(
+      state({
+        greetings: [
+          { id: 'first', label: 'First message', text: 'Original first' },
+          { id: 'alt-id', label: 'Alternate greeting 1', text: 'New setting' },
+        ],
+      }),
+      { ...actions(), onReplaceGreeting: (id) => selected.push(id) },
+    );
+    const submenu = entries.find((e) => e.kind === 'submenu');
+    expect(submenu?.label).toBe('Replace a greeting…');
+    if (submenu?.kind !== 'submenu') throw new Error('Missing targets');
+    const target = submenu.entries[1];
+    if (
+      !target ||
+      target.kind === 'separator' ||
+      target.kind === 'header' ||
+      target.kind === 'submenu'
+    )
+      throw new Error('Missing greeting');
+    expect(target.description).toBe('New setting');
+    target.onSelect();
+    expect(selected).toEqual(['alt-id']);
+  });
   test('every slot is offered, with the block’s own slot first', () => {
     const { entries } = build({ slot: 'description' });
     const keys = items(entries).map((entry) => entry.key);

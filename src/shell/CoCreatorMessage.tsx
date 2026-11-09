@@ -20,13 +20,15 @@ import { Reasoning } from '../features/chat/Reasoning.tsx';
 import { StreamingText } from '../features/chat/StreamingText.tsx';
 import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { type CardBlock, parseCardBlocks, SLOT_LABELS } from '../features/cocreator/blocks.ts';
-import { buildUseAsMenu } from '../features/cocreator/useAsMenu.ts';
+import { buildUseAsMenu, type GreetingTarget } from '../features/cocreator/useAsMenu.ts';
 import { Icon } from './icons.tsx';
 
 export type UseSource = 'block' | 'message' | 'selection';
 
 /** Where filed text goes: straight in, or to the compare when it would replace something. */
 export interface FileActions {
+  greetings: readonly GreetingTarget[];
+  onReplaceGreeting: (id: string, text: string, source: UseSource) => void;
   /** Whether a single-value field already holds something. */
   isFilled: (slot: CardSlot) => boolean;
   /** The text a field holds now, to tell "already in the card" apart. */
@@ -85,13 +87,26 @@ function FileMenu({
       filled: files.isFilled,
       confirming,
       ...(requiresSelection ? { requiresSelection } : {}),
+      greetings: files.greetings,
     },
     {
       onUse: (target) => {
         setConfirming(null);
-        onFile(target, text);
+        if (files.isFilled(target))
+          files.onCompare(
+            target,
+            text,
+            requiresSelection ? 'selection' : slot ? 'block' : 'message',
+          );
+        else onFile(target, text);
       },
       onArmConfirm: setConfirming,
+      onReplaceGreeting: (id) =>
+        files.onReplaceGreeting(
+          id,
+          text,
+          requiresSelection ? 'selection' : slot ? 'block' : 'message',
+        ),
     },
   );
   return (
@@ -126,7 +141,12 @@ function BlockView({
   const slot = block.slot;
   const text = block.text.trim();
   const kept = slot ? files.keptText(slot) : null;
-  const inCard = Boolean(slot && kept !== null && kept.trim() === text);
+  const inCard =
+    slot === 'alternate_greeting'
+      ? files.greetings.some(
+          (greeting) => greeting.label !== 'First message' && greeting.text.trim() === text,
+        )
+      : Boolean(slot && kept !== null && kept.trim() === text);
   const filled = slot ? files.isFilled(slot) : false;
   const label = slot ? SLOT_LABELS[slot] : block.label || 'Unlabelled';
   return (

@@ -69,9 +69,15 @@ including side-chat provenance.
 
 **The Character Co-Creator** sizes every request, main and side, from its model's catalogue
 context (`models/modelContext.ts`), never a setting. Filing never overwrites blind: a block into
-a field that already holds something goes through the compare first. **Finish on a session
-started from a card updates that card** (`finishPlan`: rename if the name changed, then patch
-what the stash holds); only a new session, or one whose card is gone, creates a card.
+a field that already holds something goes through the compare first. **Existing-card sessions have a durable full-card baseline and their own inherited portrait.**
+The accepted working card is pinned in every main request (also for new cards); side chat
+freezes it when opened/reset. Suggestions still require filing and replacements require
+compare. Alternate scenarios are Alternate Greetings. Finish primarily updates the current
+`targetAvatar`, with Create a new character available separately; a copy becomes the new
+target while `seedAvatar` retains the origin. Missing targets disable Update, never silently
+create. Updates three-way compare changed fields against the baseline, include explicit
+clears, and use a version-checked atomic field/art/rename save. A publication id makes
+session recording retryable without rewriting the card or reviving renamed references.
 
 **The Preset Co-Creator** (`src/shell/PresetCoCreator.tsx`) is the loop ask → edit → test →
 send back, laid out as the Co-Creator, the preset rail and the bench. Its assistant is sized

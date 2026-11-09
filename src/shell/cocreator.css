@@ -1228,11 +1228,58 @@
 
 .w3-co-card__foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 12px 4px 0;
   font-size: 12px;
   color: var(--w3-faint);
+}
+
+.w3-co-card__foot-count {
+  flex-basis: 100%;
+}
+
+.w3-co-carried {
+  color: var(--w3-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.w3-co-carried summary {
+  cursor: pointer;
+}
+
+.w3-co-carried pre {
+  max-height: var(--wc-cocreator-context-height);
+  overflow: auto;
+  margin-block: var(--wc-space-2);
+  padding: var(--wc-space-3);
+  border-radius: var(--wc-radius-lg);
+  background: var(--w3-bg);
+  color: var(--w3-soft);
+  font-family: var(--wc-font-mono);
+  font-size: var(--wc-text-sm);
+  line-height: var(--wc-code-line-height);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.w3-co-save-review {
+  display: grid;
+  gap: var(--wc-space-3);
+  color: var(--w3-muted);
+  font-size: var(--wc-text-sm);
+}
+
+.w3-co-save-review button[aria-pressed="true"] {
+  background: var(--w3-accent-soft);
+  color: var(--w3-accent);
+}
+
+.w3-co-save-review__portrait {
+  max-height: var(--wc-cocreator-portrait-height);
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .w3-co-finish {

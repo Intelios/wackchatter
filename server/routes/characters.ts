@@ -1,10 +1,11 @@
 /** Character CRUD + import/export. */
 
-import type { CardDataV2 } from '../../shared/types/card.ts';
+import type { CardDataV2, TavernCard } from '../../shared/types/card.ts';
 import type { WorldInfoEntry } from '../../shared/types/worldinfo.ts';
-import { stripPrivateFields, writeCard } from '../lib/card.ts';
+import { normalizeCard, stripPrivateFields, writeCard } from '../lib/card.ts';
 import {
   addBookEntry,
+  CharacterConflictError,
   createBlankCard,
   createCharacter,
   deleteBook,
@@ -12,9 +13,11 @@ import {
   deleteCharacter,
   getCharacter,
   getCharacterImage,
+  getCharacterRecord,
   importCharacter,
   listCharacters,
   renameCharacter,
+  saveCharacterConditional,
   updateBook,
   updateBookEntry,
   updateCharacter,
@@ -40,7 +43,22 @@ export async function handleCharacterRoute(
     if (method === 'GET') return json(listCharacters());
 
     if (method === 'POST') {
-      const body = await readJson<{ name?: string; folder?: string }>(request);
+      let body: { name?: string; folder?: string; card?: TavernCard } | null;
+      let image: Uint8Array | undefined;
+      if (request.headers.get('content-type')?.includes('multipart/form-data')) {
+        const form = await request.formData();
+        try {
+          body = JSON.parse(String(form.get('body')));
+        } catch {
+          return errorResponse('Invalid card data.');
+        }
+        const file = form.get('image');
+        if (file instanceof File) image = new Uint8Array(await file.arrayBuffer());
+      } else body = await readJson(request);
+      if (body?.card) {
+        const created = await createCharacter(normalizeCard(body.card), image, body.folder ?? '');
+        return json(getCharacterRecord(created.avatar)!, { status: 201 });
+      }
       const name = body?.name?.trim();
       if (!name) return errorResponse('A character name is required.');
       return json(await createCharacter(createBlankCard(name), undefined, body?.folder ?? ''), {
@@ -115,6 +133,43 @@ export async function handleCharacterRoute(
   }
 
   const avatar = decodeURIComponent(segments[0]!);
+
+  // Generic conditional save; the client still assembles the card/field patch.
+  if (segments[1] === 'save' && segments.length === 2 && method === 'POST') {
+    const expected = request.headers.get('if-match')?.replace(/^"|"$/g, '');
+    if (!expected) return errorResponse('A character version is required.');
+    let body: { updates?: Partial<CardDataV2>; name?: string; clearImage?: boolean } | null;
+    let image: Uint8Array | null | undefined;
+    if (request.headers.get('content-type')?.includes('multipart/form-data')) {
+      const form = await request.formData();
+      try {
+        body = JSON.parse(String(form.get('body')));
+      } catch {
+        return errorResponse('Invalid save data.');
+      }
+      const file = form.get('image');
+      if (file instanceof File) image = new Uint8Array(await file.arrayBuffer());
+    } else body = await readJson(request);
+    if (!body) return errorResponse('Invalid save data.');
+    if (body.clearImage) image = null;
+    try {
+      const saved = await saveCharacterConditional(avatar, body.updates ?? {}, expected, {
+        name: body.name,
+        image,
+        onStaged: async (next) => cascadeCharacterRename(avatar, next),
+      });
+      return saved ? json(saved) : notFound('Character not found.');
+    } catch (error) {
+      if (error instanceof CharacterConflictError)
+        return json({ error: error.message, code: error.code }, { status: 409 });
+      throw error;
+    }
+  }
+
+  if (segments[1] === 'record' && segments.length === 2 && method === 'GET') {
+    const record = getCharacterRecord(avatar);
+    return record ? json(record) : notFound('Character not found.');
+  }
 
   // /api/characters/:avatar/image
   if (segments[1] === 'image' && method === 'GET') {

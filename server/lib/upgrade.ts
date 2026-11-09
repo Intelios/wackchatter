@@ -21,8 +21,11 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { blankCardData } from '../../shared/card/blank.ts';
 import type { ModelRef } from '../../shared/models/slots.ts';
+import { getCharacterImage, getCharacterRecord } from './characters.ts';
 import { atomicWriteSync } from './fs.ts';
 import { PATHS } from './paths.ts';
 
@@ -341,7 +344,69 @@ function convertModels(database: Database): boolean {
 }
 
 /** In order. Append only: a library records how many of these it has run. */
-const STEPS: ReadonlyArray<(database: Database) => boolean> = [convertChats, convertModels];
+function convertWorkingCards(database: Database): boolean {
+  const columns = new Set(
+    database
+      .query<{ name: string }, []>('PRAGMA table_info(cocreator_sessions)')
+      .all()
+      .map((c) => c.name),
+  );
+  for (const [name, declaration] of [
+    ['baseline', 'TEXT'],
+    ['target_avatar', 'TEXT'],
+    ['portrait_changed', 'INTEGER NOT NULL DEFAULT 0'],
+    ['publication_id', 'TEXT'],
+  ]) {
+    if (!columns.has(name!))
+      database.exec(`ALTER TABLE cocreator_sessions ADD COLUMN ${name} ${declaration}`);
+  }
+  const rows = database
+    .query<
+      {
+        id: string;
+        seed_avatar: string | null;
+        finished_avatar: string | null;
+        avatar: string | null;
+      },
+      []
+    >(
+      'SELECT id, seed_avatar, finished_avatar, avatar FROM cocreator_sessions WHERE baseline IS NULL AND (seed_avatar IS NOT NULL OR finished_avatar IS NOT NULL)',
+    )
+    .all();
+  const update = database.query(
+    'UPDATE cocreator_sessions SET baseline = ?, target_avatar = ?, avatar = ?, portrait_changed = ?, revision = revision + 1 WHERE id = ? AND baseline IS NULL',
+  );
+  for (const row of rows) {
+    const target = row.finished_avatar ?? row.seed_avatar!;
+    const record = getCharacterRecord(target);
+    const baseline = {
+      card: record?.detail.card ?? {
+        spec: 'chara_card_v2',
+        spec_version: '2.0',
+        data: blankCardData(''),
+      },
+      portraitVersion: record?.portraitVersion ?? null,
+      legacy: true,
+    };
+    let avatar = row.avatar;
+    if (!avatar && record) {
+      const bytes = getCharacterImage(target);
+      if (bytes) {
+        mkdirSync(PATHS.cocreatorAvatars, { recursive: true });
+        avatar = `${row.id}.png`;
+        atomicWriteSync(join(PATHS.cocreatorAvatars, avatar), bytes);
+      }
+    }
+    update.run(JSON.stringify(baseline), target, avatar, Number(Boolean(row.avatar)), row.id);
+  }
+  return false;
+}
+
+const STEPS: ReadonlyArray<(database: Database) => boolean> = [
+  convertChats,
+  convertModels,
+  convertWorkingCards,
+];
 
 /**
  * Run whatever steps the open library has not run yet. Returns whether settings.json was

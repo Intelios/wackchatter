@@ -144,6 +144,12 @@ export interface CharacterDetail extends CharacterSummary {
   card: TavernCard;
 }
 
+export interface VersionedCharacter {
+  detail: CharacterDetail;
+  version: string;
+  portraitVersion: string;
+}
+
 export const CARD_SPEC_V2 = 'chara_card_v2' as const;
 export const CARD_SPEC_V3 = 'chara_card_v3' as const;
 

@@ -35,6 +35,17 @@ const build = (overrides: Partial<Parameters<typeof buildSidePrompt>[0]> = {}) =
   });
 
 describe('side context', () => {
+  test('the card is frozen at opening and is pinned independently of main history', () => {
+    const frozen = captureSideSnapshot({
+      systemPrompt: 'Design',
+      exampleBlock: '',
+      draftBlock: 'Accepted card {{char}}',
+      messages: [main],
+    });
+    const prompt = build({ snapshot: frozen });
+    expect(prompt.messages.some((m) => m.content === 'Accepted card {{char}}')).toBe(true);
+    expect(frozen.draftBlock).toBe('Accepted card {{char}}');
+  });
   test('captures selected text, not alternate takes, reasoning, or live references', () => {
     const reply = setText(assistantPlaceholder('a', 'Assistant'), 'Chosen text.', {
       extra: { reasoning: 'Private thinking.' },

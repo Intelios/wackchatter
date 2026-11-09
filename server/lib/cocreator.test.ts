@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { blankCardData } from '../../shared/card/blank.ts';
 import { emptyStash, setSlot } from '../../shared/cocreator/stash.ts';
 import type { ChatMessage } from '../../shared/types/chat.ts';
 import type { CardStash, CocreatorSession, StashProvenance } from '../../shared/types/cocreator.ts';
@@ -30,6 +31,78 @@ const provenance: StashProvenance = {
   at: '2026-08-13T10:00:00.000Z',
   source: 'block',
 };
+
+describe('complete working cards', () => {
+  const baseline = () => ({
+    card: {
+      spec: 'chara_card_v3' as const,
+      unknown: 7,
+      data: { ...blankCardData('Alice'), extensions: { world: 'Town' } },
+    },
+    portraitVersion: 'original-art',
+  });
+  test('creation commits the baseline, inherited portrait and every seeded field together', () => {
+    const stash = setSlot(emptyStash(), 'description', '  Exact\n', provenance);
+    const session = store.createSession({
+      seedAvatar: 'Alice.png',
+      stash,
+      baseline: baseline(),
+      avatar: 'inherited.png',
+    });
+    expect(session.stash.description?.text).toBe('  Exact\n');
+    expect(session.baseline).toEqual(baseline());
+    expect(session.targetAvatar).toBe('Alice.png');
+    expect(session.avatar).toBe('inherited.png');
+    expect(session.portraitChanged).toBe(false);
+    expect(session.messages).toEqual([]);
+  });
+  test('a saved copy becomes the target; repeated snapshots cannot resurrect renamed targets', () => {
+    const created = store.createSession({ seedAvatar: 'Alice.png', baseline: baseline() });
+    const publication = { id: 'save-once', avatar: 'Copy.png' };
+    saved(
+      store.replaceSession(created.id, {
+        revision: 1,
+        messages: [],
+        baseline: baseline(),
+        publication,
+        finishedAvatar: 'Copy.png',
+      }),
+    );
+    store.reassignSeedCard('Copy.png', 'Renamed.png');
+    const result = saved(
+      store.replaceSession(created.id, {
+        revision: 2,
+        messages: [],
+        publication,
+        finishedAvatar: 'Copy.png',
+      }),
+    );
+    expect(result.seedAvatar).toBe('Alice.png');
+    expect(result.targetAvatar).toBe('Renamed.png');
+    expect(result.finishedAvatar).toBe('Renamed.png');
+    store.reassignSeedCard('Renamed.png', null);
+    expect(store.getSession(created.id)?.targetAvatar).toBeNull();
+    expect(store.getSession(created.id)?.baseline).toEqual(baseline());
+  });
+  test('portrait writes preserve the side scratchpad and mark only the artwork dirty', () => {
+    const created = store.createSession({ seedAvatar: 'Alice.png', baseline: baseline() });
+    saved(store.replaceSession(created.id, { revision: 1, messages: [], sideChat: sideChat() }));
+    const art = store.setSessionAvatar(created.id, 'changed.png')!;
+    expect(art.sideChat?.snapshot.systemPrompt).toBe('Design a lighthouse keeper.');
+    expect(art.baseline).toEqual(baseline());
+    expect(art.portraitChanged).toBe(true);
+    expect(art.revision).toBe(1);
+    saved(
+      store.replaceSession(created.id, {
+        revision: 2,
+        messages: [],
+        publication: { id: 'p', avatar: 'Alice.png' },
+        baseline: baseline(),
+      }),
+    );
+    expect(store.getSession(created.id)?.portraitChanged).toBe(false);
+  });
+});
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

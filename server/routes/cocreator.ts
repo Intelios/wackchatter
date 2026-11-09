@@ -11,10 +11,17 @@ import { existsSync, unlinkSync } from 'node:fs';
 import type { ChatMessage, StaleChatRevision } from '../../shared/types/chat.ts';
 import type {
   CardStash,
+  CocreatorCardBaseline,
+  CocreatorPublication,
   CocreatorSideChat,
   ExampleSelection,
   SessionModelSettings,
 } from '../../shared/types/cocreator.ts';
+import {
+  CharacterConflictError,
+  getCharacterImage,
+  getCharacterRecord,
+} from '../lib/characters.ts';
 import { type CocreatorSaveResult, cocreatorStore } from '../lib/cocreator.ts';
 import { atomicWrite } from '../lib/fs.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
@@ -30,6 +37,8 @@ interface ReplaceBody {
   /** Three-state like the patch body: absent keeps the recording, null clears it. */
   finishedAvatar?: string | null;
   messages?: ChatMessage[];
+  baseline?: CocreatorCardBaseline | null;
+  publication?: CocreatorPublication | null;
 }
 
 interface PatchBody {
@@ -70,13 +79,54 @@ export async function handleCocreatorRoute(
   if (segments.length === 0) {
     if (method === 'GET') return json(store.listSessions());
     if (method === 'POST') {
-      const body = await readJson<{ title?: string; seedAvatar?: string | null }>(request);
+      const body = await readJson<{
+        title?: string;
+        seedAvatar?: string | null;
+        stash?: CardStash;
+        sourceVersion?: string;
+      }>(request);
+      if (!body) return errorResponse('Request body is not valid JSON.');
+      if (body.seedAvatar && (!body.stash || !body.sourceVersion))
+        return errorResponse('The starting card fields and version are required.');
       // Write-once facts about a session's origin: both are only meaningful at creation, so
       // they ride the create call and nothing else can ever change them.
-      return json(
-        store.createSession({ title: body?.title, seedAvatar: body?.seedAvatar ?? null }),
-        { status: 201 },
-      );
+      const id = crypto.randomUUID();
+      const source = body?.seedAvatar ? getCharacterRecord(body.seedAvatar) : null;
+      if (body?.seedAvatar && !source) return notFound('Character not found.');
+      if (body?.sourceVersion && source?.version !== body.sourceVersion)
+        return json(
+          {
+            error: 'The character changed. Select it again to load the latest card.',
+            code: 'character_conflict',
+          },
+          { status: 409 },
+        );
+      const path = sessionAvatarPath(id)!;
+      try {
+        const image = source ? getCharacterImage(source.detail.avatar) : null;
+        if (source && !image) return notFound('Character portrait not found.');
+        if (image) await atomicWrite(path, image);
+        if (source && getCharacterRecord(source.detail.avatar)?.version !== source.version)
+          throw new CharacterConflictError();
+        return json(
+          store.createSession({
+            id,
+            title: body?.title,
+            seedAvatar: source?.detail.avatar ?? null,
+            stash: body?.stash,
+            baseline: source
+              ? { card: source.detail.card, portraitVersion: source.portraitVersion }
+              : null,
+            avatar: image ? `${id}.png` : null,
+          }),
+          { status: 201 },
+        );
+      } catch (error) {
+        if (existsSync(path)) unlinkSync(path);
+        if (error instanceof CharacterConflictError)
+          return json({ error: error.message, code: error.code }, { status: 409 });
+        throw error;
+      }
     }
     return null;
   }
@@ -162,6 +212,8 @@ export async function handleCocreatorRoute(
           settings: body.settings,
           ...(Object.hasOwn(body, 'finishedAvatar') ? { finishedAvatar: body.finishedAvatar } : {}),
           messages: body.messages,
+          ...(Object.hasOwn(body, 'baseline') ? { baseline: body.baseline } : {}),
+          ...(Object.hasOwn(body, 'publication') ? { publication: body.publication } : {}),
           ...(Object.hasOwn(body, 'sideChat') ? { sideChat: body.sideChat } : {}),
         }),
       );

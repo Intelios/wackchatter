@@ -90,6 +90,19 @@ describe('the seed turn', () => {
 });
 
 describe('the seeded stash', () => {
+  test('retains whitespace, blank list entries, order and commas in imported tags', () => {
+    const stash = seedStash(
+      detail({
+        description: '  Keep me.\n',
+        alternate_greetings: [' One\n', '', 'Two'],
+        tags: ['a, b', ' c '],
+      }),
+      'm',
+    );
+    expect(stash.description?.text).toBe('  Keep me.\n');
+    expect(stash.alternate_greetings.map((e) => e.text)).toEqual([' One\n', '', 'Two']);
+    expect(stash.tags.map((e) => e.text)).toEqual(['a, b', ' c ']);
+  });
   test('fills every non-empty slot from the card', () => {
     const stash = seedStash(detail(), 'seed-message');
 

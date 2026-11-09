@@ -52,6 +52,7 @@ export function resolveSideSettings(
 export function captureSideSnapshot(input: {
   systemPrompt: string;
   exampleBlock: string;
+  draftBlock?: string;
   messages: readonly MessageState[];
   capturedAt?: number;
 }): SideChatSnapshot {
@@ -59,6 +60,7 @@ export function captureSideSnapshot(input: {
     capturedAt: input.capturedAt ?? Date.now(),
     systemPrompt: input.systemPrompt,
     exampleBlock: input.exampleBlock,
+    ...(input.draftBlock !== undefined ? { draftBlock: input.draftBlock } : {}),
     messages: input.messages
       .filter((message) => currentText(message).trim())
       .map((message) => ({

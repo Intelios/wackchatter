@@ -12,9 +12,9 @@
  * prompts" is what the request layer already does by construction, not something filtered
  * here.
  *
- * One invariant runs through the whole file: **everything the model sees is in the transcript
- * the user can read.** The stash is not a parameter. Neither is the examples analysis. Both
- * reach the model, when they reach it at all, as visible turns.
+ * The accepted working card is pinned alongside instructions and examples. Its readable
+ * projection is also exposed in the card panel; conversation suggestions are never filed
+ * implicitly. Every request takes an immutable snapshot of these inputs.
  */
 
 import type { MessageState } from '@shared/chat/message.ts';
@@ -27,6 +27,8 @@ export interface DesignPromptInput {
   systemPrompt: string;
   /** The rendered example block, or empty when nothing is attached. */
   exampleBlock: string;
+  /** Readable current accepted card, including inherited lore. */
+  draftBlock?: string;
   /** The transcript, including the blank placeholder being generated into. */
   messages: readonly MessageState[];
   countTokens: TokenCounter;
@@ -36,7 +38,7 @@ export interface DesignPromptInput {
 
 export interface DesignPrompt {
   messages: ApiMessage[];
-  tokenCounts: { system: number; examples: number; transcript: number };
+  tokenCounts: { system: number; examples: number; draft: number; transcript: number };
   totalTokens: number;
   /** Oldest turns that did not fit. Shown in the desk when non-zero. */
   droppedMessages: number;
@@ -71,14 +73,22 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
   // One message rather than one per card, so the model reads them as a single exhibit and
   // the panel has one number to show.
   if (exampleBlock.trim()) fixed.push({ role: 'system', content: exampleBlock });
+  if (input.draftBlock?.trim()) fixed.push({ role: 'system', content: input.draftBlock });
 
   // The same accounting `assemblePrompt` uses, from the same helper: an individual message
   // costs its tokens without the priming every whole-chat count carries.
   const { cost: messageCost } = messageCoster(countTokens);
 
   const fixedTokens = countTokens.countChat(fixed);
-  const systemTokens = fixed[0] ? messageCost(fixed[0]) : 0;
-  const examplesTokens = fixed[1] ? messageCost(fixed[1]) : 0;
+  const systemTokens = systemPrompt.trim()
+    ? messageCost({ role: 'system', content: systemPrompt })
+    : 0;
+  const examplesTokens = exampleBlock.trim()
+    ? messageCost({ role: 'system', content: exampleBlock })
+    : 0;
+  const draftTokens = input.draftBlock?.trim()
+    ? messageCost({ role: 'system', content: input.draftBlock })
+    : 0;
 
   // A blank message is the placeholder being generated into. Skipping it is what excludes a
   // reply from its own prompt — no splicing, no special case, the same trick `assemble` uses.
@@ -117,7 +127,12 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
   const assembled = [...fixed, ...packed];
   return {
     messages: assembled,
-    tokenCounts: { system: systemTokens, examples: examplesTokens, transcript: transcriptTokens },
+    tokenCounts: {
+      system: systemTokens,
+      examples: examplesTokens,
+      draft: draftTokens,
+      transcript: transcriptTokens,
+    },
     totalTokens: countTokens.countChat(assembled),
     droppedMessages,
     fixedOverflow,

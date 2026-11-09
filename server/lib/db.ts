@@ -16,7 +16,7 @@ import { PATHS } from './paths.ts';
  * needs a matching step in upgrade.ts, since `CREATE TABLE IF NOT EXISTS` never evolves an
  * existing table.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -100,7 +100,11 @@ CREATE TABLE IF NOT EXISTS cocreator_sessions (
   -- and only the reference cascade (rename/delete) or row deletion ever changes it.
   seed_avatar     TEXT,
   -- Frozen main context and the side scratchpad's canonical swipes/settings.
-  side_chat       TEXT
+  side_chat       TEXT,
+  baseline        TEXT,
+  target_avatar   TEXT,
+  portrait_changed INTEGER NOT NULL DEFAULT 0,
+  publication_id  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cocreator_sessions_modified

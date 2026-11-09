@@ -16,7 +16,6 @@ import { captureSideSnapshot, resolveSideSettings } from '@shared/cocreator/side
 import type { ModelSlots } from '@shared/models/slots.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { Connection, ResolvedModel } from '@shared/providers/types.ts';
-import type { CharacterDetail } from '@shared/types/card.ts';
 import type { MessageExtra } from '@shared/types/chat.ts';
 import type { CocreatorSaveSnapshot, CocreatorSession } from '@shared/types/cocreator.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
@@ -39,7 +38,7 @@ import { createStreamStore } from '../chat/state/streamStore.ts';
 import { resolveModelContext } from '../models/modelContext.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
 import { buildDesignGeneration } from './generation.ts';
-import { renderSeedTurn, seedStash } from './seed.ts';
+import { renderDraftBlock } from './seed.ts';
 import { resolveCocreatorSettings } from './settings.ts';
 import { buildSidePrompt } from './sidePrompt.ts';
 import {
@@ -75,14 +74,6 @@ export interface UseCocreatorOptions {
   exampleBlockRef: RefObject<string>;
   examplesReadyRef: RefObject<boolean>;
   streamingFps: number;
-  /**
-   * The card the Studio handed off, when this desk is the arrival side of that handoff.
-   *
-   * Seeded as part of adopting the session — never re-applied afterwards, so a user who
-   * deletes the seed turn and empties the stash has genuinely un-seeded the session. The
-   * desk is keyed on `session.id`, so a new seed can only ever mean a new desk.
-   */
-  seed?: CharacterDetail | null;
 }
 
 export interface UseCocreator {
@@ -143,7 +134,6 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     exampleBlockRef,
     examplesReadyRef,
     streamingFps,
-    seed,
   } = options;
 
   const [state, dispatch] = useReducer(cocreatorReducer, initialCocreatorState);
@@ -230,24 +220,16 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   }
   const persistence = persistenceRef.current;
 
-  // Adopting the loaded session is keyed on its id: re-running on every field change would
-  // reset the transcript out from under an edit typed while a save was in flight. The seed
-  // rides the same key for the same reason, and its dispatch right after the load is what
-  // makes it survive StrictMode's double-invoked effects: load → seed → load (resets to the
-  // still-empty server doc) → seed again, which the reducer's guard collapses to one turn.
+  // The initial card and portrait are already durable. Adopt once, never re-seed on reload
+  // or on an acknowledgement of an older save while the user is editing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the session id only
   useEffect(() => {
     dispatch({ type: 'session/loaded', session });
-    if (seed) {
-      const id = crypto.randomUUID();
-      dispatch({
-        type: 'session/seeded',
-        id,
-        text: renderSeedTurn(seed),
-        stash: seedStash(seed, id),
-      });
-    }
   }, [session.id]);
+
+  useEffect(() => {
+    dispatch({ type: 'target/updated', avatar: session.targetAvatar });
+  }, [session.targetAvatar]);
 
   const captureSnapshot = useCallback((current: CocreatorState): CocreatorSaveSnapshot | null => {
     if (!current.sessionId) return null;
@@ -259,6 +241,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       examples: current.examples,
       settings: current.settings,
       finishedAvatar: current.finishedAvatar,
+      baseline: current.baseline,
+      publication: current.publication,
       // The pre-generation projection: a blank placeholder or a tentative swipe is UI state
       // until the request settles, and must not become durable under the earlier revision.
       messages: toPersistedMessages(current),
@@ -353,7 +337,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       return {
         ...prompt,
         error: prompt.fixedOverflow
-          ? "The frozen instructions and examples don't fit the side chat's model. Start it fresh with fewer examples."
+          ? "The frozen instructions, card and examples don't fit the side chat's model. Choose a larger model or start it fresh with less context."
           : null,
       };
     } catch (error) {
@@ -388,6 +372,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       const snapshot = captureSideSnapshot({
         systemPrompt,
         exampleBlock: exampleBlockRef.current,
+        draftBlock: renderDraftBlock(current.stash, current.baseline?.card ?? null),
         messages: toPersistedMessages(current).map(fromChatMessage),
       });
       const action: CocreatorAction = { type: reset ? 'side/reset' : 'side/opened', snapshot };
@@ -413,6 +398,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       // Settings can change mid-generation. Keep the request body, the reply's recorded
       // metadata and the server-side connection lookup on one snapshot for the whole call.
       const requestConnection: ResolvedModel = { ...selectedConnection };
+      const draftBlock = renderDraftBlock(current.stash, current.baseline?.card ?? null);
+      const exampleBlock = exampleBlockRef.current;
       const requestExtra: MessageExtra = {
         api: requestConnection.provider,
         model: requestConnection.model,
@@ -510,7 +497,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
               ? { outputTokens: sideSettings.outputTokens, contextTokens }
               : { ...current.settings, contextTokens },
           systemPrompt,
-          exampleBlock: exampleBlockRef.current,
+          exampleBlock,
+          draftBlock,
           countTokens: counter,
           streaming,
           ...(target === 'side' ? { sideSnapshot: current.sideChat!.snapshot } : {}),

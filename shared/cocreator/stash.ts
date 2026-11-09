@@ -200,9 +200,7 @@ function normalizeEntry(raw: unknown): StashEntry | null {
 
 function normalizeList(raw: unknown): StashEntry[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map(normalizeEntry)
-    .filter((entry): entry is StashEntry => entry !== null && entry.text.length > 0);
+  return raw.map(normalizeEntry).filter((entry): entry is StashEntry => entry !== null);
 }
 
 /**

@@ -18,6 +18,7 @@ export function buildDesignGeneration(input: {
   settings: SessionModelSettings;
   systemPrompt: string;
   exampleBlock: string;
+  draftBlock?: string;
   countTokens: TokenCounter;
   streaming: boolean;
   sideSnapshot?: SideChatSnapshot;
@@ -55,6 +56,7 @@ export function buildDesignGeneration(input: {
     : buildDesignPrompt({
         systemPrompt: input.systemPrompt,
         exampleBlock: input.exampleBlock,
+        draftBlock: input.draftBlock,
         messages: promptMessages,
         countTokens: input.countTokens,
         maxPromptTokens: budget.promptTokens,
@@ -62,8 +64,8 @@ export function buildDesignGeneration(input: {
   if (prompt.fixedOverflow) {
     throw new Error(
       input.sideSnapshot
-        ? "The frozen instructions and examples don't fit the side chat's model. Start the side chat fresh with fewer examples."
-        : "The instructions and examples alone don't fit this model. Remove an example or turn off some example fields.",
+        ? "The frozen instructions, card and examples don't fit the side chat's model. Choose a larger model or start the side chat fresh with less context."
+        : 'The instructions, current card and examples do not fit this model. Choose a larger model or reduce the card or examples.',
     );
   }
   const visibleCount = promptMessages.filter((message) => currentText(message).trim()).length;

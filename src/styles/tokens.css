@@ -180,6 +180,8 @@
   --wc-stats-canvas-width: 1080px;
   --wc-letter-spacing: 0.08em;
   --wc-code-line-height: 1.6;
+  --wc-cocreator-context-height: 260px;
+  --wc-cocreator-portrait-height: 160px;
 
   /* Motion. One layout duration and one curve keeps panel movement coherent;
      --wc-duration-fast is for hover and focus, which must not feel laggy;

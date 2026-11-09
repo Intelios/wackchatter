@@ -19,6 +19,7 @@ export function buildSidePrompt(input: {
     { role: 'system', content: `${snapshot.systemPrompt}\n\n${SIDE_CHAT_INSTRUCTION}` },
   ];
   if (snapshot.exampleBlock.trim()) fixed.push({ role: 'system', content: snapshot.exampleBlock });
+  if (snapshot.draftBlock?.trim()) fixed.push({ role: 'system', content: snapshot.draftBlock });
   const boundary: ApiMessage = { role: 'system', content: SIDE_CHAT_BOUNDARY };
   const side = input.messages
     .filter((m) => currentText(m).trim())

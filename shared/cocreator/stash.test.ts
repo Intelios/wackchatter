@@ -268,13 +268,13 @@ describe('repairing a stored stash', () => {
     expect(stash.description!.id).toBeTruthy();
   });
 
-  test('entries with no text are dropped from lists', () => {
+  test('malformed entries are dropped while imported blank greetings keep their position', () => {
     const stash = normalizeStash({
       alternate_greetings: [{ text: 'One.' }, { text: '' }, 'nope', null],
       tags: [],
     });
 
-    expect(stash.alternate_greetings.map((entry) => entry.text)).toEqual(['One.']);
+    expect(stash.alternate_greetings.map((entry) => entry.text)).toEqual(['One.', '']);
   });
 
   test('a normalised stash round-trips through JSON unchanged', () => {

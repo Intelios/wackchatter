@@ -3,13 +3,39 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createBlankCard, createCharacter } from './characters.ts';
 import { createChatStore } from './chats.ts';
+import { createCocreatorStore } from './cocreator.ts';
 import { createSchema } from './db.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
 import { upgradeLibrary } from './upgrade.ts';
 
 let dir: string;
 let db: Database;
+
+test('working-card conversion adds schema-15 columns, preserves edits and recency, and is idempotent', async () => {
+  const card = createBlankCard('Alice');
+  card.data.extensions = { world: 'Town', unknown: 7 };
+  await createCharacter(card);
+  db.exec('ALTER TABLE cocreator_sessions DROP COLUMN baseline');
+  db.exec('ALTER TABLE cocreator_sessions DROP COLUMN target_avatar');
+  db.exec('ALTER TABLE cocreator_sessions DROP COLUMN portrait_changed');
+  db.exec('ALTER TABLE cocreator_sessions DROP COLUMN publication_id');
+  db.query(
+    `INSERT INTO cocreator_sessions (id, title, created, modified, revision, seed_avatar, stash) VALUES ('legacy', 'Keep', 1, 17, 4, 'Alice.png', '{"description":{"id":"d","text":"Edited","provenance":{}},"alternate_greetings":[],"tags":[]}')`,
+  ).run();
+  upgradeLibrary(db);
+  const session = createCocreatorStore(db).getSession('legacy')!;
+  expect(session.modified).toBe(17);
+  expect(session.revision).toBe(5);
+  expect(session.stash.description?.text).toBe('Edited');
+  expect(session.baseline?.card.data.extensions).toMatchObject({ world: 'Town', unknown: 7 });
+  expect(session.baseline?.legacy).toBe(true);
+  expect(session.targetAvatar).toBe('Alice.png');
+  expect(session.avatar).toBe('legacy.png');
+  upgradeLibrary(db);
+  expect(createCocreatorStore(db).getSession('legacy')).toEqual(session);
+});
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'wc-upgrade-'));
@@ -130,7 +156,7 @@ test('recency is untouched, the revision moves, and a second run changes nothing
   expect(
     db.query<{ value: string }, []>("SELECT value FROM meta WHERE key = 'conversion_step'").get()
       ?.value,
-  ).toBe('2');
+  ).toBe('3');
 });
 
 test('malformed metadata converts as an empty object rather than vanishing', () => {

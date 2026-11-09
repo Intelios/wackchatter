@@ -4,6 +4,7 @@ import { emptyStash, setSlot } from '@shared/cocreator/stash.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { StashProvenance } from '@shared/types/cocreator.ts';
 import { ANALYSE_EXAMPLES_REQUEST, buildDesignPrompt, isAnalyseRequest } from './prompt.ts';
+import { renderDraftBlock } from './seed.ts';
 
 /** One token per word, plus a fixed envelope per message and one for reply priming. */
 const words: TokenCounter = {
@@ -97,7 +98,7 @@ describe('assembling the design prompt', () => {
   });
 });
 
-describe('the stash never reaches the model on its own', () => {
+describe('the assistant sees the accepted working card', () => {
   const provenance: StashProvenance = {
     messageId: 'b',
     swipeIndex: 0,
@@ -105,18 +106,33 @@ describe('the stash never reaches the model on its own', () => {
     source: 'block',
   };
 
-  test('no stash value can change the assembled prompt', () => {
+  test('accepted and manually edited fields reach the prompt as literal card context', () => {
     let stash = emptyStash();
     stash = setSlot(stash, 'description', 'UNIQUESTASHMARKER description', provenance);
     stash = setSlot(stash, 'first_mes', 'UNIQUESTASHMARKER greeting', provenance);
     stash = setSlot(stash, 'tags', 'UNIQUESTASHMARKER', provenance);
 
     const messages = [user('a', 'Hello.'), assistant('b', 'Hi.')];
-    const prompt = build(messages);
-
-    // buildDesignPrompt takes no stash parameter at all — this asserts the consequence.
-    expect(JSON.stringify(prompt.messages)).not.toContain('UNIQUESTASHMARKER');
+    const prompt = build(messages, { draftBlock: renderDraftBlock(stash, null) });
+    expect(JSON.stringify(prompt.messages)).toContain('UNIQUESTASHMARKER description');
+    expect(JSON.stringify(prompt.messages)).toContain('UNIQUESTASHMARKER greeting');
     expect(Object.keys(stash)).toContain('description');
+  });
+
+  test('the live card remains pinned when older suggestions fall out of context', () => {
+    const prompt = build([user('old', 'old suggestion '.repeat(50)), user('new', 'Help')], {
+      draftBlock: 'Current card {{char}}',
+      maxPromptTokens: 25,
+    });
+    expect(prompt.messages.some((m) => m.content === 'Current card {{char}}')).toBe(true);
+    expect(prompt.droppedMessages).toBe(1);
+    expect(prompt.tokenCounts.draft).toBeGreaterThan(0);
+    const { system, examples, draft, transcript } = prompt.tokenCounts;
+    expect(system + examples + draft + transcript + words.countChat([])).toBe(prompt.totalTokens);
+    expect(
+      build([user('new', 'Help')], { draftBlock: 'Card '.repeat(50), maxPromptTokens: 25 })
+        .fixedOverflow,
+    ).toBe(true);
   });
 });
 

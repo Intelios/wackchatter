@@ -16,7 +16,13 @@ import type {
   Verdict,
 } from '@shared/types/arena.ts';
 import type { BackupPlan } from '@shared/types/backup.ts';
-import type { CardDataV2, CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
+import type {
+  CardDataV2,
+  CharacterDetail,
+  CharacterSummary,
+  TavernCard,
+  VersionedCharacter,
+} from '@shared/types/card.ts';
 import type {
   Chat,
   ChatBackupSummary,
@@ -118,6 +124,32 @@ export const characterApi = {
   list: () => request<CharacterSummary[]>('/characters'),
 
   get: (avatar: string) => request<CharacterDetail>(`/characters/${encodeURIComponent(avatar)}`),
+  getVersioned: (avatar: string) =>
+    request<VersionedCharacter>(`/characters/${encodeURIComponent(avatar)}/record`),
+
+  createComplete: (card: TavernCard, folder: string, image: File | null) => {
+    const form = new FormData();
+    form.set('body', JSON.stringify({ card, folder }));
+    if (image) form.set('image', image);
+    return request<VersionedCharacter>('/characters', { method: 'POST', body: form });
+  },
+
+  saveVersioned: (
+    avatar: string,
+    updates: Partial<CardDataV2>,
+    version: string,
+    image?: File | null,
+    name?: string,
+  ) => {
+    const form = new FormData();
+    form.set('body', JSON.stringify({ updates, name, clearImage: image === null }));
+    if (image) form.set('image', image);
+    return request<VersionedCharacter>(`/characters/${encodeURIComponent(avatar)}/save`, {
+      method: 'POST',
+      headers: { 'if-match': `"${version}"` },
+      body: form,
+    });
+  },
 
   create: (name: string, folder = '') =>
     request<CharacterDetail>('/characters', {
@@ -479,11 +511,15 @@ export const cocreatorApi = {
   get: (id: string) => request<CocreatorSession>(`/cocreator/${encodeURIComponent(id)}`),
 
   /** `seedAvatar` is write-once: only creation records it, never a later save. */
-  create: (title?: string, seedAvatar?: string) =>
+  create: (
+    title?: string,
+    seedAvatar?: string,
+    initial?: { stash: CardStash; sourceVersion: string },
+  ) =>
     request<CocreatorSession>('/cocreator', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, seedAvatar: seedAvatar ?? null }),
+      body: JSON.stringify({ title, seedAvatar: seedAvatar ?? null, ...initial }),
     }),
 
   /** Whole-session write — the only path that changes messages. */

@@ -10,11 +10,12 @@
  */
 
 import { currentInfo, currentText, timestamp } from '@shared/chat/message.ts';
+import type { DraftChoices } from '@shared/cocreator/draft.ts';
 import { quoteForSideChat } from '@shared/cocreator/sideChat.ts';
 import { isSlotFilled } from '@shared/cocreator/stash.ts';
 import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
-import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
+import type { CharacterSummary } from '@shared/types/card.ts';
 import type {
   CardSlot,
   CocreatorSession,
@@ -40,8 +41,14 @@ import { useStickToBottom } from '../features/chat/useStickToBottom.ts';
 import { useTranscriptWindow } from '../features/chat/useTranscriptWindow.ts';
 import { ExampleSetsPopover } from '../features/cocreator/ExampleSetsPopover.tsx';
 import { EXAMPLE_FIELD_LABELS, EXAMPLE_FIELD_ORDER } from '../features/cocreator/examples.ts';
-import { finishSession } from '../features/cocreator/finish.ts';
+import {
+  FinishAttempt,
+  FinishConflictError,
+  finishSession,
+  requiredPortrait,
+} from '../features/cocreator/finish.ts';
 import { isAnalyseRequest } from '../features/cocreator/prompt.ts';
+import { rebaseStash, renderDraftBlock } from '../features/cocreator/seed.ts';
 import { parseCocreatorInput } from '../features/cocreator/slashCommands.ts';
 import {
   type CocreatorAction,
@@ -49,7 +56,7 @@ import {
 } from '../features/cocreator/state/cocreatorReducer.ts';
 import { type UseCocreator, useCocreator } from '../features/cocreator/useCocreator.ts';
 import { type LoadedExamples, useExampleCards } from '../features/cocreator/useExampleCards.ts';
-import { characterApi } from '../lib/api.ts';
+import { characterApi, cocreatorApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { CoCreatorCard, type Pending } from './CoCreatorCard.tsx';
 import { CoCreatorMessage, type FileActions, type UseSource } from './CoCreatorMessage.tsx';
@@ -442,7 +449,6 @@ function Examples({
 
 export function CoCreatorDesk({
   session,
-  seed,
   seedName,
   defaults,
   connections,
@@ -462,7 +468,6 @@ export function CoCreatorDesk({
   onError,
 }: {
   session: CocreatorSession;
-  seed: CharacterDetail | null;
   /** The card Finish writes back to, by name; null for a new card. */
   seedName: string | null;
   defaults: CoCreatorSettings;
@@ -492,11 +497,14 @@ export function CoCreatorDesk({
   const [pending, setPending] = useState<Pending | null>(null);
   const [lit, setLit] = useState<CardSlot | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const finishingRef = useRef(false);
+  const finishAttempt = useRef<FinishAttempt | null>(null);
+  const [finishReview, setFinishReview] = useState<FinishConflictError | null>(null);
+  const [finishChoices, setFinishChoices] = useState<DraftChoices>({});
   const [armedReset, setArmedReset] = useState(false);
 
   const design = useCocreator({
     session,
-    seed,
     defaults,
     connections,
     models,
@@ -508,17 +516,37 @@ export function CoCreatorDesk({
     examplesReadyRef,
     streamingFps,
   });
-  const { state, busy, blockedReason, countTokens } = design;
+  const { state, blockedReason, countTokens } = design;
+  const busy =
+    design.busy ||
+    finishing ||
+    Boolean(finishAttempt.current?.result) ||
+    state.sessionId !== session.id;
   const loaded = useExampleCards(state.examples, countTokens);
   exampleBlockRef.current = loaded.text;
   examplesReadyRef.current = !loaded.loading;
   const stateRef = useRef(state);
   stateRef.current = state;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft changes invalidate choices made against the previous draft
+  useEffect(() => {
+    setFinishReview(null);
+    setFinishChoices({});
+  }, [state.stash, state.avatar, state.targetAvatar]);
   const busyReason =
     state.activeConversation === 'side' ? 'The side chat is writing' : 'The Co-Creator is writing';
 
   useEffect(() => {
-    registerPersistence(design.persistence);
+    registerPersistence({
+      ...design.persistence,
+      flush: async () => {
+        if (finishingRef.current) throw new Error('Wait for Finish to complete before leaving.');
+        await design.persistence.flush();
+        if (finishAttempt.current?.result && !finishAttempt.current.recorded)
+          throw new Error(
+            'The character was saved, but the session still needs to be recorded. Retry finishing before leaving.',
+          );
+      },
+    });
     return () => registerPersistence(null);
   }, [design.persistence, registerPersistence]);
 
@@ -623,21 +651,20 @@ export function CoCreatorDesk({
       source: UseSource,
       label?: string,
       conversation?: 'side',
+      greetingId?: string,
     ) => {
-      design.dispatch({
-        type: 'stash/set',
-        slot,
-        text,
-        provenance: {
-          messageId,
-          swipeIndex,
-          at: timestamp(),
-          source,
-          ...(model ? { model } : {}),
-          ...(label ? { label } : {}),
-          ...(conversation ? { conversation } : {}),
-        },
-      });
+      const provenance = {
+        messageId,
+        swipeIndex,
+        at: timestamp(),
+        source,
+        ...(model ? { model } : {}),
+        ...(label ? { label } : {}),
+        ...(conversation ? { conversation } : {}),
+      };
+      if (greetingId)
+        design.dispatch({ type: 'stash/replaceGreeting', id: greetingId, text, provenance });
+      else design.dispatch({ type: 'stash/set', slot, text, provenance });
       setPending(null);
       flash(slot);
     },
@@ -652,6 +679,51 @@ export function CoCreatorDesk({
     const go = (slot: CardSlot, text: string, source: UseSource, label?: string) =>
       file(message.id, message.swipe_id, model, slot, text, source, label, conversation);
     return {
+      greetings: [
+        ...(state.stash.first_mes
+          ? [
+              {
+                id: state.stash.first_mes.id,
+                label: 'First message',
+                text: state.stash.first_mes.text,
+              },
+            ]
+          : []),
+        ...state.stash.alternate_greetings.map((entry, index) => ({
+          id: entry.id,
+          label: `Alternate greeting ${index + 1}`,
+          text: entry.text,
+        })),
+      ],
+      onReplaceGreeting: (id, text, source) => {
+        const first = stateRef.current.stash.first_mes?.id === id;
+        const entry = first
+          ? stateRef.current.stash.first_mes
+          : stateRef.current.stash.alternate_greetings.find((e) => e.id === id);
+        if (!entry) return;
+        const slot = first ? 'first_mes' : 'alternate_greeting';
+        pendingFile.current = () =>
+          file(
+            message.id,
+            message.swipe_id,
+            model,
+            slot,
+            text,
+            source,
+            undefined,
+            conversation,
+            id,
+          );
+        setPending({
+          slot,
+          text,
+          source,
+          greetingId: id,
+          targetLabel: first
+            ? 'First message'
+            : `Alternate greeting ${stateRef.current.stash.alternate_greetings.findIndex((e) => e.id === id) + 1}`,
+        });
+      },
       isFilled: (slot) => isSlotFilled(stateRef.current.stash, slot),
       keptText: (slot) =>
         slot === 'alternate_greeting'
@@ -724,25 +796,61 @@ export function CoCreatorDesk({
 
   // --- Finish ---
 
-  const finish = async () => {
+  const finish = async (mode: 'update' | 'create') => {
+    if (finishingRef.current || design.busy) return;
+    finishingRef.current = true;
     setFinishing(true);
     try {
       await design.flushSaves();
-      const avatar = await finishSession({
-        sessionId: session.id,
-        stash: stateRef.current.stash,
-        avatar: stateRef.current.avatar,
-        cacheKey: session.modified,
-        seedAvatar: session.seedAvatar,
-      });
-      const recorded: CocreatorAction = { type: 'finished/recorded', avatar };
-      const next = cocreatorReducer(stateRef.current, recorded);
-      design.dispatch(recorded);
-      await design.flushSaves(next);
+      if (!finishAttempt.current) finishAttempt.current = new FinishAttempt();
+      const attempt = finishAttempt.current;
+      const avatar = await attempt.run(
+        () =>
+          finishSession({
+            sessionId: session.id,
+            mode,
+            stash: stateRef.current.stash,
+            baseline: stateRef.current.baseline,
+            portraitChanged: stateRef.current.portraitChanged,
+            avatar: stateRef.current.avatar,
+            cacheKey: session.modified,
+            ...(finishReview
+              ? { review: { version: finishReview.latest.version, choices: finishChoices } }
+              : {}),
+          }),
+        async (saved, publicationId) => {
+          let current = stateRef.current;
+          if (current.publication?.id !== publicationId) {
+            if (current.avatar) {
+              const image = await requiredPortrait(
+                characterApi.imageUrl(saved.detail.avatar, saved.detail.modified),
+              );
+              const art = await cocreatorApi.setAvatar(session.id, image);
+              const action: CocreatorAction = { type: 'avatar/set', filename: art.avatar! };
+              current = cocreatorReducer(current, action);
+              design.dispatch(action);
+            }
+            const recorded: CocreatorAction = {
+              type: 'finished/recorded',
+              avatar: saved.detail.avatar,
+              publicationId,
+              baseline: { card: saved.detail.card, portraitVersion: saved.portraitVersion },
+              stash: rebaseStash(current.stash, saved.detail),
+            };
+            current = cocreatorReducer(current, recorded);
+            design.dispatch(recorded);
+          }
+          await design.flushSaves(current);
+        },
+      );
       onFinished(avatar);
     } catch (error) {
-      onError((error as Error).message);
+      if (error instanceof FinishConflictError) {
+        setFinishReview(error);
+        setFinishChoices({});
+      } else onError((error as Error).message);
     } finally {
+      finishingRef.current = false;
       setFinishing(false);
     }
   };
@@ -779,7 +887,11 @@ export function CoCreatorDesk({
         <div className="w3-co-scroll" ref={scrollRef}>
           <div className="w3-co-list" ref={contentRef}>
             {state.messages.length === 0 ? (
-              <p className="w3-co-empty">Describe who you have in mind.</p>
+              <p className="w3-co-empty">
+                {state.baseline
+                  ? 'What would you like to change about this character?'
+                  : 'Describe who you have in mind.'}
+              </p>
             ) : (
               state.messages.slice(mainWindow.start, mainWindow.end).map((message, index) => {
                 const at = mainWindow.start + index;
@@ -964,6 +1076,18 @@ export function CoCreatorDesk({
         stash={state.stash}
         title={session.title}
         seedName={seedName}
+        canUpdate={Boolean(
+          state.targetAvatar && characters.some((c) => c.avatar === state.targetAvatar),
+        )}
+        hasTarget={Boolean(state.targetAvatar || state.baseline || state.publication)}
+        draftBlock={renderDraftBlock(state.stash, state.baseline?.card ?? null)}
+        baseline={state.baseline}
+        finishReview={finishReview}
+        finishChoices={finishChoices}
+        onFinishChoice={(field, choice) =>
+          setFinishChoices((current) => ({ ...current, [field]: choice }))
+        }
+        pendingFinish={Boolean(finishAttempt.current?.result)}
         sessionId={session.id}
         avatar={state.avatar}
         cacheKey={session.modified}
@@ -996,7 +1120,7 @@ export function CoCreatorDesk({
           )
         }
         onError={onError}
-        onFinish={() => void finish()}
+        onFinish={(mode) => void finish(mode)}
       />
     </div>
   );

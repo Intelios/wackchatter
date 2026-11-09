@@ -24,6 +24,7 @@ import {
   resolveSpeakerColors,
   useAvatarPalette,
 } from '../features/chat/avatarColor.ts';
+import { seedStash } from '../features/cocreator/seed.ts';
 import { ModelsProvider } from '../features/models/ModelsContext.tsx';
 import { characterApi, cocreatorApi, personaApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
@@ -59,6 +60,7 @@ export function CoCreator({ controller }: { controller: AppController }) {
   const noticeId = useRef(0);
   const persistence = useRef<PersistenceControls | null>(null);
   const seededFrom = useRef<string | null>(null);
+  const creating = useRef(false);
   const deskRef = useRef<DeskHandle | null>(null);
   const [modelFor, setModelFor] = useState<'main' | 'side'>('main');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -127,13 +129,19 @@ export function CoCreator({ controller }: { controller: AppController }) {
 
   const create = useCallback(
     async (from?: CharacterSummary) => {
+      if (creating.current) return;
+      creating.current = true;
       setMode(null);
-      if (!(await leaveSession())) return;
       try {
-        const detail = from ? await characterApi.get(from.avatar) : null;
+        if (!(await leaveSession())) return;
+        const source = from ? await characterApi.getVersioned(from.avatar) : null;
+        const detail = source?.detail ?? null;
         const created = await cocreatorApi.create(
           detail ? detail.name.trim() || undefined : undefined,
           detail ? detail.avatar : undefined,
+          source
+            ? { stash: seedStash(source.detail, ''), sourceVersion: source.version }
+            : undefined,
         );
         setReport(null);
         setSeed(detail);
@@ -141,10 +149,34 @@ export function CoCreator({ controller }: { controller: AppController }) {
         void refresh().catch(fail);
       } catch (err) {
         fail(err);
+      } finally {
+        creating.current = false;
       }
     },
     [fail, leaveSession, refresh],
   );
+
+  // Reference repairs are server-owned; adopt those without reloading the working draft.
+  const openSessionId = session?.id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: library changes can repair filenames without changing the session id
+  useEffect(() => {
+    if (!openSessionId) return;
+    let live = true;
+    void cocreatorApi
+      .get(openSessionId)
+      .then((next) => {
+        if (live)
+          setSession((current) =>
+            current?.id === next.id
+              ? { ...current, targetAvatar: next.targetAvatar, seedAvatar: next.seedAvatar }
+              : current,
+          );
+      })
+      .catch(fail);
+    return () => {
+      live = false;
+    };
+  }, [library.characters, openSessionId, fail]);
 
   // The Studio's handoff: arrive on a new session seeded from that card, exactly once.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the handed-off card
@@ -222,9 +254,9 @@ export function CoCreator({ controller }: { controller: AppController }) {
     [sessions, session?.id, create, open],
   );
 
-  const seedName = session?.seedAvatar
-    ? (seed?.card.data.name ??
-      library.characters.find((c) => c.avatar === session.seedAvatar)?.name ??
+  const seedName = session?.targetAvatar
+    ? (library.characters.find((c) => c.avatar === session.targetAvatar)?.name ??
+      seed?.card.data.name ??
       null)
     : null;
   const filled = report?.filled ?? 0;
@@ -424,7 +456,6 @@ export function CoCreator({ controller }: { controller: AppController }) {
               <CoCreatorDesk
                 key={session.id}
                 session={session}
-                seed={seed}
                 seedName={seedName}
                 defaults={prefs.coCreator}
                 connections={settings?.connections ?? []}
@@ -518,7 +549,7 @@ function Sessions({
             New card
           </button>
           <Popover
-            label="Start from a card"
+            label="Edit existing character"
             icon={null}
             open={picking}
             onOpenChange={setPicking}
@@ -533,7 +564,7 @@ function Sessions({
                 onClick={() => setPicking(!picking)}
               >
                 <Icon name="studio" size="sm" />
-                Start from a card
+                Edit existing character
               </button>
             )}
           >
@@ -543,7 +574,7 @@ function Sessions({
                 <input
                   value={query}
                   placeholder="Which card?"
-                  aria-label="Find a card to start from"
+                  aria-label="Find an existing character to edit"
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
