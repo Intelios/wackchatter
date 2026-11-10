@@ -51,6 +51,15 @@ export interface SettingsPage {
 
 /** The Personas tool's page over its list. */
 export type PersonaPage = { kind: 'edit'; id: string } | { kind: 'from' };
+/** The margin's destinations: the tool the island's wings have routed it to. */
+export type ToolId =
+  | 'characters'
+  | 'lorebooks'
+  | 'personas'
+  | 'preset'
+  | 'memory'
+  | 'settings'
+  | 'inspect';
 export type AppView = 'app' | 'studio' | 'cocreator' | 'tokentrail' | 'arena';
 export type CoCreatorMode = 'landing' | 'character' | 'preset';
 
@@ -94,6 +103,13 @@ export function useAppController() {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CharacterDetail | null>(null);
   /**
+   * The margin tool the island's wings have open, or null for none. It lives here, above
+   * the home and chat shells, so moving between them never closes it: opening a chat
+   * keeps the panel you were browsing in — 2.0's rule, so flicking between characters
+   * keeps the character list up — and closing a chat leaves it open for the next pick.
+   */
+  const [tool, setTool] = useState<ToolId | null>(null);
+  /**
    * The character whose sheet the Characters tool is showing, or null for the list. A
    * viewer: it never changes the open chat.
    */
@@ -113,6 +129,14 @@ export function useAppController() {
   /** The Memory tool's prompt editor is open: the shell widens the margin for it. */
   const [memoryPrompt, setMemoryPrompt] = useState(false);
   const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
+  // A character's sheet and a persona's page belong to their tools: leaving the tool goes
+  // back to its list.
+  useEffect(() => {
+    if (tool !== 'characters') setCharacterSheet(null);
+    if (tool !== 'personas') setPersonaPage(null);
+    if (tool !== 'preset') setPresetPrompt(null);
+    if (tool !== 'lorebooks') setLorePage(null);
+  }, [tool]);
   /** The app's one error line. The character list shows it; a good library refresh clears it. */
   const [error, setError] = useState<string | null>(null);
   const showError = useCallback((message: string) => setError(message), []);
@@ -623,6 +647,8 @@ export function useAppController() {
     selected,
     active,
     character,
+    tool,
+    setTool,
     characterSheet,
     setCharacterSheet,
     personaPage,

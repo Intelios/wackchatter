@@ -18,7 +18,7 @@ import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import type { ActivationResult } from '@shared/worldinfo/activate.ts';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppController } from '../app/useAppController.ts';
+import type { AppController, ToolId } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 import {
@@ -57,7 +57,6 @@ import {
   RIGHT_TOOLS,
   TOOLS,
   ToolHeading,
-  type ToolId,
   toolSubtitle,
 } from './MarginTools.tsx';
 import { ModelPane } from './ModelPane.tsx';
@@ -118,16 +117,7 @@ function ChatShell({
   const lineRef = useRef<LineHandle>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage } = controller;
-  // A character's sheet and a persona's page belong to their tools: leaving the tool goes
-  // back to its list.
-  useEffect(() => {
-    if (tool !== 'characters') setCharacterSheet(null);
-    if (tool !== 'personas') setPersonaPage(null);
-    if (tool !== 'preset') setPresetPrompt(null);
-    if (tool !== 'lorebooks') setLorePage(null);
-  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage]);
+  const { tool, setTool, setCharacterSheet, setLorePage } = controller;
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const noticeId = useRef(0);
@@ -217,7 +207,7 @@ function ChatShell({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tool, opened]);
+  }, [tool, opened, setTool]);
 
   // A summary or memory run reports through the island.
   const wasSummarising = useRef(false);
@@ -250,7 +240,7 @@ function ChatShell({
         });
     }
     wasSummarising.current = summarising;
-  }, [summarising, chat.summaryStatus, say]);
+  }, [summarising, chat.summaryStatus, say, setTool]);
 
   // A failed reply also flags itself on the island, briefly; the full notice is inline.
   const lastError = useRef<string | null>(null);
@@ -415,23 +405,29 @@ function ChatShell({
 
   // --- Search (⌘K) -----------------------------------------------------------------------
 
-  const openTool = useCallback((id: ToolId) => {
-    setOpened(null);
-    setTool((current) => (current === id ? null : id));
-  }, []);
+  const openTool = useCallback(
+    (id: ToolId) => {
+      setOpened(null);
+      setTool((current) => (current === id ? null : id));
+    },
+    [setTool],
+  );
   // The card reader and the tools share the margin: opening one puts the other away.
   const { cardReader, closeCardReader } = surface;
   useEffect(() => {
     if (cardReader) setTool(null);
-  }, [cardReader]);
+  }, [cardReader, setTool]);
   useEffect(() => {
     if (tool) closeCardReader();
   }, [tool, closeCardReader]);
   // Search opens a tool onto something; it never closes the one already open.
-  const showTool = useCallback((id: ToolId) => {
-    setOpened(null);
-    setTool(id);
-  }, []);
+  const showTool = useCallback(
+    (id: ToolId) => {
+      setOpened(null);
+      setTool(id);
+    },
+    [setTool],
+  );
 
   const searchItems = useMemo<SearchItem[]>(
     () =>
@@ -484,7 +480,7 @@ function ChatShell({
     setOpened(null);
     setLorePage({ book, entry: null, filter: 'fired' });
     setTool('lorebooks');
-  }, [chat.worldInfo, setLorePage]);
+  }, [chat.worldInfo, setLorePage, setTool]);
 
   const bloom = useCallback(() => replay(bloomRef.current), []);
   const onCopied = useCallback(

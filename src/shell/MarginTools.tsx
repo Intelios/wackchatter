@@ -7,7 +7,7 @@
 
 import { PROVIDERS } from '@shared/providers/types.ts';
 import { useMemo } from 'react';
-import type { AppController } from '../app/useAppController.ts';
+import type { AppController, ToolId } from '../app/useAppController.ts';
 import { CharacterList } from '../features/character/CharacterList.tsx';
 import { characterApi } from '../lib/api.ts';
 import { CharacterSheet } from './CharacterSheet.tsx';
@@ -20,15 +20,6 @@ import { MemoryTool } from './MemoryTool.tsx';
 import { PersonaTool } from './PersonaTool.tsx';
 import { PresetSwitcher, PresetTool } from './PresetTool.tsx';
 import { SettingsTool } from './SettingsTool.tsx';
-
-export type ToolId =
-  | 'characters'
-  | 'lorebooks'
-  | 'personas'
-  | 'preset'
-  | 'memory'
-  | 'settings'
-  | 'inspect';
 
 export interface ToolSpec {
   title: string;

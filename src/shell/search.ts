@@ -6,11 +6,11 @@
 
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
-import type { AppController, SettingsChapter } from '../app/useAppController.ts';
+import type { AppController, SettingsChapter, ToolId } from '../app/useAppController.ts';
 import { personaApi } from '../lib/api.ts';
 import type { SearchItem } from './IslandPanes.tsx';
 import { introLine } from './intro.ts';
-import { TOOLS, type ToolId } from './MarginTools.tsx';
+import { TOOLS } from './MarginTools.tsx';
 import { SETTING_INDEX, SETTINGS_CHAPTERS } from './settings.ts';
 
 export function buildSearchItems(options: {

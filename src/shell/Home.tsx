@@ -28,7 +28,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { AppController } from '../app/useAppController.ts';
+import type { AppController, ToolId } from '../app/useAppController.ts';
 import { Backdrop } from '../components/Backdrop.tsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 import {
@@ -55,13 +55,14 @@ import {
 import { Island, type IslandMode, type IslandNotice, WingButton } from './Island.tsx';
 import { PersonaPane, RestPane, type SearchItem, SearchPane } from './IslandPanes.tsx';
 import { Icon } from './icons.tsx';
-import { MarginTool, TOOLS, ToolHeading, type ToolId, toolSubtitle } from './MarginTools.tsx';
+import { MarginTool, TOOLS, ToolHeading, toolSubtitle } from './MarginTools.tsx';
 import { buildSearchItems } from './search.ts';
 import { initialAuraStyle, useAura } from './useAura.ts';
 
 /** The wings at home: everything that does not need a chat open. */
 const HOME_LEFT: ToolId[] = ['characters', 'lorebooks', 'personas'];
 const HOME_RIGHT: ToolId[] = ['preset', 'settings'];
+const HOME_TOOLS: readonly ToolId[] = [...HOME_LEFT, ...HOME_RIGHT];
 
 /** The app's own colour, for a library with nobody in it yet and for Create | Arena. */
 const LIME = '#c2ee4a';
@@ -98,16 +99,16 @@ export function HomeShell({ controller }: { controller: AppController }) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   /** Which name in the stack the cover shows; 0 is the chat you were last in. */
   const [picked, setPicked] = useState(0);
-  const [tool, setTool] = useState<ToolId | null>(null);
-  const { setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage } = controller;
-  // A character's sheet and a persona's page belong to their tools: leaving the tool goes
-  // back to its list.
+  /*
+   * The margin survives arriving here, except a tool that needs the open chat (memory,
+   * inspect) — home has no wing for one of those. It closes for real rather than just
+   * hiding, or it would spring back open on the next chat.
+   */
+  const { tool: routedTool, setTool } = controller;
+  const tool = routedTool && HOME_TOOLS.includes(routedTool) ? routedTool : null;
   useEffect(() => {
-    if (tool !== 'characters') setCharacterSheet(null);
-    if (tool !== 'personas') setPersonaPage(null);
-    if (tool !== 'preset') setPresetPrompt(null);
-    if (tool !== 'lorebooks') setLorePage(null);
-  }, [tool, setCharacterSheet, setPersonaPage, setPresetPrompt, setLorePage]);
+    if (routedTool && !HOME_TOOLS.includes(routedTool)) setTool(null);
+  }, [routedTool, setTool]);
   const [opened, setOpened] = useState<IslandMode | null>(null);
   const [notice, setNotice] = useState<IslandNotice | null>(null);
   const [onApps, setOnApps] = useState(false);
@@ -326,15 +327,21 @@ export function HomeShell({ controller }: { controller: AppController }) {
     [controller],
   );
 
-  const openTool = useCallback((id: ToolId) => {
-    setOpened(null);
-    setTool((current) => (current === id ? null : id));
-  }, []);
+  const openTool = useCallback(
+    (id: ToolId) => {
+      setOpened(null);
+      setTool((current) => (current === id ? null : id));
+    },
+    [setTool],
+  );
   // Search opens a tool onto something; it never closes the one already open.
-  const showTool = useCallback((id: ToolId) => {
-    setOpened(null);
-    setTool(id);
-  }, []);
+  const showTool = useCallback(
+    (id: ToolId) => {
+      setOpened(null);
+      setTool(id);
+    },
+    [setTool],
+  );
 
   const collapse = useCallback(() => setOpened(null), []);
   const openPane = useCallback((next: IslandMode) => {
@@ -372,7 +379,7 @@ export function HomeShell({ controller }: { controller: AppController }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opened, tool, screen, stack, picked, openEntry, shown]);
+  }, [opened, tool, screen, stack, picked, openEntry, shown, setTool]);
 
   // Scrolling to Create | Arena hands over at a third of the way: the cover lifts away, the
   // words slide in and the colour cools to lime, each on its own transition. State, not a
