@@ -47,6 +47,23 @@ describe('inkSegments', () => {
     ]);
   });
 
+  test('code spans use their own ink instead of dialogue or action ink', () => {
+    expect(kinds('Use `"hi"` and `*wave*`.')).toEqual([
+      ['plain', 'Use '],
+      ['code', '`"hi"`'],
+      ['plain', ' and '],
+      ['code', '`*wave*`'],
+      ['plain', '.'],
+    ]);
+  });
+
+  test('fenced code is coloured even before its closing fence arrives', () => {
+    expect(kinds('Before\n```ts\nconst wave = "hi";')).toEqual([
+      ['plain', 'Before\n'],
+      ['code', '```ts\nconst wave = "hi";'],
+    ]);
+  });
+
   test('a slash later in the text is not a command', () => {
     expect(kinds('either/or')).toEqual([['plain', 'either/or']]);
   });

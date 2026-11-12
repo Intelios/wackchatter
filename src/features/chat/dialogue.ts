@@ -33,8 +33,8 @@ export function dialogueRanges(text: string, eligible?: readonly boolean[]): Dia
   return ranges;
 }
 
-/** Mark Markdown code spans as ineligible without parsing the rest of Markdown. */
-function markdownEligibility(text: string): boolean[] {
+/** Return false inside Markdown code spans and fences without parsing the rest of Markdown. */
+export function markdownEligibility(text: string): boolean[] {
   const eligible = Array.from({ length: text.length }, () => true);
   let offset = 0;
   let fence: { marker: '`' | '~'; length: number } | null = null;

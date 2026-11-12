@@ -416,6 +416,10 @@
   color: var(--w3-muted);
 }
 
+.w3-msg__ink [data-ink="code"] {
+  color: var(--wc-code-color);
+}
+
 .w3-msg__ink [data-ink="macro"] {
   color: var(--w3-accent);
 }
@@ -974,6 +978,9 @@ button.w3-reason__head:hover {
 }
 .w3-ink [data-ink="act"] {
   color: var(--w3-muted);
+}
+.w3-ink [data-ink="code"] {
+  color: var(--wc-code-color);
 }
 .w3-ink [data-ink="macro"],
 .w3-ink [data-ink="command"] {
