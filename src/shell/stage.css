@@ -1548,30 +1548,22 @@ button.w3-reason__head:hover {
   color: inherit;
 }
 
-/* Streaming off in Settings: a quiet count while it writes, then the reply fades in. */
+/*
+ * Streaming off in Settings: just the dot while it writes (WritingDot.tsx), then the reply
+ * fades in. The canvas overhangs the line so the dot has room for its tricks.
+ */
 .w3-writing {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 14px;
-  color: var(--w3-muted);
-  font-variant-numeric: tabular-nums;
+  height: 1lh;
+  color: var(--w3-accent);
 }
 
-.w3-writing i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--w3-accent);
-  animation: w3-writing 1.4s ease-in-out infinite;
-}
-
-@keyframes w3-writing {
-  50% {
-    opacity: 0.3;
-    transform: scale(0.7);
-  }
+.w3-writing canvas {
+  flex: none;
+  width: 44px;
+  height: 40px;
+  margin: -7px 0 -7px -10px;
 }
 
 .w3-reveal {

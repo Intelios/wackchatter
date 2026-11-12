@@ -31,6 +31,7 @@ import { Avatar } from './Avatar.tsx';
 import { CardGlance } from './CardViews.tsx';
 import { Icon } from './icons.tsx';
 import { inkSegments } from './ink.ts';
+import { WritingDot } from './WritingDot.tsx';
 
 interface MessageProps {
   message: MessageState;
@@ -315,7 +316,7 @@ export const Message = memo(function Message({
               }
             >
               {streaming && revealWhole ? (
-                <WritingWhole stream={stream} />
+                <WritingDot stream={stream} />
               ) : streaming ? (
                 <>
                   <LiveReasoning stream={stream} />
@@ -458,19 +459,6 @@ function ToolButton({
     >
       <Icon name={icon} size="sm" />
     </button>
-  );
-}
-
-/** Streaming off in Settings. The reply streams out of sight; this counts it in. */
-function WritingWhole({ stream }: { stream: StreamStore }) {
-  const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
-  const words = snapshot.text.trim() ? snapshot.text.trim().split(/\s+/).length : 0;
-  const thinking = !snapshot.text && Boolean(snapshot.reasoning);
-  return (
-    <p className="w3-writing" role="status">
-      <i aria-hidden="true" />
-      {thinking ? 'Thinking…' : words ? `Writing · ${words} words` : 'Writing…'}
-    </p>
   );
 }
 
