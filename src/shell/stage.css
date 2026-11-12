@@ -1548,7 +1548,7 @@ button.w3-reason__head:hover {
   color: inherit;
 }
 
-/* Reveal replies, when finished: a quiet count while it writes, then the reply fades in. */
+/* Streaming off in Settings: a quiet count while it writes, then the reply fades in. */
 .w3-writing {
   display: inline-flex;
   align-items: center;

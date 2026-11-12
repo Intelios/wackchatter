@@ -274,9 +274,41 @@ function Look({ controller }: { controller: AppController }) {
         selected.replace(/^user:/, ''));
   const dialogue = settings?.dialogueColors ?? DEFAULT_DIALOGUE_COLORS;
   const effectsOn = settings?.backgroundEffectEnabled !== false;
+  const streaming = settings?.revealReplies !== 'finished';
+  const presetCannotStream = controller.library.preset?.stream_openai === false;
 
   return (
     <>
+      <Group setting="reveal">
+        <Row
+          title="Streaming"
+          hint={
+            streaming
+              ? 'On: replies appear word by word as they’re written'
+              : 'Off: replies appear whole when finished. The island still counts words and time'
+          }
+        >
+          <Switch
+            label="Streaming"
+            on={streaming}
+            onChange={(on) => patch({ revealReplies: on ? 'written' : 'finished' })}
+          />
+        </Row>
+        {presetCannotStream ? (
+          <p className="w3-set__hint">
+            This preset has “Endpoint can stream” turned off, so replies always arrive whole and the
+            island can’t count words.{' '}
+            <button
+              type="button"
+              className="w3-linkish"
+              onClick={() => controller.setTool('preset')}
+            >
+              Open the preset
+            </button>
+          </p>
+        ) : null}
+      </Group>
+
       <Group label="Background" aside={selectedLabel ?? 'None'} setting="background">
         <div className="w3-set__bgs">
           <button
@@ -477,26 +509,8 @@ function Text({ controller }: { controller: AppController }) {
     if (tag && !tags.includes(tag)) patch({ hiddenTags: [...tags, tag] });
     setDraft('');
   };
-  const reveal = settings?.revealReplies === 'finished' ? 'finished' : 'written';
   return (
     <>
-      <Group label="Replies" setting="reveal">
-        <Row
-          title="Reveal replies"
-          hint="Finished replies appear whole; the lights still follow the writing"
-        >
-          <Segments
-            label="Reveal replies"
-            value={reveal}
-            options={[
-              ['written', 'As they’re written'],
-              ['finished', 'When finished'],
-            ]}
-            onChange={(revealReplies) => patch({ revealReplies })}
-          />
-        </Row>
-      </Group>
-
       <Group
         label="Regex scripts"
         aside={`${scripts.filter((s) => !s.disabled).length} of ${scripts.length} on`}
@@ -782,7 +796,7 @@ function Hood({ controller }: { controller: AppController }) {
     <>
       <Group>
         <Range
-          label="Streaming"
+          label="Streaming refresh rate"
           setting="streaming"
           value={fps}
           min={5}
@@ -791,7 +805,7 @@ function Hood({ controller }: { controller: AppController }) {
           onChange={(value) => patch({ streamingFps: Math.round(value) })}
         />
         <p className="w3-set__hint">
-          How often a reply being written repaints. Lower is easier on a slow machine.
+          How often a streaming reply repaints. Lower is easier on a slow machine.
         </p>
         <Row
           title="Token counter"

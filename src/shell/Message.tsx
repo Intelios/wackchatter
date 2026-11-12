@@ -43,7 +43,7 @@ interface MessageProps {
   streaming: boolean;
   /** The character's card, opened from the portrait. None on your own messages. */
   card?: MessageCard;
-  /** Show the reply whole once it is finished, not word by word (Reveal replies). */
+  /** Show the reply whole once it is finished, not word by word (Streaming off in Settings). */
   revealWhole?: boolean;
   flash: boolean;
   mode: GenMode | null;
@@ -461,7 +461,7 @@ function ToolButton({
   );
 }
 
-/** Reveal replies: when finished. The reply streams out of sight; this counts it in. */
+/** Streaming off in Settings. The reply streams out of sight; this counts it in. */
 function WritingWhole({ stream }: { stream: StreamStore }) {
   const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
   const words = snapshot.text.trim() ? snapshot.text.trim().split(/\s+/).length : 0;

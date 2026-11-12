@@ -38,7 +38,7 @@ interface ChatStageProps {
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
-  /** Reveal replies: when finished. */
+  /** Settings ▸ Look ▸ Streaming is off: replies appear whole when finished. */
   revealWhole: boolean;
   ready: boolean;
   notReadyReason: string | null;
