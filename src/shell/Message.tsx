@@ -29,6 +29,7 @@ import type { StreamStore } from '../features/chat/state/streamStore.ts';
 import { resolveSwipeMotion, type SwipeMotionDir } from '../features/chat/swipeMotion.ts';
 import { Avatar } from './Avatar.tsx';
 import { CardGlance } from './CardViews.tsx';
+import { GhostDraft } from './GhostDraft.tsx';
 import { Icon } from './icons.tsx';
 import { inkSegments } from './ink.ts';
 
@@ -121,8 +122,11 @@ export const Message = memo(function Message({
   const prevStreamingRef = useRef(false);
   // A reply revealed whole fades in once, the moment it is finished.
   const [reveal, setReveal] = useState(0);
+  // Until then the nib writes its shape; it outlives the stream to fade over the text.
+  const [ghost, setGhost] = useState(false);
   useLayoutEffect(() => {
     if (prevStreamingRef.current && !streaming && revealWhole) setReveal((n) => n + 1);
+    if (streaming) setGhost(Boolean(revealWhole));
   }, [streaming, revealWhole]);
   useLayoutEffect(() => {
     const dir = resolveSwipeMotion({
@@ -304,26 +308,29 @@ export const Message = memo(function Message({
               </div>
             </div>
           ) : (
-            <div
-              key={`${motion?.n ?? 0}:${reveal}`}
-              className={
-                motion
-                  ? `w3-msg__content w3-motion w3-motion--${motion.dir}`
-                  : reveal
-                    ? 'w3-msg__content w3-reveal'
-                    : 'w3-msg__content'
-              }
-            >
-              {streaming && revealWhole ? (
-                <WritingWhole stream={stream} />
-              ) : streaming ? (
-                <>
-                  <LiveReasoning stream={stream} />
-                  <StreamingText store={stream} hideReasoning />
-                </>
-              ) : (
-                <Markdown text={renderedText} />
-              )}
+            <div className="w3-msg__sheet">
+              {ghost ? (
+                <GhostDraft stream={stream} leaving={!streaming} onGone={() => setGhost(false)} />
+              ) : null}
+              <div
+                key={`${motion?.n ?? 0}:${reveal}`}
+                className={
+                  motion
+                    ? `w3-msg__content w3-motion w3-motion--${motion.dir}`
+                    : reveal
+                      ? 'w3-msg__content w3-reveal'
+                      : 'w3-msg__content'
+                }
+              >
+                {streaming && revealWhole ? null : streaming ? (
+                  <>
+                    <LiveReasoning stream={stream} />
+                    <StreamingText store={stream} hideReasoning />
+                  </>
+                ) : (
+                  <Markdown text={renderedText} />
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -458,19 +465,6 @@ function ToolButton({
     >
       <Icon name={icon} size="sm" />
     </button>
-  );
-}
-
-/** Streaming off in Settings. The reply streams out of sight; this counts it in. */
-function WritingWhole({ stream }: { stream: StreamStore }) {
-  const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
-  const words = snapshot.text.trim() ? snapshot.text.trim().split(/\s+/).length : 0;
-  const thinking = !snapshot.text && Boolean(snapshot.reasoning);
-  return (
-    <p className="w3-writing" role="status">
-      <i aria-hidden="true" />
-      {thinking ? 'Thinking…' : words ? `Writing · ${words} words` : 'Writing…'}
-    </p>
   );
 }
 

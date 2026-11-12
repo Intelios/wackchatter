@@ -317,7 +317,9 @@ generation, flushes saves, and refuses to move if a flush fails.
 
 **The chat in 3.0:** the chat's model sits on the island (one click opens the picker; it sets
 the `chat` slot). `AppSettings.revealReplies` is the Streaming switch in Settings ▸ Look and display only: `finished` (off) hides the text while
-it streams and shows it whole at the end, so the island and the Line still follow the stream;
+it streams and shows it whole at the end, so the island and the Line still follow the stream,
+and a nib writes the hidden reply's shape meanwhile (`GhostDraft.tsx` over the pure
+`ghostDraft.ts`: word lengths, voices and breaks, never a letter; one flat canvas);
 the preset's `stream_openai` stays the real switch, for endpoints that cannot stream. The
 character's card opens from each portrait (a glance) and in full in the margin, which it
 shares with the tools: opening one puts the other away.
