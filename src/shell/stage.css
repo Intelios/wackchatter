@@ -357,25 +357,85 @@
   margin-top: 6px;
 }
 
+.w3-msg__edit-field {
+  display: grid;
+  min-width: 0;
+}
+
+.w3-msg__ink,
 .w3-msg__edit {
-  display: block;
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  min-width: 0;
   width: 100%;
-  resize: none;
-  border: 0;
-  outline: none;
-  background: none;
+  margin: 0;
   padding: 0;
+  border: 0;
   font-family: var(--w3-font);
   font-size: 16px;
+  font-weight: 400;
   line-height: 1.68;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  scrollbar-width: none;
+}
+
+.w3-msg__ink {
+  pointer-events: none;
   color: var(--w3-text);
+}
+
+.w3-msg__edit {
+  position: relative;
+  z-index: 1;
+  display: block;
+  height: 100%;
+  resize: none;
+  outline: none;
+  background: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
   caret-color: var(--w3-edit-accent);
   overflow: hidden;
 }
 
+.w3-msg__edit::selection {
+  background: var(--w3-edit-line);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.w3-msg__ink [data-ink="say"] {
+  color: var(--w3-say, var(--w3-edit-accent));
+}
+
+.w3-msg__ink [data-ink="act"] {
+  color: var(--w3-muted);
+}
+
+.w3-msg__ink [data-ink="macro"] {
+  color: var(--w3-accent);
+}
+
+.w3-reason__edit .w3-msg__ink,
 .w3-reason__edit .w3-msg__edit {
   font-size: 14px;
   line-height: 1.65;
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .w3-msg[data-dialogue][data-dialogue-gradient] .w3-msg__editor .w3-msg__ink [data-ink="say"] {
+    background-image: var(--dialogue-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
 }
 
 .w3-msg__edit-bar {

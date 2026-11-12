@@ -30,6 +30,7 @@ import { resolveSwipeMotion, type SwipeMotionDir } from '../features/chat/swipeM
 import { Avatar } from './Avatar.tsx';
 import { CardGlance } from './CardViews.tsx';
 import { Icon } from './icons.tsx';
+import { inkSegments } from './ink.ts';
 
 interface MessageProps {
   message: MessageState;
@@ -150,7 +151,7 @@ export const Message = memo(function Message({
     typeof providerId === 'string' && isProviderId(providerId) ? PROVIDERS[providerId].label : null;
   const model = info?.extra?.model ? String(info.extra.model) : null;
 
-  useAutoGrowTextarea(editorRef, editing, draft, openScrollTopRef);
+  useEditorScrollAndFocus(editorRef, editing, draft, openScrollTopRef);
 
   function startEditing() {
     const scroller = articleRef.current?.closest<HTMLElement>('.w3-transcript');
@@ -196,7 +197,7 @@ export const Message = memo(function Message({
   ];
 
   const style = {
-    '--w3-say': dialogueColor ?? 'var(--w3-dialogue)',
+    '--w3-say': dialogueColor ?? (isUser ? 'var(--w3-me)' : 'var(--w3-dialogue)'),
     '--dialogue-gradient': dialogueGradient ?? 'none',
   } as CSSProperties;
 
@@ -278,23 +279,13 @@ export const Message = memo(function Message({
 
           {editing ? (
             <div className="w3-msg__editor">
-              <textarea
+              <InkEditor
                 ref={editorRef}
-                className="w3-msg__edit"
                 value={draft}
-                rows={1}
-                aria-label="Edit message"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    event.preventDefault();
-                    setEditing(false);
-                  }
-                  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    commitEdit();
-                  }
-                }}
+                label="Edit message"
+                onChange={setDraft}
+                onCommit={commitEdit}
+                onCancel={() => setEditing(false)}
               />
               <div className="w3-msg__edit-bar">
                 <span className="w3-msg__edit-hint">⌘↵ saves · Esc cancels</span>
@@ -505,55 +496,102 @@ function LiveReasoning({ stream }: { stream: StreamStore }) {
   );
 }
 
-function resizeTextareaPreservingScroll(
-  element: HTMLTextAreaElement,
-  initialScrollTop?: number | null,
-  keepBottomInView?: boolean,
-) {
-  const scroller = element.closest<HTMLElement>('.w3-transcript');
-  const prevScrollTop = initialScrollTop ?? scroller?.scrollTop ?? null;
-  const prevHeight = element.offsetHeight;
-  element.style.height = 'auto';
-  const nextHeight = element.scrollHeight;
-  element.style.height = `${nextHeight}px`;
-  if (!scroller || prevScrollTop === null) return;
-
-  scroller.scrollTop = prevScrollTop;
-  const container = element.closest<HTMLElement>('.w3-msg__editor, .w3-reason__edit') ?? element;
-  const scrollerRect = scroller.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  const limit = scrollerRect.bottom - 16;
-
-  if (keepBottomInView && containerRect.bottom > limit) {
-    scroller.scrollTop += containerRect.bottom - limit;
-  } else if (
-    nextHeight > prevHeight &&
-    containerRect.bottom > limit &&
-    containerRect.bottom - (nextHeight - prevHeight) <= limit + 8
-  ) {
-    scroller.scrollTop += nextHeight - prevHeight;
-  }
+function InkEditor({
+  ref,
+  value,
+  label,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  ref: RefObject<HTMLTextAreaElement | null>;
+  value: string;
+  label: string;
+  onChange: (next: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="w3-msg__edit-field">
+      <div className="w3-msg__ink" aria-hidden="true">
+        {inkSegments(value).map((segment, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional by nature
+          <span key={index} data-ink={segment.kind}>
+            {segment.text}
+          </span>
+        ))}
+        {/* A trailing newline needs something after it to take up its line. */}
+        {'\u200b'}
+      </div>
+      <textarea
+        ref={ref}
+        className="w3-msg__edit"
+        value={value}
+        rows={1}
+        spellCheck
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            onCancel();
+          }
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            onCommit();
+          }
+        }}
+      />
+    </div>
+  );
 }
 
-function useAutoGrowTextarea(
+function useEditorScrollAndFocus(
   ref: RefObject<HTMLTextAreaElement | null>,
   active: boolean,
   value: string,
   openScrollTopRef?: RefObject<number | null>,
 ) {
   const wasActiveRef = useRef(false);
+  const prevHeightRef = useRef(0);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: the draft is the trigger, read through the element
   useLayoutEffect(() => {
     const element = ref.current;
     if (!active || !element) {
       wasActiveRef.current = false;
+      prevHeightRef.current = 0;
       return;
     }
     const opening = !wasActiveRef.current;
     wasActiveRef.current = true;
-    const initialScrollTop = opening ? (openScrollTopRef?.current ?? null) : null;
-    if (opening && openScrollTopRef) openScrollTopRef.current = null;
-    resizeTextareaPreservingScroll(element, initialScrollTop, opening);
+    const prevHeight = prevHeightRef.current;
+    const nextHeight = element.offsetHeight;
+    prevHeightRef.current = nextHeight;
+
+    const scroller = element.closest<HTMLElement>('.w3-transcript');
+    if (!scroller) return;
+
+    if (opening && openScrollTopRef?.current !== null && openScrollTopRef?.current !== undefined) {
+      scroller.scrollTop = openScrollTopRef.current;
+      openScrollTopRef.current = null;
+    }
+
+    const container = element.closest<HTMLElement>('.w3-msg__editor, .w3-reason__edit') ?? element;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const limit = scrollerRect.bottom - 16;
+
+    if (opening && containerRect.bottom > limit) {
+      scroller.scrollTop += containerRect.bottom - limit;
+    } else if (
+      !opening &&
+      nextHeight > prevHeight &&
+      containerRect.bottom > limit &&
+      containerRect.bottom - (nextHeight - prevHeight) <= limit + 8
+    ) {
+      scroller.scrollTop += nextHeight - prevHeight;
+    }
   }, [ref, active, value, openScrollTopRef]);
 
   useLayoutEffect(() => {
@@ -561,14 +599,6 @@ function useAutoGrowTextarea(
     if (!active || !element) return;
     element.focus({ preventScroll: true });
     element.setSelectionRange(element.value.length, element.value.length);
-    let lastWidth = element.clientWidth;
-    const observer = new ResizeObserver(() => {
-      if (element.clientWidth === lastWidth) return;
-      lastWidth = element.clientWidth;
-      resizeTextareaPreservingScroll(element);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
   }, [ref, active]);
 }
 
@@ -591,7 +621,7 @@ function ReasoningBlock({
   const shown = displayText ?? text;
   const words = shown.trim() ? shown.trim().split(/\s+/).length : 0;
 
-  useAutoGrowTextarea(editorRef, open && editing, draft, openScrollTopRef);
+  useEditorScrollAndFocus(editorRef, open && editing, draft, openScrollTopRef);
 
   function commitEdit() {
     if (draft !== text) onEdit(draft);
@@ -622,23 +652,13 @@ function ReasoningBlock({
       {open ? (
         editing ? (
           <div className="w3-reason__edit">
-            <textarea
+            <InkEditor
               ref={editorRef}
-              className="w3-msg__edit"
               value={draft}
-              rows={1}
-              aria-label="Edit reasoning"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  setEditing(false);
-                }
-                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  commitEdit();
-                }
-              }}
+              label="Edit reasoning"
+              onChange={setDraft}
+              onCommit={commitEdit}
+              onCancel={() => setEditing(false)}
             />
             <div className="w3-msg__edit-bar">
               <span className="w3-msg__edit-hint">⌘↵ saves · Esc cancels</span>
