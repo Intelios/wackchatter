@@ -271,7 +271,9 @@ export const Message = memo(function Message({
           </header>
 
           {!streaming && reasoning ? (
+            // Keyed by swipe: an edit open on one swipe must never save onto another.
             <ReasoningBlock
+              key={message.swipe_id}
               text={reasoning}
               displayText={displayReasoning}
               onEdit={(next) => onEditReasoning(message.id, next)}
