@@ -29,7 +29,7 @@ const SETTING_LABELS: Record<string, string> = {
   openai_max_tokens_unlimited: 'No reply limit',
   openai_max_context: 'Context size',
   reasoning_effort: 'Reasoning effort',
-  stream_openai: 'Streaming',
+  stream_openai: 'Endpoint can stream',
   n: 'Completions',
   seed: 'Seed',
   impersonation_prompt: 'Impersonation prompt',

@@ -7,16 +7,23 @@
  * no hidden characters. Every character of the draft appears in exactly one segment.
  */
 
-import { dialogueRanges } from '../features/chat/dialogue.ts';
+import { dialogueRanges, markdownEligibility } from '../features/chat/dialogue.ts';
 
-export type InkKind = 'plain' | 'say' | 'act' | 'macro' | 'command';
+export type InkKind = 'plain' | 'say' | 'act' | 'code' | 'macro' | 'command';
 
 export interface InkSegment {
   text: string;
   kind: InkKind;
 }
 
-const RANK: Record<InkKind, number> = { plain: 0, act: 1, say: 2, macro: 3, command: 4 };
+const RANK: Record<InkKind, number> = {
+  plain: 0,
+  act: 1,
+  say: 2,
+  code: 3,
+  macro: 4,
+  command: 5,
+};
 
 export function inkSegments(text: string): InkSegment[] {
   if (!text) return [];
@@ -51,6 +58,18 @@ export function inkSegments(text: string): InkSegment[] {
   const lastClose = closedOnLast.length ? closedOnLast[closedOnLast.length - 1]!.end : lastLine[0];
   const trailingOpen = findOpenQuote(text, lastClose, lastLine[1]);
   if (trailingOpen >= 0) paint(trailingOpen, lastLine[1], 'say');
+
+  // Code wins over speech and actions inside it, as it does in the transcript.
+  const eligible = markdownEligibility(text);
+  let codeStart = -1;
+  for (let i = 0; i <= text.length; i++) {
+    if (i < text.length && !eligible[i]) {
+      if (codeStart < 0) codeStart = i;
+    } else if (codeStart >= 0) {
+      paint(codeStart, i, 'code');
+      codeStart = -1;
+    }
+  }
 
   // {{macros}}
   for (const match of text.matchAll(/\{\{[^{}\n]*\}\}/g)) {

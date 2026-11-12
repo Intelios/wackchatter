@@ -38,7 +38,7 @@ interface ChatStageProps {
   onGuidanceChange: (patch: Partial<GuidanceSettings>) => void;
   quickCommands: QuickCommand[];
   onQuickCommandsChange: (commands: QuickCommand[]) => void;
-  /** Reveal replies: when finished. */
+  /** Settings ▸ Look ▸ Streaming is off: replies appear whole when finished. */
   revealWhole: boolean;
   ready: boolean;
   notReadyReason: string | null;
@@ -68,7 +68,8 @@ export function ChatStage({
   onCopied,
   onSent,
 }: ChatStageProps) {
-  const { state, stream, busy, generationBlocked } = chat;
+  const { state, stream, busy } = chat;
+  const summaryRunning = chat.summaryStatus.running;
   const {
     scrollRef,
     contentRef,
@@ -180,7 +181,7 @@ export function ChatStage({
               stream,
               isLast: message.id === lastId,
               busy,
-              summaryRunning: chat.summaryStatus.running,
+              summaryRunning,
               displayText: displayTexts.get(message.id)?.text,
               displayReasoning: displayTexts.get(message.id)?.reasoning,
               creatorNotes: messageIndex === 0 ? renderedNotes : undefined,
@@ -228,7 +229,7 @@ export function ChatStage({
               title="The reply didn't arrive."
               detail={state.error}
               action={awaitingReply ? { label: 'Try again', run: surface.regenerate } : undefined}
-              disabled={busy || !ready}
+              disabled={busy || summaryRunning || !ready}
             />
           ) : null}
           {chat.saveError ? (
@@ -263,8 +264,9 @@ export function ChatStage({
           stream={stream}
           onContinue={surface.continueLast}
           continueDisabledReason={continueDisabledReason}
-          onStop={chat.summaryStatus.running ? chat.cancelSummary : chat.abort}
-          busy={generationBlocked}
+          onStop={chat.abort}
+          busy={busy}
+          memoryRunning={summaryRunning}
           disabled={Boolean(blockedReason)}
           disabledReason={blockedReason}
           onChooseModel={!ready && !loadBlocksChat ? onChooseModel : undefined}

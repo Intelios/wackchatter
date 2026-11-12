@@ -316,7 +316,7 @@ generation, flushes saves, and refuses to move if a flush fails.
 - Error boundaries wrap the root and each shell region.
 
 **The chat in 3.0:** the chat's model sits on the island (one click opens the picker; it sets
-the `chat` slot). `AppSettings.revealReplies` is display only: `finished` hides the text while
+the `chat` slot). `AppSettings.revealReplies` is the Streaming switch in Settings ▸ Look and display only: `finished` (off) hides the text while
 it streams and shows it whole at the end, so the island and the Line still follow the stream;
 the preset's `stream_openai` stays the real switch, for endpoints that cannot stream. The
 character's card opens from each portrait (a glance) and in full in the margin, which it

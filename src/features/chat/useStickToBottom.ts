@@ -69,13 +69,29 @@ export function useStickToBottom<T extends HTMLElement>(
     const content = contentRef.current;
     if (!content) return;
 
+    let wasEditing = false;
     const observer = new ResizeObserver(() => {
-      if (following.current) scrollToBottom();
+      const isEditing = Boolean(content.querySelector('[data-editing], [data-editing-reasoning]'));
+      if (isEditing) {
+        wasEditing = true;
+        return;
+      }
+      if (wasEditing) {
+        wasEditing = false;
+        const element = scrollRef.current;
+        if (element) {
+          const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+          following.current = distance <= THRESHOLD_PX;
+        }
+        return;
+      }
+      if (!following.current) return;
+      scrollToBottom();
     });
 
     observer.observe(content);
     return () => observer.disconnect();
-  }, [contentRef, scrollToBottom]);
+  }, [scrollRef, contentRef, scrollToBottom]);
 
   /*
    * Follow the container's own resize, not just its content's.
@@ -96,12 +112,14 @@ export function useStickToBottom<T extends HTMLElement>(
       const newHeight = scrollEl.clientHeight;
       if (newHeight === lastHeight) return;
       lastHeight = newHeight;
-      if (following.current) scrollToBottom();
+      if (!following.current) return;
+      if (contentRef.current?.querySelector('[data-editing], [data-editing-reasoning]')) return;
+      scrollToBottom();
     });
 
     observer.observe(scrollEl);
     return () => observer.disconnect();
-  }, [scrollRef, scrollToBottom]);
+  }, [scrollRef, contentRef, scrollToBottom]);
 
   return { scrollToBottom, stopFollowing, isFollowing: following };
 }

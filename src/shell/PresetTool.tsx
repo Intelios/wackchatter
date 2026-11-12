@@ -1119,9 +1119,9 @@ function HowItsSent({
         )}
         {toggle(
           'stream_openai',
-          'Stream replies',
+          'Endpoint can stream',
           preset.stream_openai !== false,
-          'Turn off only for an endpoint that can’t stream. To read replies whole, use Reveal replies in Settings ▸ Text.',
+          'Turn off only for an endpoint that can’t stream. To read replies whole, turn Streaming off in Settings ▸ Look.',
         )}
         {toggle(
           'squash_system_messages',

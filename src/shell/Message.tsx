@@ -11,7 +11,7 @@ import { isProviderId, PROVIDERS } from '@shared/providers/types.ts';
 import {
   type CSSProperties,
   memo,
-  useEffect,
+  type RefObject,
   useLayoutEffect,
   useRef,
   useState,
@@ -30,6 +30,8 @@ import { resolveSwipeMotion, type SwipeMotionDir } from '../features/chat/swipeM
 import { Avatar } from './Avatar.tsx';
 import { CardGlance } from './CardViews.tsx';
 import { Icon } from './icons.tsx';
+import { inkSegments } from './ink.ts';
+import { WritingDot } from './WritingDot.tsx';
 
 interface MessageProps {
   message: MessageState;
@@ -42,7 +44,7 @@ interface MessageProps {
   streaming: boolean;
   /** The character's card, opened from the portrait. None on your own messages. */
   card?: MessageCard;
-  /** Show the reply whole once it is finished, not word by word (Reveal replies). */
+  /** Show the reply whole once it is finished, not word by word (Streaming off in Settings). */
   revealWhole?: boolean;
   flash: boolean;
   mode: GenMode | null;
@@ -109,7 +111,9 @@ export const Message = memo(function Message({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const articleRef = useRef<HTMLElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const openScrollTopRef = useRef<number | null>(null);
 
   // The swipe entrance: replayed by remounting the body on a bump, set only when a change
   // really is a swipe or a re-roll, so loading a chat stays still.
@@ -148,23 +152,11 @@ export const Message = memo(function Message({
     typeof providerId === 'string' && isProviderId(providerId) ? PROVIDERS[providerId].label : null;
   const model = info?.extra?.model ? String(info.extra.model) : null;
 
-  // Grow the editor with its text.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the draft is the trigger, read through the element
-  useLayoutEffect(() => {
-    const element = editorRef.current;
-    if (!editing || !element) return;
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
-  }, [editing, draft]);
-
-  useEffect(() => {
-    if (!editing) return;
-    const element = editorRef.current;
-    element?.focus({ preventScroll: true });
-    element?.setSelectionRange(element.value.length, element.value.length);
-  }, [editing]);
+  useEditorScrollAndFocus(editorRef, editing, draft, openScrollTopRef);
 
   function startEditing() {
+    const scroller = articleRef.current?.closest<HTMLElement>('.w3-transcript');
+    openScrollTopRef.current = scroller ? scroller.scrollTop : null;
     setDraft(text);
     setMotion(null);
     setEditing(true);
@@ -206,12 +198,13 @@ export const Message = memo(function Message({
   ];
 
   const style = {
-    '--w3-say': dialogueColor ?? 'var(--w3-dialogue)',
+    '--w3-say': dialogueColor ?? (isUser ? 'var(--w3-me)' : 'var(--w3-dialogue)'),
     '--dialogue-gradient': dialogueGradient ?? 'none',
   } as CSSProperties;
 
   return (
     <article
+      ref={articleRef}
       className="w3-msg"
       data-message-id={message.id}
       data-role={isUser ? 'user' : 'assistant'}
@@ -277,39 +270,40 @@ export const Message = memo(function Message({
             </span>
           </header>
 
+          {!streaming && reasoning ? (
+            // Keyed by swipe: an edit open on one swipe must never save onto another.
+            <ReasoningBlock
+              key={message.swipe_id}
+              text={reasoning}
+              displayText={displayReasoning}
+              onEdit={(next) => onEditReasoning(message.id, next)}
+            />
+          ) : null}
+
           {editing ? (
             <div className="w3-msg__editor">
-              <textarea
+              <InkEditor
                 ref={editorRef}
-                className="w3-msg__edit"
                 value={draft}
-                rows={1}
-                aria-label="Edit message"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    event.preventDefault();
-                    setEditing(false);
-                  }
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    commitEdit();
-                  }
-                }}
+                label="Edit message"
+                onChange={setDraft}
+                onCommit={commitEdit}
+                onCancel={() => setEditing(false)}
               />
               <div className="w3-msg__edit-bar">
-                <button type="button" className="w3-textbtn" onClick={commitEdit}>
-                  Save
-                </button>
-                <button
-                  type="button"
-                  className="w3-textbtn"
-                  data-quiet
-                  onClick={() => setEditing(false)}
-                >
-                  Cancel
-                </button>
-                <span>Enter saves · Shift Enter for a new line · Esc cancels</span>
+                <span className="w3-msg__edit-hint">⌘↵ saves · Esc cancels</span>
+                <div className="w3-msg__edit-acts">
+                  <button
+                    type="button"
+                    className="w3-st-ghost w3-st-ghost--sm"
+                    onClick={() => setEditing(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="button" className="w3-msg__save" onClick={commitEdit}>
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
@@ -324,23 +318,14 @@ export const Message = memo(function Message({
               }
             >
               {streaming && revealWhole ? (
-                <WritingWhole stream={stream} />
+                <WritingDot stream={stream} />
               ) : streaming ? (
                 <>
                   <LiveReasoning stream={stream} />
                   <StreamingText store={stream} hideReasoning />
                 </>
               ) : (
-                <>
-                  {reasoning ? (
-                    <ReasoningBlock
-                      text={reasoning}
-                      displayText={displayReasoning}
-                      onEdit={(next) => onEditReasoning(message.id, next)}
-                    />
-                  ) : null}
-                  <Markdown text={renderedText} />
-                </>
+                <Markdown text={renderedText} />
               )}
             </div>
           )}
@@ -479,19 +464,6 @@ function ToolButton({
   );
 }
 
-/** Reveal replies: when finished. The reply streams out of sight; this counts it in. */
-function WritingWhole({ stream }: { stream: StreamStore }) {
-  const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
-  const words = snapshot.text.trim() ? snapshot.text.trim().split(/\s+/).length : 0;
-  const thinking = !snapshot.text && Boolean(snapshot.reasoning);
-  return (
-    <p className="w3-writing" role="status">
-      <i aria-hidden="true" />
-      {thinking ? 'Thinking…' : words ? `Writing · ${words} words` : 'Writing…'}
-    </p>
-  );
-}
-
 /** The reasoning as it arrives: faint, scrolling under a shimmering "Thinking". */
 function LiveReasoning({ stream }: { stream: StreamStore }) {
   const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot);
@@ -514,6 +486,112 @@ function LiveReasoning({ stream }: { stream: StreamStore }) {
   );
 }
 
+function InkEditor({
+  ref,
+  value,
+  label,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  ref: RefObject<HTMLTextAreaElement | null>;
+  value: string;
+  label: string;
+  onChange: (next: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="w3-msg__edit-field">
+      <div className="w3-msg__ink" aria-hidden="true">
+        {inkSegments(value).map((segment, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional by nature
+          <span key={index} data-ink={segment.kind}>
+            {segment.text}
+          </span>
+        ))}
+        {/* A trailing newline needs something after it to take up its line. */}
+        {'\u200b'}
+      </div>
+      <textarea
+        ref={ref}
+        className="w3-msg__edit"
+        value={value}
+        rows={1}
+        spellCheck
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            onCancel();
+          }
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            onCommit();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function useEditorScrollAndFocus(
+  ref: RefObject<HTMLTextAreaElement | null>,
+  active: boolean,
+  value: string,
+  openScrollTopRef?: RefObject<number | null>,
+) {
+  const wasActiveRef = useRef(false);
+  const prevHeightRef = useRef(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the draft is the trigger, read through the element
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!active || !element) {
+      wasActiveRef.current = false;
+      prevHeightRef.current = 0;
+      return;
+    }
+    const opening = !wasActiveRef.current;
+    wasActiveRef.current = true;
+    const prevHeight = prevHeightRef.current;
+    const nextHeight = element.offsetHeight;
+    prevHeightRef.current = nextHeight;
+
+    const scroller = element.closest<HTMLElement>('.w3-transcript');
+    if (!scroller) return;
+
+    if (opening && openScrollTopRef?.current !== null && openScrollTopRef?.current !== undefined) {
+      scroller.scrollTop = openScrollTopRef.current;
+      openScrollTopRef.current = null;
+    }
+
+    const container = element.closest<HTMLElement>('.w3-msg__editor, .w3-reason__edit') ?? element;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const limit = scrollerRect.bottom - 16;
+
+    if (opening && containerRect.bottom > limit) {
+      scroller.scrollTop += containerRect.bottom - limit;
+    } else if (
+      !opening &&
+      nextHeight > prevHeight &&
+      containerRect.bottom > limit &&
+      containerRect.bottom - (nextHeight - prevHeight) <= limit + 8
+    ) {
+      scroller.scrollTop += nextHeight - prevHeight;
+    }
+  }, [ref, active, value, openScrollTopRef]);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!active || !element) return;
+    element.focus({ preventScroll: true });
+    element.setSelectionRange(element.value.length, element.value.length);
+  }, [ref, active]);
+}
+
 /** Settled reasoning: one line, opened on demand, editable while open. */
 function ReasoningBlock({
   text,
@@ -527,11 +605,26 @@ function ReasoningBlock({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const openScrollTopRef = useRef<number | null>(null);
   const shown = displayText ?? text;
   const words = shown.trim() ? shown.trim().split(/\s+/).length : 0;
 
+  useEditorScrollAndFocus(editorRef, open && editing, draft, openScrollTopRef);
+
+  function commitEdit() {
+    if (draft !== text) onEdit(draft);
+    setEditing(false);
+  }
+
   return (
-    <div className="w3-reason" data-open={open || undefined}>
+    <div
+      ref={rootRef}
+      className="w3-reason"
+      data-open={open || undefined}
+      data-editing-reasoning={(open && editing) || undefined}
+    >
       <button
         type="button"
         className="w3-reason__head"
@@ -549,35 +642,28 @@ function ReasoningBlock({
       {open ? (
         editing ? (
           <div className="w3-reason__edit">
-            <textarea
-              className="w3-msg__edit"
+            <InkEditor
+              ref={editorRef}
               value={draft}
-              rows={Math.min(14, Math.max(3, draft.split('\n').length + 1))}
-              aria-label="Edit reasoning"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') setEditing(false);
-              }}
+              label="Edit reasoning"
+              onChange={setDraft}
+              onCommit={commitEdit}
+              onCancel={() => setEditing(false)}
             />
             <div className="w3-msg__edit-bar">
-              <button
-                type="button"
-                className="w3-textbtn"
-                onClick={() => {
-                  if (draft !== text) onEdit(draft);
-                  setEditing(false);
-                }}
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                className="w3-textbtn"
-                data-quiet
-                onClick={() => setEditing(false)}
-              >
-                Cancel
-              </button>
+              <span className="w3-msg__edit-hint">⌘↵ saves · Esc cancels</span>
+              <div className="w3-msg__edit-acts">
+                <button
+                  type="button"
+                  className="w3-st-ghost w3-st-ghost--sm"
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </button>
+                <button type="button" className="w3-msg__save" onClick={commitEdit}>
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -590,6 +676,8 @@ function ReasoningBlock({
               className="w3-textbtn"
               data-quiet
               onClick={() => {
+                const scroller = rootRef.current?.closest<HTMLElement>('.w3-transcript');
+                openScrollTopRef.current = scroller ? scroller.scrollTop : null;
                 setDraft(text);
                 setEditing(true);
               }}

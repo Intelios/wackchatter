@@ -55,6 +55,11 @@ interface LineComposerProps {
   onStop: () => void;
   /** Something is generating: actions wait, Send turns into Stop. */
   busy: boolean;
+  /**
+   * The chat's memory is being written. Writing stays open — the Line is yours — but
+   * nothing sends until it finishes: Send waits, with the reason on it.
+   */
+  memoryRunning: boolean;
   /** Writing is impossible, e.g. no chat model: the line goes dashed. */
   disabled: boolean;
   disabledReason?: string;
@@ -89,6 +94,7 @@ export function LineComposer({
   continueDisabledReason,
   onStop,
   busy,
+  memoryRunning,
   disabled,
   disabledReason,
   onChooseModel,
@@ -237,7 +243,7 @@ export function LineComposer({
 
   async function submit() {
     const trimmed = text.trim();
-    if (!trimmed || busy || disabled) return;
+    if (!trimmed || busy || disabled || memoryRunning) return;
     focusBeforeGenerate.current = document.activeElement;
     const rect = fieldRef.current?.getBoundingClientRect();
     const isCommand = trimmed.startsWith('/');
@@ -256,7 +262,7 @@ export function LineComposer({
 
   function guided(action: (text: string) => void) {
     const trimmed = text.trim();
-    if (!trimmed || busy || disabled) return;
+    if (!trimmed || busy || disabled || memoryRunning) return;
     focusBeforeGenerate.current = document.activeElement;
     action(trimmed);
   }
@@ -272,6 +278,9 @@ export function LineComposer({
 
   const has = Boolean(text.trim());
   const waiting = 'Wait for the current reply to finish.';
+  const memoryWaiting = 'Wait for the memory to finish.';
+  /* A reply and the memory never run at once: their generation slots refuse each other. */
+  const occupied = busy ? waiting : memoryRunning ? memoryWaiting : undefined;
   const blocked = disabled ? (disabledReason ?? 'Writing is unavailable right now.') : null;
   const needsText = (action: string) =>
     has ? undefined : `Type what should happen, then ${action}.`;
@@ -355,13 +364,13 @@ export function LineComposer({
             icon="mask"
             label="Impersonate"
             onClick={() => onImpersonate(text)}
-            reason={blocked ?? (busy ? waiting : undefined)}
+            reason={blocked ?? occupied}
           />
           <LineAction
             icon="forward"
             label="Continue"
             onClick={onContinue}
-            reason={blocked ?? (busy ? waiting : continueDisabledReason)}
+            reason={blocked ?? occupied ?? continueDisabledReason}
           />
         </span>
 
@@ -494,15 +503,13 @@ export function LineComposer({
             icon="compass"
             label="Guide the next reply"
             onClick={() => guided(onGuide)}
-            reason={blocked ?? (busy ? waiting : needsText('Guide'))}
+            reason={blocked ?? occupied ?? needsText('Guide')}
           />
           <LineAction
             icon="guidedSwipe"
             label="Guided swipe"
             onClick={() => guided(onGuidedSwipe)}
-            reason={
-              blocked ?? (busy ? waiting : (guidedSwipeDisabledReason ?? needsText('Guided swipe')))
-            }
+            reason={blocked ?? occupied ?? guidedSwipeDisabledReason ?? needsText('Guided swipe')}
           />
           <LineAction
             icon="pin"
@@ -516,9 +523,9 @@ export function LineComposer({
           type="submit"
           className="w3-send"
           data-stop={busy || undefined}
-          disabled={!busy && Boolean(blocked)}
+          disabled={!busy && Boolean(blocked ?? occupied)}
           aria-label={busy ? 'Stop' : 'Send'}
-          title={busy ? 'Stop' : (blocked ?? 'Send (Enter)')}
+          title={busy ? 'Stop' : (blocked ?? occupied ?? 'Send (Enter)')}
         >
           <span className="w3-send__face" data-face="send">
             <Icon name="send" />
