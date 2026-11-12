@@ -1548,38 +1548,29 @@ button.w3-reason__head:hover {
   color: inherit;
 }
 
-/*
- * Streaming off in Settings: a nib writes the reply's shape (GhostDraft.tsx), then the reply
- * fades in over it. The canvas overhangs the text so the pen has room to lean and hop.
- */
-.w3-msg__sheet {
-  position: relative;
+/* Streaming off in Settings: a quiet count while it writes, then the reply fades in. */
+.w3-writing {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--w3-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-.w3-ghost {
-  position: relative;
-  height: 1lh;
-  color: var(--w3-accent);
-  transition: height 0.2s var(--w3-out);
+.w3-writing i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--w3-accent);
+  animation: w3-writing 1.4s ease-in-out infinite;
 }
 
-.w3-ghost[data-leaving] {
-  position: absolute;
-  inset: 0 0 auto;
-  pointer-events: none;
-  transition: none;
-}
-
-.w3-ghost canvas {
-  position: absolute;
-  top: -60px;
-  left: -44px;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .w3-ghost {
-    transition: none;
+@keyframes w3-writing {
+  50% {
+    opacity: 0.3;
+    transform: scale(0.7);
   }
 }
 
