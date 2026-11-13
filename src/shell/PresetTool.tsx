@@ -25,6 +25,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { REASONING_EFFORT_OPTIONS, withReasoningEffort } from '@shared/models/reasoning.ts';
 import type { ModelRef } from '@shared/models/slots.ts';
 import { DEFAULT_IMPERSONATION_PROMPT } from '@shared/prompt/defaults.ts';
 import {
@@ -98,6 +99,8 @@ export interface PresetToolProps {
   open: string | null;
   setOpen: (identifier: string | null) => void;
   chatModel: ModelRef | null;
+  chatReasoningEffort?: ReasoningEffort;
+  chatModelDisabledReason?: string;
   onChatModel: (ref: ModelRef | null) => void;
   connection: ResolvedModel | null;
   extraSamplersSent: boolean;
@@ -969,6 +972,8 @@ function HowItsSent({
   changed,
   onPutBack,
   chatModel,
+  chatReasoningEffort,
+  chatModelDisabledReason,
   onChatModel,
   connection,
   extraSamplersSent,
@@ -984,8 +989,13 @@ function HowItsSent({
   const claudeOnOpenRouter =
     connection?.provider === 'openrouter' && isAnthropicModel(connection.model);
   const claudeBudget = claudeOnOpenRouter
-    ? claudeThinkingBudget(responseTokens, preset, preset.stream_openai !== false)
+    ? claudeThinkingBudget(
+        responseTokens,
+        withReasoningEffort(preset, chatReasoningEffort),
+        preset.stream_openai !== false,
+      )
     : null;
+  const chatEffortLabel = REASONING_EFFORT_OPTIONS.find(([id]) => id === chatReasoningEffort)?.[1];
   const extraOnly = extraSamplersSent ? undefined : 'Not sent by this provider (OpenRouter only)';
 
   /** One setting with its change dot. */
@@ -1061,7 +1071,13 @@ function HowItsSent({
     <section className="w3-preset__group" aria-label="How it's sent">
       <h3 className="w3-sheet__label">How it's sent</h3>
       <div className="w3-hmodel">
-        <ModelPicker label="Chat model" value={chatModel} onChange={onChatModel} />
+        <ModelPicker
+          label="Chat model"
+          value={chatModel}
+          onChange={onChatModel}
+          disabled={Boolean(chatModelDisabledReason)}
+          disabledReason={chatModelDisabledReason}
+        />
         <small>
           Connections are set up in Settings. Replies, recaps and impersonation use this model.
         </small>
@@ -1086,18 +1102,17 @@ function HowItsSent({
           <SelectField<ReasoningEffort>
             label="Reasoning effort"
             value={preset.reasoning_effort ?? 'auto'}
-            options={[
-              { label: 'Auto', value: 'auto' },
-              { label: 'Min', value: 'min' },
-              { label: 'Low', value: 'low' },
-              { label: 'Medium', value: 'medium' },
-              { label: 'High', value: 'high' },
-              { label: 'Max', value: 'max' },
-            ]}
+            options={REASONING_EFFORT_OPTIONS.map(([value, label]) => ({ value, label }))}
             onChange={(value) => setField('reasoning_effort', value)}
-            hint="Only reasoning models use this. Auto sends nothing."
+            hint="Preset default. Only reasoning models use this. Auto sends nothing."
           />,
         )}
+        {chatEffortLabel ? (
+          <p className="w3-sheet__hint">
+            Chat uses {chatEffortLabel}, remembered for the selected model. Choose Use preset in the
+            island’s model picker to follow this default.
+          </p>
+        ) : null}
         {claudeOnOpenRouter ? (
           <p className="w3-sheet__hint">
             {claudeBudget === null

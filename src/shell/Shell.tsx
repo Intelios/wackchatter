@@ -14,6 +14,7 @@ import './stage.css';
 import './bridge.css';
 
 import { greetingTexts } from '@shared/chat/message.ts';
+import { chatReasoningEffort } from '@shared/models/reasoning.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { ChatSummary } from '@shared/types/chat.ts';
 import type { ActivationResult } from '@shared/worldinfo/activate.ts';
@@ -59,7 +60,7 @@ import {
   ToolHeading,
   toolSubtitle,
 } from './MarginTools.tsx';
-import { ModelPane } from './ModelPane.tsx';
+import { ChatModelPane } from './ModelPane.tsx';
 import { PresetCoCreator } from './PresetCoCreator.tsx';
 import { Stats } from './Stats.tsx';
 import { Studio } from './Studio.tsx';
@@ -124,8 +125,12 @@ function ChatShell({
   const say = useCallback((next: Omit<IslandNotice, 'id'>) => {
     noticeId.current += 1;
     setNotice({ ...next, id: noticeId.current });
+    return noticeId.current;
   }, []);
-  const dismissNotice = useCallback(() => setNotice(null), []);
+  const dismissNotice = useCallback(() => {
+    setNotice(null);
+    app.clearChatModelError();
+  }, [app.clearChatModelError]);
 
   const characterName = character.name || active.name;
   const characterAvatarVersion = library.characterAvatarVersions[active.avatar];
@@ -256,6 +261,23 @@ function ChatShell({
     lastError.current = state.error;
   }, [state.error, say]);
 
+  const modelSaveNotice = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (app.chatModelError) {
+      modelSaveNotice.current = say({
+        icon: 'alert',
+        title: app.chatModelError.title,
+        text: app.chatModelError.message,
+        tone: 'bad',
+        sticky: true,
+      });
+    } else if (modelSaveNotice.current !== undefined) {
+      const id = modelSaveNotice.current;
+      setNotice((current) => (current?.id === id ? null : current));
+      modelSaveNotice.current = undefined;
+    }
+  }, [app.chatModelError, say]);
+
   // --- Faces -----------------------------------------------------------------------------
 
   const characterFace = { name: characterName, url: surface.characterAvatarUrl };
@@ -344,11 +366,13 @@ function ChatShell({
             setOpened(null);
             surface.runRecap();
           },
-          disabledReason: chat.generationBlocked
-            ? 'Wait for the current operation to finish.'
-            : state.messages.length
-              ? undefined
-              : 'This chat has no messages yet.',
+          disabledReason: app.chatModelSaving
+            ? 'Saving model settings…'
+            : chat.generationBlocked
+              ? 'Wait for the current operation to finish.'
+              : state.messages.length
+                ? undefined
+                : 'This chat has no messages yet.',
         },
         {
           id: 'export',
@@ -555,6 +579,7 @@ function ChatShell({
               }
               ready={controller.ready}
               notReadyReason={models.chat.blockedReason}
+              generationDisabledReason={app.chatModelSaving ? 'Saving model settings…' : undefined}
               onChooseModel={chooseModel}
               onCopied={onCopied}
               onSent={bloom}
@@ -646,14 +671,18 @@ function ChatShell({
               />
             ),
             model: (
-              <ModelPane
+              <ChatModelPane
                 active={mode === 'model'}
                 value={models.slots.chat}
-                head={<p className="w3-isl-model__head">The model for your chats</p>}
-                onPick={(ref) => {
-                  app.setModelSlot('chat', ref);
-                  setOpened(null);
+                effort={chatReasoningEffort(prefs.chatReasoningEfforts, models.slots.chat)}
+                presetEffort={library.preset?.reasoning_effort ?? 'auto'}
+                saving={app.chatModelSaving}
+                disabledReason={models.chat.blockedReason}
+                onPick={app.pickChatModel}
+                onEffort={(effort) => {
+                  if (models.slots.chat) void app.setChatReasoningEffort(models.slots.chat, effort);
                 }}
+                onDone={collapse}
               />
             ),
             gen: (

@@ -116,7 +116,27 @@ export function HomeShell({ controller }: { controller: AppController }) {
   const say = useCallback((next: Omit<IslandNotice, 'id'>) => {
     noticeId.current += 1;
     setNotice({ ...next, id: noticeId.current });
+    return noticeId.current;
   }, []);
+
+  // The Preset tool is reachable from home too, so a refused model save reports here rather
+  // than surfacing as a stale notice the next time a chat opens.
+  const modelSaveNotice = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (app.chatModelError) {
+      modelSaveNotice.current = say({
+        icon: 'alert',
+        title: app.chatModelError.title,
+        text: app.chatModelError.message,
+        tone: 'bad',
+        sticky: true,
+      });
+    } else if (modelSaveNotice.current !== undefined) {
+      const id = modelSaveNotice.current;
+      setNotice((current) => (current?.id === id ? null : current));
+      modelSaveNotice.current = undefined;
+    }
+  }, [app.chatModelError, say]);
 
   // Recents load once, and again when the library changes under us (an import, a rename).
   // biome-ignore lint/correctness/useExhaustiveDependencies: the library changing is the trigger
@@ -667,7 +687,10 @@ export function HomeShell({ controller }: { controller: AppController }) {
           generating={false}
           onCollapse={collapse}
           notice={notice}
-          onDismissNotice={() => setNotice(null)}
+          onDismissNotice={() => {
+            app.clearChatModelError();
+            setNotice(null);
+          }}
           wingsPinned={Boolean(tool)}
           wingLeft={
             screen === 'refused'

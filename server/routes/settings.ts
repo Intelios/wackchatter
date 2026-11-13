@@ -2,6 +2,7 @@
 
 import type { Connection } from '../../shared/providers/types.ts';
 import { isProviderId } from '../../shared/providers/types.ts';
+import type { SettingsPatch } from '../../shared/types/settings.ts';
 import { listModels, testConnection } from '../lib/generate.ts';
 import { errorResponse, json, notFound, readJson } from '../lib/http.ts';
 import { describeKeys, pruneApiKeys, setApiKey } from '../lib/secrets.ts';
@@ -37,7 +38,7 @@ export async function handleSettingsRoute(
     // List mutations go through the per-connection endpoints below, so a stale tab or
     // a malformed body can never delete connections (and with them, their keys).
     if (method === 'PUT') {
-      const patch = await readJson<Partial<AppSettings>>(request);
+      const patch = await readJson<SettingsPatch>(request);
       if (!patch) return errorResponse('Request body is not valid JSON.');
       return json(withKeys(saveSettings(patch)));
     }

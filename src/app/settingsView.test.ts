@@ -45,6 +45,21 @@ describe('appSettingsView', () => {
       effectLayer: 'behind',
     });
     expect(view.regexScripts).toEqual([]);
+    expect(view.chatReasoningEfforts).toEqual({});
+  });
+
+  test('chat reasoning preferences keep their identity and never alter model resolution', () => {
+    const chatReasoningEfforts = { c: { 'chat-model': 'low' as const } };
+    const stored = settings({
+      chatReasoningEfforts,
+      models: {
+        ...DEFAULT_MODEL_SLOTS,
+        chat: { connectionId: 'c', modelId: 'chat-model' },
+      },
+    });
+    expect(appSettingsView(stored).chatReasoningEfforts).toBe(chatReasoningEfforts);
+    expect(resolveAppModels(stored).chat.model).not.toHaveProperty('reasoning_effort');
+    expect(resolveAppModels(stored).summary.model).not.toHaveProperty('reasoning_effort');
   });
 
   test('only enabled regex scripts leave, and junk list entries are dropped', () => {

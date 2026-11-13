@@ -5,6 +5,7 @@
  * editor, the regex list) are wired here.
  */
 
+import { chatReasoningEffort } from '@shared/models/reasoning.ts';
 import { PROVIDERS } from '@shared/providers/types.ts';
 import { useMemo } from 'react';
 import type { AppController, ToolId } from '../app/useAppController.ts';
@@ -275,7 +276,9 @@ export function MarginTool({
           open={controller.presetPrompt}
           setOpen={controller.setPresetPrompt}
           chatModel={models.slots.chat}
-          onChatModel={(ref) => app.setModelSlot('chat', ref)}
+          chatReasoningEffort={chatReasoningEffort(prefs.chatReasoningEfforts, models.slots.chat)}
+          chatModelDisabledReason={app.chatModelSaving ? 'Saving model settings…' : undefined}
+          onChatModel={(ref) => void app.pickChatModel(ref)}
           connection={connection}
           extraSamplersSent={
             connection ? PROVIDERS[connection.provider].supportsExtraSamplers : false

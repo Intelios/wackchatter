@@ -3,13 +3,20 @@
  * the open tab in step with cascades the server already made (a rename, a delete).
  */
 
-import type { ModelRef, ModelSlot } from '@shared/models/slots.ts';
+import { chatReasoningEffort } from '@shared/models/reasoning.ts';
+import { type ModelRef, type ModelSlot, sameModelRef } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
-import type { DialogueColorOverride, SettingsResponse } from '@shared/types/settings.ts';
+import type { ReasoningEffort } from '@shared/types/preset.ts';
+import type {
+  DialogueColorOverride,
+  SettingsPatch,
+  SettingsResponse,
+} from '@shared/types/settings.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { settingsApi } from '../lib/api.ts';
 import { useTokenizer } from '../lib/useTokenizer.ts';
 import { appSettingsView, resolveAppModels } from './settingsView.ts';
+import { applySavedChatModelSettings, createSettingsPainter } from './settingsWrites.ts';
 
 /** Move or drop one key of a record, returning the same record when it has no such key. */
 function rekey<T>(record: Record<string, T>, from: string, to: string | null): Record<string, T> {
@@ -22,16 +29,27 @@ function rekey<T>(record: Record<string, T>, from: string, to: string | null): R
 }
 
 export function useAppSettings(onError: (message: string) => void) {
-  const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [settings, setSettingsState] = useState<SettingsResponse | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const [chatModelSaving, setChatModelSaving] = useState(false);
+  const [chatModelError, setChatModelError] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+  const chatModelWrite = useRef(false);
+  const clearChatModelError = useCallback(() => setChatModelError(null), []);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+
+  const [setSettings] = useState(() => createSettingsPainter(setSettingsState));
 
   useEffect(() => {
     settingsApi
       .get()
       .then(setSettings)
       .catch((err) => onErrorRef.current((err as Error).message));
-  }, []);
+  }, [setSettings]);
 
   const view = useMemo(() => appSettingsView(settings), [settings]);
   const models = useMemo(() => resolveAppModels(settings), [settings]);
@@ -42,30 +60,27 @@ export function useAppSettings(onError: (message: string) => void) {
   const summaryCountTokens = useTokenizer(models.summary.model?.model ?? '', encoding);
   const nexusCountTokens = useTokenizer(models.nexus.model?.model ?? '', encoding);
 
-  /*
-   * Autosaves race. Every keystroke in an arena cue (and several other write-through paths)
-   * issues its own PUT, and the responses are not guaranteed to resolve in request order.
-   * Without a guard, an older snapshot can land after a newer one and `setSettings` would
-   * snap the textarea's value — and caret — back to the older text mid-edit ("one char lands,
-   * the rest jump to the end"). The server stays authoritative and still merges every patch
-   * it receives; the seq only decides which *responses* we're allowed to paint. The newest
-   * response always wins, so state converges on the last thing the user did.
-   */
-  const writeSeq = useRef(0);
+  const writeSettings = useCallback(
+    async (patch: SettingsPatch) => {
+      const saved = await settingsApi.save(patch);
+      setSettings(saved);
+      return saved;
+    },
+    [setSettings],
+  );
 
   /** A write whose failure the caller handles. */
-  const saveSettingsStrict = useCallback(async (patch: Record<string, unknown>) => {
-    const seq = ++writeSeq.current;
-    try {
-      const saved = await settingsApi.save(patch);
-      // Only paint this response if nothing newer has been issued since; a slow older
-      // response arriving late is stale and would clobber the text being typed right now.
-      if (seq === writeSeq.current) setSettings(saved);
-    } catch (err) {
-      onErrorRef.current((err as Error).message);
-      throw err;
-    }
-  }, []);
+  const saveSettingsStrict = useCallback(
+    async (patch: SettingsPatch) => {
+      try {
+        return await writeSettings(patch);
+      } catch (err) {
+        onErrorRef.current((err as Error).message);
+        throw err;
+      }
+    },
+    [writeSettings],
+  );
 
   /** A fire-and-forget write: its failure is already shown in the app shell. */
   const patchSettings = useCallback(
@@ -93,7 +108,7 @@ export function useAppSettings(onError: (message: string) => void) {
 
   const patchUserSettings = useCallback(
     (patch: Record<string, unknown>) => {
-      setSettings((current) => (current ? { ...current, ...patch } : current));
+      setSettingsState((current) => (current ? { ...current, ...patch } : current));
       userPending.current = { ...userPending.current, ...patch };
       if (userTimer.current) clearTimeout(userTimer.current);
       userTimer.current = setTimeout(() => {
@@ -129,13 +144,58 @@ export function useAppSettings(onError: (message: string) => void) {
         .then(setSettings)
         .catch((err) => onErrorRef.current((err as Error).message));
     },
-    [chatConnectionId],
+    [chatConnectionId, setSettings],
   );
 
   /** Pick one slot's model. Field-wise on the server, so no other slot moves. */
   const setModelSlot = useCallback(
     (slot: ModelSlot, ref: ModelRef | null) => void patchSettings({ models: { [slot]: ref } }),
     [patchSettings],
+  );
+
+  const saveChatModelSettings = useCallback(
+    async (patch: SettingsPatch, title: string): Promise<boolean> => {
+      if (chatModelWrite.current) return false;
+      chatModelWrite.current = true;
+      setChatModelSaving(true);
+      setChatModelError(null);
+      try {
+        const saved = await writeSettings(patch);
+        setSettingsState((current) =>
+          current ? applySavedChatModelSettings(current, saved, patch) : saved,
+        );
+        return true;
+      } catch (error) {
+        setChatModelError({ title, message: (error as Error).message });
+        return false;
+      } finally {
+        chatModelWrite.current = false;
+        setChatModelSaving(false);
+      }
+    },
+    [writeSettings],
+  );
+
+  const pickChatModel = useCallback(
+    (ref: ModelRef | null) => {
+      if (chatModelWrite.current) return Promise.resolve(false);
+      if (sameModelRef(settingsRef.current?.models.chat, ref)) return Promise.resolve(true);
+      return saveChatModelSettings({ models: { chat: ref } }, 'Model not changed');
+    },
+    [saveChatModelSettings],
+  );
+
+  const setChatReasoningEffort = useCallback(
+    (ref: ModelRef, effort: ReasoningEffort | null) => {
+      if (chatModelWrite.current) return Promise.resolve(false);
+      const current = chatReasoningEffort(settingsRef.current?.chatReasoningEfforts ?? {}, ref);
+      if (current === (effort ?? undefined)) return Promise.resolve(true);
+      return saveChatModelSettings(
+        { chatReasoningEfforts: { [ref.connectionId]: { [ref.modelId]: effort } } },
+        'Reasoning effort not saved',
+      );
+    },
+    [saveChatModelSettings],
   );
 
   const rememberModels = useCallback(
@@ -212,7 +272,7 @@ export function useAppSettings(onError: (message: string) => void) {
    * rating along with the card. Mirror it, so this tab does not keep a stale key.
    */
   const followCharacter = useCallback((from: string, to: string | null) => {
-    setSettings((current) => {
+    setSettingsState((current) => {
       if (!current) return current;
       const characters = rekey(current.dialogueColors.characters, from, to);
       const characterRatings = rekey(current.characterRatings, from, to);
@@ -238,7 +298,7 @@ export function useAppSettings(onError: (message: string) => void) {
    * not keep showing a colour and a recent slot for a persona that is gone.
    */
   const forgetPersona = useCallback((id: string) => {
-    setSettings((current) => {
+    setSettingsState((current) => {
       if (!current) return current;
       const hasColor = Object.hasOwn(current.dialogueColors.personas, id);
       const recentPersonaIds = current.recentPersonaIds.filter((entry) => entry !== id);
@@ -269,6 +329,11 @@ export function useAppSettings(onError: (message: string) => void) {
     patchUserSettings,
     patchChatConnection,
     setModelSlot,
+    pickChatModel,
+    setChatReasoningEffort,
+    chatModelSaving,
+    chatModelError,
+    clearChatModelError,
     rememberModels,
     setFavoriteModels,
     setModelPickerGroups,

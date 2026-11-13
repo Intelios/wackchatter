@@ -9,6 +9,11 @@
  */
 
 import { currentText, type MessageState } from '@shared/chat/message.ts';
+import {
+  type ChatReasoningEfforts,
+  chatReasoningEffort,
+  withReasoningEffort,
+} from '@shared/models/reasoning.ts';
 import { reportNexusAssembly } from '@shared/nexus/report.ts';
 import type { NexusRecall, NexusSettings } from '@shared/nexus/types.ts';
 import { assemblePrompt } from '@shared/prompt/assemble.ts';
@@ -65,6 +70,7 @@ export interface ChatRequestInput {
   /** The state with the placeholder already folded in — its empty text keeps it out. */
   started: ChatState;
   model: ResolvedModel;
+  chatReasoningEfforts?: ChatReasoningEfforts;
   preset: Preset;
   character: CardDataV2;
   persona: Persona | null;
@@ -175,7 +181,14 @@ export function prepareChatRequest(input: ChatRequestInput): ChatRequest {
   const streamed = preset.stream_openai !== false;
   const body = buildRequestBody({
     messages: assembled.messages,
-    preset,
+    // The override is only a wire sampler: assembly and the caller's preset stay untouched.
+    preset: withReasoningEffort(
+      preset,
+      chatReasoningEffort(input.chatReasoningEfforts ?? {}, {
+        connectionId: input.model.id,
+        modelId: input.model.model,
+      }),
+    ),
     connection: input.model,
     stream: streamed,
     completions,

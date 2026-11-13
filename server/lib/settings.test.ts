@@ -1,10 +1,19 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, expectTypeOf, test } from 'bun:test';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '../../shared/composer/layout.ts';
+import type {
+  ChatReasoningEffortPatch,
+  ChatReasoningEfforts,
+} from '../../shared/models/reasoning.ts';
+import type { ModelSlots } from '../../shared/models/slots.ts';
 import type { Connection } from '../../shared/providers/types.ts';
-import type { AppSettings, SpeakerPaletteOverride } from '../../shared/types/settings.ts';
+import type {
+  AppSettings,
+  SettingsPatch,
+  SpeakerPaletteOverride,
+} from '../../shared/types/settings.ts';
 import {
   DEFAULT_COCREATOR,
   DEFAULT_CONNECTION_ID,
@@ -19,6 +28,7 @@ import { DEFAULT_WI_SETTINGS } from '../../shared/types/worldinfo.ts';
 import { DEFAULT_DATA_DIR, PATHS, setDataDir } from './paths.ts';
 import {
   applyConnectionPatch,
+  deleteConnectionEntry,
   dropConnection,
   getSettings,
   mergeSettings,
@@ -32,6 +42,7 @@ import {
   removePersonaDialogueColor,
   resetSettingsCache,
   sameEndpoint,
+  saveSettings,
 } from './settings.ts';
 
 function connection(id: string, name: string, overrides?: Partial<Connection>): Connection {
@@ -173,16 +184,16 @@ describe('mergeSettings', () => {
   test('model slots merge field-wise: picking one never resets another', () => {
     const chat = { connectionId: DEFAULT_CONNECTION_ID, modelId: 'chat-model' };
     const nexus = { connectionId: DEFAULT_CONNECTION_ID, modelId: 'memory-model' };
-    const first = mergeSettings(base(), { models: { chat } as never });
-    const second = mergeSettings(first, { models: { nexus } as never });
+    const first = mergeSettings(base(), { models: { chat } });
+    const second = mergeSettings(first, { models: { nexus } });
     expect(second.models.chat).toEqual(chat);
     expect(second.models.nexus).toEqual(nexus);
-    expect(mergeSettings(second, { models: { chat: null } as never }).models.nexus).toEqual(nexus);
+    expect(mergeSettings(second, { models: { chat: null } }).models.nexus).toEqual(nexus);
   });
 
   test('a slot naming no saved connection is cleared', () => {
     const next = mergeSettings(base(), {
-      models: { chat: { connectionId: 'missing', modelId: 'm' } } as never,
+      models: { chat: { connectionId: 'missing', modelId: 'm' } },
     });
     expect(next.models.chat).toBeNull();
   });
@@ -210,6 +221,14 @@ describe('mergeSettings', () => {
     const untouched = mergeSettings(next, { streamingFps: 60 });
     expect(untouched.favoriteModels).toEqual(next.favoriteModels);
     expect(untouched.modelPickerGroups).toEqual(next.modelPickerGroups);
+  });
+
+  test('the settings revision is the server’s write counter, never a patch’s', () => {
+    const current = { ...base(), settingsRevision: 41 };
+    expect(mergeSettings(current, { settingsRevision: 9000 }).settingsRevision).toBe(41);
+    expect(
+      mergeSettings(current, { settingsRevision: -1, streamingFps: 10 }).settingsRevision,
+    ).toBe(41);
   });
 
   test('unknown keys survive, so a newer build cannot be downgraded into data loss', () => {
@@ -611,6 +630,80 @@ describe('mergeSettings', () => {
       regexScripts: [{ id: 'a', scriptName: 'legacy', placement: [1, 4] }] as never,
     });
     expect(next.regexScripts[0]?.placement).toEqual([1, 4]);
+  });
+});
+
+describe('chat reasoning preferences', () => {
+  test('SettingsPatch allows partial slots and nullable effort leaves without losing other types', () => {
+    expectTypeOf<SettingsPatch['models']>().toEqualTypeOf<Partial<ModelSlots> | undefined>();
+    expectTypeOf<SettingsPatch['chatReasoningEfforts']>().toEqualTypeOf<
+      ChatReasoningEffortPatch | undefined
+    >();
+    expectTypeOf<SettingsPatch['streamingFps']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<SettingsPatch['personaId']>().toEqualTypeOf<string | null | undefined>();
+    expectTypeOf<SettingsPatch['summary']>().toEqualTypeOf<AppSettings['summary'] | undefined>();
+    expectTypeOf<SettingsPatch['connections']>().toEqualTypeOf<Connection[] | undefined>();
+    expectTypeOf<SettingsPatch['futureSetting']>().toEqualTypeOf<unknown>();
+  });
+
+  test('preferences default to empty and merge per connection and model', () => {
+    expect(DEFAULT_SETTINGS.chatReasoningEfforts).toEqual({});
+    const current = { ...base(), connections: [connection('a', 'A'), connection('b', 'B')] };
+    const first = mergeSettings(current, {
+      chatReasoningEfforts: { a: { m: 'high', other: 'min' }, b: { m: 'auto' } },
+    });
+    const second = mergeSettings(first, { chatReasoningEfforts: { a: { ' m ': 'low' } } });
+    expect(second.chatReasoningEfforts).toEqual({
+      a: { m: 'low', other: 'min' },
+      b: { m: 'auto' },
+    });
+    expect(mergeSettings(second, { streamingFps: 20 }).chatReasoningEfforts).toEqual(
+      second.chatReasoningEfforts,
+    );
+    expect(first.chatReasoningEfforts).toEqual({
+      a: { m: 'high', other: 'min' },
+      b: { m: 'auto' },
+    });
+  });
+
+  test('only null model leaves reset preferences, pruning the empty connection map', () => {
+    const current = mergeSettings(base(), {
+      chatReasoningEfforts: { [DEFAULT_CONNECTION_ID]: { m: 'auto', other: 'high' } },
+    });
+    const next = mergeSettings(current, {
+      chatReasoningEfforts: { [DEFAULT_CONNECTION_ID]: { m: null } },
+    });
+    expect(next.chatReasoningEfforts).toEqual({ [DEFAULT_CONNECTION_ID]: { other: 'high' } });
+    expect(
+      mergeSettings(next, {
+        chatReasoningEfforts: { [DEFAULT_CONNECTION_ID]: { other: null } },
+      }).chatReasoningEfforts,
+    ).toEqual({});
+    expect(current.chatReasoningEfforts).toEqual({
+      [DEFAULT_CONNECTION_ID]: { m: 'auto', other: 'high' },
+    });
+  });
+
+  test('malformed preferences and unknown connections cannot wipe existing choices', () => {
+    const current = mergeSettings(base(), {
+      chatReasoningEfforts: { [DEFAULT_CONNECTION_ID]: { m: 'high' } },
+      futureSetting: { kept: true },
+    });
+    for (const chatReasoningEfforts of [
+      null,
+      [],
+      'low',
+      {},
+      { [DEFAULT_CONNECTION_ID]: null },
+      { [DEFAULT_CONNECTION_ID]: [] },
+      { [DEFAULT_CONNECTION_ID]: {} },
+      { [DEFAULT_CONNECTION_ID]: { m: 'bad' } },
+      { missing: { m: 'low' } },
+    ]) {
+      const next = mergeSettings(current, { chatReasoningEfforts } as never);
+      expect(next.chatReasoningEfforts).toEqual(current.chatReasoningEfforts);
+      expect(next.futureSetting).toEqual({ kept: true });
+    }
   });
 });
 
@@ -1206,6 +1299,10 @@ describe('dropConnection', () => {
       { connectionId: 'a', modelId: 'chat' },
       { connectionId: 'b', modelId: 'memory' },
     ],
+    chatReasoningEfforts: {
+      a: { chat: 'high' },
+      b: { memory: 'low' },
+    } satisfies ChatReasoningEfforts,
   });
 
   test('every slot and recent pick on the dropped connection goes with it', () => {
@@ -1215,12 +1312,29 @@ describe('dropConnection', () => {
     expect(next?.models.nexus).toBeNull();
     expect(next?.recentModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
     expect(next?.favoriteModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
+    expect(next?.chatReasoningEfforts).toEqual({ a: { chat: 'high' } });
   });
 
   test('dropping the only connection empties everything', () => {
     const next = dropConnection(settings([connection('a', 'Solo')]), 'a');
     expect(next?.connections).toEqual([]);
     expect(next?.models.chat).toBeNull();
+    expect(next?.chatReasoningEfforts).toEqual({});
+  });
+
+  test('dropping an opaque connection id prunes only its own preferences, without mutation', () => {
+    const current = {
+      ...settings([connection('__proto__', 'A'), connection('constructor', 'B')]),
+      chatReasoningEfforts: JSON.parse(
+        '{"__proto__":{"constructor":"high"},"constructor":{"__proto__":"auto"}}',
+      ) as ChatReasoningEfforts,
+    };
+    const snapshot = structuredClone(current);
+    const next = dropConnection(current, '__proto__');
+    expect(next?.chatReasoningEfforts).toEqual(JSON.parse('{"constructor":{"__proto__":"auto"}}'));
+    expect(Object.hasOwn(next!.chatReasoningEfforts, 'constructor')).toBe(true);
+    expect(Object.getPrototypeOf(next!.chatReasoningEfforts)).toBe(Object.prototype);
+    expect(current).toEqual(snapshot);
   });
 
   test('an unknown id changes nothing', () => {
@@ -1342,6 +1456,23 @@ describe('getSettings on disk', () => {
     }
   });
 
+  test('a missing or malformed settingsRevision reads as zero and writes take the next number', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(join(dir, 'settings.json'), JSON.stringify({ settingsRevision: 'many' }));
+      expect(getSettings().settingsRevision).toBe(0);
+      expect(saveSettings({ streamingFps: 20 }).settingsRevision).toBe(1);
+      expect(saveSettings({ streamingFps: 25 }).settingsRevision).toBe(2);
+      resetSettingsCache();
+      expect(getSettings().settingsRevision).toBe(2);
+      expect(JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')).settingsRevision).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('background effect settings default when absent and normalise when malformed', () => {
     const dir = mkdtempSync(join(tmpdir(), 'wc-settings-read-'));
     try {
@@ -1381,6 +1512,116 @@ describe('getSettings on disk', () => {
       expect(settings.backgroundEffects).toEqual({ 'builtin:x': 'rain' });
       expect(settings.backgroundEffectLayer).toBe('front');
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('chat reasoning preferences on disk', () => {
+  test('partial updates, explicit auto and resets persist across a settings-cache restart', () => {
+    const original = PATHS.root;
+    const dir = mkdtempSync(join(tmpdir(), 'wc-reasoning-settings-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(
+        PATHS.settings,
+        JSON.stringify({
+          connections: [connection('a', 'A'), connection('b', 'B')],
+          futureSetting: { preserved: true },
+        }),
+      );
+      expect(getSettings().chatReasoningEfforts).toEqual({});
+      saveSettings({ chatReasoningEfforts: { a: { ' m ': 'high' }, b: { m: 'auto' } } });
+      saveSettings({ chatReasoningEfforts: { a: { other: 'min' } } });
+      resetSettingsCache();
+      expect(getSettings().chatReasoningEfforts).toEqual({
+        a: { m: 'high', other: 'min' },
+        b: { m: 'auto' },
+      });
+      expect(getSettings().futureSetting).toEqual({ preserved: true });
+      expect(JSON.parse(readFileSync(PATHS.settings, 'utf8')).chatReasoningEfforts).toEqual(
+        getSettings().chatReasoningEfforts,
+      );
+
+      saveSettings({ chatReasoningEfforts: { a: { m: null } } });
+      resetSettingsCache();
+      expect(getSettings().chatReasoningEfforts).toEqual({
+        a: { other: 'min' },
+        b: { m: 'auto' },
+      });
+      deleteConnectionEntry('a');
+      resetSettingsCache();
+      expect(getSettings().chatReasoningEfforts).toEqual({ b: { m: 'auto' } });
+      expect(JSON.parse(readFileSync(PATHS.settings, 'utf8')).chatReasoningEfforts).toEqual({
+        b: { m: 'auto' },
+      });
+      expect(getSettings().futureSetting).toEqual({ preserved: true });
+    } finally {
+      setDataDir(original);
+      resetSettingsCache();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('reads drop dead connections and invalid leaves while preserving opaque ids', () => {
+    const original = PATHS.root;
+    const dir = mkdtempSync(join(tmpdir(), 'wc-reasoning-settings-read-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      const chatReasoningEfforts = JSON.parse(
+        '{"__proto__":{" constructor ":"auto","bad":"invalid"},"constructor":{"__proto__":"max"},"a":{"good":"low","reset":null},"dead":{"m":"high"},"b":[]}',
+      );
+      writeFileSync(
+        PATHS.settings,
+        JSON.stringify({
+          connections: [
+            connection('__proto__', 'A'),
+            connection('constructor', 'B'),
+            connection('a', 'C'),
+            connection('b', 'D'),
+          ],
+          chatReasoningEfforts,
+        }),
+      );
+      const settings = getSettings();
+      expect(settings.chatReasoningEfforts).toEqual(
+        JSON.parse(
+          '{"__proto__":{"constructor":"auto"},"constructor":{"__proto__":"max"},"a":{"good":"low"}}',
+        ),
+      );
+      expect(JSON.stringify(settings.chatReasoningEfforts)).toBe(
+        '{"__proto__":{"constructor":"auto"},"constructor":{"__proto__":"max"},"a":{"good":"low"}}',
+      );
+      expect(Object.hasOwn(settings.chatReasoningEfforts, '__proto__')).toBe(true);
+      expect(Object.getPrototypeOf(settings.chatReasoningEfforts)).toBe(Object.prototype);
+      const next = saveSettings({
+        chatReasoningEfforts: JSON.parse('{"__proto__":{"constructor":null}}'),
+      });
+      expect(Object.hasOwn(next.chatReasoningEfforts, '__proto__')).toBe(false);
+      resetSettingsCache();
+      expect(getSettings().chatReasoningEfforts).toEqual(next.chatReasoningEfforts);
+    } finally {
+      setDataDir(original);
+      resetSettingsCache();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('absent and malformed stored maps default to empty', () => {
+    const original = PATHS.root;
+    const dir = mkdtempSync(join(tmpdir(), 'wc-reasoning-settings-default-'));
+    try {
+      setDataDir(dir);
+      for (const chatReasoningEfforts of [undefined, null, [], 'low', { default: null }]) {
+        writeFileSync(PATHS.settings, JSON.stringify({ chatReasoningEfforts }));
+        resetSettingsCache();
+        expect(getSettings().chatReasoningEfforts).toEqual({});
+      }
+    } finally {
+      setDataDir(original);
+      resetSettingsCache();
       rmSync(dir, { recursive: true, force: true });
     }
   });

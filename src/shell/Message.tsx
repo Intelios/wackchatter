@@ -52,6 +52,7 @@ interface MessageProps {
   isLast: boolean;
   busy: boolean;
   summaryRunning: boolean;
+  generationDisabledReason?: string;
   displayText?: string;
   displayReasoning?: string;
   creatorNotes?: string;
@@ -92,6 +93,7 @@ export const Message = memo(function Message({
   isLast,
   busy,
   summaryRunning,
+  generationDisabledReason,
   displayText,
   displayReasoning,
   creatorNotes,
@@ -338,8 +340,8 @@ export const Message = memo(function Message({
                 type="button"
                 className="w3-retry"
                 onClick={onRetry}
-                disabled={busy || summaryRunning}
-                title="Generate a reply to this message"
+                disabled={busy || summaryRunning || Boolean(generationDisabledReason)}
+                title={generationDisabledReason ?? 'Generate a reply to this message'}
               >
                 <Icon name="refresh" size="sm" />
                 Get a reply
@@ -375,11 +377,15 @@ export const Message = memo(function Message({
                   type="button"
                   className="w3-tbtn"
                   onClick={() => onSwipe(1)}
-                  disabled={busy || (summaryRunning && message.swipe_id === swipes - 1)}
+                  disabled={
+                    busy ||
+                    ((summaryRunning || Boolean(generationDisabledReason)) &&
+                      message.swipe_id === swipes - 1)
+                  }
                   aria-label="Next alternative, or generate one"
                   title={
                     message.swipe_id === swipes - 1
-                      ? 'Generate another alternative'
+                      ? (generationDisabledReason ?? 'Generate another alternative')
                       : 'Next alternative'
                   }
                 >
@@ -393,13 +399,15 @@ export const Message = memo(function Message({
                   icon="refresh"
                   label="Regenerate"
                   onClick={onRegenerate}
-                  disabled={busy || summaryRunning}
+                  disabled={busy || summaryRunning || Boolean(generationDisabledReason)}
+                  disabledReason={generationDisabledReason}
                 />
                 <ToolButton
                   icon="forward"
                   label="Continue"
                   onClick={onContinue}
-                  disabled={busy || summaryRunning}
+                  disabled={busy || summaryRunning || Boolean(generationDisabledReason)}
+                  disabledReason={generationDisabledReason}
                 />
               </>
             ) : null}
@@ -444,11 +452,13 @@ function ToolButton({
   label,
   onClick,
   disabled,
+  disabledReason,
 }: {
   icon: 'refresh' | 'forward' | 'pencil' | 'copy';
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  disabledReason?: string;
 }) {
   return (
     <button
@@ -457,7 +467,7 @@ function ToolButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      title={label}
+      title={disabledReason ?? label}
     >
       <Icon name={icon} size="sm" />
     </button>

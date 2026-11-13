@@ -14,6 +14,7 @@
  * through the store and never touches React state.
  */
 
+import type { ChatReasoningEfforts } from '@shared/models/reasoning.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '@shared/nexus/types.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
@@ -60,6 +61,8 @@ export interface UseChatOptions {
   onPersonaSwitch?: (personaId: string | null) => void;
   /** The `chat` slot's model, or null when it cannot run (the app shows why). */
   connection: ResolvedModel | null;
+  /** Per-model chat overrides; an absent entry inherits the live preset. */
+  chatReasoningEfforts?: ChatReasoningEfforts;
   countTokens: TokenCounter;
   streamingFps: number;
   /** Lorebooks that apply to this chat, already loaded. */
