@@ -8,6 +8,7 @@
  */
 
 import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '@shared/composer/layout.ts';
+import type { ChatReasoningEfforts } from '@shared/models/reasoning.ts';
 import {
   DEFAULT_MODEL_SLOTS,
   type ModelResolution,
@@ -81,6 +82,7 @@ export interface Backdrop {
 
 export interface SettingsView {
   backdrop: Backdrop;
+  chatReasoningEfforts: ChatReasoningEfforts;
   summary: SummarySettings;
   nexus: NexusSettings;
   memoryMode: MemoryMode;
@@ -124,6 +126,7 @@ export function appSettingsView(settings: AppSettings | null): SettingsView {
       effect: resolveBackgroundEffect(settings ?? {}),
       effectLayer: settings?.backgroundEffectLayer === 'front' ? 'front' : 'behind',
     },
+    chatReasoningEfforts: settings?.chatReasoningEfforts ?? {},
     summary: settings?.summary ?? DEFAULT_SUMMARY,
     nexus: settings?.nexus ?? DEFAULT_NEXUS,
     memoryMode: settings?.memoryMode ?? 'classic',

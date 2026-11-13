@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import { DEFAULT_EXAMPLE_FIELDS, type ExampleFields } from '@shared/types/cocreator.ts';
-import { EXAMPLE_PREAMBLE, renderExample, renderExamples } from './examples.ts';
+import { EXAMPLE_PREAMBLE, exampleCardsView, renderExample, renderExamples } from './examples.ts';
 
 /** One token per word, the technique assemble.test.ts uses. */
 const words: TokenCounter = {
@@ -38,6 +38,77 @@ function fields(overrides: Partial<ExampleFields> = {}): ExampleFields {
 function render(data: CardDataV2, toggles = fields()): string {
   return renderExample(data, 'Seraphina.png', 1, toggles, words).text;
 }
+
+describe('example loading readiness', () => {
+  const selection = { cards: ['Seraphina.png', 'Elowen.png'], fields: fields() };
+  const cards = {
+    'Seraphina.png': card(),
+    'Elowen.png': card({ name: 'Elowen' }),
+  };
+  const view = (overrides: Partial<Parameters<typeof exampleCardsView>[0]> = {}) =>
+    exampleCardsView({
+      selection,
+      cards: {},
+      countTokens: words,
+      loading: false,
+      settledKey: '',
+      ...overrides,
+    });
+
+  test('selected cards are pending before the fetching effect starts', () => {
+    expect(view()).toMatchObject({ loading: true, text: '', missing: [] });
+  });
+
+  test('cached examples never make a newly attached card ready before its GET settles', () => {
+    const partial = view({ cards: { 'Seraphina.png': cards['Seraphina.png'] } });
+    expect(partial.loading).toBe(true);
+    expect(partial.examples.map((example) => example.name)).toEqual(['Seraphina']);
+    expect(partial.missing).toEqual([]);
+  });
+
+  test('a pending fetch remains blocked even when other cards have finished loading', () => {
+    expect(view({ cards, loading: true }).loading).toBe(true);
+  });
+
+  test('completed fetches expose every attached card in selection order', () => {
+    const complete = view({ cards, settledKey: selection.cards.join('\0') });
+    expect(complete.loading).toBe(false);
+    expect(complete.missing).toEqual([]);
+    expect(complete.examples.map((example) => example.name)).toEqual(['Seraphina', 'Elowen']);
+    expect(complete.text).toBe(
+      renderExamples(
+        selection.cards.map((avatar) => ({ avatar, card: cards[avatar as keyof typeof cards] })),
+        selection.fields,
+        words,
+      ).text,
+    );
+  });
+
+  test('an older selection settling cannot unblock a newly attached card', () => {
+    expect(
+      view({
+        cards: { 'Seraphina.png': cards['Seraphina.png'] },
+        settledKey: 'Seraphina.png',
+      }).loading,
+    ).toBe(true);
+  });
+
+  test('a settled missing card is reported rather than leaving generation blocked forever', () => {
+    expect(view({ settledKey: selection.cards.join('\0') })).toMatchObject({
+      loading: false,
+      missing: selection.cards,
+      text: '',
+    });
+  });
+
+  test('a session with no selected examples is ready without a fetch', () => {
+    expect(view({ selection: { cards: [], fields: fields() } })).toMatchObject({
+      loading: false,
+      text: '',
+      missing: [],
+    });
+  });
+});
 
 describe('rendering one example', () => {
   test('the curated set produces readable labelled text, not JSON', () => {

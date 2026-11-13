@@ -17,6 +17,10 @@ import {
   normalizeComposerLayout,
 } from '../../shared/composer/layout.ts';
 import {
+  mergeChatReasoningEfforts,
+  normalizeChatReasoningEfforts,
+} from '../../shared/models/reasoning.ts';
+import {
   type ModelSlots,
   normalizeFavoriteModels,
   normalizeModelRef,
@@ -42,6 +46,7 @@ import type {
   GuidanceSettings,
   MemoryMode,
   QuickCommand,
+  SettingsPatch,
   SummarySettings,
 } from '../../shared/types/settings.ts';
 import {
@@ -630,6 +635,10 @@ function normalizeRegexScripts(value: unknown): RegexScript[] {
   return scripts;
 }
 
+function normalizeSettingsRevision(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
 let cache: AppSettings | null = null;
 
 export function getSettings(): AppSettings {
@@ -656,8 +665,10 @@ export function getSettings(): AppSettings {
   cache = {
     ...DEFAULT_SETTINGS,
     ...stored,
+    settingsRevision: normalizeSettingsRevision(stored.settingsRevision),
     connections,
     models: normalizeModelSlots(stored.models, connections),
+    chatReasoningEfforts: normalizeChatReasoningEfforts(stored.chatReasoningEfforts, connections),
     recentModels: normalizeRecentModels(stored.recentModels, connections),
     favoriteModels: normalizeFavoriteModels(stored.favoriteModels, connections),
     modelPickerGroups: normalizePickerGroups(stored.modelPickerGroups),
@@ -703,7 +714,8 @@ export function getSettings(): AppSettings {
  *
  * `worldInfo`, `guidance` and `models` merge FIELD-WISE. A shallow spread would drop every field
  * the patch didn't mention, so a client changing only the scan depth would silently
- * reset the budget and every match setting along with it.
+ * reset the budget and every match setting along with it. `chatReasoningEfforts` merges
+ * both connection and model keys; only a null model leaf resets a preference.
  *
  * `connections` is PINNED: the list mutates only through `addConnection`,
  * `patchConnectionEntry` and `deleteConnectionEntry` — the per-connection endpoints.
@@ -711,18 +723,26 @@ export function getSettings(): AppSettings {
  * `{"connections": null}`) delete every connection, and the key pruning that follows a
  * deletion would make that irreversible. This is the character-book rule.
  */
-export function mergeSettings(current: AppSettings, patch: Partial<AppSettings>): AppSettings {
+export function mergeSettings(current: AppSettings, patch: SettingsPatch): AppSettings {
   const quickCommands = Array.isArray(patch.quickCommands)
     ? normalizeQuickCommands(patch.quickCommands)
     : current.quickCommands;
   return {
     ...current,
     ...patch,
+    // The server's write counter, never a patch's: a stale tab must not be able to send
+    // later responses backwards on another client.
+    settingsRevision: current.settingsRevision,
     connections: current.connections,
     // Field-wise, so picking one slot's model can never reset another's.
     models: isRecord(patch.models)
       ? normalizeModelSlots({ ...current.models, ...patch.models }, current.connections)
       : current.models,
+    chatReasoningEfforts: mergeChatReasoningEfforts(
+      current.chatReasoningEfforts,
+      patch.chatReasoningEfforts,
+      current.connections,
+    ),
     // Capped here as well as on read — the recentPersonaIds rule.
     recentModels: Array.isArray(patch.recentModels)
       ? normalizeRecentModels(patch.recentModels, current.connections)
@@ -878,8 +898,9 @@ function normalizeTimestamp(value: unknown): string | null {
 }
 
 /** Merge a partial update and persist. */
-export function saveSettings(patch: Partial<AppSettings>): AppSettings {
-  const next = mergeSettings(getSettings(), patch);
+export function saveSettings(patch: SettingsPatch): AppSettings {
+  const current = getSettings();
+  const next = nextRevision(mergeSettings(current, patch));
 
   atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
   cache = next;
@@ -888,7 +909,7 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
 
 /** Note that a library backup was just built. Called by the export route alone. */
 export function recordBackupMade(at = new Date()): AppSettings {
-  const next = { ...getSettings(), lastBackupAt: at.toISOString() };
+  const next = nextRevision({ ...getSettings(), lastBackupAt: at.toISOString() });
   atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
   cache = next;
   return next;
@@ -955,15 +976,22 @@ export function applyConnectionPatch(
 }
 
 /**
- * Remove one entry, and every app-wide model pick that ran on it. Pure. Returns null when
- * the id names no entry. A slot left empty follows chat or reports itself unconfigured;
+ * Remove one entry, its reasoning preferences, and every app-wide model pick that ran on it.
+ * Pure. Returns null when the id names no entry. A slot left empty follows chat or reports
+ * itself unconfigured;
  * per-session picks and Arena contenders keep their refs and report the missing connection
  * when resolved, so nothing changes model behind anyone's back.
  */
 export function dropConnection(
-  settings: Pick<AppSettings, 'connections' | 'models' | 'recentModels' | 'favoriteModels'>,
+  settings: Pick<
+    AppSettings,
+    'connections' | 'models' | 'recentModels' | 'favoriteModels' | 'chatReasoningEfforts'
+  >,
   id: string,
-): Pick<AppSettings, 'connections' | 'models' | 'recentModels' | 'favoriteModels'> | null {
+): Pick<
+  AppSettings,
+  'connections' | 'models' | 'recentModels' | 'favoriteModels' | 'chatReasoningEfforts'
+> | null {
   if (!settings.connections.some((connection) => connection.id === id)) return null;
 
   const connections = settings.connections.filter((connection) => connection.id !== id);
@@ -973,14 +1001,21 @@ export function dropConnection(
     models,
     recentModels: normalizeRecentModels(settings.recentModels, connections),
     favoriteModels: normalizeFavoriteModels(settings.favoriteModels, connections),
+    chatReasoningEfforts: normalizeChatReasoningEfforts(settings.chatReasoningEfforts, connections),
   };
 }
 
 /** Persist settings built by the connection mutators below. */
 function writeSettings(next: AppSettings): AppSettings {
-  atomicWriteSync(PATHS.settings, `${JSON.stringify(next, null, 2)}\n`);
-  cache = next;
-  return next;
+  const bumped = nextRevision(next);
+  atomicWriteSync(PATHS.settings, `${JSON.stringify(bumped, null, 2)}\n`);
+  cache = bumped;
+  return bumped;
+}
+
+/** Every persisted change takes the next number, so a response can never outrank its present. */
+function nextRevision(next: AppSettings): AppSettings {
+  return { ...next, settingsRevision: (next.settingsRevision ?? 0) + 1 };
 }
 
 /**
@@ -1016,7 +1051,7 @@ export function patchConnectionEntry(
   return writeSettings({ ...current, connections });
 }
 
-/** Remove one entry and the slots that ran on it. Returns null when the id names no entry. */
+/** Remove one entry, its model picks and preferences. Null when the id names no entry. */
 export function deleteConnectionEntry(id: string): AppSettings | null {
   const current = getSettings();
   const dropped = dropConnection(current, id);

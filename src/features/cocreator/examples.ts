@@ -15,7 +15,7 @@
 
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import type { ExampleField, ExampleFields } from '@shared/types/cocreator.ts';
+import type { ExampleField, ExampleFields, ExampleSelection } from '@shared/types/cocreator.ts';
 
 export const EXAMPLE_FIELD_ORDER: readonly ExampleField[] = [
   'description',
@@ -53,6 +53,12 @@ export interface RenderedExamples {
   examples: RenderedExample[];
   /** Tokens for the whole block, including the framing preamble. */
   tokens: number;
+}
+
+export interface LoadedExamples extends RenderedExamples {
+  /** Attached avatars whose card is no longer in the library. */
+  missing: string[];
+  loading: boolean;
 }
 
 export const EXAMPLE_PREAMBLE =
@@ -132,4 +138,23 @@ export function renderExamples(
   );
   const text = `${EXAMPLE_PREAMBLE}\n\n${examples.map((example) => example.text).join('\n')}`;
   return { text, examples, tokens: count.countText(text) };
+}
+
+export function exampleCardsView(input: {
+  selection: ExampleSelection;
+  cards: Readonly<Record<string, CardDataV2>>;
+  countTokens: TokenCounter;
+  loading: boolean;
+  settledKey: string;
+}): LoadedExamples {
+  const { selection, cards, countTokens, loading, settledKey } = input;
+  const present = selection.cards.filter((avatar) => cards[avatar]);
+  const missing = selection.cards.filter((avatar) => !cards[avatar]);
+  const rendered = renderExamples(
+    present.map((avatar) => ({ avatar, card: cards[avatar]! })),
+    selection.fields,
+    countTokens,
+  );
+  const pending = loading || (selection.cards.join('\0') !== settledKey && missing.length > 0);
+  return { ...rendered, missing: pending ? [] : missing, loading: pending };
 }

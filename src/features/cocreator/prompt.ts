@@ -82,12 +82,11 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
   // string and let a {{setvar}} in the user's own system prompt write global state from a
   // screen that has no story.
   const checkpoint = activeCheckpoint(input.compaction, characterCompactionSources(messages));
-  const fixed: ApiMessage[] = [];
-  if (systemPrompt.trim()) fixed.push({ role: 'system', content: systemPrompt });
-  // One message rather than one per card, so the model reads them as a single exhibit and
-  // the panel has one number to show.
-  if (exampleBlock.trim()) fixed.push({ role: 'system', content: exampleBlock });
-  if (input.draftBlock?.trim()) fixed.push({ role: 'system', content: input.draftBlock });
+  // Gemini's OpenAI-compatible endpoint keeps only the last system message.
+  const systemContent = [systemPrompt, exampleBlock, input.draftBlock ?? '']
+    .filter((block) => block.trim())
+    .join('\n\n');
+  const fixed: ApiMessage[] = systemContent ? [{ role: 'system', content: systemContent }] : [];
   if (checkpoint) fixed.push({ role: 'user', content: renderCheckpoint(checkpoint) });
 
   // The same accounting `assemblePrompt` uses, from the same helper: an individual message
@@ -98,11 +97,15 @@ export function buildDesignPrompt(input: DesignPromptInput): DesignPrompt {
   const systemTokens = systemPrompt.trim()
     ? messageCost({ role: 'system', content: systemPrompt })
     : 0;
+  // Cumulative differences include join boundaries and charge the merged envelope once.
   const examplesTokens = exampleBlock.trim()
-    ? messageCost({ role: 'system', content: exampleBlock })
+    ? messageCost({
+        role: 'system',
+        content: [systemPrompt, exampleBlock].filter((block) => block.trim()).join('\n\n'),
+      }) - systemTokens
     : 0;
   const draftTokens = input.draftBlock?.trim()
-    ? messageCost({ role: 'system', content: input.draftBlock })
+    ? messageCost({ role: 'system', content: systemContent }) - systemTokens - examplesTokens
     : 0;
 
   // A blank message is the placeholder being generated into. Skipping it is what excludes a

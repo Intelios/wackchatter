@@ -84,8 +84,8 @@ export function Segments<T extends string>({
   disabled,
   title,
 }: {
-  value: T;
-  options: readonly [T, string][];
+  value: T | undefined;
+  options: readonly (readonly [T, string])[];
   label: string;
   onChange: (value: T) => void;
   disabled?: boolean;

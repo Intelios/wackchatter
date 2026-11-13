@@ -1,7 +1,6 @@
 /** Typed client for the local API. */
 
 import type { ChatSaveBody } from '@shared/chat/save.ts';
-import type { ModelSlots } from '@shared/models/slots.ts';
 import type { Connection, ProviderId, ProviderModel } from '@shared/providers/types.ts';
 import type {
   ArenaRound,
@@ -63,7 +62,7 @@ import type {
   RestorePresetDraftRequest,
   SavePresetCocreatorDocument,
 } from '@shared/types/preset-cocreator.ts';
-import type { AppSettings, SettingsResponse } from '@shared/types/settings.ts';
+import type { SettingsPatch, SettingsResponse } from '@shared/types/settings.ts';
 import type { LorebookSummary, WorldInfoBook } from '@shared/types/worldinfo.ts';
 
 export class ApiError extends Error {
@@ -707,9 +706,10 @@ export const settingsApi = {
 
   /**
    * Cannot touch the connection list — that mutates only through the endpoints below.
-   * `models` merges per slot on the server, so send only the slots being changed.
+   * Model slots and chat reasoning preferences merge per entry on the server, so send
+   * only changes; a null reasoning model leaf resumes following the preset.
    */
-  save: (patch: Omit<Partial<AppSettings>, 'models'> & { models?: Partial<ModelSlots> }) =>
+  save: (patch: SettingsPatch) =>
     request<SettingsResponse>('/settings', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },

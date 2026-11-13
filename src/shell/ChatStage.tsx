@@ -42,6 +42,7 @@ interface ChatStageProps {
   revealWhole: boolean;
   ready: boolean;
   notReadyReason: string | null;
+  generationDisabledReason?: string;
   onChooseModel: () => void;
   onCopied: (ok: boolean) => void;
   /** A message was sent: the shell lifts the backdrop's bloom. */
@@ -64,6 +65,7 @@ export function ChatStage({
   revealWhole,
   ready,
   notReadyReason,
+  generationDisabledReason,
   onChooseModel,
   onCopied,
   onSent,
@@ -141,9 +143,8 @@ export function ChatStage({
 
   const blockedReason = loadBlocksChat
     ? 'Retry loading this character before writing.'
-    : !ready
-      ? (notReadyReason ?? 'Choose a chat model to start writing.')
-      : undefined;
+    : (generationDisabledReason ??
+      (!ready ? (notReadyReason ?? 'Choose a chat model to start writing.') : undefined));
 
   const placeholder = blockedReason
     ? blockedReason
@@ -182,6 +183,7 @@ export function ChatStage({
               isLast: message.id === lastId,
               busy,
               summaryRunning,
+              generationDisabledReason,
               displayText: displayTexts.get(message.id)?.text,
               displayReasoning: displayTexts.get(message.id)?.reasoning,
               creatorNotes: messageIndex === 0 ? renderedNotes : undefined,
@@ -229,7 +231,7 @@ export function ChatStage({
               title="The reply didn't arrive."
               detail={state.error}
               action={awaitingReply ? { label: 'Try again', run: surface.regenerate } : undefined}
-              disabled={busy || summaryRunning || !ready}
+              disabled={busy || summaryRunning || !ready || Boolean(generationDisabledReason)}
             />
           ) : null}
           {chat.saveError ? (

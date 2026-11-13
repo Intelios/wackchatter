@@ -43,7 +43,7 @@ describe('side context', () => {
       messages: [main],
     });
     const prompt = build({ snapshot: frozen });
-    expect(prompt.messages.some((m) => m.content === 'Accepted card {{char}}')).toBe(true);
+    expect(prompt.messages[0]?.content).toContain('Accepted card {{char}}');
     expect(frozen.draftBlock).toBe('Accepted card {{char}}');
   });
   test('captures selected text, not alternate takes, reasoning, or live references', () => {
@@ -69,8 +69,9 @@ describe('side context', () => {
     const prompt = build();
     expect(prompt.messages[0]?.content).toContain(SIDE_CHAT_INSTRUCTION);
     expect(prompt.messages[0]?.content).toContain('Design instructions.');
-    expect(prompt.messages[1]?.content).toBe('Frozen examples.');
-    expect(prompt.messages.at(-2)?.content).toBe(SIDE_CHAT_BOUNDARY);
+    expect(prompt.messages[0]?.content).toContain('Frozen examples.');
+    expect(prompt.messages.filter((m) => m.role === 'system')).toHaveLength(1);
+    expect(prompt.messages.at(-2)).toEqual({ role: 'user', content: SIDE_CHAT_BOUNDARY });
     expect(prompt.messages.at(-1)?.content).toBe('Name ideas?');
   });
 

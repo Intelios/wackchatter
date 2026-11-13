@@ -41,7 +41,11 @@ import { useStickToBottom } from '../features/chat/useStickToBottom.ts';
 import { useTranscriptWindow } from '../features/chat/useTranscriptWindow.ts';
 import type { CocreatorContext } from '../features/cocreator/context.ts';
 import { ExampleSetsPopover } from '../features/cocreator/ExampleSetsPopover.tsx';
-import { EXAMPLE_FIELD_LABELS, EXAMPLE_FIELD_ORDER } from '../features/cocreator/examples.ts';
+import {
+  EXAMPLE_FIELD_LABELS,
+  EXAMPLE_FIELD_ORDER,
+  type LoadedExamples,
+} from '../features/cocreator/examples.ts';
 import {
   FinishAttempt,
   FinishConflictError,
@@ -56,7 +60,6 @@ import {
   cocreatorReducer,
 } from '../features/cocreator/state/cocreatorReducer.ts';
 import { type UseCocreator, useCocreator } from '../features/cocreator/useCocreator.ts';
-import { type LoadedExamples, useExampleCards } from '../features/cocreator/useExampleCards.ts';
 import { characterApi, cocreatorApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { CoCreatorCard, type Pending } from './CoCreatorCard.tsx';
@@ -278,7 +281,7 @@ function Examples({
   defaults: CoCreatorSettings;
   analysed: boolean;
   onDefaultsChange: (patch: Partial<CoCreatorSettings>) => void;
-  onAnalyse: () => void;
+  onAnalyse: () => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [setsOpen, setSetsOpen] = useState(false);
@@ -437,10 +440,10 @@ function Examples({
           <button
             type="button"
             className="w3-st-ghost w3-st-ghost--sm"
-            disabled={busy || !selection.cards.length}
+            disabled={busy || Boolean(design.blockedReason) || !selection.cards.length}
+            title={design.blockedReason ?? undefined}
             onClick={() => {
-              setOpen(false);
-              onAnalyse();
+              if (onAnalyse()) setOpen(false);
             }}
           >
             {analysed ? 'Analyse again' : 'Analyse them'}
@@ -493,8 +496,6 @@ export function CoCreatorDesk({
   onFinished: (avatar: string) => void;
   onError: (message: string) => void;
 }) {
-  const exampleBlockRef = useRef('');
-  const examplesReadyRef = useRef(false);
   const mainRef = useRef<ComposerHandle>(null);
   const sideRef = useRef<ComposerHandle>(null);
   const [sideOpen, setSideOpen] = useState(false);
@@ -518,8 +519,6 @@ export function CoCreatorDesk({
     activePresetId,
     activePreset,
     tokenizerEncoding,
-    exampleBlockRef,
-    examplesReadyRef,
     streamingFps,
   });
   const { state, blockedReason, countTokens } = design;
@@ -528,10 +527,7 @@ export function CoCreatorDesk({
     finishing ||
     Boolean(finishAttempt.current?.result) ||
     state.sessionId !== session.id;
-  const loaded = useExampleCards(state.examples, countTokens);
-  exampleBlockRef.current = loaded.text;
-  examplesReadyRef.current = !loaded.loading;
-  useEffect(() => design.refreshContext(loaded.text), [loaded.text, design.refreshContext]);
+  const loaded = design.loadedExamples;
   const stateRef = useRef(state);
   stateRef.current = state;
   // biome-ignore lint/correctness/useExhaustiveDependencies: draft changes invalidate choices made against the previous draft
@@ -772,9 +768,10 @@ export function CoCreatorDesk({
     openSide();
     sideRef.current?.append(quoteForSideChat(text));
   };
-  const send = (text: string, extra?: Parameters<typeof design.send>[1]) => {
-    mainWindow.snapToEnd();
-    void design.send(text, extra);
+  const send = (text: string, extra?: Parameters<typeof design.send>[1]): boolean => {
+    const accepted = design.send(text, extra);
+    if (accepted) mainWindow.snapToEnd();
+    return accepted;
   };
   const submitMain = (text: string): boolean => {
     const input = parseCocreatorInput(text);
@@ -799,8 +796,7 @@ export function CoCreatorDesk({
       return false;
     }
     if (busy || blockedReason) return false;
-    send(input.text);
-    return true;
+    return send(input.text);
   };
 
   const analysed = useMemo(
@@ -920,6 +916,7 @@ export function CoCreatorDesk({
                     key={message.id}
                     message={message}
                     who="Co-Creator"
+                    blockedReason={blockedReason}
                     canReroll={at === lastIndex && !message.is_user}
                     canRetry={at === lastIndex && message.is_user}
                     streaming={

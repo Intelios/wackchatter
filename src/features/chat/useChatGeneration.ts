@@ -8,6 +8,7 @@
  */
 
 import { buildRecapRequest } from '@shared/chat/recap.ts';
+import type { ChatReasoningEfforts } from '@shared/models/reasoning.ts';
 import type { NexusSettings } from '@shared/nexus/types.ts';
 import { DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
@@ -73,6 +74,7 @@ export interface ChatGenerationOptions {
   preset: Preset | null;
   presetId?: string | null;
   connection: ResolvedModel | null;
+  chatReasoningEfforts?: ChatReasoningEfforts;
   countTokens: TokenCounter;
   worldInfoSources?: WorldInfoSource[];
   resolveWorldInfoSources?: (personaLorebookId?: string) => WorldInfoSource[];
@@ -98,6 +100,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
     preset,
     presetId,
     connection,
+    chatReasoningEfforts,
     countTokens,
     worldInfoSources,
     resolveWorldInfoSources,
@@ -155,7 +158,8 @@ export function useChatGeneration(options: ChatGenerationOptions) {
 
       // Settings can change while the prompt is being assembled or global variables are
       // persisted. Keep the request body, reply metadata, and server-side connection lookup
-      // on the same snapshot for the entire generation.
+      // on the same snapshot for the entire generation. The immutable effort map is captured
+      // by this callback alongside the model, never read from newer settings after an await.
       const model: ResolvedModel = { ...connection };
 
       const startAction: ChatAction = {
@@ -238,6 +242,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
           mode,
           started,
           model,
+          chatReasoningEfforts,
           preset,
           character,
           persona,
@@ -397,6 +402,7 @@ export function useChatGeneration(options: ChatGenerationOptions) {
       presetId,
       persona,
       connection,
+      chatReasoningEfforts,
       countTokens,
       stream,
       slot,

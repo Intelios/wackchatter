@@ -25,15 +25,7 @@ import type { MessageExtra } from '@shared/types/chat.ts';
 import type { CocreatorSaveSnapshot, CocreatorSession } from '@shared/types/cocreator.ts';
 import type { Preset, PresetSummary } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { cocreatorApi, presetApi } from '../../lib/api.ts';
 import type { PersistenceControls } from '../../lib/autosave.ts';
 import { runGeneration } from '../../lib/generation.ts';
@@ -46,6 +38,7 @@ import { measureCharacterContext } from './characterContext.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
 import { runCompaction } from './compactionRun.ts';
 import { type CocreatorContext, contextView } from './context.ts';
+import type { LoadedExamples } from './examples.ts';
 import { buildDesignGeneration } from './generation.ts';
 import { renderDraftBlock } from './seed.ts';
 import { resolveCocreatorSettings } from './settings.ts';
@@ -59,6 +52,7 @@ import {
   toPersistedMessages,
   toPersistedSideChat,
 } from './state/cocreatorReducer.ts';
+import { useExampleCards } from './useExampleCards.ts';
 
 const SAVE_DELAY_MS = 400;
 
@@ -72,16 +66,6 @@ export interface UseCocreatorOptions {
   activePresetId: string | null;
   activePreset: Preset | null;
   tokenizerEncoding?: 'auto' | 'o200k_base' | 'cl100k_base';
-  /**
-   * The rendered example block, behind a ref rather than a value.
-   *
-   * The selection lives in this hook's own reducer, and rendering it needs the cards
-   * fetched — so the block can only be computed by the caller *after* this hook has run. A
-   * ref breaks that cycle, and reading it at generate time is right anyway: it is the same
-   * "snapshot everything when the request starts" discipline the connection follows.
-   */
-  exampleBlockRef: RefObject<string>;
-  examplesReadyRef: RefObject<boolean>;
   streamingFps: number;
 }
 
@@ -91,7 +75,7 @@ export interface UseCocreator {
   mainContext: CocreatorContext;
   sideCompactionContext: CocreatorContext;
   compacting: ConversationTarget | null;
-  refreshContext: (examples: string) => void;
+  loadedExamples: LoadedExamples;
   state: CocreatorState;
   dispatch: (action: CocreatorAction) => void;
   stream: StreamStore;
@@ -101,7 +85,7 @@ export interface UseCocreator {
   saveError: string | null;
   /** Why generation is unavailable, for a `disabledReason`. Null when it is available. */
   blockedReason: string | null;
-  send: (text: string, extra?: MessageExtra) => Promise<void>;
+  send: (text: string, extra?: MessageExtra) => boolean;
   /** Generate another take on the last reply — an overswipe, never destructive. */
   reroll: () => Promise<void>;
   /**
@@ -146,8 +130,6 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     activePresetId,
     activePreset,
     tokenizerEncoding,
-    exampleBlockRef,
-    examplesReadyRef,
     streamingFps,
   } = options;
 
@@ -155,8 +137,6 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [compacting, setCompacting] = useState<ConversationTarget | null>(null);
-  const [previewExamples, setPreviewExamples] = useState('');
-  const refreshContext = useCallback((examples: string) => setPreviewExamples(examples), []);
   const compactionDone = useRef<Promise<void> | null>(null);
   const manualCompactionDone = useRef<Promise<void> | null>(null);
 
@@ -176,6 +156,12 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   const systemPrompt = resolved.systemPrompt;
   const streaming = resolved.streaming;
   const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
+  const loadedExamples = useExampleCards(state.examples, countTokens);
+  const exampleBlockRef = useRef(loadedExamples.text);
+  exampleBlockRef.current = loadedExamples.text;
+  const examplesReady = state.sessionId === session.id && !loadedExamples.loading;
+  const examplesReadyRef = useRef(examplesReady);
+  examplesReadyRef.current = examplesReady;
   const sideSettings = useMemo(
     () =>
       resolveSideSettings(defaults.sideChat, state.sideChat?.settings ?? {}, models, connections),
@@ -334,8 +320,9 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   const blockedReason = useMemo(() => {
     if (!resolved.model.ok) return resolved.model.reason;
     if (!preset) return 'No preset is loaded';
+    if (!examplesReady) return 'Wait for the selected examples to load.';
     return null;
-  }, [resolved.model, preset]);
+  }, [resolved.model, preset, examplesReady]);
 
   const sideModelContext = sideModelContextInfo.tokens;
 
@@ -406,7 +393,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       dispatch(action);
       return next;
     },
-    [systemPrompt, exampleBlockRef, examplesReadyRef],
+    [systemPrompt],
   );
 
   const measure = useCallback(
@@ -433,16 +420,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         countTokens: target === 'side' ? sideCountTokens : countTokens,
       });
     },
-    [
-      connection,
-      sideConnection,
-      preset,
-      sideSettings,
-      systemPrompt,
-      exampleBlockRef,
-      countTokens,
-      sideCountTokens,
-    ],
+    [connection, sideConnection, preset, sideSettings, systemPrompt, countTokens, sideCountTokens],
   );
 
   const performCompaction = useCallback(
@@ -546,7 +524,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         base.status !== 'idle' ||
         !model ||
         !preset ||
-        (target === 'side' && !base.sideChat)
+        (target === 'side' && !base.sideChat) ||
+        (target === 'main' && !examplesReadyRef.current)
       )
         return;
       const controller = new AbortController();
@@ -581,7 +560,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       let measured: ReturnType<typeof measure> = null;
       let failure: string | null = null;
       try {
-        measured = measure(state, target, info.tokens, previewExamples);
+        measured = measure(state, target, info.tokens, loadedExamples.text);
       } catch (error) {
         failure = (error as Error).message;
       }
@@ -610,7 +589,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       connection,
       sideModelContextInfo,
       mainModelContext,
-      previewExamples,
+      loadedExamples.text,
       measure,
       compacting,
       countTokens,
@@ -619,7 +598,6 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       sideBlockedReason,
     ],
   );
-  // Examples arrive after this hook's first render; the desk refreshes once their frozen text changes.
   const mainContext = useMemo(() => makeContext('main'), [makeContext]);
   const sideCompactionContext = useMemo(() => makeContext('side'), [makeContext]);
 
@@ -630,7 +608,12 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       target: ConversationTarget = 'main',
     ) => {
       const current = base ?? stateRef.current;
-      if (current.status !== 'idle' || abortRef.current) return;
+      if (
+        current.status !== 'idle' ||
+        abortRef.current ||
+        (target === 'main' && !examplesReadyRef.current)
+      )
+        return;
       const selectedConnection = target === 'side' ? sideConnection : connection;
       const counter = target === 'side' ? sideCountTokens : countTokens;
       if (!selectedConnection || !preset || (target === 'side' && !current.sideChat)) return;
@@ -848,7 +831,6 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       systemPrompt,
       measure,
       performCompaction,
-      exampleBlockRef,
       countTokens,
       sideSettings,
       sideConnection,
@@ -859,10 +841,16 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   );
 
   const send = useCallback(
-    async (text: string, extra?: MessageExtra) => {
+    (text: string, extra?: MessageExtra) => {
       const trimmed = text.trim();
-      if (!trimmed || blockedReason || abortRef.current || stateRef.current.status !== 'idle')
-        return;
+      if (
+        !trimmed ||
+        blockedReason ||
+        !examplesReadyRef.current ||
+        abortRef.current ||
+        stateRef.current.status !== 'idle'
+      )
+        return false;
 
       const action: CocreatorAction = {
         type: 'message/appendUser',
@@ -874,7 +862,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       // against a transcript that already contains what it is replying to.
       const next = cocreatorReducer(stateRef.current, action);
       dispatch(action);
-      await generate('send', next);
+      void generate('send', next);
+      return true;
     },
     [generate, blockedReason],
   );
@@ -949,7 +938,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     compacting,
     mainContext,
     sideCompactionContext,
-    refreshContext,
+    loadedExamples,
     setAutoCompaction: (target, automatic) =>
       dispatch({ type: 'compaction/automatic', target, automatic }),
     saving,

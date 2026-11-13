@@ -7,6 +7,7 @@
  */
 
 import { type ComposerLayouts, DEFAULT_COMPOSER_LAYOUTS } from '../composer/layout.ts';
+import type { ChatReasoningEffortPatch, ChatReasoningEfforts } from '../models/reasoning.ts';
 import { DEFAULT_MODEL_SLOTS, type ModelRef, type ModelSlots } from '../models/slots.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
@@ -21,6 +22,13 @@ import type { WorldInfoSettings } from './worldinfo.ts';
 import { DEFAULT_WI_SETTINGS } from './worldinfo.ts';
 
 export interface AppSettings {
+  /**
+   * The server's write counter, bumped on every persisted settings change and never by a
+   * client. A response carrying an older number describes a world that has been replaced,
+   * so the app can ignore it instead of painting stale connections or models back over a
+   * newer save.
+   */
+  settingsRevision: number;
   /** Every saved connection: endpoints and how to talk to them, never a model. */
   connections: Connection[];
   /**
@@ -28,6 +36,12 @@ export interface AppSettings {
    * `mergeSettings`, so picking one slot's model never touches another's.
    */
   models: ModelSlots;
+  /**
+   * Chat-only reasoning overrides, by connection then model. An absent leaf follows the
+   * preset; explicit `auto` is saved too. Patches merge both levels, and only a null model
+   * leaf resets one. Deleting a connection drops its preferences.
+   */
+  chatReasoningEfforts: ChatReasoningEfforts;
   /**
    * Models most recently picked anywhere, newest first, capped at `MAX_RECENT_MODELS`.
    * Convenience only, like `recentPersonaIds`: it heads the model picker.
@@ -200,6 +214,19 @@ export interface AppSettings {
   /** Unrecognised keys survive, so a newer build's settings are not destroyed. */
   [key: string]: unknown;
 }
+
+/**
+ * Partial settings updates, with per-slot picks and nullable reasoning resets. Keep this
+ * homomorphic: Omit over AppSettings's string index signature would lose every other
+ * declared field's type, allowing malformed scalar patches at typed call sites.
+ */
+export type SettingsPatch = {
+  [K in keyof AppSettings]?: K extends 'models'
+    ? Partial<ModelSlots>
+    : K extends 'chatReasoningEfforts'
+      ? ChatReasoningEffortPatch
+      : AppSettings[K];
+};
 
 /**
  * A user-defined quick command. The persona rule: `id` is opaque, `name` is editable —
@@ -514,8 +541,10 @@ export type SettingsResponse = AppSettings & { keys: Record<string, KeyInfo> };
 export const DEFAULT_CONNECTION_ID = 'default';
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  settingsRevision: 0,
   connections: [{ ...DEFAULT_CONNECTION, id: DEFAULT_CONNECTION_ID, name: PROVIDERS.custom.label }],
   models: { ...DEFAULT_MODEL_SLOTS },
+  chatReasoningEfforts: {},
   recentModels: [],
   favoriteModels: [],
   modelPickerGroups: {},

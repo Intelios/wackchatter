@@ -5,7 +5,9 @@
  * island's own rows.
  */
 
+import { REASONING_EFFORT_OPTIONS } from '@shared/models/reasoning.ts';
 import type { ModelRef } from '@shared/models/slots.ts';
+import type { ReasoningEffort } from '@shared/types/preset.ts';
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useModels } from '../features/models/ModelsContext.tsx';
 import {
@@ -15,6 +17,7 @@ import {
   type PickerSection,
   pickerSections,
 } from '../features/models/pickerLogic.ts';
+import { Segments } from './controls.tsx';
 import { Icon } from './icons.tsx';
 
 export function ModelPane({
@@ -23,6 +26,9 @@ export function ModelPane({
   emptyLabel,
   emptyFollows,
   head,
+  controls,
+  disabledReason,
+  onDone,
   onPick,
 }: {
   /** The pane is showing: focus the search and fetch the catalogues. */
@@ -33,7 +39,10 @@ export function ModelPane({
   emptyFollows?: ModelRef | null;
   /** Above the search, e.g. what the pick is for. */
   head?: ReactNode;
-  onPick: (ref: ModelRef | null) => void;
+  controls?: ReactNode;
+  disabledReason?: string;
+  onDone?: () => void;
+  onPick: ((ref: ModelRef | null) => void) | ((ref: ModelRef | null) => Promise<boolean>);
 }) {
   const {
     connections,
@@ -49,6 +58,17 @@ export function ModelPane({
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const lastFocus = useRef<HTMLElement | null>(null);
+  const wasDisabled = useRef(false);
+
+  useEffect(() => {
+    const finishedSaving = wasDisabled.current && !disabledReason;
+    wasDisabled.current = Boolean(disabledReason);
+    if (!finishedSaving || !active || document.activeElement !== document.body) return;
+    const target = lastFocus.current;
+    if (target?.isConnected && !target.matches(':disabled')) target.focus({ preventScroll: true });
+    else inputRef.current?.focus({ preventScroll: true });
+  }, [active, disabledReason]);
 
   useEffect(() => {
     if (!active) return;
@@ -73,17 +93,20 @@ export function ModelPane({
     [active, connections, recentModels, favoriteModels, pickerGroups, catalogs, query],
   );
 
-  const pick = (ref: ModelRef | null) => {
-    if (ref) rememberModel(ref);
-    onPick(ref);
+  const pick = async (ref: ModelRef | null) => {
+    if (disabledReason) return;
+    const picked = await onPick(ref);
+    if (picked !== false && ref) rememberModel(ref);
   };
 
   const onKey = (event: KeyboardEvent) => {
     const options = [
-      ...(listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []),
+      ...(listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') ??
+        []),
     ];
     if (!options.length) return;
     const at = options.indexOf(document.activeElement as HTMLButtonElement);
+    if (document.activeElement !== inputRef.current && at < 0) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       options[(at + 1) % options.length]?.focus({ preventScroll: true });
@@ -108,7 +131,9 @@ export function ModelPane({
         aria-selected={isCurrent(entry, value)}
         data-on={isCurrent(entry, value) || undefined}
         tabIndex={-1}
-        onClick={() => pick(entry.ref)}
+        disabled={Boolean(disabledReason)}
+        title={disabledReason}
+        onClick={() => void pick(entry.ref)}
       >
         <span className="w3-opt__grow">
           <span className="w3-opt__t">{entry.name}</span>
@@ -128,7 +153,8 @@ export function ModelPane({
         className="w3-mp__star"
         aria-pressed={entry.favorite}
         aria-label={entry.favorite ? `Unstar ${entry.name}` : `Star ${entry.name}`}
-        title={entry.favorite ? 'Remove from favourites' : 'Add to favourites'}
+        disabled={Boolean(disabledReason)}
+        title={disabledReason ?? (entry.favorite ? 'Remove from favourites' : 'Add to favourites')}
         onClick={() => toggleFavorite(entry.ref)}
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -145,6 +171,8 @@ export function ModelPane({
           type="button"
           className="w3-mp__title w3-mp__fold"
           aria-expanded={entry.open}
+          disabled={Boolean(disabledReason)}
+          title={disabledReason}
           onClick={() => setGroupOpen(entry.key, !entry.open)}
         >
           <Icon name="chevronRight" size="xs" />
@@ -166,7 +194,14 @@ export function ModelPane({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: arrow keys walk the options inside
-    <div className="w3-mp" onKeyDown={onKey}>
+    <div
+      className="w3-mp"
+      data-controls={controls ? true : undefined}
+      onKeyDown={onKey}
+      onFocusCapture={(event) => {
+        lastFocus.current = event.target as HTMLElement;
+      }}
+    >
       {head}
       <label className="w3-p-field">
         <Icon name="search" />
@@ -180,13 +215,15 @@ export function ModelPane({
         <button
           type="button"
           className="w3-mp__refresh"
-          title="Fetch every connection's model list again"
+          title={disabledReason ?? "Fetch every connection's model list again"}
+          disabled={Boolean(disabledReason)}
           aria-label="Fetch the model lists again"
           onClick={() => loadCatalogs(true)}
         >
           <Icon name="refresh" size="sm" />
         </button>
       </label>
+      {controls}
       <div className="w3-opt-list w3-mp__list" role="listbox" aria-label="Models" ref={listRef}>
         {emptyLabel && !query.trim() ? (
           <button
@@ -196,7 +233,9 @@ export function ModelPane({
             aria-selected={!value}
             data-on={!value || undefined}
             tabIndex={-1}
-            onClick={() => pick(null)}
+            disabled={Boolean(disabledReason)}
+            title={disabledReason}
+            onClick={() => void pick(null)}
           >
             <span className="w3-opt__grow">
               <span className="w3-opt__t">{emptyLabel}</span>
@@ -220,9 +259,98 @@ export function ModelPane({
         ) : null}
       </div>
       <div className="w3-p-foot">
-        <span>↑ ↓ to move, Enter to choose</span>
+        <span>{onDone ? '↑ ↓ models, Enter selects' : '↑ ↓ to move, Enter to choose'}</span>
         <span>Esc closes</span>
+        {onDone ? (
+          <button type="button" className="w3-pill" onClick={onDone}>
+            Done
+          </button>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+export function ChatModelPane({
+  active,
+  value,
+  effort,
+  presetEffort,
+  saving,
+  disabledReason,
+  onPick,
+  onEffort,
+  onDone,
+}: {
+  active: boolean;
+  value: ModelRef | null;
+  effort: ReasoningEffort | undefined;
+  presetEffort: ReasoningEffort;
+  saving: boolean;
+  disabledReason: string | null;
+  onPick: (ref: ModelRef | null) => Promise<boolean>;
+  onEffort: (effort: ReasoningEffort | null) => void;
+  onDone: () => void;
+}) {
+  const { connections, catalogs } = useModels();
+  const current = value ? describeRef(value, connections, catalogs) : null;
+  const blocked = saving
+    ? 'Saving model settings…'
+    : (disabledReason ?? (!value ? 'Choose a model first.' : undefined));
+  const presetLabel =
+    REASONING_EFFORT_OPTIONS.find(([id]) => id === presetEffort)?.[1] ?? String(presetEffort);
+
+  return (
+    <ModelPane
+      active={active}
+      value={value}
+      head={<p className="w3-isl-model__head">The model for your chats</p>}
+      disabledReason={saving ? blocked : undefined}
+      onPick={onPick}
+      onDone={onDone}
+      controls={
+        <div className="w3-mp__effort">
+          <div className="w3-mp__effort-head">
+            <span>
+              Reasoning effort
+              {current ? (
+                <span
+                  className="w3-mp__effort-model"
+                  title={`${current.name} · ${current.connectionName ?? 'deleted connection'}`}
+                >
+                  · {current.name}
+                </span>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              className="w3-mp__effort-reset"
+              disabled={Boolean(blocked) || effort === undefined}
+              title={
+                blocked ?? (effort === undefined ? 'Already using the preset default' : undefined)
+              }
+              onClick={() => onEffort(null)}
+            >
+              Use preset
+            </button>
+          </div>
+          <Segments<ReasoningEffort>
+            label="Reasoning effort"
+            value={effort}
+            options={REASONING_EFFORT_OPTIONS}
+            disabled={Boolean(blocked)}
+            title={blocked}
+            onChange={onEffort}
+          />
+          <p className="w3-mp__effort-help" aria-live="polite">
+            {!value
+              ? 'Choose a model to set its reasoning effort.'
+              : effort === undefined
+                ? `Using preset: ${presetLabel}. Choose a level to remember it. Only reasoning models use this.`
+                : 'Remembered for this model. Auto sends no effort. Only reasoning models use this.'}
+          </p>
+        </div>
+      }
+    />
   );
 }
