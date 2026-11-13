@@ -29,12 +29,20 @@ export function buildSidePrompt(input: {
   const coveredMain = Math.min(snapshot.messages.length, checkpoint?.coveredMessages ?? 0);
   const coveredSide = Math.max(0, (checkpoint?.coveredMessages ?? 0) - snapshot.messages.length);
   const fixed: ApiMessage[] = [
-    { role: 'system', content: `${snapshot.systemPrompt}\n\n${SIDE_CHAT_INSTRUCTION}` },
+    {
+      role: 'system',
+      content: [
+        snapshot.systemPrompt,
+        SIDE_CHAT_INSTRUCTION,
+        snapshot.exampleBlock,
+        snapshot.draftBlock ?? '',
+      ]
+        .filter((block) => block.trim())
+        .join('\n\n'),
+    },
   ];
-  if (snapshot.exampleBlock.trim()) fixed.push({ role: 'system', content: snapshot.exampleBlock });
-  if (snapshot.draftBlock?.trim()) fixed.push({ role: 'system', content: snapshot.draftBlock });
   if (checkpoint) fixed.push({ role: 'user', content: renderCheckpoint(checkpoint) });
-  const boundary: ApiMessage = { role: 'system', content: SIDE_CHAT_BOUNDARY };
+  const boundary: ApiMessage = { role: 'user', content: SIDE_CHAT_BOUNDARY };
   const side = input.messages
     .filter((m) => currentText(m).trim())
     .slice(coveredSide)

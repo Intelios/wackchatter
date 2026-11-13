@@ -79,14 +79,14 @@ describe('compacted Character Co-Creator requests', () => {
       compaction,
     };
     const prompt = buildDesignPrompt(options);
-    expect(prompt.messages.slice(0, 3).map((m) => m.content)).toEqual([
-      'Design instructions',
-      'Literal example {{char}}',
-      'Accepted working card {{char}}',
-    ]);
-    expect(prompt.messages[3]?.role).toBe('user');
-    expect(prompt.messages[3]?.content).toContain('Suggestions remain suggestions');
-    expect(prompt.messages.slice(4).map((m) => m.content)).toEqual(
+    expect(prompt.messages[0]).toEqual({
+      role: 'system',
+      content: 'Design instructions\n\nLiteral example {{char}}\n\nAccepted working card {{char}}',
+    });
+    expect(prompt.messages.filter((m) => m.role === 'system')).toHaveLength(1);
+    expect(prompt.messages[1]?.role).toBe('user');
+    expect(prompt.messages[1]?.content).toContain('Suggestions remain suggestions');
+    expect(prompt.messages.slice(2).map((m) => m.content)).toEqual(
       messages.slice(record.checkpoint!.coveredMessages).map(currentText),
     );
     expect(prompt.droppedMessages).toBe(0);
@@ -106,7 +106,7 @@ describe('compacted Character Co-Creator requests', () => {
     expect(messages).toHaveLength(20);
     const changed = messages.map((m, i) => (i === 0 ? setText(m, 'Edited brief') : m));
     expect(activeCheckpoint(compaction, characterCompactionSources(changed))).toBeNull();
-    expect(buildDesignPrompt({ ...options, messages: changed }).messages[3]?.content).toBe(
+    expect(buildDesignPrompt({ ...options, messages: changed }).messages[1]?.content).toBe(
       'Edited brief',
     );
   });
@@ -134,12 +134,14 @@ describe('compacted Character Co-Creator requests', () => {
       countTokens: counter,
       maxPromptTokens: 50000,
     });
-    expect(prompt.messages.slice(0, 3).map((m) => m.content)).toEqual([
-      expect.stringContaining('Frozen instructions'),
-      'Frozen example',
-      'Frozen accepted card',
-    ]);
-    expect(prompt.messages.some((m) => m.content === SIDE_CHAT_BOUNDARY)).toBe(true);
+    expect(prompt.messages[0]?.content).toContain('Frozen instructions');
+    expect(prompt.messages[0]?.content).toContain('Frozen example');
+    expect(prompt.messages[0]?.content).toContain('Frozen accepted card');
+    expect(prompt.messages.filter((m) => m.role === 'system')).toHaveLength(1);
+    expect(prompt.messages.find((m) => m.content === SIDE_CHAT_BOUNDARY)).toEqual({
+      role: 'user',
+      content: SIDE_CHAT_BOUNDARY,
+    });
     expect(prompt.messages.at(-1)?.content).toBe(currentText(side.at(-1)!));
     expect(prompt.droppedMainMessages + prompt.droppedSideMessages).toBe(0);
     expect(JSON.stringify({ frozen, side })).toBe(before);

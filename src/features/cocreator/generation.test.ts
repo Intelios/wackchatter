@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test';
+import { blankCardData } from '@shared/card/blank.ts';
 import { assistantPlaceholder, setText, userMessage } from '@shared/chat/message.ts';
+import { captureSideSnapshot } from '@shared/cocreator/sideChat.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
+import { DEFAULT_EXAMPLE_FIELDS } from '@shared/types/cocreator.ts';
+import { renderExamples } from './examples.ts';
 import { buildDesignGeneration } from './generation.ts';
+import { renderDraftBlock, seedStash } from './seed.ts';
+import { SIDE_CHAT_BOUNDARY, SIDE_CHAT_INSTRUCTION } from './sidePrompt.ts';
 
 const counter: TokenCounter = {
   countText: (text) => text.length,
@@ -31,6 +37,97 @@ const cutoff = setText(
 );
 
 describe('design generation requests and recovery', () => {
+  const exampleNames = ['Seori', 'Mika', 'Niamh', 'Giselle', 'Sunhi', 'Rosie'];
+  const exampleBlock = renderExamples(
+    exampleNames.map((name) => ({
+      avatar: `${name}.png`,
+      card: {
+        ...blankCardData(name),
+        description: `${name} description {{char}}.`,
+        first_mes: `${name} first message {{user}}.`,
+        scenario: 'Unselected scenario.',
+      },
+    })),
+    {
+      ...DEFAULT_EXAMPLE_FIELDS,
+      personality: false,
+      scenario: false,
+      tags: false,
+    },
+    counter,
+  ).text;
+  const existing = {
+    avatar: 'Kohana.png',
+    folder: '',
+    name: 'Kohana',
+    description: 'The existing character.',
+    creator: '',
+    tags: [],
+    character_version: '',
+    hasLorebook: false,
+    modified: 0,
+    card: {
+      data: {
+        ...blankCardData('Kohana'),
+        description: 'Kohana accepted description.',
+        first_mes: 'Kohana accepted first message.',
+        alternate_greetings: ['Kohana alternate greeting.'],
+      },
+    },
+  };
+  const draftBlock = renderDraftBlock(seedStash(existing, ''), existing.card);
+
+  test.each(['send', 'swipe', 'continue'] as const)(
+    '%s keeps every example and the existing card in one system message',
+    (mode) => {
+      const result = buildDesignGeneration({
+        ...request,
+        mode,
+        exampleBlock,
+        draftBlock,
+        messages: [user, mode === 'continue' ? cutoff : assistantPlaceholder('a', 'Assistant')],
+      });
+      const systems = result.body.messages.filter((m) => m.role === 'system');
+      expect(systems).toHaveLength(1);
+      expect(result.body.messages[0]).toBe(systems[0]!);
+      expect(systems[0]!.content).toBe(
+        [request.systemPrompt, exampleBlock, draftBlock].join('\n\n'),
+      );
+      for (const name of exampleNames) {
+        expect(systems[0]!.content).toContain(`${name} description {{char}}.`);
+        expect(systems[0]!.content).toContain(`${name} first message {{user}}.`);
+      }
+      expect(systems[0]!.content).not.toContain('Unselected scenario.');
+      expect(systems[0]!.content).toContain('Kohana accepted description.');
+      expect(systems[0]!.content).toContain('Kohana alternate greeting.');
+    },
+  );
+
+  test.each(['send', 'swipe', 'continue'] as const)(
+    'side %s keeps frozen examples and the card in the only system message',
+    (mode) => {
+      const sideSnapshot = captureSideSnapshot({
+        systemPrompt: request.systemPrompt,
+        exampleBlock,
+        draftBlock,
+        messages: [user],
+      });
+      const result = buildDesignGeneration({
+        ...request,
+        mode,
+        sideSnapshot,
+        messages: [user, mode === 'continue' ? cutoff : assistantPlaceholder('a', 'Assistant')],
+      });
+      const systems = result.body.messages.filter((m) => m.role === 'system');
+      expect(systems).toHaveLength(1);
+      expect(result.body.messages[0]).toBe(systems[0]!);
+      expect(systems[0]!.content).toContain(request.systemPrompt);
+      expect(systems[0]!.content).toContain(SIDE_CHAT_INSTRUCTION);
+      expect(systems[0]!.content).toContain(exampleBlock);
+      expect(systems[0]!.content).toContain(draftBlock);
+      expect(result.body.messages.find((m) => m.content === SIDE_CHAT_BOUNDARY)?.role).toBe('user');
+    },
+  );
   test('side generation includes frozen background while an ordinary main request never includes side history', () => {
     const sideSnapshot = {
       capturedAt: 1,

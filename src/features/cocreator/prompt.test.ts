@@ -46,12 +46,12 @@ describe('assembling the design prompt', () => {
     ]);
   });
 
-  test('examples become a second system message, after the system prompt', () => {
+  test('examples share the only system message with the instructions', () => {
     const prompt = build([user('a', 'Hello.')], { exampleBlock: 'Example cards follow.' });
 
-    expect(prompt.messages.slice(0, 2)).toEqual([
-      { role: 'system', content: 'You are a design partner.' },
-      { role: 'system', content: 'Example cards follow.' },
+    expect(prompt.messages).toEqual([
+      { role: 'system', content: 'You are a design partner.\n\nExample cards follow.' },
+      { role: 'user', content: 'Hello.' },
     ]);
   });
 
@@ -96,6 +96,37 @@ describe('assembling the design prompt', () => {
 
     expect(system + examples + transcript + replyPriming).toBe(prompt.totalTokens);
   });
+
+  test.each([
+    ['', '', ''],
+    ['Instructions.', '', ''],
+    ['', 'Examples.', ''],
+    ['', '', 'Accepted card.'],
+    ['Instructions.', 'Examples.', ''],
+    ['Instructions.', '', 'Accepted card.'],
+    ['', 'Examples.', 'Accepted card.'],
+    ['Instructions.', 'Examples.', 'Accepted card.'],
+  ])('merged block accounting for %j / %j / %j', (systemPrompt, exampleBlock, draftBlock) => {
+    const counter: TokenCounter = {
+      countText: (text) => Math.ceil(text.length / 4),
+      countChat: (messages) =>
+        messages.reduce((total, message) => total + counter.countText(message.content) + 4, 3),
+    };
+    const input = { systemPrompt, exampleBlock, draftBlock, countTokens: counter };
+    const prompt = build([], input);
+    const parts = [systemPrompt, exampleBlock, draftBlock].filter((block) => block.trim());
+    expect(prompt.messages).toEqual(
+      parts.length ? [{ role: 'system', content: parts.join('\n\n') }] : [],
+    );
+    expect(
+      Object.values(prompt.tokenCounts).reduce((total, tokens) => total + tokens, 0) +
+        counter.countChat([]),
+    ).toBe(prompt.totalTokens);
+    expect(build([], { ...input, maxPromptTokens: prompt.totalTokens }).fixedOverflow).toBe(false);
+    expect(build([], { ...input, maxPromptTokens: prompt.totalTokens - 1 }).fixedOverflow).toBe(
+      true,
+    );
+  });
 });
 
 describe('the assistant sees the accepted working card', () => {
@@ -124,7 +155,7 @@ describe('the assistant sees the accepted working card', () => {
       draftBlock: 'Current card {{char}}',
       maxPromptTokens: 25,
     });
-    expect(prompt.messages.some((m) => m.content === 'Current card {{char}}')).toBe(true);
+    expect(prompt.messages[0]?.content).toContain('Current card {{char}}');
     expect(prompt.droppedMessages).toBe(1);
     expect(prompt.tokenCounts.draft).toBeGreaterThan(0);
     const { system, examples, draft, transcript } = prompt.tokenCounts;
@@ -174,8 +205,10 @@ describe('context budget', () => {
       maxPromptTokens: 30,
     });
 
-    expect(prompt.messages[0]).toEqual({ role: 'system', content: 'You are a design partner.' });
-    expect(prompt.messages[1]).toEqual({ role: 'system', content: 'a b c d e f g h i j' });
+    expect(prompt.messages[0]).toEqual({
+      role: 'system',
+      content: 'You are a design partner.\n\na b c d e f g h i j',
+    });
   });
 
   test('pinned content alone over budget reports overflow rather than a partial pack', () => {

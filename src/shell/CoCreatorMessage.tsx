@@ -208,6 +208,7 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
   stream,
   busy,
   busyReason,
+  blockedReason = null,
   countTokens,
   files,
   onAskSide,
@@ -228,6 +229,7 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
   stream: StreamStore;
   busy: boolean;
   busyReason: string;
+  blockedReason?: string | null;
   countTokens: TokenCounter;
   files: FileActions;
   onAskSide?: (text: string) => void;
@@ -378,8 +380,8 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
             <button
               type="button"
               onClick={onRetry}
-              disabled={busy}
-              title={busy ? busyReason : undefined}
+              disabled={busy || Boolean(blockedReason)}
+              title={busy ? busyReason : (blockedReason ?? undefined)}
             >
               <Icon name="refresh" size="xs" />
               Get a reply
@@ -389,15 +391,20 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
             <button
               type="button"
               onClick={onReroll}
-              disabled={busy}
-              title={busy ? busyReason : undefined}
+              disabled={busy || Boolean(blockedReason)}
+              title={busy ? busyReason : (blockedReason ?? undefined)}
             >
               <Icon name="refresh" size="xs" />
               Another take
             </button>
           ) : null}
           {!message.is_user && canReroll && info.extra?.truncated ? (
-            <button type="button" onClick={onContinue} disabled={busy}>
+            <button
+              type="button"
+              onClick={onContinue}
+              disabled={busy || Boolean(blockedReason)}
+              title={busy ? busyReason : (blockedReason ?? undefined)}
+            >
               <Icon name="chevronRight" size="xs" />
               Continue
             </button>
