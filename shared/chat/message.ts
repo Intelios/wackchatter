@@ -16,6 +16,7 @@
  * `fromChatMessage` is the only place a foreign message is repaired.
  */
 
+import { isLengthCutoff } from '../providers/sse.ts';
 import type { CardDataV2 } from '../types/card.ts';
 import type { ChatMessage, MessageExtra, SwipeInfo } from '../types/chat.ts';
 
@@ -225,6 +226,26 @@ export function setText(
   };
 
   return { ...message, swipes, swipe_info };
+}
+
+/**
+ * What a settled reply records about how it ended.
+ *
+ * A token cut and a provider filter both stop the reply mid-sentence and both were billed,
+ * but only the first can be continued. `truncated` is the badge for a token cut;
+ * `finish_reason` keeps the provider's own word for anything short of an ordinary stop, so
+ * a filtered stop is named rather than mistaken for a complete answer.
+ */
+export function settledExtra(
+  finishReason: string | null | undefined,
+  extra: MessageExtra | undefined,
+): MessageExtra | undefined {
+  if (!finishReason || finishReason === 'stop') return extra;
+  return {
+    ...extra,
+    finish_reason: finishReason,
+    ...(isLengthCutoff(finishReason) ? { truncated: true } : {}),
+  };
 }
 
 /** Show a different existing swipe. Out-of-range indices are ignored. */

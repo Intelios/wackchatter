@@ -13,6 +13,7 @@ import {
   resetSwipes,
   selectSwipe,
   setText,
+  settledExtra,
   toChatMessage,
   userMessage,
 } from './message.ts';
@@ -450,5 +451,28 @@ describe('the invariant holds across arbitrary action sequences', () => {
       // And the projection survives a trip through storage unchanged.
       expect(fromChatMessage(toChatMessage(message)).swipes).toEqual(message.swipes);
     }
+  });
+});
+
+describe('what a settled reply records about how it ended', () => {
+  test('a length cut keeps the truncated badge and the reason', () => {
+    expect(settledExtra('length', { model: 'gpt-4o' })).toEqual({
+      model: 'gpt-4o',
+      truncated: true,
+      finish_reason: 'length',
+    });
+  });
+
+  test('a filtered stop keeps its reason without claiming a length cut', () => {
+    expect(settledExtra('content_filter: OTHER', undefined)).toEqual({
+      finish_reason: 'content_filter: OTHER',
+    });
+  });
+
+  test('a clean finish changes nothing at all', () => {
+    const extra = { model: 'gpt-4o' };
+    expect(settledExtra('stop', extra)).toBe(extra);
+    expect(settledExtra(null, extra)).toBe(extra);
+    expect(settledExtra(undefined, extra)).toBe(extra);
   });
 });

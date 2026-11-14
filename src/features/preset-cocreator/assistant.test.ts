@@ -567,6 +567,20 @@ describe('incomplete paid assistant output', () => {
     expect(assistantWireMessages([message])[0]).not.toHaveProperty('tool_calls');
   });
 
+  test('a provider content filter is recorded as filtered, not as a length cut', () => {
+    // The model was cut mid-sentence by the provider's safety filter. Continuing cannot
+    // get past it, so the reply must not read as a token cut with a Continue button.
+    const message = assistantResponseMessage({
+      content: 'Draft so far',
+      reasoning: 'Thinking',
+      finishReason: 'content_filter',
+      done: true,
+    });
+    expect(message.content).toBe('Draft so far');
+    expect(message.reasoning).toBe('Thinking');
+    expect(message.incomplete).toBe('filtered');
+  });
+
   test('Stop and network failures keep the latest streamed content and reasoning', () => {
     for (const reason of ['stopped', 'error'] as const) {
       const message = assistantResponseMessage(

@@ -66,6 +66,13 @@ export interface MessageExtra {
    * a complete one.
    */
   truncated?: boolean;
+  /**
+   * The provider's own reason, kept whenever the reply did not end in an ordinary `stop`:
+   * `length` above all, and `content_filter` — a safety stop that cuts a reply mid-sentence
+   * and bills it, but cannot be continued the way a token cut can. Absent on every reply
+   * that simply finished, and on everything recorded before this was written.
+   */
+  finish_reason?: string;
   /** Co-Creator-only provenance for user actions whose wording is editable. */
   coCreatorAction?: 'analyseExamples';
   /** How long each phase of this reply took, for the Inspect tool. */
@@ -88,9 +95,9 @@ export interface ReplyTrace {
   thinking?: number;
   /** The first visible text arrived. Absent when none did. */
   writing?: number;
-  /** It ended: finished, stopped or failed. */
+  /** It ended: finished, stopped or failed; `length` and `filtered` are the provider's own early stops. */
   end: number;
-  outcome: 'finished' | 'length' | 'stopped' | 'failed';
+  outcome: 'finished' | 'length' | 'stopped' | 'failed' | 'filtered';
   /** Thinking and cached prompt tokens, when the provider reported them. */
   thinkingTokens?: number;
   cachedTokens?: number;

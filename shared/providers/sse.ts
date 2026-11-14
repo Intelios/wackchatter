@@ -611,13 +611,38 @@ export function createStreamAccumulator(seed = ''): StreamAccumulator {
 /**
  * Whether a settled reply was cut short at its token limit.
  *
- * 'length' is the one finish reason that must reach the reader (`extra.truncated`): a
- * reply stopped at `openai_max_tokens` is visually identical to a complete one, so
- * "should I press Continue?" is unanswerable without it. Abort and failure mark their own
- * truncation; this is the clean-settle path that could otherwise end in a silent cut.
+ * 'length' must reach the reader (`extra.truncated`): a reply stopped at `openai_max_tokens`
+ * is visually identical to a complete one, so "should I press Continue?" is unanswerable
+ * without it. Abort and failure mark their own truncation; this is the clean-settle path
+ * that could otherwise end in a silent cut. A provider filter is the other silent cut, and
+ * it is named separately (`isFilteredStop`) because there is nothing to continue.
  */
 export function isLengthCutoff(finishReason: string | null | undefined): boolean {
   return finishReason === 'length';
+}
+
+/**
+ * Whether the provider's own filter ended the reply.
+ *
+ * A filtered reply stops mid-sentence exactly like a token cut, and its tokens were billed
+ * the same way — but continuing cannot help, because the content that was blocked is still
+ * what the next request would carry. Gemini's OpenAI-compatible layer says
+ * `content_filter` (sometimes with a detail suffix) and its native vocabulary — `SAFETY`,
+ * `PROHIBITED_CONTENT`, `BLOCKLIST`, `SPII`, `RECITATION` — reaches us verbatim when a layer
+ * forwards it instead of mapping it. Whichever arrives, it is named rather than mistaken
+ * for a complete answer.
+ */
+export function isFilteredStop(finishReason: string | null | undefined): boolean {
+  if (!finishReason) return false;
+  const reason = finishReason.trim().toLowerCase();
+  return (
+    reason.startsWith('content_filter') ||
+    reason === 'safety' ||
+    reason === 'prohibited_content' ||
+    reason === 'blocklist' ||
+    reason === 'spii' ||
+    reason === 'recitation'
+  );
 }
 
 /** Turn a non-streamed completion body into the same shape. */

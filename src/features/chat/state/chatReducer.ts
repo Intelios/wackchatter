@@ -23,12 +23,12 @@ import {
   removeSwipe,
   selectSwipe,
   setText,
+  settledExtra,
   timestamp,
   toChatMessage,
   userMessage,
 } from '@shared/chat/message.ts';
 import type { ContextOverflow } from '@shared/prompt/assemble.ts';
-import { isLengthCutoff } from '@shared/providers/sse.ts';
 import type { ChatCompletionBody } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type {
@@ -99,7 +99,8 @@ export interface GeneratedAlternate {
   extra?: MessageExtra;
   /**
    * The choice's own finish_reason. A spare the provider cut at its token limit gets the
-   * same truncated badge as the reply above it, not a clean-looking half-take.
+   * same truncated badge as the reply above it, and one its filter stopped keeps the reason
+   * — never a clean-looking half-take.
    */
   finishReason?: string | null;
 }
@@ -178,9 +179,9 @@ export type ChatAction =
       extra?: MessageExtra;
       alternates?: GeneratedAlternate[];
       /**
-       * The provider's finish_reason for the primary choice. Only 'length' acts — it is
-       * the one clean-settle path that can end in a silent cut, and it folds `truncated`
-       * into extra here, the same place abort and failure mark theirs.
+       * The provider's finish_reason for the primary choice. `length` folds `truncated`
+       * into extra here, the same place abort and failure mark theirs; any other reason
+       * short of an ordinary `stop` is kept as `finish_reason`.
        */
       finishReason?: string | null;
     }
@@ -262,10 +263,9 @@ function settle(
         return appendAlternates(
           written,
           alternates.map((alternate) => {
-            // A cut spare wears the same badge as the cut reply above it.
-            const alternateExtra = isLengthCutoff(alternate.finishReason)
-              ? { ...alternate.extra, truncated: true }
-              : alternate.extra;
+            // A cut spare wears the same badge as the cut reply above it; a filtered one
+            // keeps its reason, which is what lets the transcript name the filter.
+            const alternateExtra = settledExtra(alternate.finishReason, alternate.extra);
             return {
               text: alternate.text,
               info: {
@@ -561,7 +561,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return settle(
         state,
         action.text,
-        isLengthCutoff(action.finishReason) ? { ...action.extra, truncated: true } : action.extra,
+        settledExtra(action.finishReason, action.extra),
         action.alternates,
       );
 

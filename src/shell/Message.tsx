@@ -7,6 +7,7 @@
  */
 
 import { currentText, type MessageState, swipeCount } from '@shared/chat/message.ts';
+import { isFilteredStop } from '@shared/providers/sse.ts';
 import { isProviderId, PROVIDERS } from '@shared/providers/types.ts';
 import {
   type CSSProperties,
@@ -144,6 +145,7 @@ export const Message = memo(function Message({
   const renderedText = displayText ?? text;
   const swipes = swipeCount(message);
   const info = message.swipe_info[message.swipe_id];
+  const filtered = isFilteredStop(info?.extra?.finish_reason);
   const reasoning = typeof info?.extra?.reasoning === 'string' ? info.extra.reasoning : '';
   const isUser = message.is_user;
   const canReply = isLast && !isUser;
@@ -267,6 +269,14 @@ export const Message = memo(function Message({
               {info?.extra?.truncated ? (
                 <span className="w3-msg__flag" data-tone="warn" title="Generation stopped early">
                   Stopped early
+                </span>
+              ) : filtered ? (
+                <span
+                  className="w3-msg__flag"
+                  data-tone="warn"
+                  title="The provider's safety filter stopped this reply mid-sentence. The tokens spent were billed; continuing will not get past it."
+                >
+                  Filtered
                 </span>
               ) : null}
             </span>

@@ -23,6 +23,7 @@ import {
   removeSwipe,
   selectSwipe,
   setText,
+  settledExtra,
   timestamp,
   toChatMessage,
   userMessage,
@@ -46,7 +47,6 @@ import {
   setSlot,
   stashedSlotCount,
 } from '@shared/cocreator/stash.ts';
-import { isLengthCutoff } from '@shared/providers/sse.ts';
 import type { ChatMessage, MessageExtra } from '@shared/types/chat.ts';
 import {
   type CardSlot,
@@ -179,8 +179,9 @@ type BaseCocreatorAction =
       text: string;
       extra?: MessageExtra;
       /**
-       * The provider's finish_reason. Only 'length' acts — it folds `truncated` into extra
-       * here, the same place abort and failure mark theirs.
+       * The provider's finish_reason. `length` folds `truncated` into extra, and any other
+       * reason that is not an ordinary `stop` is kept as `finish_reason`, so a filtered stop
+       * is not left looking like a complete answer.
        */
       finishReason?: string | null;
     }
@@ -527,11 +528,7 @@ function reduceConversation(state: CocreatorState, action: CocreatorAction): Coc
 
     case 'gen/finished':
       if (state.status === 'idle') return state;
-      return settle(
-        state,
-        action.text,
-        isLengthCutoff(action.finishReason) ? { ...action.extra, truncated: true } : action.extra,
-      );
+      return settle(state, action.text, settledExtra(action.finishReason, action.extra));
 
     case 'gen/aborted':
       if (state.status === 'idle') return state;

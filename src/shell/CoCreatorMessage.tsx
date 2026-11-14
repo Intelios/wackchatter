@@ -12,6 +12,7 @@
 
 import { currentInfo, currentText, type MessageState, swipeCount } from '@shared/chat/message.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
+import { isFilteredStop } from '@shared/providers/sse.ts';
 import type { CardSlot } from '@shared/types/cocreator.ts';
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu } from '../components/Menu.tsx';
@@ -251,6 +252,7 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
   const text = currentText(message);
   const info = currentInfo(message);
   const swipes = swipeCount(message);
+  const filtered = isFilteredStop(info.extra?.finish_reason);
 
   useEffect(() => {
     if (editing) editRef.current?.focus({ preventScroll: true });
@@ -289,6 +291,13 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
           {info.extra?.truncated ? (
             <span className="w3-co-msg__flag" title="The reply ended early. What arrived is kept.">
               Cut short
+            </span>
+          ) : filtered ? (
+            <span
+              className="w3-co-msg__flag"
+              title="The provider's safety filter stopped this reply mid-sentence. The tokens spent were billed, and continuing will not get past it — try another model for this content."
+            >
+              Filtered
             </span>
           ) : null}
           {swipes > 1 && !streaming ? (
@@ -398,7 +407,7 @@ export const CoCreatorMessage = memo(function CoCreatorMessage({
               Another take
             </button>
           ) : null}
-          {!message.is_user && canReroll && info.extra?.truncated ? (
+          {!message.is_user && canReroll && info.extra?.truncated && !filtered ? (
             <button
               type="button"
               onClick={onContinue}

@@ -238,7 +238,8 @@ function Row({
   swipe?: boolean;
 }) {
   const total = elapsed(attempt, now);
-  const cut = attempt.outcome === 'stopped' || attempt.outcome === 'failed';
+  const cut =
+    attempt.outcome === 'stopped' || attempt.outcome === 'failed' || attempt.outcome === 'filtered';
   const time = attempt.outcome === 'failed' && !attempt.trace?.writing ? 'failed' : seconds(total);
   return (
     <button
@@ -265,7 +266,8 @@ function Row({
 
 function Bar({ attempt, total, scale }: { attempt: Attempt; total: number; scale: number }) {
   const width = Math.min(1, total / scale) * 100;
-  const cut = attempt.outcome === 'stopped' || attempt.outcome === 'failed';
+  const cut =
+    attempt.outcome === 'stopped' || attempt.outcome === 'failed' || attempt.outcome === 'filtered';
   if (attempt.outcome === 'live') {
     return (
       <span className="w3-ins__bar">
@@ -349,6 +351,7 @@ const OUTCOME: Record<string, string> = {
   length: 'hit the length limit',
   stopped: 'stopped by you',
   failed: 'failed',
+  filtered: "stopped by the provider's filter",
   live: 'being written…',
   unknown: 'cut short',
 };
@@ -373,7 +376,8 @@ function Reply({
         }`;
   const total = elapsed(attempt, now);
   const outcome = attempt.outcome;
-  const bad = outcome === 'stopped' || outcome === 'failed' || outcome === 'length';
+  const bad =
+    outcome === 'stopped' || outcome === 'failed' || outcome === 'length' || outcome === 'filtered';
   const failure = attempt.inspection?.failure;
 
   return (
@@ -473,7 +477,8 @@ function Lanes({
   const end = Math.max(1, trace.end);
   const pct = (ms: number) => (ms / end) * 100;
   const last = lanes.at(-1)?.id;
-  const cut = trace.outcome === 'stopped' || trace.outcome === 'failed';
+  const cut =
+    trace.outcome === 'stopped' || trace.outcome === 'failed' || trace.outcome === 'filtered';
   const tokens = attempt.extra?.token_count;
   const rate =
     typeof tokens === 'number' && trace.writing !== undefined && trace.end > trace.writing
@@ -506,6 +511,8 @@ function Lanes({
           : seconds(lane.ms);
       case 'write':
         if (trace.outcome === 'stopped') return `${seconds(lane.ms)} · stopped by you`;
+        if (trace.outcome === 'filtered')
+          return `${seconds(lane.ms)} · stopped by the provider's filter`;
         return `${seconds(lane.ms)}${typeof tokens === 'number' ? ` · ${tokens.toLocaleString()} tokens` : ''}${rate ? ` · ${rate}/s` : ''}`;
       default:
         return seconds(lane.ms);

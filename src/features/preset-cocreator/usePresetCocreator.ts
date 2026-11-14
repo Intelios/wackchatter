@@ -639,7 +639,9 @@ export function usePresetCocreator({
             setError(
               assistantMessage.incomplete === 'error'
                 ? 'The model returned tool calls without unique ids. They were saved but not run: use Continue to retry.'
-                : 'The reply was cut off. What arrived is saved: use Continue to get the rest.',
+                : assistantMessage.incomplete === 'filtered'
+                  ? "The provider's safety filter stopped the reply. What arrived is saved, and continuing cannot get past it."
+                  : 'The reply was cut off. What arrived is saved: use Continue to get the rest.',
             );
             await flush();
             return;

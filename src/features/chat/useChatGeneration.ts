@@ -16,7 +16,7 @@ import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import { responseReserve } from '@shared/providers/responseLength.ts';
-import { isLengthCutoff } from '@shared/providers/sse.ts';
+import { isFilteredStop, isLengthCutoff } from '@shared/providers/sse.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { MacroVariableMap } from '@shared/types/chat.ts';
@@ -332,7 +332,11 @@ export function useChatGeneration(options: ChatGenerationOptions) {
         const trace = settleTrace(
           marks,
           performance.now(),
-          isLengthCutoff(final.finishReason) ? 'length' : 'finished',
+          isFilteredStop(final.finishReason)
+            ? 'filtered'
+            : isLengthCutoff(final.finishReason)
+              ? 'length'
+              : 'finished',
           final.usage,
         );
         dispatch({ type: 'gen/traced', generationId, trace });

@@ -459,6 +459,37 @@ describe('generation: the failure paths', () => {
     expect(reply.swipe_info[0]!.extra?.model).toBe('gpt-5.6-sol');
   });
 
+  test('a finish_reason of content_filter records why, without claiming a token cut', () => {
+    // The provider's safety filter stopped the take mid-sentence. It was billed like any
+    // other reply, and it cannot be continued — but it used to arrive looking complete.
+    const after = run(
+      run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' }),
+      { type: 'gen/started', mode: 'send', newId: 'a1' },
+      {
+        type: 'gen/finished',
+        text: 'her signature black bunny bodysuit—a custom',
+        finishReason: 'content_filter',
+        extra: { model: 'gemini-4-argon' },
+      },
+    );
+    const reply = after.messages[1]!;
+
+    expect(currentText(reply)).toBe('her signature black bunny bodysuit—a custom');
+    expect(reply.swipe_info[0]!.extra?.finish_reason).toBe('content_filter');
+    expect(reply.swipe_info[0]!.extra?.truncated).toBeUndefined();
+    expect(reply.swipe_info[0]!.extra?.model).toBe('gemini-4-argon');
+  });
+
+  test('an ordinary stop records no finish reason at all', () => {
+    const after = run(
+      run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' }),
+      { type: 'gen/started', mode: 'send', newId: 'a1' },
+      { type: 'gen/finished', text: 'The lamp room is cold.', finishReason: 'stop' },
+    );
+
+    expect(after.messages[1]!.swipe_info[0]!.extra?.finish_reason).toBeUndefined();
+  });
+
   test('reasoning with no content is still a result, so it is kept', () => {
     const after = run(
       run(opened(), { type: 'message/appendUser', id: 'u1', text: 'Hi.' }),
