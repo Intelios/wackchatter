@@ -110,6 +110,19 @@ describe('the replies in a chat', () => {
     expect(turns[0]!.main.outcome).toBe('live');
     expect(turns[0]!.main.total).toBeNull();
   });
+
+  test('a reply the provider filtered says filtered, not finished', () => {
+    const filtered = reply('r4', [
+      {
+        send_date: iso(0),
+        gen_started: iso(50000),
+        gen_finished: iso(53000),
+        extra: { generation_id: 'c', finish_reason: 'content_filter' },
+      },
+    ]);
+    const turns = chatTurns([filtered], [], null);
+    expect(turns[0]!.main.outcome).toBe('filtered');
+  });
 });
 
 describe('time', () => {

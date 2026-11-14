@@ -228,6 +228,56 @@ describe('sending', () => {
     assertConsistent(state);
   });
 
+  test('a finish_reason of content_filter records why, without a length badge', () => {
+    // The provider's own filter stopped the reply mid-sentence. It was billed, and it
+    // cannot be continued — but it used to arrive looking complete.
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Go on.' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      {
+        type: 'gen/finished',
+        text: 'her signature black bunny bodysuit—a custom',
+        finishReason: 'content_filter',
+        extra: { model: 'gemini-4-argon' },
+      },
+    );
+
+    expect(currentText(last(state))).toBe('her signature black bunny bodysuit—a custom');
+    expect(last(state).swipe_info[0]?.extra?.finish_reason).toBe('content_filter');
+    expect(last(state).swipe_info[0]?.extra?.truncated).toBeUndefined();
+    expect(last(state).swipe_info[0]?.extra?.model).toBe('gemini-4-argon');
+    assertConsistent(state);
+  });
+
+  test('a spare the provider filtered records why too', () => {
+    const state = run(
+      loaded(),
+      { type: 'message/appendUser', id: 'u1', name: 'Jack', personaId: null, text: 'Go on.' },
+      { type: 'gen/started', mode: 'send', newId: 'a1', name: 'Seraphina' },
+      { type: 'gen/streaming' },
+      {
+        type: 'gen/finished',
+        text: 'The whole take.',
+        finishReason: 'stop',
+        alternates: [
+          {
+            text: 'her signature black bunny bodysuit—a custom',
+            finishReason: 'content_filter',
+            extra: { model: 'gemini-4-argon' },
+          },
+        ],
+      },
+    );
+
+    const spare = last(state).swipe_info[1];
+    expect(spare?.extra?.finish_reason).toBe('content_filter');
+    expect(spare?.extra?.truncated).toBeUndefined();
+    expect(spare?.extra?.model).toBe('gemini-4-argon');
+    assertConsistent(state);
+  });
+
   test('a clean finish is never marked truncated', () => {
     const state = run(
       loaded(),

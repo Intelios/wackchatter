@@ -32,7 +32,7 @@ export interface PresetCocreatorMessage {
   reasoningDetails?: unknown[];
   /** Opaque provider metadata to preserve when replaying the assistant message. */
   extraContent?: Record<string, unknown>;
-  incomplete?: 'length' | 'stopped' | 'error';
+  incomplete?: 'length' | 'stopped' | 'error' | 'filtered';
   /** Retained for inspection, never executed or sent as pending tool calls. */
   incompleteToolCalls?: ProviderToolCall[];
   analysisOnly?: boolean;

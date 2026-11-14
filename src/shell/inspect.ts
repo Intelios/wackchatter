@@ -5,6 +5,7 @@
  */
 
 import type { MessageState } from '@shared/chat/message.ts';
+import { isFilteredStop } from '@shared/providers/sse.ts';
 import type { ApiMessage, MessageExtra, ReplyTrace } from '@shared/types/chat.ts';
 import type { PromptInspection } from '../features/chat/state/chatReducer.ts';
 
@@ -53,6 +54,8 @@ function parseTime(value: string | undefined): number | null {
 
 function outcomeOf(trace: ReplyTrace | undefined, extra: MessageExtra | undefined): Outcome {
   if (trace) return trace.outcome;
+  // From before traces were kept: the provider's own reason still says a filter ended it.
+  if (isFilteredStop(extra?.finish_reason)) return 'filtered';
   return extra?.truncated ? 'unknown' : 'finished';
 }
 

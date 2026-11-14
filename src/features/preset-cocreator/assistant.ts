@@ -1,7 +1,7 @@
 import type { JsonPatchOperation } from '@shared/preset-cocreator/patch.ts';
 import { getPromptOrder } from '@shared/prompt/preset-io.ts';
 import { normalizeBase } from '@shared/providers/request.ts';
-import { isLengthCutoff, type StreamState } from '@shared/providers/sse.ts';
+import { isFilteredStop, isLengthCutoff, type StreamState } from '@shared/providers/sse.ts';
 import type { ProviderToolCall, ResolvedModel } from '@shared/providers/types.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import { PROMPT_ORDER_LIVE_ID } from '@shared/types/preset.ts';
@@ -33,11 +33,13 @@ export function assistantResponseMessage(
 ): PresetCocreatorMessage {
   const incomplete =
     interrupted ??
-    (isLengthCutoff(response.finishReason)
-      ? 'length'
-      : response.toolCalls && !validPresetToolCallIds(response.toolCalls)
-        ? 'error'
-        : undefined);
+    (isFilteredStop(response.finishReason)
+      ? 'filtered'
+      : isLengthCutoff(response.finishReason)
+        ? 'length'
+        : response.toolCalls && !validPresetToolCallIds(response.toolCalls)
+          ? 'error'
+          : undefined);
   return {
     id: crypto.randomUUID(),
     role: 'assistant',

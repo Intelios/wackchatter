@@ -3,6 +3,8 @@ import {
   createSseParser,
   createStreamAccumulator,
   extractError,
+  isFilteredStop,
+  isLengthCutoff,
   parseCompletion,
   type SseFrame,
 } from './sse.ts';
@@ -16,6 +18,25 @@ function chunk(content: string): string {
 function frame(data: string): SseFrame {
   return { data };
 }
+
+describe('how a reply ended', () => {
+  test('a provider content filter is a filter stop, not a length cutoff', () => {
+    // Gemini's OpenAI-compatible layer says `content_filter`, sometimes with a detail
+    // suffix; its native vocabulary can reach us verbatim when a layer passes it on.
+    expect(isFilteredStop('content_filter')).toBe(true);
+    expect(isFilteredStop('content_filter: OTHER')).toBe(true);
+    expect(isFilteredStop('SAFETY')).toBe(true);
+    expect(isFilteredStop('RECITATION')).toBe(true);
+    expect(isLengthCutoff('content_filter')).toBe(false);
+  });
+
+  test('a complete reply and a token cut are not filter stops', () => {
+    expect(isFilteredStop('stop')).toBe(false);
+    expect(isFilteredStop('length')).toBe(false);
+    expect(isFilteredStop(null)).toBe(false);
+    expect(isFilteredStop(undefined)).toBe(false);
+  });
+});
 
 describe('provider error details', () => {
   test('a Google error array is surfaced from both a response body and a stream', () => {

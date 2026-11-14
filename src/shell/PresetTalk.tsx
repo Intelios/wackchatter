@@ -344,7 +344,11 @@ const TalkMessage = memo(function TalkMessage({
         <b>Co-Creator</b>
         {message.incomplete ? (
           <span className="w3-pc-flag">
-            {message.incomplete === 'stopped' ? 'stopped' : 'cut off'}
+            {message.incomplete === 'stopped'
+              ? 'stopped'
+              : message.incomplete === 'filtered'
+                ? 'filtered'
+                : 'cut off'}
           </span>
         ) : null}
       </div>
@@ -354,7 +358,7 @@ const TalkMessage = memo(function TalkMessage({
       </div>
       {editor ? null : (
         <div className="w3-co-msg__tools">
-          {message.incomplete && isLast ? (
+          {message.incomplete && message.incomplete !== 'filtered' && isLast ? (
             <button
               type="button"
               disabled={busy || Boolean(blockedReason)}
