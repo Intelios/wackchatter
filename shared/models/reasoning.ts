@@ -1,14 +1,39 @@
-/** Chat-only reasoning preferences, keyed by a model's connection and opaque model id. */
+/** Per-model reasoning preferences, keyed by a model's connection and opaque model id. */
 
 import type { Connection } from '../providers/types.ts';
 import type { Preset, ReasoningEffort } from '../types/preset.ts';
 import { type ModelRef, normalizeModelRef } from './slots.ts';
 
-/** An absent leaf follows the preset; `auto` is an explicit override, not an absence. */
-export type ChatReasoningEfforts = Record<string, Record<string, ReasoningEffort>>;
+/** An absent leaf follows the fallback; `auto` is an explicit override, not an absence. */
+export type ModelReasoningEfforts = Record<string, Record<string, ReasoningEffort>>;
 
-/** Only a model-level null removes a preference and resumes following the preset. */
-export type ChatReasoningEffortPatch = Record<string, Record<string, ReasoningEffort | null>>;
+/** Only a model-level null removes a preference and resumes following the fallback. */
+export type ModelReasoningEffortPatch = Record<string, Record<string, ReasoningEffort | null>>;
+
+export type ChatReasoningEfforts = ModelReasoningEfforts;
+export type ChatReasoningEffortPatch = ModelReasoningEffortPatch;
+
+export const COCREATOR_REASONING_TARGETS = [
+  'character',
+  'sideChat',
+  'presetAssistant',
+  'presetBench',
+] as const;
+export type CoCreatorReasoningTarget = (typeof COCREATOR_REASONING_TARGETS)[number];
+
+export type CoCreatorReasoningEfforts = Record<CoCreatorReasoningTarget, ModelReasoningEfforts>;
+export type CoCreatorReasoningEffortPatch = Partial<
+  Record<CoCreatorReasoningTarget, ModelReasoningEffortPatch>
+>;
+
+export function emptyCoCreatorReasoningEfforts(): CoCreatorReasoningEfforts {
+  return {
+    character: {},
+    sideChat: {},
+    presetAssistant: {},
+    presetBench: {},
+  };
+}
 
 export const REASONING_EFFORT_OPTIONS: readonly [ReasoningEffort, string][] = [
   ['auto', 'Auto'],
@@ -37,6 +62,16 @@ export function chatReasoningEffort(
   if (!isRecord(models) || !Object.hasOwn(models, model.modelId)) return undefined;
   const effort = models[model.modelId];
   return isReasoningEffort(effort) ? effort : undefined;
+}
+
+export function coCreatorReasoningEffort(
+  efforts: Partial<CoCreatorReasoningEfforts> | undefined,
+  target: CoCreatorReasoningTarget,
+  ref: ModelRef | null | undefined,
+): ReasoningEffort | undefined {
+  if (!efforts || !Object.hasOwn(efforts, target)) return undefined;
+  const map = efforts[target];
+  return isRecord(map) ? chatReasoningEffort(map as ModelReasoningEfforts, ref) : undefined;
 }
 
 /** Request-local only: never edit the preset or collapse an explicit equal-value pin. */
@@ -93,6 +128,45 @@ export function mergeChatReasoningEfforts(
     );
     if (Object.keys(kept).length) next = { ...next, [connectionId]: kept };
     else delete next[connectionId];
+  }
+  return next;
+}
+
+export function normalizeCoCreatorReasoningEfforts(
+  value: unknown,
+  connections: readonly Pick<Connection, 'id'>[],
+): CoCreatorReasoningEfforts {
+  const record = isRecord(value) ? value : {};
+  return {
+    character: normalizeChatReasoningEfforts(
+      Object.hasOwn(record, 'character') ? record.character : undefined,
+      connections,
+    ),
+    sideChat: normalizeChatReasoningEfforts(
+      Object.hasOwn(record, 'sideChat') ? record.sideChat : undefined,
+      connections,
+    ),
+    presetAssistant: normalizeChatReasoningEfforts(
+      Object.hasOwn(record, 'presetAssistant') ? record.presetAssistant : undefined,
+      connections,
+    ),
+    presetBench: normalizeChatReasoningEfforts(
+      Object.hasOwn(record, 'presetBench') ? record.presetBench : undefined,
+      connections,
+    ),
+  };
+}
+
+export function mergeCoCreatorReasoningEfforts(
+  current: CoCreatorReasoningEfforts | undefined,
+  patch: unknown,
+  connections: readonly Pick<Connection, 'id'>[],
+): CoCreatorReasoningEfforts {
+  const next = normalizeCoCreatorReasoningEfforts(current, connections);
+  if (!isRecord(patch)) return next;
+  for (const target of COCREATOR_REASONING_TARGETS) {
+    if (!Object.hasOwn(patch, target)) continue;
+    next[target] = mergeChatReasoningEfforts(next[target], patch[target], connections);
   }
   return next;
 }

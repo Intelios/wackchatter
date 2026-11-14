@@ -858,3 +858,36 @@ describe('a test with no character card', () => {
     expect(withCard.assembled.messages.length).toBeGreaterThan(contents.length);
   });
 });
+
+describe('bench reasoning effort overrides', () => {
+  test('uses the preset effort when unset, and applies a per-model override without mutating the preset', () => {
+    const preset: Preset = { ...createDefaultPreset(), temperature: 0.7, reasoning_effort: 'high' };
+    const snapshot = structuredClone(preset);
+    Object.freeze(preset);
+    const openRouterConnection: ResolvedModel = {
+      ...connection,
+      provider: 'openrouter',
+      model: 'openai/o4-mini',
+    };
+
+    const testChat = createPresetTest(scenario());
+    const withUser = appendPresetTestUserMessage(testChat, 'Hello.', preset)!;
+
+    const inherited = prepareSend(withUser, preset, { connection: openRouterConnection })!;
+    expect(inherited.body?.reasoning).toEqual({ exclude: false, effort: 'high' });
+
+    const overriddenAuto = prepareSend(withUser, preset, {
+      connection: openRouterConnection,
+      reasoningEffort: 'auto',
+    })!;
+    expect(overriddenAuto.body?.reasoning).toEqual({ exclude: false });
+    expect(overriddenAuto.assembled.messages).toEqual(inherited.assembled.messages);
+    expect(preset).toEqual(snapshot);
+
+    const overriddenLow = prepareSend(withUser, preset, {
+      connection: openRouterConnection,
+      reasoningEffort: 'low',
+    })!;
+    expect(overriddenLow.body?.reasoning).toEqual({ exclude: false, effort: 'low' });
+  });
+});

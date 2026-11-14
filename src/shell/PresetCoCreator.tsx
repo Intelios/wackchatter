@@ -57,7 +57,25 @@ export function PresetCoCreator({ controller }: { controller: AppController }) {
   const say = useCallback((next: Omit<IslandNotice, 'id'>) => {
     noticeId.current += 1;
     setNotice({ ...next, id: noticeId.current });
+    return noticeId.current;
   }, []);
+  const reasoningNotice = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (app.coCreatorReasoningError) {
+      reasoningNotice.current = say({
+        icon: 'alert',
+        title: app.coCreatorReasoningError.title,
+        text: app.coCreatorReasoningError.message,
+        tone: 'bad',
+        sticky: true,
+      });
+    } else if (reasoningNotice.current !== undefined) {
+      const id = reasoningNotice.current;
+      setNotice((current) => (current?.id === id ? null : current));
+      reasoningNotice.current = undefined;
+    }
+  }, [app.coCreatorReasoningError, say]);
+  useEffect(() => () => app.clearCoCreatorReasoningError(), [app.clearCoCreatorReasoningError]);
   const fail = useCallback(
     (err: unknown) =>
       say({
@@ -272,8 +290,14 @@ export function PresetCoCreator({ controller }: { controller: AppController }) {
               key={session.id}
               initial={session}
               {...shared}
+              coCreatorReasoningEfforts={prefs.coCreatorReasoningEfforts}
+              reasoningSaving={app.coCreatorReasoningSaving}
+              onReasoningEffort={app.setCoCreatorReasoningEffort}
               notice={notice}
-              onDismissNotice={() => setNotice(null)}
+              onDismissNotice={() => {
+                app.clearCoCreatorReasoningError();
+                setNotice(null);
+              }}
               onFail={fail}
               onSay={say}
               onBack={() => void toSessions()}
@@ -301,7 +325,10 @@ export function PresetCoCreator({ controller }: { controller: AppController }) {
                 generating={false}
                 onCollapse={() => setMode(null)}
                 notice={notice}
-                onDismissNotice={() => setNotice(null)}
+                onDismissNotice={() => {
+                  app.clearCoCreatorReasoningError();
+                  setNotice(null);
+                }}
                 wingsPinned={false}
                 wingLeft={null}
                 wingRight={null}

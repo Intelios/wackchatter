@@ -5,10 +5,11 @@ import {
   renderCheckpoint,
 } from '@shared/cocreator/compaction.ts';
 import { cocreatorBudget } from '@shared/cocreator/generation.ts';
+import { withReasoningEffort } from '@shared/models/reasoning.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { SessionModelSettings, SideChatSnapshot } from '@shared/types/cocreator.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, ReasoningEffort } from '@shared/types/preset.ts';
 import { characterCompactionSources } from './compactionSources.ts';
 import { buildDesignPrompt } from './prompt.ts';
 import { buildSidePrompt } from './sidePrompt.ts';
@@ -18,6 +19,7 @@ export function measureCharacterContext(input: {
   snapshot?: SideChatSnapshot;
   compaction?: CompactionState;
   preset: Preset;
+  reasoningEffort?: ReasoningEffort;
   model: ResolvedModel;
   contextTokens: number;
   settings: SessionModelSettings;
@@ -27,7 +29,7 @@ export function measureCharacterContext(input: {
   countTokens: TokenCounter;
 }) {
   const budget = cocreatorBudget({
-    preset: input.preset,
+    preset: withReasoningEffort(input.preset, input.reasoningEffort),
     connection: input.model,
     outputTokens: input.settings.outputTokens,
     contextTokens: input.contextTokens,

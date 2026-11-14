@@ -4,10 +4,14 @@ import {
   normalizeCompaction,
   shouldCompact,
 } from '@shared/cocreator/compaction.ts';
+import {
+  type CoCreatorReasoningEfforts,
+  coCreatorReasoningEffort,
+} from '@shared/models/reasoning.ts';
 import { resolveModelRef } from '@shared/models/slots.ts';
 import type { StreamState } from '@shared/providers/sse.ts';
 import type { Connection } from '@shared/providers/types.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, ReasoningEffort } from '@shared/types/preset.ts';
 import type {
   PresetCocreatorDocument,
   PresetCocreatorMessage,
@@ -71,6 +75,8 @@ interface DocumentSnapshot {
 export interface UsePresetCocreatorOptions {
   initial: PresetCocreatorSession;
   connections: readonly Connection[];
+  coCreatorReasoningEfforts?: CoCreatorReasoningEfforts;
+  modelSaving?: boolean;
   streamingFps: number;
   referenceNames?: readonly string[];
 }
@@ -78,9 +84,15 @@ export interface UsePresetCocreatorOptions {
 export function usePresetCocreator({
   initial,
   connections,
+  coCreatorReasoningEfforts,
+  modelSaving = false,
   streamingFps,
   referenceNames = [],
 }: UsePresetCocreatorOptions) {
+  const effortsRef = useRef(coCreatorReasoningEfforts);
+  effortsRef.current = coCreatorReasoningEfforts;
+  const modelSavingRef = useRef(modelSaving);
+  modelSavingRef.current = modelSaving;
   const [session, setSessionState] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -272,12 +284,22 @@ export function usePresetCocreator({
   );
   const assistantConnection = assistantModel.ok ? assistantModel.model : null;
   const assistantBlocked = assistantModel.ok ? null : assistantModel.reason;
+  const assistantEffort = useMemo(
+    () =>
+      assistantConnection
+        ? coCreatorReasoningEffort(coCreatorReasoningEfforts, 'presetAssistant', {
+            connectionId: assistantConnection.id,
+            modelId: assistantConnection.model,
+          })
+        : undefined,
+    [coCreatorReasoningEfforts, assistantConnection],
+  );
   const countTokens = useTokenizer(assistantConnection?.model ?? '');
   const modelContext = useModelContext(assistantConnection);
 
   const context = useMemo(() => {
     let measured: ReturnType<typeof buildAssistantRequest> | null = null;
-    let blocked = assistantBlocked;
+    let blocked = modelSaving ? 'Saving model settings…' : assistantBlocked;
     try {
       if (assistantConnection)
         measured = buildAssistantRequest({
@@ -287,6 +309,7 @@ export function usePresetCocreator({
           contextTokens: modelContext.tokens,
           countText: countTokens.countText,
           referenceNames,
+          reasoningEffort: assistantEffort,
         });
     } catch (failure) {
       blocked = (failure as Error).message;
@@ -312,12 +335,14 @@ export function usePresetCocreator({
   }, [
     session,
     assistantConnection,
+    assistantEffort,
     modelContext.tokens,
     modelContext.assumed,
     countTokens,
     referenceNames,
     busy,
     compacting,
+    modelSaving,
     assistantBlocked,
   ]);
 
@@ -338,9 +363,11 @@ export function usePresetCocreator({
       contextTokens: number,
       names: readonly string[],
       mode: 'conversation' | 'comparison' = 'conversation',
+      effortOverride?: { effort: ReasoningEffort | undefined },
     ) => {
       if (!assistantConnection) return;
       const base = sessionRef.current;
+      const reasoningEffort = effortOverride ? effortOverride.effort : assistantEffort;
       const before = buildAssistantRequest({
         session: base,
         messages,
@@ -349,6 +376,7 @@ export function usePresetCocreator({
         countText: countTokens.countText,
         referenceNames: names,
         mode,
+        reasoningEffort,
       });
       const plan = makeCompactionPlan({
         messages: before.sources,
@@ -391,6 +419,7 @@ export function usePresetCocreator({
             countText: countTokens.countText,
             referenceNames: names,
             mode,
+            reasoningEffort,
           });
           record =
             after.used < before.used && activeCheckpoint(next.document.compaction, after.sources)
@@ -418,11 +447,12 @@ export function usePresetCocreator({
         setCompacting(false);
       }
     },
-    [assistantConnection, countTokens, updateDocument, flush],
+    [assistantConnection, assistantEffort, countTokens, updateDocument, flush],
   );
 
   const compact = useCallback(async () => {
-    if (busy || abortRef.current || !assistantConnection) return;
+    if (busy || abortRef.current || modelSavingRef.current || !assistantConnection) return;
+    const requestEffort = { effort: assistantEffort };
     const controller = new AbortController();
     abortRef.current = controller;
     let finish!: () => void;
@@ -442,6 +472,8 @@ export function usePresetCocreator({
         controller,
         contextTokens,
         referenceNames,
+        'conversation',
+        requestEffort,
       );
     } catch (failure) {
       if (!controller.signal.aborted) setError((failure as Error).message);
@@ -452,7 +484,7 @@ export function usePresetCocreator({
       setCompacting(false);
       finish();
     }
-  }, [busy, assistantConnection, flush, performCompaction, referenceNames]);
+  }, [busy, assistantConnection, assistantEffort, flush, performCompaction, referenceNames]);
 
   const commitMessages = useCallback(
     (messages: PresetCocreatorMessage[]) =>
@@ -464,12 +496,19 @@ export function usePresetCocreator({
     async (
       startingMessages: PresetCocreatorMessage[],
       mode: 'conversation' | 'comparison' = 'conversation',
+      effortOverride?: { effort: ReasoningEffort | undefined },
     ) => {
       if (abortRef.current) return;
       if (!assistantConnection) {
         setError(assistantBlocked ?? 'Choose an assistant model.');
         return;
       }
+      const requestEffort = effortOverride ?? {
+        effort: coCreatorReasoningEffort(effortsRef.current, 'presetAssistant', {
+          connectionId: assistantConnection.id,
+          modelId: assistantConnection.model,
+        }),
+      };
       const controller = new AbortController();
       abortRef.current = controller;
       let finish!: () => void;
@@ -518,6 +557,7 @@ export function usePresetCocreator({
             countText: countTokens.countText,
             referenceNames,
             mode,
+            reasoningEffort: requestEffort.effort,
           });
           if (
             shouldCompact(
@@ -526,7 +566,14 @@ export function usePresetCocreator({
               request.budget.promptTokens,
             )
           ) {
-            await performCompaction(messages, controller, contextTokens, referenceNames, mode);
+            await performCompaction(
+              messages,
+              controller,
+              contextTokens,
+              referenceNames,
+              mode,
+              requestEffort,
+            );
             controller.signal.throwIfAborted();
             request = buildAssistantRequest({
               session: sessionRef.current,
@@ -536,6 +583,7 @@ export function usePresetCocreator({
               countText: countTokens.countText,
               referenceNames,
               mode,
+              reasoningEffort: requestEffort.effort,
             });
           }
           const { body, budget, used } = request;
@@ -696,18 +744,20 @@ export function usePresetCocreator({
     async (
       message: PresetCocreatorMessage,
       mode: 'conversation' | 'comparison' = 'conversation',
+      effortOverride?: { effort: ReasoningEffort | undefined },
     ) => {
       const messages = [...sessionRef.current.document.messages, message];
       commitMessages(messages);
       await flush();
       if (mode === 'comparison') setPreparing(false);
-      await executeAssistantTurn(messages, mode);
+      await executeAssistantTurn(messages, mode, effortOverride);
     },
     [commitMessages, executeAssistantTurn, flush],
   );
 
   const continueReply = useCallback(async () => {
-    if (busy || preparing || abortRef.current) return;
+    if (busy || preparing || abortRef.current || modelSavingRef.current) return;
+    const requestEffort = { effort: assistantEffort };
     const last = sessionRef.current.document.messages.at(-1);
     if (last?.role !== 'assistant' || !last.incomplete) return;
     const content = last.incompleteToolCalls?.length
@@ -722,27 +772,35 @@ export function usePresetCocreator({
         appAction: 'continue',
       },
       last.analysisOnly ? 'comparison' : 'conversation',
+      requestEffort,
     );
-  }, [busy, preparing, startTurnWith]);
+  }, [busy, preparing, assistantEffort, startTurnWith]);
 
   const send = useCallback(
     async (content: string) => {
       const text = content.trim();
-      if (!text || busy) return;
-      await startTurnWith({
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: text,
-        created: Date.now(),
-      });
+      if (!text || busy || modelSavingRef.current) return;
+      const requestEffort = { effort: assistantEffort };
+      await startTurnWith(
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: text,
+          created: Date.now(),
+        },
+        'conversation',
+        requestEffort,
+      );
     },
-    [busy, startTurnWith],
+    [busy, assistantEffort, startTurnWith],
   );
 
   const compare = useCallback(
     async (source: PresetComparisonSource, label: string, focus: string) => {
       if (busy || preparingComparison.current)
         throw new Error('The Co-Creator is already working.');
+      if (modelSavingRef.current) throw new Error('Saving model settings…');
+      const requestEffort = { effort: assistantEffort };
       preparingComparison.current = true;
       setPreparing(true);
       setBusy(true);
@@ -767,7 +825,7 @@ export function usePresetCocreator({
           comparison,
           created: Date.now(),
         };
-        await startTurnWith(message, 'comparison');
+        await startTurnWith(message, 'comparison', requestEffort);
       } catch (failure) {
         setError((failure as Error).message);
         throw failure;
@@ -777,7 +835,7 @@ export function usePresetCocreator({
         setBusy(false);
       }
     },
-    [busy, startTurnWith],
+    [busy, assistantEffort, startTurnWith],
   );
 
   /**
@@ -787,15 +845,18 @@ export function usePresetCocreator({
    */
   const sendReport = useCallback(
     async (report: PresetTestReport) => {
-      if (busy) return;
-      await startTurnWith(reportConversationMessage(report));
+      if (busy || modelSavingRef.current) return;
+      const requestEffort = { effort: assistantEffort };
+      await startTurnWith(reportConversationMessage(report), 'conversation', requestEffort);
     },
-    [busy, startTurnWith],
+    [busy, assistantEffort, startTurnWith],
   );
 
   /** Move the saved queue into one conversation turn before contacting the provider. */
   const sendBatch = useCallback(async () => {
     if (busy || preparingBatch.current) throw new Error('The Co-Creator is already working.');
+    if (modelSavingRef.current) throw new Error('Saving model settings…');
+    const requestEffort = { effort: assistantEffort };
     const previousQueue = structuredClone(sessionRef.current.document.batchQueue);
     const batch = buildPresetTestBatch(previousQueue);
     const message = batchConversationMessage(batch);
@@ -819,7 +880,7 @@ export function usePresetCocreator({
         }));
         throw failure;
       }
-      void executeAssistantTurn(messages);
+      void executeAssistantTurn(messages, 'conversation', requestEffort);
       return batch;
     } catch (failure) {
       setError((failure as Error).message);
@@ -828,7 +889,7 @@ export function usePresetCocreator({
       preparingBatch.current = false;
       setBatchSending(false);
     }
-  }, [busy, executeAssistantTurn, flush, updateDocument]);
+  }, [busy, assistantEffort, executeAssistantTurn, flush, updateDocument]);
 
   const editMessage = useCallback(
     (id: string, text: string) => {
@@ -899,6 +960,8 @@ export function usePresetCocreator({
       setError,
       stream,
       assistantConnection,
+      assistantBlocked,
+      assistantEffort,
       updateDocument,
       replaceDraft,
       restoreDraft,
@@ -928,6 +991,8 @@ export function usePresetCocreator({
       error,
       stream,
       assistantConnection,
+      assistantBlocked,
+      assistantEffort,
       updateDocument,
       replaceDraft,
       restoreDraft,

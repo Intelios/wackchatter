@@ -771,6 +771,13 @@
   color: var(--w3-muted);
 }
 
+.w3-co-setup__hint {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  line-height: 1.45;
+  color: var(--w3-faint);
+}
+
 .w3-co-setup__row {
   display: flex;
   align-items: center;
@@ -1550,6 +1557,9 @@
 }
 
 .w3-co-mpfor button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11.5px;
   color: var(--w3-faint);
 }

@@ -3,9 +3,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '../../shared/composer/layout.ts';
-import type {
-  ChatReasoningEffortPatch,
-  ChatReasoningEfforts,
+import {
+  type ChatReasoningEffortPatch,
+  type ChatReasoningEfforts,
+  type CoCreatorReasoningEffortPatch,
+  type CoCreatorReasoningEfforts,
+  emptyCoCreatorReasoningEfforts,
 } from '../../shared/models/reasoning.ts';
 import type { ModelSlots } from '../../shared/models/slots.ts';
 import type { Connection } from '../../shared/providers/types.ts';
@@ -639,6 +642,9 @@ describe('chat reasoning preferences', () => {
     expectTypeOf<SettingsPatch['chatReasoningEfforts']>().toEqualTypeOf<
       ChatReasoningEffortPatch | undefined
     >();
+    expectTypeOf<SettingsPatch['coCreatorReasoningEfforts']>().toEqualTypeOf<
+      CoCreatorReasoningEffortPatch | undefined
+    >();
     expectTypeOf<SettingsPatch['streamingFps']>().toEqualTypeOf<number | undefined>();
     expectTypeOf<SettingsPatch['personaId']>().toEqualTypeOf<string | null | undefined>();
     expectTypeOf<SettingsPatch['summary']>().toEqualTypeOf<AppSettings['summary'] | undefined>();
@@ -704,6 +710,39 @@ describe('chat reasoning preferences', () => {
       expect(next.chatReasoningEfforts).toEqual(current.chatReasoningEfforts);
       expect(next.futureSetting).toEqual({ kept: true });
     }
+  });
+});
+
+describe('Co-Creator reasoning preferences', () => {
+  test('default empty per target, merge independently of chat and other targets, and reset cleanly', () => {
+    expect(DEFAULT_SETTINGS.coCreatorReasoningEfforts).toEqual(emptyCoCreatorReasoningEfforts());
+    const current = mergeSettings(
+      { ...base(), connections: [connection('a', 'A'), connection('b', 'B')] },
+      { chatReasoningEfforts: { a: { m: 'low' } } },
+    );
+    const first = mergeSettings(current, {
+      coCreatorReasoningEfforts: {
+        character: { a: { ' m ': 'high' } },
+        presetBench: { b: { m: 'auto' } },
+      },
+    });
+    expect(first.chatReasoningEfforts).toEqual({ a: { m: 'low' } });
+    expect(first.coCreatorReasoningEfforts).toEqual({
+      character: { a: { m: 'high' } },
+      sideChat: {},
+      presetAssistant: {},
+      presetBench: { b: { m: 'auto' } },
+    });
+    const reset = mergeSettings(first, {
+      coCreatorReasoningEfforts: { character: { a: { m: null } } },
+    });
+    expect(reset.coCreatorReasoningEfforts).toEqual({
+      character: {},
+      sideChat: {},
+      presetAssistant: {},
+      presetBench: { b: { m: 'auto' } },
+    });
+    expect(first.coCreatorReasoningEfforts.character).toEqual({ a: { m: 'high' } });
   });
 });
 
@@ -1303,6 +1342,12 @@ describe('dropConnection', () => {
       a: { chat: 'high' },
       b: { memory: 'low' },
     } satisfies ChatReasoningEfforts,
+    coCreatorReasoningEfforts: {
+      character: { a: { chat: 'medium' }, b: { memory: 'high' } },
+      sideChat: { b: { memory: 'low' } },
+      presetAssistant: { a: { chat: 'max' } },
+      presetBench: { b: { memory: 'auto' } },
+    } satisfies CoCreatorReasoningEfforts,
   });
 
   test('every slot and recent pick on the dropped connection goes with it', () => {
@@ -1313,6 +1358,12 @@ describe('dropConnection', () => {
     expect(next?.recentModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
     expect(next?.favoriteModels).toEqual([{ connectionId: 'a', modelId: 'chat' }]);
     expect(next?.chatReasoningEfforts).toEqual({ a: { chat: 'high' } });
+    expect(next?.coCreatorReasoningEfforts).toEqual({
+      character: { a: { chat: 'medium' } },
+      sideChat: {},
+      presetAssistant: { a: { chat: 'max' } },
+      presetBench: {},
+    });
   });
 
   test('dropping the only connection empties everything', () => {
@@ -1320,6 +1371,7 @@ describe('dropConnection', () => {
     expect(next?.connections).toEqual([]);
     expect(next?.models.chat).toBeNull();
     expect(next?.chatReasoningEfforts).toEqual({});
+    expect(next?.coCreatorReasoningEfforts).toEqual(emptyCoCreatorReasoningEfforts());
   });
 
   test('dropping an opaque connection id prunes only its own preferences, without mutation', () => {
@@ -1328,10 +1380,19 @@ describe('dropConnection', () => {
       chatReasoningEfforts: JSON.parse(
         '{"__proto__":{"constructor":"high"},"constructor":{"__proto__":"auto"}}',
       ) as ChatReasoningEfforts,
+      coCreatorReasoningEfforts: {
+        ...emptyCoCreatorReasoningEfforts(),
+        character: JSON.parse(
+          '{"__proto__":{"constructor":"low"},"constructor":{"__proto__":"max"}}',
+        ) as ChatReasoningEfforts,
+      },
     };
     const snapshot = structuredClone(current);
     const next = dropConnection(current, '__proto__');
     expect(next?.chatReasoningEfforts).toEqual(JSON.parse('{"constructor":{"__proto__":"auto"}}'));
+    expect(next?.coCreatorReasoningEfforts.character).toEqual(
+      JSON.parse('{"constructor":{"__proto__":"max"}}'),
+    );
     expect(Object.hasOwn(next!.chatReasoningEfforts, 'constructor')).toBe(true);
     expect(Object.getPrototypeOf(next!.chatReasoningEfforts)).toBe(Object.prototype);
     expect(current).toEqual(snapshot);
@@ -1619,6 +1680,50 @@ describe('chat reasoning preferences on disk', () => {
         resetSettingsCache();
         expect(getSettings().chatReasoningEfforts).toEqual({});
       }
+    } finally {
+      setDataDir(original);
+      resetSettingsCache();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Co-Creator reasoning preferences on disk', () => {
+  test('persist independently across targets, restart, and connection deletion', () => {
+    const original = PATHS.root;
+    const dir = mkdtempSync(join(tmpdir(), 'wc-cocreator-reasoning-settings-'));
+    try {
+      setDataDir(dir);
+      resetSettingsCache();
+      writeFileSync(
+        PATHS.settings,
+        JSON.stringify({
+          connections: [connection('a', 'A'), connection('b', 'B')],
+        }),
+      );
+      expect(getSettings().coCreatorReasoningEfforts).toEqual(emptyCoCreatorReasoningEfforts());
+      saveSettings({
+        coCreatorReasoningEfforts: {
+          character: { a: { ' m ': 'high' } },
+          presetAssistant: { a: { m: 'medium' } },
+          presetBench: { b: { m: 'auto' } },
+        },
+      });
+      resetSettingsCache();
+      expect(getSettings().coCreatorReasoningEfforts).toEqual({
+        character: { a: { m: 'high' } },
+        sideChat: {},
+        presetAssistant: { a: { m: 'medium' } },
+        presetBench: { b: { m: 'auto' } },
+      });
+      deleteConnectionEntry('a');
+      resetSettingsCache();
+      expect(getSettings().coCreatorReasoningEfforts).toEqual({
+        character: {},
+        sideChat: {},
+        presetAssistant: {},
+        presetBench: { b: { m: 'auto' } },
+      });
     } finally {
       setDataDir(original);
       resetSettingsCache();

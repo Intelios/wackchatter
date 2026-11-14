@@ -7,7 +7,13 @@
  */
 
 import { type ComposerLayouts, DEFAULT_COMPOSER_LAYOUTS } from '../composer/layout.ts';
-import type { ChatReasoningEffortPatch, ChatReasoningEfforts } from '../models/reasoning.ts';
+import {
+  type ChatReasoningEffortPatch,
+  type ChatReasoningEfforts,
+  type CoCreatorReasoningEffortPatch,
+  type CoCreatorReasoningEfforts,
+  emptyCoCreatorReasoningEfforts,
+} from '../models/reasoning.ts';
 import { DEFAULT_MODEL_SLOTS, type ModelRef, type ModelSlots } from '../models/slots.ts';
 import { DEFAULT_NEXUS, type NexusSettings } from '../nexus/types.ts';
 import type { Connection } from '../providers/types.ts';
@@ -42,6 +48,12 @@ export interface AppSettings {
    * leaf resets one. Deleting a connection drops its preferences.
    */
   chatReasoningEfforts: ChatReasoningEfforts;
+  /**
+   * Co-Creator reasoning overrides, scoped per picker target then connection then model.
+   * Absent leaves follow the target's default (the sampler preset, the preset under test,
+   * or the Preset Co-Creator session's Setup fallback).
+   */
+  coCreatorReasoningEfforts: CoCreatorReasoningEfforts;
   /**
    * Models most recently picked anywhere, newest first, capped at `MAX_RECENT_MODELS`.
    * Convenience only, like `recentPersonaIds`: it heads the model picker.
@@ -225,7 +237,9 @@ export type SettingsPatch = {
     ? Partial<ModelSlots>
     : K extends 'chatReasoningEfforts'
       ? ChatReasoningEffortPatch
-      : AppSettings[K];
+      : K extends 'coCreatorReasoningEfforts'
+        ? CoCreatorReasoningEffortPatch
+        : AppSettings[K];
 };
 
 /**
@@ -545,6 +559,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   connections: [{ ...DEFAULT_CONNECTION, id: DEFAULT_CONNECTION_ID, name: PROVIDERS.custom.label }],
   models: { ...DEFAULT_MODEL_SLOTS },
   chatReasoningEfforts: {},
+  coCreatorReasoningEfforts: emptyCoCreatorReasoningEfforts(),
   recentModels: [],
   favoriteModels: [],
   modelPickerGroups: {},

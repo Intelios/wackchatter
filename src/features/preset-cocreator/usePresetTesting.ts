@@ -1,3 +1,7 @@
+import {
+  type CoCreatorReasoningEfforts,
+  coCreatorReasoningEffort,
+} from '@shared/models/reasoning.ts';
 import { resolveModel, resolveModelRef } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { ChatMessage } from '@shared/types/chat.ts';
@@ -36,6 +40,8 @@ import type { PresetCocreatorController } from './usePresetCocreator.ts';
 interface UsePresetTestingOptions {
   controller: PresetCocreatorController;
   connections: readonly Connection[];
+  coCreatorReasoningEfforts?: CoCreatorReasoningEfforts;
+  modelSaving?: boolean;
   tokenizerEncoding?: string;
   streamingFps: number;
 }
@@ -47,6 +53,8 @@ function latestAssistant(messages: readonly ChatMessage[]): ChatMessage | null {
 export function usePresetTesting({
   controller,
   connections,
+  coCreatorReasoningEfforts,
+  modelSaving = false,
   tokenizerEncoding,
   streamingFps,
 }: UsePresetTestingOptions) {
@@ -57,6 +65,10 @@ export function usePresetTesting({
   const preparingRef = useRef(false);
   const sessionRef = useRef(controller.session);
   sessionRef.current = controller.session;
+  const effortsRef = useRef(coCreatorReasoningEfforts);
+  effortsRef.current = coCreatorReasoningEfforts;
+  const modelSavingRef = useRef(modelSaving);
+  modelSavingRef.current = modelSaving;
 
   // The streaming hot path, same bargain as the chat: the growing text lives in this
   // store and reaches one leaf (the StreamingBubble) through useSyncExternalStore, so a
@@ -72,9 +84,18 @@ export function usePresetTesting({
     [controller.session.document.activeTestId, controller.session.document.tests],
   );
   const setting = activeTest?.testingSettings ?? controller.session.document.settings.testing;
+  const modelResolution = useMemo(
+    () => resolveModelRef(connections, setting.model, 'testing'),
+    [connections, setting.model],
+  );
+  const modelBlockedReason = modelResolution.ok ? null : modelResolution.reason;
   const connection = useMemo(
     () => resolveModel(connections, setting.model),
     [connections, setting.model],
+  );
+  const benchEffort = useMemo(
+    () => coCreatorReasoningEffort(coCreatorReasoningEfforts, 'presetBench', setting.model),
+    [coCreatorReasoningEfforts, setting.model],
   );
   const countTokens = useTokenizer(connection?.model ?? '', tokenizerEncoding);
 
@@ -172,7 +193,7 @@ export function usePresetTesting({
       originalTest: PresetTest,
       options: { userText?: string; proposalId?: string } = {},
     ) => {
-      if (busy || preparingRef.current) return;
+      if (busy || preparingRef.current || modelSavingRef.current) return;
       preparingRef.current = true;
       const controllerAbort = new AbortController();
       abortRef.current = controllerAbort;
@@ -200,6 +221,10 @@ export function usePresetTesting({
         return;
       }
       const requestConnection = resolution.model;
+      const requestEffort = coCreatorReasoningEffort(effortsRef.current, 'presetBench', {
+        connectionId: requestConnection.id,
+        modelId: requestConnection.model,
+      });
       const dispatchSession = sessionRef.current;
       let resolved: Awaited<ReturnType<typeof resolvePresetTestSource>>;
       try {
@@ -241,6 +266,7 @@ export function usePresetTesting({
           preset: resolved.preset,
           connection: requestConnection,
           countTokens,
+          reasoningEffort: requestEffort,
         });
       } catch (failure) {
         setError((failure as Error).message);
@@ -598,6 +624,8 @@ export function usePresetTesting({
     () => ({
       activeTest,
       connection,
+      modelBlockedReason,
+      benchEffort,
       busy,
       error,
       setError,
@@ -629,6 +657,8 @@ export function usePresetTesting({
     [
       activeTest,
       connection,
+      modelBlockedReason,
+      benchEffort,
       busy,
       error,
       stream,

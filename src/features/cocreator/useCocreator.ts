@@ -18,12 +18,17 @@ import {
 } from '@shared/cocreator/compaction.ts';
 import { cocreatorBudget } from '@shared/cocreator/generation.ts';
 import { captureSideSnapshot, resolveSideSettings } from '@shared/cocreator/sideChat.ts';
+import {
+  type CoCreatorReasoningEfforts,
+  coCreatorReasoningEffort,
+  withReasoningEffort,
+} from '@shared/models/reasoning.ts';
 import type { ModelSlots } from '@shared/models/slots.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { Connection, ResolvedModel } from '@shared/providers/types.ts';
 import type { MessageExtra } from '@shared/types/chat.ts';
 import type { CocreatorSaveSnapshot, CocreatorSession } from '@shared/types/cocreator.ts';
-import type { Preset, PresetSummary } from '@shared/types/preset.ts';
+import type { Preset, PresetSummary, ReasoningEffort } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { cocreatorApi, presetApi } from '../../lib/api.ts';
@@ -65,6 +70,8 @@ export interface UseCocreatorOptions {
   presets: readonly PresetSummary[];
   activePresetId: string | null;
   activePreset: Preset | null;
+  coCreatorReasoningEfforts?: CoCreatorReasoningEfforts;
+  modelSaving?: boolean;
   tokenizerEncoding?: 'auto' | 'o200k_base' | 'cl100k_base';
   streamingFps: number;
 }
@@ -99,6 +106,8 @@ export interface UseCocreator {
   flushSaves: (base?: CocreatorState) => Promise<void>;
   persistence: PersistenceControls;
   connection: ResolvedModel | null;
+  modelBlockedReason: string | null;
+  mainEffort: ReasoningEffort | undefined;
   presetId: string | null;
   preset: Preset | null;
   systemPrompt: string;
@@ -106,6 +115,8 @@ export interface UseCocreator {
   countTokens: TokenCounter;
   sideCountTokens: TokenCounter;
   sideConnection: ResolvedModel | null;
+  sideModelBlockedReason: string | null;
+  sideEffort: ReasoningEffort | undefined;
   sideBlockedReason: string | null;
   sideContext: {
     totalTokens: number;
@@ -129,9 +140,13 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     presets,
     activePresetId,
     activePreset,
+    coCreatorReasoningEfforts,
+    modelSaving = false,
     tokenizerEncoding,
     streamingFps,
   } = options;
+  const modelSavingRef = useRef(modelSaving);
+  modelSavingRef.current = modelSaving;
 
   const [state, dispatch] = useReducer(cocreatorReducer, initialCocreatorState);
   const [saving, setSaving] = useState(false);
@@ -168,6 +183,26 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     [defaults.sideChat, state.sideChat?.settings, models, connections],
   );
   const sideConnection = sideSettings.model.ok ? sideSettings.model.model : null;
+  const mainEffort = useMemo(
+    () =>
+      connection
+        ? coCreatorReasoningEffort(coCreatorReasoningEfforts, 'character', {
+            connectionId: connection.id,
+            modelId: connection.model,
+          })
+        : undefined,
+    [coCreatorReasoningEfforts, connection],
+  );
+  const sideEffort = useMemo(
+    () =>
+      sideConnection
+        ? coCreatorReasoningEffort(coCreatorReasoningEfforts, 'sideChat', {
+            connectionId: sideConnection.id,
+            modelId: sideConnection.model,
+          })
+        : undefined,
+    [coCreatorReasoningEfforts, sideConnection],
+  );
   const sideCountTokens = useTokenizer(sideConnection?.model ?? '', tokenizerEncoding);
   const mainModelContext = useModelContext(connection);
   const sideModelContextInfo = useModelContext(sideConnection);
@@ -330,7 +365,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     if (!state.sideChat || !preset || !sideConnection || !sideModelContext) return null;
     try {
       const budget = cocreatorBudget({
-        preset,
+        preset: withReasoningEffort(preset, sideEffort),
         outputTokens: sideSettings.outputTokens,
         contextTokens: sideModelContext,
         connection: sideConnection,
@@ -360,6 +395,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
   }, [
     state.sideChat,
     preset,
+    sideEffort,
     sideSettings,
     sideConnection,
     sideModelContext,
@@ -402,15 +438,22 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       target: ConversationTarget,
       contextTokens: number,
       examples = exampleBlockRef.current,
+      effortOverride?: { effort: ReasoningEffort | undefined },
     ) => {
       const model = target === 'side' ? sideConnection : connection;
       if (!model || !preset) return null;
+      const reasoningEffort = effortOverride
+        ? effortOverride.effort
+        : target === 'side'
+          ? sideEffort
+          : mainEffort;
       return measureCharacterContext({
         messages: target === 'side' ? (current.sideChat?.messages ?? []) : current.messages,
         snapshot: target === 'side' ? current.sideChat?.snapshot : undefined,
         compaction: target === 'side' ? current.sideChat?.compaction : current.compaction,
         model,
         preset,
+        reasoningEffort,
         contextTokens,
         settings:
           target === 'side' ? { outputTokens: sideSettings.outputTokens } : current.settings,
@@ -420,7 +463,17 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         countTokens: target === 'side' ? sideCountTokens : countTokens,
       });
     },
-    [connection, sideConnection, preset, sideSettings, systemPrompt, countTokens, sideCountTokens],
+    [
+      connection,
+      sideConnection,
+      preset,
+      mainEffort,
+      sideEffort,
+      sideSettings,
+      systemPrompt,
+      countTokens,
+      sideCountTokens,
+    ],
   );
 
   const performCompaction = useCallback(
@@ -429,12 +482,18 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       target: ConversationTarget,
       controller: AbortController,
       contextTokens: number,
+      effortOverride?: { effort: ReasoningEffort | undefined },
     ): Promise<CocreatorState> => {
-      const measured = measure(base, target, contextTokens);
+      const measured = measure(base, target, contextTokens, undefined, effortOverride);
       const model = target === 'side' ? sideConnection : connection;
       const counter = target === 'side' ? sideCountTokens : countTokens;
       const compaction = target === 'side' ? base.sideChat?.compaction : base.compaction;
       if (!measured || !model || !preset || !base.sessionId) return base;
+      const effort = effortOverride
+        ? effortOverride.effort
+        : target === 'side'
+          ? sideEffort
+          : mainEffort;
       const plan = makeCompactionPlan({
         messages: measured.sources,
         state: compaction,
@@ -454,7 +513,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
           ...(await runCompaction({
             plan,
             model,
-            preset,
+            preset: withReasoningEffort(preset, effort),
             signal: controller.signal,
             sessionId: base.sessionId,
             feature: target === 'side' ? 'cocreatorSideChat' : 'cocreator',
@@ -468,7 +527,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         const latest = stateRef.current.streamingId === base.streamingId ? stateRef.current : base;
         let action: CocreatorAction = { type: 'compaction/recorded', target, record };
         let next = cocreatorReducer(latest, action);
-        const after = measure(next, target, contextTokens);
+        const after = measure(next, target, contextTokens, undefined, effortOverride);
         if (record.status === 'complete') {
           if (
             !after ||
@@ -510,6 +569,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       sideCountTokens,
       countTokens,
       preset,
+      mainEffort,
+      sideEffort,
       streaming,
       flushSaves,
     ],
@@ -521,6 +582,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       const model = target === 'side' ? sideConnection : connection;
       if (
         abortRef.current ||
+        modelSavingRef.current ||
         base.status !== 'idle' ||
         !model ||
         !preset ||
@@ -528,6 +590,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         (target === 'main' && !examplesReadyRef.current)
       )
         return;
+      const requestEffort = { effort: target === 'side' ? sideEffort : mainEffort };
       const controller = new AbortController();
       abortRef.current = controller;
       let finish!: () => void;
@@ -539,7 +602,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       try {
         const contextTokens = await resolveModelContext(model, controller.signal);
         controller.signal.throwIfAborted();
-        await performCompaction(base, target, controller, contextTokens);
+        await performCompaction(base, target, controller, contextTokens, requestEffort);
       } catch (error) {
         if (!controller.signal.aborted && stateRef.current.sessionId === base.sessionId)
           dispatch({ type: 'error/set', target, message: (error as Error).message });
@@ -550,7 +613,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         finish();
       }
     },
-    [sideConnection, connection, preset, performCompaction],
+    [sideConnection, connection, preset, mainEffort, sideEffort, performCompaction],
   );
 
   const makeContext = useCallback(
@@ -580,7 +643,10 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         compacting: compacting === target,
         countText: (target === 'side' ? sideCountTokens : countTokens).countText,
         kind: target === 'side' ? 'side' : 'character',
-        blocked: failure ?? (target === 'side' ? sideBlockedReason : blockedReason),
+        blocked:
+          (modelSaving ? 'Saving model settings…' : null) ??
+          failure ??
+          (target === 'side' ? sideBlockedReason : blockedReason),
       });
     },
     [
@@ -594,6 +660,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       compacting,
       countTokens,
       sideCountTokens,
+      modelSaving,
       blockedReason,
       sideBlockedReason,
     ],
@@ -611,6 +678,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       if (
         current.status !== 'idle' ||
         abortRef.current ||
+        modelSavingRef.current ||
         (target === 'main' && !examplesReadyRef.current)
       )
         return;
@@ -621,6 +689,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       // Settings can change mid-generation. Keep the request body, the reply's recorded
       // metadata and the server-side connection lookup on one snapshot for the whole call.
       const requestConnection: ResolvedModel = { ...selectedConnection };
+      const requestEffort = { effort: target === 'side' ? sideEffort : mainEffort };
       const draftBlock = renderDraftBlock(current.stash, current.baseline?.card ?? null);
       const exampleBlock = exampleBlockRef.current;
       const requestExtra: MessageExtra = {
@@ -705,12 +774,24 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
         // is the model's limit, not something to tune by hand.
         const contextTokens = await resolveModelContext(requestConnection, controller.signal);
         if (!ensureActive()) return;
-        const measured = measure(mode === 'continue' ? current : started, target, contextTokens);
+        const measured = measure(
+          mode === 'continue' ? current : started,
+          target,
+          contextTokens,
+          undefined,
+          requestEffort,
+        );
         const compaction = target === 'side' ? started.sideChat?.compaction : started.compaction;
         if (measured && shouldCompact(compaction, measured.used, measured.budget.promptTokens)) {
-          started = await performCompaction(started, target, controller, contextTokens);
+          started = await performCompaction(
+            started,
+            target,
+            controller,
+            contextTokens,
+            requestEffort,
+          );
           if (!ensureActive()) return;
-          const after = measure(started, target, contextTokens);
+          const after = measure(started, target, contextTokens, undefined, requestEffort);
           if (after && after.used > after.budget.promptTokens) {
             throw new Error(
               'The context still exceeds this model’s limit. Compact more conversation, reduce the fixed card or examples, or choose a larger model.',
@@ -727,6 +808,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
                 ? started.sideChat!.messages
                 : started.messages,
           preset,
+          reasoningEffort: requestEffort.effort,
           connection: requestConnection,
           settings:
             target === 'side'
@@ -828,6 +910,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     [
       connection,
       preset,
+      mainEffort,
+      sideEffort,
       systemPrompt,
       measure,
       performCompaction,
@@ -846,6 +930,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       if (
         !trimmed ||
         blockedReason ||
+        modelSavingRef.current ||
         !examplesReadyRef.current ||
         abortRef.current ||
         stateRef.current.status !== 'idle'
@@ -877,6 +962,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       if (
         !text.trim() ||
         sideBlockedReason ||
+        modelSavingRef.current ||
         abortRef.current ||
         stateRef.current.status !== 'idle'
       )
@@ -952,6 +1038,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     flushSaves,
     persistence: persistenceControls,
     connection,
+    modelBlockedReason: resolved.model.ok ? null : resolved.model.reason,
+    mainEffort,
     presetId: resolved.presetId,
     preset,
     systemPrompt,
@@ -959,6 +1047,8 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     countTokens,
     sideCountTokens,
     sideConnection,
+    sideModelBlockedReason: sideSettings.model.ok ? null : sideSettings.model.reason,
+    sideEffort,
     sideBlockedReason,
     sideContext,
     openSideChat: (reset = false) => prepareSideChat(reset) !== null,

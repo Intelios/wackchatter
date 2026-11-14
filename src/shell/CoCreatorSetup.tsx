@@ -4,6 +4,7 @@
  * from its model's own context.
  */
 
+import { REASONING_EFFORT_OPTIONS } from '@shared/models/reasoning.ts';
 import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
 import type { PresetSummary } from '@shared/types/preset.ts';
 import {
@@ -109,6 +110,7 @@ export function CoCreatorSetup({
       : settings.presetId === null
         ? 'active'
         : settings.presetId;
+  const mainEffortLabel = REASONING_EFFORT_OPTIONS.find(([id]) => id === design.mainEffort)?.[1];
 
   return (
     <Popover
@@ -169,6 +171,12 @@ export function CoCreatorSetup({
                   })
                 }
               />
+              {mainEffortLabel ? (
+                <p className="w3-co-setup__hint">
+                  Uses {mainEffortLabel} reasoning effort, remembered for the selected model. Choose
+                  Use preset in the island’s model picker to follow these samplers.
+                </p>
+              ) : null}
             </div>
             <div className="w3-co-setup__row">
               <span>Its own instructions</span>

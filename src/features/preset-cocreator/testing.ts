@@ -12,6 +12,7 @@ import {
   toChatMessage,
   userMessage,
 } from '@shared/chat/message.ts';
+import { withReasoningEffort } from '@shared/models/reasoning.ts';
 import { assemblePrompt, DEFAULT_USER_NAME } from '@shared/prompt/assemble.ts';
 import { resolveOutgoingMacros } from '@shared/prompt/outgoing.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
@@ -19,7 +20,7 @@ import { buildRequestBody } from '@shared/providers/request.ts';
 import type { ResolvedModel } from '@shared/providers/types.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import type { ChatMessage, SwipeInfo } from '@shared/types/chat.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, ReasoningEffort } from '@shared/types/preset.ts';
 import type {
   PresetCocreatorMessage,
   PresetCocreatorModelSettings,
@@ -153,6 +154,7 @@ export function preparePresetTestRequest(options: {
   preset: Preset;
   connection: ResolvedModel;
   countTokens: TokenCounter;
+  reasoningEffort?: ReasoningEffort;
 }): PreparedPresetTestRequest | null {
   const prepared = preparePresetTestGeneration(options.test, options.kind);
   if (!prepared) return null;
@@ -186,7 +188,7 @@ export function preparePresetTestRequest(options: {
     body: assembled.ok
       ? buildRequestBody({
           messages: assembled.messages,
-          preset: options.preset,
+          preset: withReasoningEffort(options.preset, options.reasoningEffort),
           connection: options.connection,
           stream: options.preset.stream_openai !== false,
           completions: Math.max(1, Math.trunc(options.preset.n ?? 1)),
