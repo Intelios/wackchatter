@@ -18,7 +18,9 @@ import {
 } from '../../shared/composer/layout.ts';
 import {
   mergeChatReasoningEfforts,
+  mergeCoCreatorReasoningEfforts,
   normalizeChatReasoningEfforts,
+  normalizeCoCreatorReasoningEfforts,
 } from '../../shared/models/reasoning.ts';
 import {
   type ModelSlots,
@@ -669,6 +671,10 @@ export function getSettings(): AppSettings {
     connections,
     models: normalizeModelSlots(stored.models, connections),
     chatReasoningEfforts: normalizeChatReasoningEfforts(stored.chatReasoningEfforts, connections),
+    coCreatorReasoningEfforts: normalizeCoCreatorReasoningEfforts(
+      stored.coCreatorReasoningEfforts,
+      connections,
+    ),
     recentModels: normalizeRecentModels(stored.recentModels, connections),
     favoriteModels: normalizeFavoriteModels(stored.favoriteModels, connections),
     modelPickerGroups: normalizePickerGroups(stored.modelPickerGroups),
@@ -741,6 +747,11 @@ export function mergeSettings(current: AppSettings, patch: SettingsPatch): AppSe
     chatReasoningEfforts: mergeChatReasoningEfforts(
       current.chatReasoningEfforts,
       patch.chatReasoningEfforts,
+      current.connections,
+    ),
+    coCreatorReasoningEfforts: mergeCoCreatorReasoningEfforts(
+      current.coCreatorReasoningEfforts,
+      patch.coCreatorReasoningEfforts,
       current.connections,
     ),
     // Capped here as well as on read — the recentPersonaIds rule.
@@ -985,12 +996,22 @@ export function applyConnectionPatch(
 export function dropConnection(
   settings: Pick<
     AppSettings,
-    'connections' | 'models' | 'recentModels' | 'favoriteModels' | 'chatReasoningEfforts'
+    | 'connections'
+    | 'models'
+    | 'recentModels'
+    | 'favoriteModels'
+    | 'chatReasoningEfforts'
+    | 'coCreatorReasoningEfforts'
   >,
   id: string,
 ): Pick<
   AppSettings,
-  'connections' | 'models' | 'recentModels' | 'favoriteModels' | 'chatReasoningEfforts'
+  | 'connections'
+  | 'models'
+  | 'recentModels'
+  | 'favoriteModels'
+  | 'chatReasoningEfforts'
+  | 'coCreatorReasoningEfforts'
 > | null {
   if (!settings.connections.some((connection) => connection.id === id)) return null;
 
@@ -1002,6 +1023,10 @@ export function dropConnection(
     recentModels: normalizeRecentModels(settings.recentModels, connections),
     favoriteModels: normalizeFavoriteModels(settings.favoriteModels, connections),
     chatReasoningEfforts: normalizeChatReasoningEfforts(settings.chatReasoningEfforts, connections),
+    coCreatorReasoningEfforts: normalizeCoCreatorReasoningEfforts(
+      settings.coCreatorReasoningEfforts,
+      connections,
+    ),
   };
 }
 

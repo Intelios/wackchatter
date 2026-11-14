@@ -13,6 +13,7 @@ import { currentInfo, currentText, timestamp } from '@shared/chat/message.ts';
 import type { DraftChoices } from '@shared/cocreator/draft.ts';
 import { quoteForSideChat } from '@shared/cocreator/sideChat.ts';
 import { isSlotFilled } from '@shared/cocreator/stash.ts';
+import type { CoCreatorReasoningEfforts } from '@shared/models/reasoning.ts';
 import type { ModelRef, ModelSlot, ModelSlots } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
@@ -22,7 +23,7 @@ import type {
   ExampleField,
   SingleCardSlot,
 } from '@shared/types/cocreator.ts';
-import type { Preset, PresetSummary } from '@shared/types/preset.ts';
+import type { Preset, PresetSummary, ReasoningEffort } from '@shared/types/preset.ts';
 import type { CoCreatorSettings } from '@shared/types/settings.ts';
 import {
   forwardRef,
@@ -80,10 +81,14 @@ export interface DeskReport {
   model: ModelRef | undefined;
   /** What writes now, by name. */
   modelName: string | null;
+  modelBlockedReason: string | null;
   /** The side chat's, once it exists. */
   sideReady: boolean;
   sideModel: ModelRef | undefined;
   sideModelName: string | null;
+  sideModelBlockedReason: string | null;
+  presetEffort: ReasoningEffort;
+  busy: boolean;
 }
 
 /** What the island can ask of the session. */
@@ -272,6 +277,7 @@ function Examples({
   characters,
   defaults,
   analysed,
+  generationDisabledReason,
   onDefaultsChange,
   onAnalyse,
 }: {
@@ -280,6 +286,7 @@ function Examples({
   characters: readonly CharacterSummary[];
   defaults: CoCreatorSettings;
   analysed: boolean;
+  generationDisabledReason?: string;
   onDefaultsChange: (patch: Partial<CoCreatorSettings>) => void;
   onAnalyse: () => boolean;
 }) {
@@ -440,8 +447,13 @@ function Examples({
           <button
             type="button"
             className="w3-st-ghost w3-st-ghost--sm"
-            disabled={busy || Boolean(design.blockedReason) || !selection.cards.length}
-            title={design.blockedReason ?? undefined}
+            disabled={
+              busy ||
+              Boolean(generationDisabledReason) ||
+              Boolean(design.blockedReason) ||
+              !selection.cards.length
+            }
+            title={generationDisabledReason ?? design.blockedReason ?? undefined}
             onClick={() => {
               if (onAnalyse()) setOpen(false);
             }}
@@ -462,6 +474,8 @@ export function CoCreatorDesk({
   defaults,
   connections,
   models,
+  coCreatorReasoningEfforts,
+  modelSaving = false,
   onModelSlotChange,
   presets,
   activePresetId,
@@ -482,6 +496,8 @@ export function CoCreatorDesk({
   defaults: CoCreatorSettings;
   connections: Connection[];
   models: ModelSlots;
+  coCreatorReasoningEfforts?: CoCreatorReasoningEfforts;
+  modelSaving?: boolean;
   onModelSlotChange: (slot: ModelSlot, ref: ModelRef | null) => void;
   presets: PresetSummary[];
   activePresetId: string | null;
@@ -518,10 +534,13 @@ export function CoCreatorDesk({
     presets,
     activePresetId,
     activePreset,
+    coCreatorReasoningEfforts,
+    modelSaving,
     tokenizerEncoding,
     streamingFps,
   });
   const { state, blockedReason, countTokens } = design;
+  const generationDisabledReason = modelSaving ? 'Saving model settings…' : undefined;
   const busy =
     design.busy ||
     finishing ||
@@ -563,6 +582,7 @@ export function CoCreatorDesk({
   const sideReady = Boolean(state.sideChat);
   const sideModel = state.sideChat?.settings.model;
   const sideModelName = design.sideConnection?.model ?? null;
+  const presetEffort = design.preset?.reasoning_effort ?? 'auto';
   const context = sideOpen ? design.sideCompactionContext : design.mainContext;
   useEffect(() => {
     onReport({
@@ -574,9 +594,13 @@ export function CoCreatorDesk({
       saveError: design.saveError,
       model,
       modelName,
+      modelBlockedReason: design.modelBlockedReason,
       sideReady,
       sideModel,
       sideModelName,
+      sideModelBlockedReason: design.sideModelBlockedReason,
+      presetEffort,
+      busy: design.busy,
     });
   }, [
     onReport,
@@ -586,9 +610,13 @@ export function CoCreatorDesk({
     design.saveError,
     model,
     modelName,
+    design.modelBlockedReason,
     sideReady,
     sideModel,
     sideModelName,
+    design.sideModelBlockedReason,
+    presetEffort,
+    design.busy,
     context,
     sideOpen,
   ]);
@@ -786,6 +814,7 @@ export function CoCreatorDesk({
     }
     if (input.type === 'sendSide') {
       openSide();
+      if (generationDisabledReason) return false;
       if (design.sendSide(input.text)) return true;
       setInputError(
         loaded.loading
@@ -795,7 +824,7 @@ export function CoCreatorDesk({
       );
       return false;
     }
-    if (busy || blockedReason) return false;
+    if (busy || blockedReason || generationDisabledReason) return false;
     return send(input.text);
   };
 
@@ -885,6 +914,7 @@ export function CoCreatorDesk({
             characters={characters}
             defaults={defaults}
             analysed={analysed}
+            generationDisabledReason={generationDisabledReason}
             onDefaultsChange={onDefaultsChange}
             onAnalyse={() => send(design.analysisPrompt, { coCreatorAction: 'analyseExamples' })}
           />
@@ -916,7 +946,7 @@ export function CoCreatorDesk({
                     key={message.id}
                     message={message}
                     who="Co-Creator"
-                    blockedReason={blockedReason}
+                    blockedReason={generationDisabledReason ?? blockedReason}
                     canReroll={at === lastIndex && !message.is_user}
                     canRetry={at === lastIndex && message.is_user}
                     streaming={
@@ -956,7 +986,7 @@ export function CoCreatorDesk({
           placeholder="Tell the Co-Creator what to write, or what to change"
           busy={busy}
           busyReason={busyReason}
-          blockedReason={blockedReason}
+          blockedReason={generationDisabledReason ?? blockedReason}
           quickCommands={defaults.quickCommands ?? []}
           onQuickCommandsChange={(quickCommands) => onDefaultsChange({ quickCommands })}
           sideOpen={sideOpen}
@@ -1020,6 +1050,7 @@ export function CoCreatorDesk({
                       key={message.id}
                       message={message}
                       who="Side chat"
+                      blockedReason={generationDisabledReason ?? design.sideBlockedReason}
                       canReroll={at === lastSide && !message.is_user}
                       canRetry={at === lastSide && message.is_user}
                       streaming={
@@ -1070,8 +1101,9 @@ export function CoCreatorDesk({
               placeholder="Ask on the side"
               busy={busy}
               busyReason={busyReason}
-              blockedReason={sideBlocked}
+              blockedReason={generationDisabledReason ?? sideBlocked}
               onSend={(text) => {
+                if (generationDisabledReason) return false;
                 const input = parseCocreatorInput(text);
                 if (input.type === 'error') {
                   setSideError(input.message);

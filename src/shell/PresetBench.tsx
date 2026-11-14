@@ -97,6 +97,7 @@ export interface PresetBenchProps {
   priceOf: (connectionId: string, model: string) => Price | null;
   /** Why a reply can't be sent back right now: it starts a Co-Creator turn. */
   coCreatorBlocked: string | null;
+  reasoningSaving?: boolean;
 }
 
 export function PresetBench(props: PresetBenchProps) {
@@ -588,9 +589,11 @@ function Proposal(props: PresetBenchProps & { proposal: ProposedPresetTest; more
   const { proposal, testing } = props;
   const blocked = !testing.activeTest
     ? 'Start a test first'
-    : testing.busy
-      ? 'Wait for the reply to finish'
-      : null;
+    : props.reasoningSaving
+      ? 'Saving model settings…'
+      : testing.busy
+        ? 'Wait for the reply to finish'
+        : null;
   return (
     <div className="w3-pc-proposal">
       <div className="w3-pc-proposal__head">
@@ -649,6 +652,11 @@ function TestChat(props: PresetBenchProps & { test: PresetTest }) {
   const estimate = evidence
     ? replyCost(evidence, props.priceOf(evidence.connectionId, evidence.model))
     : null;
+  const benchBlocked = props.reasoningSaving
+    ? 'Saving model settings…'
+    : !testing.connection
+      ? 'Choose the bench’s model on the island'
+      : null;
 
   return (
     <>
@@ -663,6 +671,8 @@ function TestChat(props: PresetBenchProps & { test: PresetTest }) {
           <button
             type="button"
             className="w3-st-pill w3-co-pill w3-pc-pill--sm"
+            disabled={Boolean(benchBlocked)}
+            title={benchBlocked ?? undefined}
             onClick={() => void testing.rerun()}
           >
             <Icon name="refresh" size="xs" />
@@ -705,7 +715,7 @@ function TestChat(props: PresetBenchProps & { test: PresetTest }) {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               const text = test.composerDraft.trim();
-              if (text && !testing.busy) void testing.send(text);
+              if (text && !testing.busy && !benchBlocked) void testing.send(text);
             }
           }}
         />
@@ -723,8 +733,8 @@ function TestChat(props: PresetBenchProps & { test: PresetTest }) {
             type="button"
             className="w3-pc-benchsend"
             aria-label="Send"
-            disabled={!test.composerDraft.trim() || !testing.connection}
-            title={testing.connection ? undefined : 'Choose the bench’s model on the island'}
+            disabled={!test.composerDraft.trim() || Boolean(benchBlocked)}
+            title={benchBlocked ?? undefined}
             onClick={() => void testing.send(test.composerDraft.trim())}
           >
             <Icon name="send" size="sm" />
@@ -901,6 +911,11 @@ function ReplyActions(
       item.replyText === message.mes,
   );
   const blocked = props.coCreatorBlocked ?? (testing.busy ? 'Wait for the reply to finish.' : null);
+  const benchBlocked = props.reasoningSaving
+    ? 'Saving model settings…'
+    : !testing.connection
+      ? 'Choose the bench’s model on the island'
+      : null;
   const at = (message.swipe_id ?? 0) + 1;
 
   const send = () => {
@@ -932,8 +947,8 @@ function ReplyActions(
           <button
             type="button"
             aria-label={at < swipes ? 'Next reply' : 'Write another reply'}
-            title={at < swipes ? undefined : 'Write another reply'}
-            disabled={testing.busy}
+            title={at < swipes ? undefined : (benchBlocked ?? 'Write another reply')}
+            disabled={testing.busy || (at >= swipes && Boolean(benchBlocked))}
             onClick={() => void testing.swipe(1)}
           >
             <Icon name="chevronRight" size="xs" />
@@ -942,7 +957,8 @@ function ReplyActions(
         <button
           type="button"
           className="w3-pc-act"
-          disabled={testing.busy}
+          disabled={testing.busy || Boolean(benchBlocked)}
+          title={benchBlocked ?? undefined}
           onClick={() => void testing.regenerate()}
         >
           <Icon name="refresh" size="xs" />

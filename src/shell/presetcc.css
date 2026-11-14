@@ -725,6 +725,25 @@ button.w3-pc-report__head:hover b {
   color: var(--w3-muted);
 }
 
+.w3-pc-instr__row > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.w3-pc-instr__row > span small {
+  font-size: var(--wc-text-xs);
+  color: var(--w3-faint);
+}
+
+.w3-pc-instr__hint {
+  margin: 0;
+  font-size: var(--wc-text-xs);
+  line-height: 1.45;
+  color: var(--w3-faint);
+}
+
 .w3-pc-instr__text {
   display: block;
   padding: 10px 12px;
@@ -2010,4 +2029,10 @@ button.w3-pc-rev:hover {
 
 .w3-pc-cmpset[data-status="same"] {
   opacity: 0.55;
+}
+
+.w3-pc-instr__row .w3-set__seg button {
+  flex: 1;
+  min-width: 0;
+  padding-inline: var(--wc-space-2);
 }

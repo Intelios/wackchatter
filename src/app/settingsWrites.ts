@@ -33,5 +33,9 @@ export function applySavedChatModelSettings(
       patch.chatReasoningEfforts !== undefined
         ? saved.chatReasoningEfforts
         : current.chatReasoningEfforts,
+    coCreatorReasoningEfforts:
+      patch.coCreatorReasoningEfforts !== undefined
+        ? saved.coCreatorReasoningEfforts
+        : current.coCreatorReasoningEfforts,
   };
 }

@@ -1,12 +1,13 @@
 import { currentText, type MessageState, userMessage } from '@shared/chat/message.ts';
 import type { CompactionState } from '@shared/cocreator/compaction.ts';
 import { CONTINUE_DESIGN_REPLY, cocreatorBudget } from '@shared/cocreator/generation.ts';
+import { withReasoningEffort } from '@shared/models/reasoning.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { ChatCompletionBody, ResolvedModel } from '@shared/providers/types.ts';
 import type { ApiMessage } from '@shared/types/chat.ts';
 import type { SessionModelSettings, SideChatSnapshot } from '@shared/types/cocreator.ts';
-import type { Preset } from '@shared/types/preset.ts';
+import type { Preset, ReasoningEffort } from '@shared/types/preset.ts';
 import { buildDesignPrompt } from './prompt.ts';
 import { buildSidePrompt } from './sidePrompt.ts';
 
@@ -15,6 +16,7 @@ export function buildDesignGeneration(input: {
   mode: 'send' | 'swipe' | 'continue';
   messages: MessageState[];
   preset: Preset;
+  reasoningEffort?: ReasoningEffort;
   connection: ResolvedModel;
   settings: SessionModelSettings;
   systemPrompt: string;
@@ -26,6 +28,7 @@ export function buildDesignGeneration(input: {
   compaction?: CompactionState;
 }): { prefix: string; body: ChatCompletionBody & { messages: ApiMessage[] } } {
   const { mode, messages, preset, connection, settings, streaming } = input;
+  const effectivePreset = withReasoningEffort(preset, input.reasoningEffort);
   const prefix = mode === 'continue' ? currentText(messages.at(-1)!) : '';
   const promptMessages =
     mode === 'continue'
@@ -42,7 +45,7 @@ export function buildDesignGeneration(input: {
         ]
       : messages;
   const budget = cocreatorBudget({
-    preset,
+    preset: effectivePreset,
     connection,
     stream: streaming,
     outputTokens: settings.outputTokens,
@@ -87,7 +90,7 @@ export function buildDesignGeneration(input: {
     body: {
       ...buildRequestBody({
         messages: prompt.messages,
-        preset,
+        preset: effectivePreset,
         connection,
         stream: streaming,
         // No cap: the budget above only reserves room. A cap cut long cards off.

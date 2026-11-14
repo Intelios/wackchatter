@@ -4,11 +4,16 @@
  * top right.
  */
 
+import {
+  type CoCreatorReasoningEfforts,
+  type CoCreatorReasoningTarget,
+  coCreatorReasoningEffort,
+} from '@shared/models/reasoning.ts';
 import type { ModelRef } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
 import type { MacroVariableMap, Persona } from '@shared/types/chat.ts';
-import type { PresetSummary } from '@shared/types/preset.ts';
+import type { PresetSummary, ReasoningEffort } from '@shared/types/preset.ts';
 import type {
   PresetCocreatorSession,
   PresetComparisonSource,
@@ -20,14 +25,18 @@ import type { LorebookSummary, WorldInfoSettings } from '@shared/types/worldinfo
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Popover } from '../components/Popover.tsx';
 import { modelCatalogueEntry } from '../features/models/modelContext.ts';
+import {
+  presetTestSourceKey,
+  resolvePresetTestSource,
+} from '../features/preset-cocreator/testingSources.ts';
 import { usePresetCocreator } from '../features/preset-cocreator/usePresetCocreator.ts';
 import { usePresetTesting } from '../features/preset-cocreator/usePresetTesting.ts';
-import { ApiError } from '../lib/api.ts';
+import { ApiError, presetApi, referencePresetApi } from '../lib/api.ts';
 import type { PersistenceControls } from '../lib/autosave.ts';
 import { ContextRing } from './ContextRing.tsx';
 import { Island, type IslandMode, type IslandNotice } from './Island.tsx';
 import { Icon } from './icons.tsx';
-import { ModelPane } from './ModelPane.tsx';
+import { ModelEffortPane } from './ModelPane.tsx';
 import { PresetBench } from './PresetBench.tsx';
 import { PresetRail, type PromptSheet } from './PresetRail.tsx';
 import { PresetTalk } from './PresetTalk.tsx';
@@ -59,6 +68,13 @@ export interface PresetSessionProps {
   regexScripts: readonly RegexScript[];
   tokenizerEncoding?: string;
   streamingFps: number;
+  coCreatorReasoningEfforts: CoCreatorReasoningEfforts;
+  reasoningSaving: boolean;
+  onReasoningEffort: (
+    target: CoCreatorReasoningTarget,
+    ref: ModelRef,
+    effort: ReasoningEffort | null,
+  ) => Promise<boolean>;
   notice: IslandNotice | null;
   onDismissNotice: () => void;
   onFail: (err: unknown) => void;
@@ -78,12 +94,16 @@ export function PresetSession(props: PresetSessionProps) {
   const controller = usePresetCocreator({
     initial: props.initial,
     connections,
+    coCreatorReasoningEfforts: props.coCreatorReasoningEfforts,
+    modelSaving: props.reasoningSaving,
     streamingFps: props.streamingFps,
     referenceNames,
   });
   const testing = usePresetTesting({
     controller,
     connections,
+    coCreatorReasoningEfforts: props.coCreatorReasoningEfforts,
+    modelSaving: props.reasoningSaving,
     tokenizerEncoding: props.tokenizerEncoding,
     streamingFps: props.streamingFps,
   });
@@ -120,8 +140,55 @@ export function PresetSession(props: PresetSessionProps) {
         settings: { ...current.settings, testing: { ...current.settings.testing, model: ref } },
       }));
     }
-    setMode(null);
   };
+
+  // Resolve the preset default shown by the Bench's effort strip when unset.
+  const benchSource = testing.activeTest?.presetSource ?? { kind: 'draft' as const };
+  const benchSourceKey = presetTestSourceKey(benchSource);
+  const [loadedBenchEffort, setLoadedBenchEffort] = useState<{
+    key: string;
+    effort: ReasoningEffort;
+  } | null>(null);
+  useEffect(() => {
+    if (
+      mode !== 'model' ||
+      modelFor !== 'bench' ||
+      (benchSource.kind !== 'library' && benchSource.kind !== 'reference')
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void resolvePresetTestSource(benchSource, session, {
+      library: presetApi.getVersioned,
+      reference: async (id) => referencePresetApi.get(id),
+    })
+      .then((resolved) => {
+        if (!cancelled) {
+          setLoadedBenchEffort({
+            key: benchSourceKey,
+            effort: resolved.preset.reasoning_effort ?? 'auto',
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedBenchEffort(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, modelFor, benchSource, benchSourceKey, session]);
+
+  const benchPresetEffort: ReasoningEffort | undefined =
+    benchSource.kind === 'draft'
+      ? (session.current.preset.reasoning_effort ?? 'auto')
+      : benchSource.kind === 'revision'
+        ? ((
+            session.history.find((entry) => entry.revision === benchSource.revision)?.preset ??
+            session.current.preset
+          ).reasoning_effort ?? 'auto')
+        : loadedBenchEffort?.key === benchSourceKey
+          ? loadedBenchEffort.effort
+          : undefined;
 
   // --- What it cost: recorded tokens at the catalogue's prices ---
   const spend = useMemo(() => sessionSpend(document), [document]);
@@ -379,7 +446,7 @@ export function PresetSession(props: PresetSessionProps) {
         panes={{
           rest: restPane,
           model: (
-            <ModelPane
+            <ModelEffortPane
               active={islandMode === 'model'}
               value={modelFor === 'ai' ? aiRef : benchRef}
               head={
@@ -402,7 +469,39 @@ export function PresetSession(props: PresetSessionProps) {
                   </button>
                 </div>
               }
+              effort={coCreatorReasoningEffort(
+                props.coCreatorReasoningEfforts,
+                modelFor === 'ai' ? 'presetAssistant' : 'presetBench',
+                modelFor === 'ai' ? aiRef : benchRef,
+              )}
+              fallbackEffort={
+                modelFor === 'ai' ? document.settings.assistant.reasoningEffort : benchPresetEffort
+              }
+              fallbackName={modelFor === 'ai' ? 'session default' : 'preset'}
+              resetLabel={modelFor === 'ai' ? 'Use session default' : 'Use preset'}
+              saving={props.reasoningSaving}
+              disabledReason={
+                modelFor === 'ai' ? controller.assistantBlocked : testing.modelBlockedReason
+              }
+              pickDisabledReason={
+                modelFor === 'bench' && testing.busy
+                  ? 'Wait for the test reply to finish.'
+                  : modelFor === 'ai' && controller.busy
+                    ? 'Wait for the Co-Creator to finish.'
+                    : null
+              }
               onPick={pickModel}
+              onEffort={(effort) => {
+                const ref = modelFor === 'ai' ? aiRef : benchRef;
+                if (ref) {
+                  void props.onReasoningEffort(
+                    modelFor === 'ai' ? 'presetAssistant' : 'presetBench',
+                    ref,
+                    effort,
+                  );
+                }
+              }}
+              onDone={() => setMode(null)}
             />
           ),
         }}
@@ -417,6 +516,8 @@ export function PresetSession(props: PresetSessionProps) {
             references={props.references}
             characters={props.characters}
             modelName={nameOf(aiRef)}
+            reasoningSaving={props.reasoningSaving}
+            assistantEffort={controller.assistantEffort}
             onShowRevision={(revision) => {
               setLens(null);
               setViewing(revision === draftRevision ? null : revision);
@@ -442,11 +543,13 @@ export function PresetSession(props: PresetSessionProps) {
             onAddReference={props.onAddReference}
             onAsk={askCompare}
             askBlocked={
-              controller.busy
-                ? 'The Co-Creator is still replying.'
-                : !aiRef
-                  ? 'Choose the Co-Creator’s model on the island.'
-                  : null
+              props.reasoningSaving
+                ? 'Saving model settings…'
+                : controller.busy
+                  ? 'The Co-Creator is still replying.'
+                  : !aiRef
+                    ? 'Choose the Co-Creator’s model on the island.'
+                    : null
             }
             onOpen={setSheet}
             onFail={onFail}
@@ -474,12 +577,15 @@ export function PresetSession(props: PresetSessionProps) {
             regexScripts={props.regexScripts}
             modelName={nameOf(benchRef)}
             priceOf={priceOf}
+            reasoningSaving={props.reasoningSaving}
             coCreatorBlocked={
-              controller.busy || controller.batchSending
-                ? 'The Co-Creator is still replying.'
-                : !controller.assistantConnection
-                  ? 'Choose the Co-Creator’s model on the island first.'
-                  : null
+              props.reasoningSaving
+                ? 'Saving model settings…'
+                : controller.busy || controller.batchSending
+                  ? 'The Co-Creator is still replying.'
+                  : !controller.assistantConnection
+                    ? 'Choose the Co-Creator’s model on the island first.'
+                    : null
             }
           />
         </div>

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { emptyCoCreatorReasoningEfforts } from '@shared/models/reasoning.ts';
 import { DEFAULT_MODEL_SLOTS } from '@shared/models/slots.ts';
 import { DEFAULT_SETTINGS } from '@shared/types/settings.ts';
 import { appSettingsView, resolveAppModels } from './settingsView.ts';
@@ -46,18 +47,25 @@ describe('appSettingsView', () => {
     });
     expect(view.regexScripts).toEqual([]);
     expect(view.chatReasoningEfforts).toEqual({});
+    expect(view.coCreatorReasoningEfforts).toEqual(emptyCoCreatorReasoningEfforts());
   });
 
-  test('chat reasoning preferences keep their identity and never alter model resolution', () => {
+  test('chat and Co-Creator reasoning preferences keep their identity and never alter model resolution', () => {
     const chatReasoningEfforts = { c: { 'chat-model': 'low' as const } };
+    const coCreatorReasoningEfforts = {
+      ...emptyCoCreatorReasoningEfforts(),
+      character: { c: { 'chat-model': 'high' as const } },
+    };
     const stored = settings({
       chatReasoningEfforts,
+      coCreatorReasoningEfforts,
       models: {
         ...DEFAULT_MODEL_SLOTS,
         chat: { connectionId: 'c', modelId: 'chat-model' },
       },
     });
     expect(appSettingsView(stored).chatReasoningEfforts).toBe(chatReasoningEfforts);
+    expect(appSettingsView(stored).coCreatorReasoningEfforts).toBe(coCreatorReasoningEfforts);
     expect(resolveAppModels(stored).chat.model).not.toHaveProperty('reasoning_effort');
     expect(resolveAppModels(stored).summary.model).not.toHaveProperty('reasoning_effort');
   });

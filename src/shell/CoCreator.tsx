@@ -12,6 +12,7 @@
 import './studio.css';
 import './cocreator.css';
 
+import { coCreatorReasoningEffort } from '@shared/models/reasoning.ts';
 import { slotRef } from '@shared/models/slots.ts';
 import type { CharacterDetail, CharacterSummary } from '@shared/types/card.ts';
 import type { CocreatorSession, CocreatorSessionSummary } from '@shared/types/cocreator.ts';
@@ -35,7 +36,7 @@ import { MAIN_FIELD_COUNT } from './cocreator.ts';
 import { Island, type IslandMode, type IslandNotice } from './Island.tsx';
 import { type SearchItem, SearchPane } from './IslandPanes.tsx';
 import { Icon } from './icons.tsx';
-import { ModelPane } from './ModelPane.tsx';
+import { ModelEffortPane } from './ModelPane.tsx';
 import { editedWhen } from './studio.ts';
 import { initialAuraStyle, useAura } from './useAura.ts';
 
@@ -70,7 +71,25 @@ export function CoCreator({ controller }: { controller: AppController }) {
   const say = useCallback((next: Omit<IslandNotice, 'id'>) => {
     noticeId.current += 1;
     setNotice({ ...next, id: noticeId.current });
+    return noticeId.current;
   }, []);
+  const reasoningNotice = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (app.coCreatorReasoningError) {
+      reasoningNotice.current = say({
+        icon: 'alert',
+        title: app.coCreatorReasoningError.title,
+        text: app.coCreatorReasoningError.message,
+        tone: 'bad',
+        sticky: true,
+      });
+    } else if (reasoningNotice.current !== undefined) {
+      const id = reasoningNotice.current;
+      setNotice((current) => (current?.id === id ? null : current));
+      reasoningNotice.current = undefined;
+    }
+  }, [app.coCreatorReasoningError, say]);
+  useEffect(() => () => app.clearCoCreatorReasoningError(), [app.clearCoCreatorReasoningError]);
   const fail = useCallback(
     (err: unknown) =>
       say({
@@ -336,6 +355,15 @@ export function CoCreator({ controller }: { controller: AppController }) {
 
   const backLabel = controller.active ? 'Back to chat' : 'Home';
   const islandMode: IslandMode = mode ?? 'rest';
+  const activeModelFor = report?.sideReady ? modelFor : 'main';
+  const mainEffectiveModel = report?.model ?? slotRef(models.slots, 'cocreator');
+  const sideEffectiveModel = report?.sideModel ?? models.slots.sideChat;
+  const activeReasoningTarget = activeModelFor === 'main' ? 'character' : 'sideChat';
+  const activeEffectiveModel = activeModelFor === 'main' ? mainEffectiveModel : sideEffectiveModel;
+  const activeModelBlocked =
+    activeModelFor === 'main'
+      ? (report?.modelBlockedReason ?? null)
+      : (report?.sideModelBlockedReason ?? null);
 
   return (
     <ModelsProvider
@@ -408,7 +436,10 @@ export function CoCreator({ controller }: { controller: AppController }) {
           generating={false}
           onCollapse={() => setMode(null)}
           notice={notice}
-          onDismissNotice={() => setNotice(null)}
+          onDismissNotice={() => {
+            app.clearCoCreatorReasoningError();
+            setNotice(null);
+          }}
           wingsPinned={false}
           wingLeft={null}
           wingRight={null}
@@ -426,19 +457,22 @@ export function CoCreator({ controller }: { controller: AppController }) {
               />
             ),
             model: session ? (
-              <ModelPane
+              <ModelEffortPane
                 active={islandMode === 'model'}
-                value={modelFor === 'main' ? report?.model : report?.sideModel}
-                emptyLabel={modelFor === 'main' ? 'The Co-Creator’s' : 'The side chat’s'}
+                value={activeModelFor === 'main' ? report?.model : report?.sideModel}
+                effectiveModel={activeEffectiveModel}
+                emptyLabel={activeModelFor === 'main' ? 'The Co-Creator’s' : 'The side chat’s'}
                 emptyFollows={
-                  modelFor === 'main' ? slotRef(models.slots, 'cocreator') : models.slots.sideChat
+                  activeModelFor === 'main'
+                    ? slotRef(models.slots, 'cocreator')
+                    : models.slots.sideChat
                 }
                 head={
                   report?.sideReady ? (
                     <div className="w3-co-mpfor">
                       <button
                         type="button"
-                        aria-pressed={modelFor === 'main'}
+                        aria-pressed={activeModelFor === 'main'}
                         onClick={() => setModelFor('main')}
                       >
                         The conversation
@@ -446,19 +480,43 @@ export function CoCreator({ controller }: { controller: AppController }) {
                       </button>
                       <button
                         type="button"
-                        aria-pressed={modelFor === 'side'}
+                        aria-pressed={activeModelFor === 'side'}
                         onClick={() => setModelFor('side')}
                       >
                         The side chat
                         <small>{modelLabel(report.sideModelName) ?? 'None'}</small>
                       </button>
                     </div>
-                  ) : null
+                  ) : (
+                    <p className="w3-isl-model__head">The model for this session</p>
+                  )
                 }
-                onPick={(ref) => {
-                  deskRef.current?.setModel(modelFor, ref);
-                  setMode(null);
+                effort={coCreatorReasoningEffort(
+                  prefs.coCreatorReasoningEfforts,
+                  activeReasoningTarget,
+                  activeEffectiveModel,
+                )}
+                fallbackEffort={report?.presetEffort ?? 'auto'}
+                fallbackName="preset"
+                resetLabel="Use preset"
+                saving={app.coCreatorReasoningSaving}
+                disabledReason={activeModelBlocked}
+                pickDisabledReason={
+                  activeModelFor === 'side' && report?.busy
+                    ? 'Wait for the current reply to finish.'
+                    : null
+                }
+                onPick={(ref) => deskRef.current?.setModel(activeModelFor, ref)}
+                onEffort={(effort) => {
+                  if (activeEffectiveModel) {
+                    void app.setCoCreatorReasoningEffort(
+                      activeReasoningTarget,
+                      activeEffectiveModel,
+                      effort,
+                    );
+                  }
                 }}
+                onDone={() => setMode(null)}
               />
             ) : null,
           }}
@@ -474,6 +532,8 @@ export function CoCreator({ controller }: { controller: AppController }) {
                 defaults={prefs.coCreator}
                 connections={settings?.connections ?? []}
                 models={models.slots}
+                coCreatorReasoningEfforts={prefs.coCreatorReasoningEfforts}
+                modelSaving={app.coCreatorReasoningSaving}
                 onModelSlotChange={app.setModelSlot}
                 presets={library.presets}
                 activePresetId={library.presetId}

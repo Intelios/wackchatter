@@ -91,4 +91,17 @@ describe('committed chat model state', () => {
     expect(next.models.chat).toBeNull();
     expect(next.chatReasoningEfforts).toEqual({});
   });
+
+  test('publishes confirmed Co-Creator effort preferences without rolling back other edits', () => {
+    const current = settings(5);
+    current.revealReplies = 'finished';
+    const saved = settings(6);
+    saved.coCreatorReasoningEfforts.character = { default: { 'model-c': 'high' } };
+    const next = applySavedChatModelSettings(current, saved, {
+      coCreatorReasoningEfforts: { character: { default: { 'model-c': 'high' } } },
+    });
+    expect(next.coCreatorReasoningEfforts).toEqual(saved.coCreatorReasoningEfforts);
+    expect(next.revealReplies).toBe('finished');
+    expect(next.settingsRevision).toBe(6);
+  });
 });

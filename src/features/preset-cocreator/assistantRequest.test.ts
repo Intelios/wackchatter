@@ -235,4 +235,54 @@ describe('Preset Co-Creator context projection', () => {
     compact(session);
     expect(session.document.messages.some((m) => m.role === 'tool')).toBe(false);
   });
+
+  test('absent reasoning override uses the session default; explicit override applies to request and budget without mutating session', () => {
+    const session = sessionWith([
+      { id: 'u1', role: 'user', created: 1, content: 'Tighten the main prompt.' },
+    ]);
+    session.document.settings.assistant.reasoningEffort = 'medium';
+    const claude = {
+      ...model,
+      provider: 'openrouter' as const,
+      model: 'anthropic/claude-sonnet-4.5',
+    };
+
+    const fallback = buildAssistantRequest({
+      session,
+      messages: session.document.messages,
+      model: claude,
+      contextTokens: 131072,
+      countText,
+      referenceNames: [],
+    });
+    expect(fallback.preset.reasoning_effort).toBe('medium');
+    expect(fallback.body.reasoning).toEqual({ exclude: false, max_tokens: 8000 });
+
+    const overriddenAuto = buildAssistantRequest({
+      session,
+      messages: session.document.messages,
+      model: claude,
+      contextTokens: 131072,
+      countText,
+      referenceNames: [],
+      reasoningEffort: 'auto',
+    });
+    expect(overriddenAuto.preset.reasoning_effort).toBe('auto');
+    expect(overriddenAuto.body.reasoning).toEqual({ exclude: false });
+    expect(overriddenAuto.budget.reservedTokens).toBeLessThan(fallback.budget.reservedTokens);
+    expect(session.document.settings.assistant.reasoningEffort).toBe('medium');
+
+    const overriddenHigh = buildAssistantRequest({
+      session,
+      messages: session.document.messages,
+      model: claude,
+      contextTokens: 131072,
+      countText,
+      referenceNames: [],
+      reasoningEffort: 'high',
+    });
+    expect(overriddenHigh.preset.reasoning_effort).toBe('high');
+    expect(overriddenHigh.body.reasoning).toEqual({ exclude: false, max_tokens: 16000 });
+    expect(session.document.settings.assistant.reasoningEffort).toBe('medium');
+  });
 });

@@ -8,7 +8,11 @@
  */
 
 import { DEFAULT_SINGLE_COMPOSER_LAYOUT } from '@shared/composer/layout.ts';
-import type { ChatReasoningEfforts } from '@shared/models/reasoning.ts';
+import {
+  type ChatReasoningEfforts,
+  type CoCreatorReasoningEfforts,
+  emptyCoCreatorReasoningEfforts,
+} from '@shared/models/reasoning.ts';
 import {
   DEFAULT_MODEL_SLOTS,
   type ModelResolution,
@@ -83,6 +87,7 @@ export interface Backdrop {
 export interface SettingsView {
   backdrop: Backdrop;
   chatReasoningEfforts: ChatReasoningEfforts;
+  coCreatorReasoningEfforts: CoCreatorReasoningEfforts;
   summary: SummarySettings;
   nexus: NexusSettings;
   memoryMode: MemoryMode;
@@ -108,6 +113,9 @@ export interface SettingsView {
   revealReplies: 'written' | 'finished';
 }
 
+const EMPTY_COCREATOR_REASONING_EFFORTS: CoCreatorReasoningEfforts =
+  emptyCoCreatorReasoningEfforts();
+
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 
@@ -127,6 +135,8 @@ export function appSettingsView(settings: AppSettings | null): SettingsView {
       effectLayer: settings?.backgroundEffectLayer === 'front' ? 'front' : 'behind',
     },
     chatReasoningEfforts: settings?.chatReasoningEfforts ?? {},
+    coCreatorReasoningEfforts:
+      settings?.coCreatorReasoningEfforts ?? EMPTY_COCREATOR_REASONING_EFFORTS,
     summary: settings?.summary ?? DEFAULT_SUMMARY,
     nexus: settings?.nexus ?? DEFAULT_NEXUS,
     memoryMode: settings?.memoryMode ?? 'classic',

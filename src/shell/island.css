@@ -1039,6 +1039,10 @@
   max-height: calc(100dvh - var(--wc-space-6) * 2);
 }
 
+.w3-mp[data-controls]:has(> .w3-p-field:first-child) {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 .w3-mp[data-controls] > .w3-mp__list {
   min-height: 0;
   align-content: start;

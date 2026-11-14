@@ -271,6 +271,115 @@ export function ModelPane({
   );
 }
 
+export function ModelEffortPane({
+  active,
+  value,
+  effectiveModel = value ?? null,
+  emptyLabel,
+  emptyFollows,
+  head,
+  effort,
+  fallbackEffort,
+  fallbackName = 'preset',
+  resetLabel = 'Use preset',
+  saving,
+  disabledReason,
+  pickDisabledReason,
+  onPick,
+  onEffort,
+  onDone,
+}: {
+  active: boolean;
+  value: ModelRef | null | undefined;
+  /** Model whose effort is read and written; differs from `value` when following a slot. */
+  effectiveModel?: ModelRef | null;
+  emptyLabel?: string;
+  emptyFollows?: ModelRef | null;
+  head?: ReactNode;
+  effort: ReasoningEffort | undefined;
+  fallbackEffort?: ReasoningEffort;
+  fallbackName?: string;
+  resetLabel?: string;
+  saving: boolean;
+  disabledReason: string | null;
+  pickDisabledReason?: string | null;
+  onPick: ((ref: ModelRef | null) => void) | ((ref: ModelRef | null) => Promise<boolean>);
+  onEffort: (effort: ReasoningEffort | null) => void;
+  onDone: () => void;
+}) {
+  const { connections, catalogs } = useModels();
+  const current = effectiveModel ? describeRef(effectiveModel, connections, catalogs) : null;
+  const effortBlocked = saving
+    ? 'Saving model settings…'
+    : (disabledReason ?? (!effectiveModel ? 'Choose a model first.' : undefined));
+  const paneBlocked = saving ? 'Saving model settings…' : (pickDisabledReason ?? undefined);
+  const fallbackLabel =
+    fallbackEffort !== undefined
+      ? (REASONING_EFFORT_OPTIONS.find(([id]) => id === fallbackEffort)?.[1] ??
+        String(fallbackEffort))
+      : null;
+  const alreadyDefaultTitle =
+    fallbackName === 'session default'
+      ? 'Already using the session default'
+      : `Already using the ${fallbackName} default`;
+
+  return (
+    <ModelPane
+      active={active}
+      value={value}
+      emptyLabel={emptyLabel}
+      emptyFollows={emptyFollows}
+      head={head}
+      disabledReason={paneBlocked}
+      onPick={onPick}
+      onDone={onDone}
+      controls={
+        <div className="w3-mp__effort">
+          <div className="w3-mp__effort-head">
+            <span>
+              Reasoning effort
+              {current ? (
+                <span
+                  className="w3-mp__effort-model"
+                  title={`${current.name} · ${current.connectionName ?? 'deleted connection'}`}
+                >
+                  · {current.name}
+                </span>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              className="w3-mp__effort-reset"
+              disabled={Boolean(effortBlocked) || effort === undefined}
+              title={effortBlocked ?? (effort === undefined ? alreadyDefaultTitle : undefined)}
+              onClick={() => onEffort(null)}
+            >
+              {resetLabel}
+            </button>
+          </div>
+          <Segments<ReasoningEffort>
+            label="Reasoning effort"
+            value={effort}
+            options={REASONING_EFFORT_OPTIONS}
+            disabled={Boolean(effortBlocked)}
+            title={effortBlocked}
+            onChange={onEffort}
+          />
+          <p className="w3-mp__effort-help" aria-live="polite">
+            {!effectiveModel
+              ? 'Choose a model to set its reasoning effort.'
+              : effort === undefined
+                ? fallbackLabel
+                  ? `Using ${fallbackName}: ${fallbackLabel}. Choose a level to remember it. Only reasoning models use this.`
+                  : `Using the ${fallbackName} default. Choose a level to remember it. Only reasoning models use this.`
+                : 'Remembered for this model. Auto sends no effort. Only reasoning models use this.'}
+          </p>
+        </div>
+      }
+    />
+  );
+}
+
 export function ChatModelPane({
   active,
   value,
@@ -292,65 +401,20 @@ export function ChatModelPane({
   onEffort: (effort: ReasoningEffort | null) => void;
   onDone: () => void;
 }) {
-  const { connections, catalogs } = useModels();
-  const current = value ? describeRef(value, connections, catalogs) : null;
-  const blocked = saving
-    ? 'Saving model settings…'
-    : (disabledReason ?? (!value ? 'Choose a model first.' : undefined));
-  const presetLabel =
-    REASONING_EFFORT_OPTIONS.find(([id]) => id === presetEffort)?.[1] ?? String(presetEffort);
-
   return (
-    <ModelPane
+    <ModelEffortPane
       active={active}
       value={value}
       head={<p className="w3-isl-model__head">The model for your chats</p>}
-      disabledReason={saving ? blocked : undefined}
+      effort={effort}
+      fallbackEffort={presetEffort}
+      fallbackName="preset"
+      resetLabel="Use preset"
+      saving={saving}
+      disabledReason={disabledReason}
       onPick={onPick}
+      onEffort={onEffort}
       onDone={onDone}
-      controls={
-        <div className="w3-mp__effort">
-          <div className="w3-mp__effort-head">
-            <span>
-              Reasoning effort
-              {current ? (
-                <span
-                  className="w3-mp__effort-model"
-                  title={`${current.name} · ${current.connectionName ?? 'deleted connection'}`}
-                >
-                  · {current.name}
-                </span>
-              ) : null}
-            </span>
-            <button
-              type="button"
-              className="w3-mp__effort-reset"
-              disabled={Boolean(blocked) || effort === undefined}
-              title={
-                blocked ?? (effort === undefined ? 'Already using the preset default' : undefined)
-              }
-              onClick={() => onEffort(null)}
-            >
-              Use preset
-            </button>
-          </div>
-          <Segments<ReasoningEffort>
-            label="Reasoning effort"
-            value={effort}
-            options={REASONING_EFFORT_OPTIONS}
-            disabled={Boolean(blocked)}
-            title={blocked}
-            onChange={onEffort}
-          />
-          <p className="w3-mp__effort-help" aria-live="polite">
-            {!value
-              ? 'Choose a model to set its reasoning effort.'
-              : effort === undefined
-                ? `Using preset: ${presetLabel}. Choose a level to remember it. Only reasoning models use this.`
-                : 'Remembered for this model. Auto sends no effort. Only reasoning models use this.'}
-          </p>
-        </div>
-      }
     />
   );
 }

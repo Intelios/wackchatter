@@ -3,7 +3,11 @@
  * the open tab in step with cascades the server already made (a rename, a delete).
  */
 
-import { chatReasoningEffort } from '@shared/models/reasoning.ts';
+import {
+  type CoCreatorReasoningTarget,
+  chatReasoningEffort,
+  coCreatorReasoningEffort,
+} from '@shared/models/reasoning.ts';
 import { type ModelRef, type ModelSlot, sameModelRef } from '@shared/models/slots.ts';
 import type { Connection } from '@shared/providers/types.ts';
 import type { ReasoningEffort } from '@shared/types/preset.ts';
@@ -39,6 +43,13 @@ export function useAppSettings(onError: (message: string) => void) {
   } | null>(null);
   const chatModelWrite = useRef(false);
   const clearChatModelError = useCallback(() => setChatModelError(null), []);
+  const [coCreatorReasoningSaving, setCoCreatorReasoningSaving] = useState(false);
+  const [coCreatorReasoningError, setCoCreatorReasoningError] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+  const coCreatorReasoningWrite = useRef(false);
+  const clearCoCreatorReasoningError = useCallback(() => setCoCreatorReasoningError(null), []);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
@@ -198,6 +209,45 @@ export function useAppSettings(onError: (message: string) => void) {
     [saveChatModelSettings],
   );
 
+  const setCoCreatorReasoningEffort = useCallback(
+    async (
+      target: CoCreatorReasoningTarget,
+      ref: ModelRef,
+      effort: ReasoningEffort | null,
+    ): Promise<boolean> => {
+      if (coCreatorReasoningWrite.current) return false;
+      const current = coCreatorReasoningEffort(
+        settingsRef.current?.coCreatorReasoningEfforts,
+        target,
+        ref,
+      );
+      if (current === (effort ?? undefined)) return true;
+      coCreatorReasoningWrite.current = true;
+      setCoCreatorReasoningSaving(true);
+      setCoCreatorReasoningError(null);
+      const patch: SettingsPatch = {
+        coCreatorReasoningEfforts: { [target]: { [ref.connectionId]: { [ref.modelId]: effort } } },
+      };
+      try {
+        const saved = await writeSettings(patch);
+        setSettingsState((prev) =>
+          prev ? applySavedChatModelSettings(prev, saved, patch) : saved,
+        );
+        return true;
+      } catch (error) {
+        setCoCreatorReasoningError({
+          title: 'Reasoning effort not saved',
+          message: (error as Error).message,
+        });
+        return false;
+      } finally {
+        coCreatorReasoningWrite.current = false;
+        setCoCreatorReasoningSaving(false);
+      }
+    },
+    [writeSettings],
+  );
+
   const rememberModels = useCallback(
     (recentModels: ModelRef[]) => void patchSettings({ recentModels }),
     [patchSettings],
@@ -334,6 +384,10 @@ export function useAppSettings(onError: (message: string) => void) {
     chatModelSaving,
     chatModelError,
     clearChatModelError,
+    setCoCreatorReasoningEffort,
+    coCreatorReasoningSaving,
+    coCreatorReasoningError,
+    clearCoCreatorReasoningError,
     rememberModels,
     setFavoriteModels,
     setModelPickerGroups,

@@ -2,9 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import type { Preset } from '../types/preset.ts';
 import {
   type ChatReasoningEfforts,
+  COCREATOR_REASONING_TARGETS,
+  type CoCreatorReasoningEfforts,
   chatReasoningEffort,
+  coCreatorReasoningEffort,
+  emptyCoCreatorReasoningEfforts,
   mergeChatReasoningEfforts,
+  mergeCoCreatorReasoningEfforts,
   normalizeChatReasoningEfforts,
+  normalizeCoCreatorReasoningEfforts,
   REASONING_EFFORT_OPTIONS,
   withReasoningEffort,
 } from './reasoning.ts';
@@ -255,4 +261,61 @@ test('connection and model ids named __proto__ and constructor are ordinary own 
   expect(stored).toEqual(snapshot);
   expect(normalized).toEqual(snapshot);
   expect(Object.hasOwn(Object.prototype, 'm')).toBe(false);
+});
+
+describe('Co-Creator reasoning effort maps', () => {
+  test('each target starts empty and stays isolated from the others', () => {
+    const empty = emptyCoCreatorReasoningEfforts();
+    expect(Object.keys(empty)).toEqual([...COCREATOR_REASONING_TARGETS]);
+    for (const target of COCREATOR_REASONING_TARGETS) {
+      expect(empty[target]).toEqual({});
+    }
+    const afterCharacter = mergeCoCreatorReasoningEfforts(
+      empty,
+      { character: { a: { m: 'high' } } },
+      connections,
+    );
+    expect(coCreatorReasoningEffort(afterCharacter, 'character', ref())).toBe('high');
+    expect(coCreatorReasoningEffort(afterCharacter, 'sideChat', ref())).toBeUndefined();
+    expect(coCreatorReasoningEffort(afterCharacter, 'presetAssistant', ref())).toBeUndefined();
+    expect(coCreatorReasoningEffort(afterCharacter, 'presetBench', ref())).toBeUndefined();
+
+    const afterBench = mergeCoCreatorReasoningEfforts(
+      afterCharacter,
+      { presetBench: { a: { m: 'auto' } } },
+      connections,
+    );
+    expect(coCreatorReasoningEffort(afterBench, 'character', ref())).toBe('high');
+    expect(coCreatorReasoningEffort(afterBench, 'presetBench', ref())).toBe('auto');
+
+    const cleared = mergeCoCreatorReasoningEfforts(
+      afterBench,
+      { character: { a: { m: null } } },
+      connections,
+    );
+    expect(coCreatorReasoningEffort(cleared, 'character', ref())).toBeUndefined();
+    expect(coCreatorReasoningEffort(cleared, 'presetBench', ref())).toBe('auto');
+  });
+
+  test('normalizes malformed maps and prunes deleted connections across every target', () => {
+    const stored = {
+      character: { a: { ' m ': 'low' }, dead: { m: 'high' } },
+      sideChat: 'invalid',
+      presetAssistant: { b: { m: 'max', bad: 'nope' } },
+      presetBench: null,
+      unknownTarget: { a: { m: 'high' } },
+    };
+    const normalized = normalizeCoCreatorReasoningEfforts(stored, connections);
+    expect(normalized).toEqual({
+      character: { a: { m: 'low' } },
+      sideChat: {},
+      presetAssistant: { b: { m: 'max' } },
+      presetBench: {},
+    });
+    expect(Object.hasOwn(normalized, 'unknownTarget')).toBe(false);
+    const snapshot = structuredClone(normalized) as CoCreatorReasoningEfforts;
+    expect(mergeCoCreatorReasoningEfforts(normalized, { character: null }, connections)).toEqual(
+      snapshot,
+    );
+  });
 });

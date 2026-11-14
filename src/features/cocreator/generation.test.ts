@@ -5,6 +5,7 @@ import { captureSideSnapshot } from '@shared/cocreator/sideChat.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import { DEFAULT_EXAMPLE_FIELDS } from '@shared/types/cocreator.ts';
+import { measureCharacterContext } from './characterContext.ts';
 import { renderExamples } from './examples.ts';
 import { buildDesignGeneration } from './generation.ts';
 import { renderDraftBlock, seedStash } from './seed.ts';
@@ -216,5 +217,121 @@ describe('design generation requests and recovery', () => {
         settings: { outputTokens: 1, contextTokens: 16384 },
       }),
     ).toThrow('latest message');
+  });
+});
+
+describe('Co-Creator reasoning effort overrides', () => {
+  const claude = {
+    id: 'or',
+    name: 'OpenRouter',
+    provider: 'openrouter' as const,
+    model: 'anthropic/claude-sonnet-4.5',
+    baseUrl: 'https://openrouter.ai/api/v1',
+  };
+  const google = {
+    id: 'google',
+    name: 'Google',
+    provider: 'custom' as const,
+    model: 'gemini-3.8-flash',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  };
+
+  test('absent effort follows the sampler preset; explicit Auto overrides a high preset without mutating it', () => {
+    const preset = {
+      ...createDefaultPreset(),
+      temperature: 0.7,
+      reasoning_effort: 'high' as const,
+    };
+    const snapshot = structuredClone(preset);
+    Object.freeze(preset);
+
+    const inherited = buildDesignGeneration({
+      ...request,
+      connection: { ...request.connection, provider: 'openrouter' },
+      preset,
+      mode: 'send',
+      messages: [user, assistantPlaceholder('a', 'Assistant')],
+    });
+    expect(inherited.body.reasoning).toEqual({ exclude: false, effort: 'high' });
+
+    const overriddenAuto = buildDesignGeneration({
+      ...request,
+      connection: { ...request.connection, provider: 'openrouter' },
+      preset,
+      reasoningEffort: 'auto',
+      mode: 'send',
+      messages: [user, assistantPlaceholder('a', 'Assistant')],
+    });
+    expect(overriddenAuto.body.reasoning).toEqual({ exclude: false });
+    expect(Object.hasOwn(overriddenAuto.body, 'reasoning_effort')).toBe(false);
+    expect(preset).toEqual(snapshot);
+  });
+
+  test('Claude and Gemini honor Co-Creator effort overrides in both main and side requests', () => {
+    const preset = {
+      ...createDefaultPreset(),
+      temperature: 0.6,
+      reasoning_effort: 'auto' as const,
+    };
+    const main = buildDesignGeneration({
+      ...request,
+      connection: claude,
+      preset,
+      reasoningEffort: 'high',
+      mode: 'send',
+      messages: [user, assistantPlaceholder('a', 'Assistant')],
+    });
+    expect(main.body.reasoning).toEqual({ exclude: false, max_tokens: 16000 });
+    expect(main.body.max_tokens).toBe(48000);
+    expect(Object.hasOwn(main.body, 'temperature')).toBe(false);
+
+    const sideSnapshot = captureSideSnapshot({
+      systemPrompt: request.systemPrompt,
+      exampleBlock: '',
+      messages: [user],
+    });
+    const side = buildDesignGeneration({
+      ...request,
+      connection: google,
+      preset,
+      reasoningEffort: 'medium',
+      sideSnapshot,
+      mode: 'send',
+      messages: [userMessage('su', 'You', 'Side?', null), assistantPlaceholder('sa', 'Assistant')],
+    });
+    expect(side.body.extra_body).toEqual({
+      google: { thinking_config: { include_thoughts: true, thinking_level: 'medium' } },
+    });
+  });
+
+  test('context measurement reserves thinking headroom matching the overridden effort', () => {
+    const preset = { ...createDefaultPreset(), reasoning_effort: 'auto' as const };
+    const withoutThinking = measureCharacterContext({
+      messages: [user],
+      preset,
+      model: claude,
+      contextTokens: 131072,
+      settings: {},
+      systemPrompt: 'Design.',
+      exampleBlock: '',
+      draftBlock: '',
+      countTokens: counter,
+    });
+    const withHighThinking = measureCharacterContext({
+      messages: [user],
+      preset,
+      reasoningEffort: 'high',
+      model: claude,
+      contextTokens: 131072,
+      settings: {},
+      systemPrompt: 'Design.',
+      exampleBlock: '',
+      draftBlock: '',
+      countTokens: counter,
+    });
+    expect(withHighThinking.budget.reservedTokens).toBeGreaterThan(
+      withoutThinking.budget.reservedTokens,
+    );
+    expect(withHighThinking.budget.promptTokens).toBeLessThan(withoutThinking.budget.promptTokens);
   });
 });

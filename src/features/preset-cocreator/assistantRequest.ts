@@ -7,6 +7,7 @@ import { cocreatorBudget } from '@shared/cocreator/generation.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import { buildRequestBody } from '@shared/providers/request.ts';
 import type { ChatCompletionBody, ResolvedModel } from '@shared/providers/types.ts';
+import type { ReasoningEffort } from '@shared/types/preset.ts';
 import type {
   PresetCocreatorMessage,
   PresetCocreatorSession,
@@ -73,13 +74,14 @@ export function buildAssistantRequest(options: {
   countText(text: string): number;
   referenceNames: readonly string[];
   mode?: 'comparison' | 'conversation';
+  reasoningEffort?: ReasoningEffort;
 }) {
   const { session, model, countText } = options;
   const settings = session.document.settings.assistant;
   const preset = createDefaultPreset();
   preset.temperature = settings.temperature;
   preset.openai_max_tokens = settings.maxTokens;
-  preset.reasoning_effort = settings.reasoningEffort;
+  preset.reasoning_effort = options.reasoningEffort ?? settings.reasoningEffort;
   const budget = cocreatorBudget({
     preset,
     connection: model,

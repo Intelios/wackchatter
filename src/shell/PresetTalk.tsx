@@ -3,11 +3,11 @@
  * made and every reply you sent back shows what you sent, and the composer.
  */
 
+import { REASONING_EFFORT_OPTIONS } from '@shared/models/reasoning.ts';
 import type { CharacterSummary } from '@shared/types/card.ts';
-import type { PresetSummary } from '@shared/types/preset.ts';
+import type { PresetSummary, ReasoningEffort } from '@shared/types/preset.ts';
 import type {
   PresetCocreatorMessage,
-  PresetCocreatorModelSettings,
   PresetComparisonSource,
   PresetDraftRevision,
   PresetTestReport,
@@ -43,16 +43,6 @@ import { Avatar } from './Avatar.tsx';
 import { Range, Segments } from './controls.tsx';
 import { Icon } from './icons.tsx';
 
-type Effort = PresetCocreatorModelSettings['reasoningEffort'];
-const EFFORTS: [Effort, string][] = [
-  ['auto', 'Auto'],
-  ['min', 'Min'],
-  ['low', 'Low'],
-  ['medium', 'Medium'],
-  ['high', 'High'],
-  ['max', 'Max'],
-];
-
 export function PresetTalk({
   controller,
   testing,
@@ -60,6 +50,8 @@ export function PresetTalk({
   references,
   characters,
   modelName,
+  reasoningSaving = false,
+  assistantEffort,
   onShowRevision,
 }: {
   controller: PresetCocreatorController;
@@ -68,6 +60,8 @@ export function PresetTalk({
   references: readonly ReferencePresetSummary[];
   characters: readonly CharacterSummary[];
   modelName: string | null;
+  reasoningSaving?: boolean;
+  assistantEffort?: ReasoningEffort;
   onShowRevision: (revision: number) => void;
 }) {
   const { session } = controller;
@@ -89,6 +83,8 @@ export function PresetTalk({
       ...current,
       settings: { ...current.settings, assistant: { ...current.settings.assistant, ...patch } },
     }));
+  const overrideLabel = REASONING_EFFORT_OPTIONS.find(([id]) => id === assistantEffort)?.[1];
+  const blockedReason = reasoningSaving ? 'Saving model settings…' : null;
 
   return (
     <section className="w3-pc-col w3-pc-talk" aria-label="Co-Creator">
@@ -128,13 +124,21 @@ export function PresetTalk({
               onChange={(temperature) => patchAssistant({ temperature })}
             />
             <div className="w3-pc-instr__row">
-              <span>Reasoning</span>
+              <span>
+                Reasoning <small>Session default</small>
+              </span>
               <Segments
                 label="Reasoning effort"
                 value={assistant.reasoningEffort}
-                options={EFFORTS}
+                options={REASONING_EFFORT_OPTIONS}
                 onChange={(reasoningEffort) => patchAssistant({ reasoningEffort })}
               />
+              {overrideLabel ? (
+                <p className="w3-pc-instr__hint">
+                  {modelName ?? 'This model'} uses {overrideLabel}, remembered in the model picker.
+                  Choose Use session default there to follow this setting.
+                </p>
+              ) : null}
             </div>
             <textarea
               className="w3-pc-instr__text"
@@ -169,6 +173,7 @@ export function PresetTalk({
               characters={characters}
               isLast={message === last}
               busy={controller.busy}
+              blockedReason={blockedReason}
               onContinue={() => void controller.continueReply()}
               onEdit={controller.editMessage}
               onShowRevision={onShowRevision}
@@ -191,6 +196,7 @@ export function PresetTalk({
         presets={presets}
         references={references}
         history={history}
+        reasoningSaving={reasoningSaving}
       />
     </section>
   );
@@ -205,6 +211,7 @@ const TalkMessage = memo(function TalkMessage({
   characters,
   isLast,
   busy,
+  blockedReason,
   onContinue,
   onEdit,
   onShowRevision,
@@ -216,6 +223,7 @@ const TalkMessage = memo(function TalkMessage({
   characters: readonly CharacterSummary[];
   isLast: boolean;
   busy: boolean;
+  blockedReason: string | null;
   onContinue: () => void;
   onEdit: (id: string, text: string) => void;
   onShowRevision: (revision: number) => void;
@@ -347,7 +355,12 @@ const TalkMessage = memo(function TalkMessage({
       {editor ? null : (
         <div className="w3-co-msg__tools">
           {message.incomplete && isLast ? (
-            <button type="button" disabled={busy} onClick={onContinue}>
+            <button
+              type="button"
+              disabled={busy || Boolean(blockedReason)}
+              title={blockedReason ?? undefined}
+              onClick={onContinue}
+            >
               <Icon name="forward" size="xs" />
               Continue
             </button>
@@ -659,12 +672,14 @@ function Composer({
   presets,
   references,
   history,
+  reasoningSaving,
 }: {
   controller: PresetCocreatorController;
   testing: PresetTestingController;
   presets: readonly PresetSummary[];
   references: readonly ReferencePresetSummary[];
   history: readonly PresetDraftRevision[];
+  reasoningSaving: boolean;
 }) {
   const [draft, setDraft] = useState('');
   const [comparison, setComparison] = useState<{
@@ -698,8 +713,14 @@ function Composer({
   const queue = controller.session.document.batchQueue;
   const batching = queue.items.length > 0 && !comparison;
 
+  const blocked = reasoningSaving
+    ? 'Saving model settings…'
+    : !controller.assistantConnection
+      ? 'Choose the Co-Creator’s model on the island first.'
+      : null;
+
   const send = () => {
-    if (controller.busy) return;
+    if (controller.busy || blocked) return;
     if (batching) {
       const note = draft.trim();
       testing.updateBatch((current) => ({ ...current, note }));
@@ -727,10 +748,6 @@ function Composer({
     setDraft('');
     void controller.send(text);
   };
-
-  const blocked = !controller.assistantConnection
-    ? 'Choose the Co-Creator’s model on the island first.'
-    : null;
 
   return (
     <div className="w3-co-composer w3-pc-composer">
