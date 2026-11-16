@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { blankCardData } from '@shared/card/blank.ts';
 import { assistantPlaceholder, setText, userMessage } from '@shared/chat/message.ts';
+import { cocreatorContextLimit } from '@shared/cocreator/generation.ts';
 import { captureSideSnapshot } from '@shared/cocreator/sideChat.ts';
 import { createDefaultPreset } from '@shared/prompt/defaults.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
@@ -206,6 +207,44 @@ describe('design generation requests and recovery', () => {
       }),
     ).toThrow('latest message');
   });
+
+  test.each(['main', 'side'] as const)(
+    'a %s request whose window the catalogue does not state is never blocked by the fallback size',
+    (target) => {
+      const heavy = { ...request, systemPrompt: 'x'.repeat(200_000) };
+      const messages = [user, assistantPlaceholder('a', 'Assistant')];
+      const sideSnapshot =
+        target === 'side'
+          ? captureSideSnapshot({
+              systemPrompt: heavy.systemPrompt,
+              exampleBlock: '',
+              messages: [user],
+            })
+          : undefined;
+      const blocked = () =>
+        buildDesignGeneration({
+          ...heavy,
+          mode: 'send',
+          messages,
+          ...(sideSnapshot ? { sideSnapshot } : {}),
+          settings: { outputTokens: 1, contextTokens: 128_000 },
+        });
+      expect(blocked).toThrow(target === 'side' ? "side chat's model" : 'do not fit this model');
+      // Assumed window: no limit of ours, the provider's own limit is the only check left.
+      const sent = buildDesignGeneration({
+        ...heavy,
+        mode: 'send',
+        messages,
+        ...(sideSnapshot ? { sideSnapshot } : {}),
+        settings: {
+          outputTokens: 1,
+          contextTokens: cocreatorContextLimit({ tokens: 128_000, assumed: true }),
+        },
+      });
+      expect(sent.body.messages[0]?.content).toContain('x'.repeat(200_000));
+      expect(sent.body.messages.at(-1)).toEqual({ role: 'user', content: 'Write the character.' });
+    },
+  );
 
   test('continuation refuses a budget that drops the text being continued', () => {
     const huge = setText(cutoff, 'x'.repeat(9000));

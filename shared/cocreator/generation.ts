@@ -5,6 +5,15 @@ import type { Preset } from '../types/preset.ts';
 
 export const COCREATOR_OUTPUT_TOKENS = 8192;
 export const COCREATOR_CONTEXT_TOKENS = 131072;
+
+/**
+ * The context a Co-Creator request may fill. A model whose catalogue entry states no window
+ * (`assumed`) gets no limit of ours: everything is packed and sent, and only the provider can
+ * refuse an oversized request — the fallback size is a guess, never a reason to block.
+ */
+export function cocreatorContextLimit(info: { tokens: number; assumed: boolean }): number {
+  return info.assumed ? Number.MAX_SAFE_INTEGER : info.tokens;
+}
 export const CONTINUE_DESIGN_REPLY =
   'Continue your interrupted answer exactly where it stopped. Do not repeat the existing text. ' +
   'If it stopped inside a card block, finish that block and its closing fence before proceeding.';

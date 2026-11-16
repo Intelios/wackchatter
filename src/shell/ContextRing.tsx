@@ -34,7 +34,10 @@ export function ContextRing({
   useEffect(() => () => clearTimeout(timer.current), []);
   const percent = context.total ? Math.round((context.used / context.total) * 100) : 0;
   const progress = Math.min(100, Math.max(0, percent));
-  const until = Math.max(0, Math.floor(context.promptBudget * 0.8 - context.used));
+  // An assumed window has no real budget behind it, so there is no threshold to count down to.
+  const until = context.assumed
+    ? null
+    : Math.max(0, Math.floor(context.promptBudget * 0.8 - context.used));
   const history = Math.max(0, context.used - context.fixed - context.summary);
   const checkpoint = context.checkpoint;
 
@@ -149,8 +152,9 @@ export function ContextRing({
           <span>
             Auto-compact
             <small>
-              {until ? `~${number(until)} tokens until the threshold` : 'Threshold reached'} · 80%
-              of available input
+              {context.assumed
+                ? 'The catalogue states no window for this model, so auto-compact has no threshold'
+                : `${until ? `~${number(until)} tokens until the threshold` : 'Threshold reached'} · 80% of available input`}
             </small>
           </span>
           <Switch

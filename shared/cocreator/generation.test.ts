@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createDefaultPreset } from '../prompt/defaults.ts';
 import { buildRequestBody } from '../providers/request.ts';
 import type { ResolvedModel } from '../providers/types.ts';
-import { cocreatorBudget } from './generation.ts';
+import { cocreatorBudget, cocreatorContextLimit } from './generation.ts';
 
 const connection: ResolvedModel = {
   id: 'test',
@@ -54,5 +54,16 @@ describe('Co-Creator generation budget', () => {
     expect(() =>
       cocreatorBudget({ preset: createDefaultPreset(), connection, contextTokens: 4096 }),
     ).toThrow('context');
+  });
+
+  test('an assumed window is no limit: the budget still reserves a reply but packs everything', () => {
+    expect(cocreatorContextLimit({ tokens: 131072, assumed: false })).toBe(131072);
+    expect(cocreatorContextLimit({ tokens: 128_000, assumed: true })).toBe(Number.MAX_SAFE_INTEGER);
+    const budget = cocreatorBudget({
+      preset: createDefaultPreset(),
+      connection,
+      contextTokens: cocreatorContextLimit({ tokens: 128_000, assumed: true }),
+    });
+    expect(budget.promptTokens).toBeGreaterThan(Number.MAX_SAFE_INTEGER - 1_000_000);
   });
 });

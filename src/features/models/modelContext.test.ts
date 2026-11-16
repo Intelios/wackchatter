@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
-import { contextOrDefault } from '@shared/models/context.ts';
-import { resolveModelContext } from './modelContext.ts';
+import { contextOrDefault, UNKNOWN_MODEL_CONTEXT } from '@shared/models/context.ts';
+import { resolveModelContext, resolveModelContextInfo } from './modelContext.ts';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -51,4 +51,27 @@ test('a pre-aborted lookup does not fetch, and an unknown model retains the docu
   await expect(resolveModelContext(model, controller.signal)).rejects.toThrow();
   expect(calls).toBe(0);
   expect(await resolveModelContext(model)).toBe(contextOrDefault(null));
+});
+
+test('the context info says whether the number is the model’s own or the fallback', async () => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('conn-a'))
+      return Response.json({ models: [{ id: 'm', contextLength: 1_000_000 }] });
+    return Response.json({ models: [] });
+  }) as unknown as typeof fetch;
+  const base = {
+    name: 'Test',
+    provider: 'custom' as const,
+    baseUrl: 'http://local',
+    model: 'm',
+  };
+  expect(await resolveModelContextInfo({ id: 'conn-a', ...base })).toEqual({
+    tokens: 1_000_000,
+    assumed: false,
+  });
+  expect(await resolveModelContextInfo({ id: 'conn-b', ...base })).toEqual({
+    tokens: UNKNOWN_MODEL_CONTEXT,
+    assumed: true,
+  });
 });

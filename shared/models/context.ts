@@ -5,6 +5,11 @@
 
 export const UNKNOWN_MODEL_CONTEXT = 128_000;
 
+/** Whether a catalogue entry actually stated a context length. */
+export function isKnownContext(known: number | null | undefined): known is number {
+  return !!(known && Number.isFinite(known) && known > 0);
+}
+
 export function contextOrDefault(known: number | null | undefined): number {
-  return known && Number.isFinite(known) && known > 0 ? Math.floor(known) : UNKNOWN_MODEL_CONTEXT;
+  return isKnownContext(known) ? Math.floor(known) : UNKNOWN_MODEL_CONTEXT;
 }
