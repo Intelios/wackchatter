@@ -1050,6 +1050,94 @@
   outline-color: var(--w3-accent-line);
 }
 
+/* ---------- Updates: the changelog as a stack ---------- */
+
+.w3-st-updates__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.w3-st-updates__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w3-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--w3-accent-line);
+  font-size: 12.5px;
+  color: var(--w3-soft);
+  transition:
+    color var(--w3-quick),
+    box-shadow var(--w3-quick);
+}
+
+.w3-st-updates__add:hover {
+  color: var(--w3-text);
+  box-shadow: inset 0 0 0 1px var(--w3-accent);
+}
+
+.w3-st-updates {
+  display: grid;
+}
+
+.w3-st-update {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--w3-line);
+}
+
+.w3-st-update:last-child {
+  border-bottom: 0;
+}
+
+.w3-st-update[data-dragging] {
+  z-index: 2;
+  border-bottom-color: transparent;
+  background: var(--w3-solid);
+  box-shadow: 0 12px 30px -10px oklch(0 0 0 / 0.7);
+}
+
+.w3-st-update__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.w3-st-update__grip {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--w3-faint);
+  cursor: grab;
+  touch-action: none;
+  opacity: 0.35;
+  transition: opacity var(--w3-quick);
+}
+
+.w3-st-update:hover .w3-st-update__grip,
+.w3-st-update__grip:focus-visible {
+  opacity: 1;
+}
+
+.w3-st-update__label {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
 /* ---------- Greetings: a shelf of opening lines ---------- */
 
 .w3-greet {

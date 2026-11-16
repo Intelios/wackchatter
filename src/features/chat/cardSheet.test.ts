@@ -4,6 +4,7 @@ import {
   type CardSheet,
   defaultSectionId,
   formatBookSection,
+  formatUpdatesSection,
   normalizeSectionLabel,
   readCardSheet,
   resolveSectionId,
@@ -119,12 +120,66 @@ describe('reading a card as a sheet', () => {
     expect(shifted.sections[0]?.id).toBe('field:description');
   });
 
+  test('updates read as a section after the lorebook, labels above their text', () => {
+    const sheet = readCardSheet(
+      card({
+        character_book: book([{ keys: ['lamp'], content: 'Brass.' }]),
+        updates: [
+          { label: 'v1.2 · 2026-09-18', text: 'Rebalanced the lorebook.' },
+          { text: 'First release.' },
+        ],
+      }),
+    );
+
+    expect(sheet.rung).toBe('fields');
+    expect(sheet.sections.at(-1)?.label).toBe('Updates');
+    expect(sheet.sections.at(-1)?.text).toBe(
+      'v1.2 · 2026-09-18\nRebalanced the lorebook.\n\nFirst release.',
+    );
+  });
+
+  test('a card with no updates gains no section', () => {
+    expect(readCardSheet(card()).sections.map((section) => section.label)).not.toContain('Updates');
+  });
+
+  test('a card whose only words are its updates falls to the raw floor with them', () => {
+    const sheet = readCardSheet(
+      card({
+        description: '',
+        personality: '',
+        scenario: '',
+        mes_example: '',
+        updates: [{ label: 'v1.1', text: 'First release.' }],
+      }),
+    );
+
+    expect(sheet.rung).toBe('raw');
+    expect(sheet.sections).toHaveLength(1);
+    expect(sheet.sections[0]?.text).toContain('First release.');
+  });
+
   test('macros resolve, so a description reads as prose rather than as braces', () => {
     const sheet = readCardSheet(card({ description: '{{char}} watches {{user}}.' }), (text) =>
       text.replaceAll('{{char}}', 'Mirei').replaceAll('{{user}}', 'Jack'),
     );
 
     expect(sheet.sections[0]?.text).toBe('Mirei watches Jack.');
+  });
+});
+
+describe('formatUpdatesSection', () => {
+  test('labels sit on their own line; entries are apart by a blank line', () => {
+    expect(
+      formatUpdatesSection([
+        { label: 'v1.2', text: 'Rebalanced the lorebook.' },
+        { text: 'First release.' },
+      ]),
+    ).toBe('v1.2\nRebalanced the lorebook.\n\nFirst release.');
+  });
+
+  test('entries that say nothing are not updates', () => {
+    expect(formatUpdatesSection([{ label: 'v1.1', text: '   ' }])).toBe('');
+    expect(formatUpdatesSection(undefined)).toBe('');
   });
 });
 

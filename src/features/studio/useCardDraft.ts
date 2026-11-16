@@ -1,4 +1,10 @@
-import type { CardDataV2, CardExtensions, CharacterDetail } from '@shared/types/card.ts';
+import { cleanUpdates } from '@shared/card/updates.ts';
+import type {
+  CardDataV2,
+  CardExtensions,
+  CardUpdate,
+  CharacterDetail,
+} from '@shared/types/card.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { characterApi } from '../../lib/api.ts';
 import { AutosaveQueue, type PersistenceControls } from '../../lib/autosave.ts';
@@ -112,7 +118,14 @@ export function useCardDraft({
       const next = { ...dataRef.current, [key]: value };
       dataRef.current = next;
       setData(next);
-      pendingPatchRef.current = mergePatch(pendingPatchRef.current, { [key]: value });
+      /*
+       * `updates` is the one field the editor holds half-written: a row with no text is
+       * something to type into, not a changelog entry, so it stays on screen but never
+       * reaches the card. The draft keeps it; only the outgoing patch is filtered.
+       */
+      const saved =
+        key === 'updates' ? (cleanUpdates(value as CardUpdate[]) as CardDataV2[K]) : value;
+      pendingPatchRef.current = mergePatch(pendingPatchRef.current, { [key]: saved });
       setSaveState('saving');
       setSaveError(null);
       queue.schedule(avatar, queue.nextRevision(avatar), pendingPatchRef.current);

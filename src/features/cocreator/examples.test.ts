@@ -1,8 +1,21 @@
 import { describe, expect, test } from 'bun:test';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
-import { DEFAULT_EXAMPLE_FIELDS, type ExampleFields } from '@shared/types/cocreator.ts';
-import { EXAMPLE_PREAMBLE, exampleCardsView, renderExample, renderExamples } from './examples.ts';
+import {
+  DEFAULT_EXAMPLE_FIELDS,
+  type ExampleField,
+  type ExampleFields,
+} from '@shared/types/cocreator.ts';
+import {
+  EXAMPLE_CREATOR_NOTES_PREAMBLE,
+  EXAMPLE_FIELD_LABELS,
+  EXAMPLE_FIELD_ORDER,
+  EXAMPLE_PREAMBLE,
+  exampleCardsView,
+  examplePreamble,
+  renderExample,
+  renderExamples,
+} from './examples.ts';
 
 /** One token per word, the technique assemble.test.ts uses. */
 const words: TokenCounter = {
@@ -130,10 +143,24 @@ describe('rendering one example', () => {
   });
 
   test('the opt-in extras are off by default', () => {
-    const text = render(card());
+    const text = render(card({ creator_notes: 'House format.' }));
 
     expect(text).not.toContain('Alternate greetings:');
     expect(text).not.toContain('Example dialogue:');
+    expect(text).not.toContain('Creator notes:');
+  });
+
+  test('the creator-notes toggle adds the notes as their own section', () => {
+    const text = render(card({ creator_notes: 'House format.' }), fields({ creator_notes: true }));
+
+    expect(text).toContain('Creator notes:\nHouse format.');
+    expect(text).not.toContain('Example dialogue:');
+  });
+
+  test('a card with only blank notes adds nothing even when the toggle is on', () => {
+    expect(render(card({ creator_notes: '   ' }), fields({ creator_notes: true }))).not.toContain(
+      'Creator notes:',
+    );
   });
 
   test('each opt-in toggle adds exactly its own block', () => {
@@ -241,6 +268,35 @@ describe('rendering the block', () => {
     const summed = rendered.examples.reduce((total, example) => total + example.tokens, 0);
 
     expect(rendered.tokens).toBe(summed + words.countText(EXAMPLE_PREAMBLE));
+  });
+
+  test('per-example tokens plus the notes preamble account for the total', () => {
+    const cards = [{ avatar: 'Seraphina.png', card: card({ creator_notes: 'House format.' }) }];
+    const toggles = fields({ creator_notes: true });
+    const rendered = renderExamples(cards, toggles, words);
+    const summed = rendered.examples.reduce((total, example) => total + example.tokens, 0);
+    const preamble = examplePreamble(cards, toggles);
+
+    expect(rendered.text.startsWith(preamble)).toBe(true);
+    expect(rendered.tokens).toBe(summed + words.countText(preamble));
+  });
+
+  test('the creator-notes guidance appears only when notes are actually carried', () => {
+    const withNotes = [{ avatar: 'Seraphina.png', card: card({ creator_notes: 'House format.' }) }];
+    const withoutNotes = [{ avatar: 'Seraphina.png', card: card() }];
+
+    expect(examplePreamble(withNotes, fields({ creator_notes: true }))).toContain(
+      EXAMPLE_CREATOR_NOTES_PREAMBLE,
+    );
+    expect(examplePreamble(withNotes, fields())).toBe(EXAMPLE_PREAMBLE);
+    expect(examplePreamble(withoutNotes, fields({ creator_notes: true }))).toBe(EXAMPLE_PREAMBLE);
+  });
+
+  test('every example field has a label and exactly one place in the order', () => {
+    const keys = Object.keys(DEFAULT_EXAMPLE_FIELDS) as ExampleField[];
+
+    expect([...EXAMPLE_FIELD_ORDER].sort()).toEqual([...keys].sort());
+    for (const field of keys) expect(EXAMPLE_FIELD_LABELS[field]).toBeTruthy();
   });
 
   test('turning every field off still identifies each card, so the analysis stays verifiable', () => {

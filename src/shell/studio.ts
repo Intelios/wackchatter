@@ -237,6 +237,7 @@ export type ChangeField =
   | 'tags'
   | 'alternate_greetings'
   | 'source'
+  | 'updates'
   | 'world';
 
 export interface CardChange {
@@ -350,12 +351,26 @@ export function cardChanges(
       });
     }
   }
-  const list = (key: 'tags' | 'source' | 'alternate_greetings', label: string, noun: string) => {
+  const list = (
+    key: 'tags' | 'source' | 'alternate_greetings' | 'updates',
+    label: string,
+    noun: string,
+  ) => {
     const before = opened.data[key] ?? [];
     const after = now.data[key] ?? [];
     if (JSON.stringify(before) === JSON.stringify(after)) return;
     const same = before.length === after.length;
-    const reordered = same && [...before].sort().join('\0') === [...after].sort().join('\0');
+    /*
+     * Entries are serialised before sorting, so a list of objects compares by its
+     * members — updates entries are objects, and a bare sort() would fold every one of
+     * them into "[object Object]" and call any edit a reorder.
+     */
+    const unordered = (items: (typeof before)[number][]) =>
+      [...items]
+        .map((item) => JSON.stringify(item))
+        .sort()
+        .join('\0');
+    const reordered = same && unordered(before) === unordered(after);
     changes.push({
       id: key,
       label,
@@ -367,6 +382,7 @@ export function cardChanges(
   list('alternate_greetings', 'Alternate greetings', 'greetings');
   list('tags', 'Tags', 'tags');
   list('source', 'Source', 'sources');
+  list('updates', 'Updates', 'updates');
   const world = (data: CardDataV2) =>
     typeof data.extensions.world === 'string' ? data.extensions.world : '';
   if (world(opened.data) !== world(now.data)) {

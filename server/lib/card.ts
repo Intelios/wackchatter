@@ -12,7 +12,7 @@
 
 import { Buffer } from 'node:buffer';
 import { blankCardData } from '../../shared/card/blank.ts';
-import type { CardDataV2, TavernCard } from '../../shared/types/card.ts';
+import type { CardDataV2, CardUpdate, TavernCard } from '../../shared/types/card.ts';
 import { CARD_SPEC_V2, CARD_SPEC_V3, V1_REQUIRED_FIELDS } from '../../shared/types/card.ts';
 import { readTextChunks, replaceTextChunks } from './png.ts';
 
@@ -150,6 +150,16 @@ export function normalizeCard(raw: unknown): TavernCard {
     } as CardDataV2['character_book'];
   }
 
+  /*
+   * WackChatter's own changelog: sanitised when the card declares it, never injected when
+   * it doesn't, so an imported ST card keeps its exact shape. Read from `primary` only — a
+   * stray top-level `updates` on a V2/V3 card is somebody else's key, not a V1 mirror.
+   */
+  if ('updates' in primary) {
+    if (Array.isArray(primary.updates)) data.updates = asUpdates(primary.updates);
+    else delete data.updates;
+  }
+
   const card: TavernCard = {
     ...source,
     spec: source.spec === CARD_SPEC_V3 ? CARD_SPEC_V3 : CARD_SPEC_V2,
@@ -163,6 +173,26 @@ export function normalizeCard(raw: unknown): TavernCard {
 function numberOr(value: unknown, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Sanitise the card's own changelog. An entry must say something and its `label` must be a
+ * string; everything else an entry carries survives, the same bargain the card itself
+ * offers. A non-array `updates` is not a changelog at all, so the key goes rather than
+ * being emptied.
+ */
+function asUpdates(value: unknown): CardUpdate[] {
+  if (!Array.isArray(value)) return [];
+  const entries: CardUpdate[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.text !== 'string' || !record.text.trim()) continue;
+    const clean: CardUpdate = { ...entry };
+    if (typeof record.label !== 'string') delete clean.label;
+    entries.push(clean);
+  }
+  return entries;
 }
 
 /** Copy data.* down onto the V1 legacy top-level fields, as ST's readFromV2 does. */

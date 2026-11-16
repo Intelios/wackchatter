@@ -135,6 +135,10 @@ libraries or silently changes behaviour; the code next to each test holds the de
 - **The PNG filename is the identity**, never the folder. Resolve by searching the tree, recurse
   when walking `data/characters`; chats, dialogue colours and backups key on the bare filename.
 - Always emit `character_book.extensions`, even as `{}`.
+- **`data.updates` is our own changelog field** — entries `{ label?, text }`, newest first, no
+  V1 mirror and no ST counterpart. Sanitised when present, never injected when absent (an
+  imported ST card keeps its exact shape); an entry that says nothing is not an update. It is
+  creator-facing metadata only: no macro, nothing in the prompt, no Co-Creator slot.
 
 **Presets** (`shared/prompt/preset-io.ts`)
 - `enabled` lives on the **prompt order entry**, never on the prompt. The live order is
