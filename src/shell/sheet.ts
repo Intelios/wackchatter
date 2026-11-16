@@ -6,43 +6,65 @@
 import type { CardDataV2 } from '@shared/types/card.ts';
 import { AUTO_FACE_CROP } from '@shared/types/settings.ts';
 
-export interface CardFold {
-  id: string;
-  label: string;
-  text: string;
-}
+/** One section of the card, in the order the sheet lists them. */
+export type CardFold =
+  | {
+      kind: 'text';
+      id: string;
+      label: string;
+      text: string;
+    }
+  | {
+      kind: 'greetings';
+      id: 'alternate_greetings';
+      label: string;
+      /** Every non-empty greeting, in card order. */
+      greetings: string[];
+    };
 
 /**
  * The card's text, folded one section per field, in the order a card is written. Empty
- * fields are left out; alternate greetings are one section, numbered inside.
+ * fields are left out. Alternate greetings are one section too: a single one stays a
+ * plain text fold, several become rows the sheet opens one at a time.
  */
 export function cardFolds(data: CardDataV2): CardFold[] {
   const alternates = (data.alternate_greetings ?? []).filter((text) => text.trim());
+  const greetings: CardFold[] =
+    alternates.length === 0
+      ? []
+      : alternates.length === 1
+        ? [
+            {
+              kind: 'text',
+              id: 'alternate_greetings',
+              label: 'Alternate greeting',
+              text: alternates[0]!,
+            },
+          ]
+        : [
+            {
+              kind: 'greetings',
+              id: 'alternate_greetings',
+              label: `Alternate greetings · ${alternates.length}`,
+              greetings: alternates,
+            },
+          ];
   const folds: CardFold[] = [
-    { id: 'description', label: 'Description', text: data.description },
-    { id: 'personality', label: 'Personality', text: data.personality },
-    { id: 'scenario', label: 'Scenario', text: data.scenario },
-    { id: 'first_mes', label: 'First message', text: data.first_mes },
+    { kind: 'text', id: 'description', label: 'Description', text: data.description },
+    { kind: 'text', id: 'personality', label: 'Personality', text: data.personality },
+    { kind: 'text', id: 'scenario', label: 'Scenario', text: data.scenario },
+    { kind: 'text', id: 'first_mes', label: 'First message', text: data.first_mes },
+    ...greetings,
+    { kind: 'text', id: 'mes_example', label: 'Example dialogue', text: data.mes_example },
+    { kind: 'text', id: 'system_prompt', label: 'System prompt', text: data.system_prompt },
     {
-      id: 'alternate_greetings',
-      label:
-        alternates.length === 1
-          ? 'Alternate greeting'
-          : `Alternate greetings · ${alternates.length}`,
-      text:
-        alternates.length === 1
-          ? alternates[0]!
-          : alternates.map((text, i) => `${i + 1}.\n${text}`).join('\n\n'),
-    },
-    { id: 'mes_example', label: 'Example dialogue', text: data.mes_example },
-    { id: 'system_prompt', label: 'System prompt', text: data.system_prompt },
-    {
+      kind: 'text',
       id: 'post_history_instructions',
       label: 'Post-history instructions',
       text: data.post_history_instructions,
     },
   ];
-  return folds.filter((fold) => (fold.text ?? '').trim());
+  return folds.filter((fold) => fold.kind === 'greetings' || fold.text.trim());
 }
 
 /**
@@ -57,6 +79,24 @@ export function readableCardText(text: string, names: { char: string; user: stri
     .replace(/<(char|user)>/gi, (_, who: string) =>
       who.toLowerCase() === 'char' ? names.char : names.user,
     );
+}
+
+export interface GreetingPreview {
+  lead: string;
+  trail: string;
+}
+
+/**
+ * The first two paragraphs of a greeting, each folded onto one line for the sheet's list.
+ * The full greeting keeps its breaks; this is only the handle that gets someone to it.
+ */
+export function greetingPreview(text: string): GreetingPreview {
+  const [lead = '', trail = ''] = text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((block) => block.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return { lead, trail };
 }
 
 /** A crop clamped to the portrait and kept to one decimal, the way settings stores it. */

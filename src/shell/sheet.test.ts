@@ -5,6 +5,7 @@ import {
   clampCrop,
   coverOverflow,
   cropAfterDrag,
+  greetingPreview,
   readableCardText,
   readableNotes,
   storedCrop,
@@ -38,13 +39,61 @@ describe('cardFolds', () => {
     expect(folds.map((fold) => fold.id)).toEqual(['description', 'scenario']);
   });
 
-  test('alternate greetings are one section, numbered when there are several', () => {
+  test('one alternate greeting stays a plain fold', () => {
     const [one] = cardFolds(card({ alternate_greetings: ['Hi!', ' '] }));
-    expect(one).toEqual({ id: 'alternate_greetings', label: 'Alternate greeting', text: 'Hi!' });
+    expect(one).toEqual({
+      kind: 'text',
+      id: 'alternate_greetings',
+      label: 'Alternate greeting',
+      text: 'Hi!',
+    });
+  });
 
-    const [two] = cardFolds(card({ alternate_greetings: ['Hi!', 'Hey.'] }));
-    expect(two?.label).toBe('Alternate greetings · 2');
-    expect(two?.text).toBe('1.\nHi!\n\n2.\nHey.');
+  test('several alternate greetings become one section of rows', () => {
+    const folds = cardFolds(
+      card({
+        first_mes: 'Hello.',
+        alternate_greetings: ['One.', ' ', 'Two.'],
+        mes_example: '<START>',
+      }),
+    );
+    expect(folds.map((fold) => fold.id)).toEqual([
+      'first_mes',
+      'alternate_greetings',
+      'mes_example',
+    ]);
+    expect(folds[1]).toEqual({
+      kind: 'greetings',
+      id: 'alternate_greetings',
+      label: 'Alternate greetings · 2',
+      greetings: ['One.', 'Two.'],
+    });
+  });
+
+  test('all-blank alternate greetings add no section', () => {
+    expect(cardFolds(card({ first_mes: 'Hello.', alternate_greetings: [' ', '\n'] }))).toEqual([
+      { kind: 'text', id: 'first_mes', label: 'First message', text: 'Hello.' },
+    ]);
+  });
+});
+
+describe('greetingPreview', () => {
+  test('reads the first two paragraphs as single lines', () => {
+    expect(
+      greetingPreview('  First line.\nStill the first.\n\nSecond   paragraph.\n\nThird.'),
+    ).toEqual({ lead: 'First line. Still the first.', trail: 'Second paragraph.' });
+  });
+
+  test('a single paragraph has no second line', () => {
+    expect(greetingPreview('Only this.')).toEqual({ lead: 'Only this.', trail: '' });
+  });
+
+  test('blank blocks and CRLF leave nothing to preview', () => {
+    expect(greetingPreview('\r\n  \r\n\r\n')).toEqual({ lead: '', trail: '' });
+    expect(greetingPreview('\n\n  First.\r\n\r\nSecond.\n\n')).toEqual({
+      lead: 'First.',
+      trail: 'Second.',
+    });
   });
 });
 

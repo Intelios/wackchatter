@@ -25,6 +25,7 @@ import {
   cardFolds,
   coverOverflow,
   cropAfterDrag,
+  greetingPreview,
   readableCardText,
   readableNotes,
   storedCrop,
@@ -122,11 +123,28 @@ export function CharacterSheet({
   const folds = useMemo(
     () =>
       data
-        ? cardFolds(data).map((fold) => ({
-            ...fold,
-            text: readableCardText(fold.text, names),
-            tokens: countTokens.countText(fold.text),
-          }))
+        ? cardFolds(data).map((fold) => {
+            if (fold.kind === 'text') {
+              return {
+                ...fold,
+                text: readableCardText(fold.text, names),
+                tokens: countTokens.countText(fold.text),
+              };
+            }
+            const items = fold.greetings.map((greeting) => {
+              const read = readableCardText(greeting, names);
+              return {
+                text: read,
+                ...greetingPreview(read),
+                tokens: countTokens.countText(greeting),
+              };
+            });
+            return {
+              ...fold,
+              items,
+              total: items.reduce((sum, item) => sum + item.tokens, 0),
+            };
+          })
         : [],
     [data, countTokens, names.char, names.user],
   );
@@ -200,9 +218,18 @@ export function CharacterSheet({
         <section className="w3-sheet__group" aria-label="The card">
           <h3 className="w3-sheet__label">The card</h3>
           <div>
-            {folds.map((fold) => (
-              <Fold key={fold.id} label={fold.label} tokens={fold.tokens} text={fold.text} />
-            ))}
+            {folds.map((fold) =>
+              fold.kind === 'greetings' ? (
+                <GreetingsFold
+                  key={fold.id}
+                  label={fold.label}
+                  total={fold.total}
+                  items={fold.items}
+                />
+              ) : (
+                <Fold key={fold.id} label={fold.label} tokens={fold.tokens} text={fold.text} />
+              ),
+            )}
           </div>
           <div className="w3-sheet__facts">
             {tags.length ? <span>{tags.join(' · ')}</span> : null}
@@ -234,6 +261,74 @@ function Fold({ label, tokens, text }: { label: string; tokens: number; text: st
         <Icon name="chevronDown" size="xs" />
       </button>
       {open ? <div className="w3-sheet__fold-text">{text}</div> : null}
+    </div>
+  );
+}
+
+interface GreetingItem {
+  text: string;
+  lead: string;
+  trail: string;
+  tokens: number;
+}
+
+/**
+ * Alternate greetings as a list of openings: each row offers its first two lines, and
+ * only the one being read is open. The opening's own text starts where its preview did.
+ */
+function GreetingsFold({
+  label,
+  total,
+  items,
+}: {
+  label: string;
+  total: number;
+  items: GreetingItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [reading, setReading] = useState<number | null>(null);
+  return (
+    <div className="w3-sheet__fold" data-open={open || undefined}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        {label}
+        <small>{total.toLocaleString()} tokens</small>
+        <Icon name="chevronDown" size="xs" />
+      </button>
+      {open ? (
+        <div className="w3-sheet__greetings">
+          {items.map((item, index) => {
+            const shown = reading === index;
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: greetings carry no id of their own
+              <div key={index} className="w3-sheet__greeting" data-open={shown || undefined}>
+                <button
+                  type="button"
+                  className="w3-sheet__greeting-head"
+                  aria-expanded={shown}
+                  onClick={() => setReading(shown ? null : index)}
+                >
+                  <span className="w3-sheet__greeting-no">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  {shown ? (
+                    <span className="w3-sheet__greeting-label">Opening {index + 1}</span>
+                  ) : (
+                    <span className="w3-sheet__greeting-copy">
+                      <span className="w3-sheet__greeting-lead">{item.lead}</span>
+                      {item.trail ? (
+                        <span className="w3-sheet__greeting-trail">{item.trail}</span>
+                      ) : null}
+                    </span>
+                  )}
+                  <span className="w3-sheet__greeting-tokens">{item.tokens.toLocaleString()}</span>
+                  <Icon name="chevronDown" size="xs" />
+                </button>
+                {shown ? <div className="w3-sheet__greeting-text">{item.text}</div> : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

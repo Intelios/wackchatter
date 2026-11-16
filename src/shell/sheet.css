@@ -284,16 +284,123 @@
 
 .w3-sheet__fold .w3-ic {
   color: var(--w3-faint);
-  transform: rotate(-90deg);
   transition: transform var(--w3-quick) var(--w3-out);
 }
 
-.w3-sheet__fold[data-open] .w3-ic {
+/* A row's chevron belongs to the row, not to an open fold around it. */
+.w3-sheet__greeting-head .w3-ic {
+  margin-top: 3px;
+  transform: rotate(-90deg);
+}
+
+.w3-sheet__fold > button .w3-ic {
+  transform: rotate(-90deg);
+}
+
+.w3-sheet__greeting[data-open] .w3-ic {
+  transform: none;
+}
+
+.w3-sheet__fold[data-open] > button .w3-ic {
   transform: none;
 }
 
 .w3-sheet__fold-text {
   padding: 10px 2px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--w3-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Alternate greetings: a row per opening, one open at a time. */
+.w3-sheet__greeting {
+  border-bottom: 1px solid var(--w3-line);
+}
+
+.w3-sheet__greeting-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 12px;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 4px 9px 2px;
+  border: 0;
+  background: none;
+  color: var(--w3-soft);
+  font: inherit;
+  text-align: left;
+}
+
+.w3-sheet__greeting-head:hover {
+  background: var(--w3-hover);
+}
+
+.w3-sheet__greeting[data-open] .w3-sheet__greeting-head {
+  background: var(--w3-accent-soft);
+  box-shadow: inset 2px 0 0 var(--w3-accent);
+}
+
+.w3-sheet__greeting-no {
+  padding-top: 2px;
+  font-family: var(--w3-font-mono);
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--w3-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.w3-sheet__greeting[data-open] .w3-sheet__greeting-no {
+  color: var(--w3-accent);
+}
+
+.w3-sheet__greeting-copy {
+  display: block;
+  min-width: 0;
+}
+
+.w3-sheet__greeting-lead,
+.w3-sheet__greeting-trail {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.w3-sheet__greeting-lead {
+  font-size: 13.5px;
+  line-height: 1.42;
+  color: var(--w3-soft);
+}
+
+.w3-sheet__greeting-trail {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.42;
+  color: var(--w3-faint);
+}
+
+.w3-sheet__greeting[data-open] .w3-sheet__greeting-lead {
+  color: var(--w3-text);
+}
+
+.w3-sheet__greeting-label {
+  font-size: 13.5px;
+  line-height: 1.42;
+  color: var(--w3-text);
+}
+
+.w3-sheet__greeting-tokens {
+  padding-top: 2px;
+  font-family: var(--w3-font-mono);
+  font-size: 9.5px;
+  color: var(--w3-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.w3-sheet__greeting-text {
+  padding: 1px 8px 18px 30px;
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--w3-muted);
