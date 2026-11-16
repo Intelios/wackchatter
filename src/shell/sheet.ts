@@ -3,6 +3,7 @@
  * of a card it lists, how card text reads outside a chat, and how dragging moves a crop.
  */
 
+import { cleanUpdates } from '@shared/card/updates.ts';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import { AUTO_FACE_CROP } from '@shared/types/settings.ts';
 
@@ -65,6 +66,28 @@ export function cardFolds(data: CardDataV2): CardFold[] {
     },
   ];
   return folds.filter((fold) => fold.kind === 'greetings' || fold.text.trim());
+}
+
+/** One update of the card's changelog, as the timeline reads it. */
+export interface CardUpdateView {
+  label: string;
+  text: string;
+}
+
+/**
+ * The card's updates for the timeline: stored order — newest first — reading the same way
+ * creator notes do, with the names resolved and markup-styled text flattened for Markdown.
+ * Entries that say nothing are left out; the sheet is a reading surface, and an empty node
+ * is not one.
+ */
+export function cardUpdates(
+  data: CardDataV2,
+  names: { char: string; user: string },
+): CardUpdateView[] {
+  return cleanUpdates(data.updates).map((entry) => ({
+    label: entry.label?.trim() ?? '',
+    text: readableNotes(readableCardText(entry.text, names)),
+  }));
 }
 
 /**

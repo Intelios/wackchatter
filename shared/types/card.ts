@@ -55,6 +55,17 @@ export interface CardExtensions {
   [key: string]: unknown;
 }
 
+/**
+ * One entry of the card's changelog — WackChatter's own `updates` field, which no ST card
+ * carries. The label is freeform on purpose: a date, a version, or a title all read the
+ * same in the UI, and nothing ever parses it.
+ */
+export interface CardUpdate {
+  label?: string;
+  text: string;
+  [key: string]: unknown;
+}
+
 /** The V2 `data` block. V3 adds fields but does not change any of these. */
 export interface CardDataV2 {
   name: string;
@@ -83,6 +94,13 @@ export interface CardDataV2 {
   creation_date?: number;
   modification_date?: number;
   assets?: Array<{ type: string; uri: string; name: string; ext: string }>;
+
+  /*
+   * WackChatter's own field: the card's changelog, newest first. Optional like the V3
+   * additions — an imported ST card has none, and normalising never injects the key.
+   * Creator-facing metadata only: nothing in the prompt pipeline reads it.
+   */
+  updates?: CardUpdate[];
 
   [key: string]: unknown;
 }

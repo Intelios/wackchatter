@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CardDataV2 } from '@shared/types/card.ts';
 import {
   cardFolds,
+  cardUpdates,
   clampCrop,
   coverOverflow,
   cropAfterDrag,
@@ -94,6 +95,39 @@ describe('greetingPreview', () => {
       lead: 'First.',
       trail: 'Second.',
     });
+  });
+});
+
+describe('cardUpdates', () => {
+  test('lists the changelog in stored order, labels trimmed, names resolved', () => {
+    expect(
+      cardUpdates(
+        card({
+          updates: [
+            { label: ' v1.2 · 2026-09-18 ', text: 'Rebalanced the lorebook.' },
+            { text: '{{char}} says hello to {{user}}.' },
+          ],
+        }),
+        { char: 'Mika', user: 'Jack' },
+      ),
+    ).toEqual([
+      { label: 'v1.2 · 2026-09-18', text: 'Rebalanced the lorebook.' },
+      { label: '', text: 'Mika says hello to Jack.' },
+    ]);
+  });
+
+  test('entries that say nothing are left out; no updates is no timeline', () => {
+    const names = { char: 'Mika', user: 'Jack' };
+    expect(cardUpdates(card({ updates: [{ label: 'v1.1', text: '  ' }] }), names)).toEqual([]);
+    expect(cardUpdates(card({}), names)).toEqual([]);
+  });
+
+  test('markup-styled update text reads as its words, like notes', () => {
+    const [one] = cardUpdates(card({ updates: [{ text: '<div>Added<br>a greeting.</div>' }] }), {
+      char: 'Mika',
+      user: 'Jack',
+    });
+    expect(one?.text).toBe('Added\na greeting.');
   });
 });
 

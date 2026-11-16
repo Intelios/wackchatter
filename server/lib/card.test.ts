@@ -237,6 +237,109 @@ describe('normalising', () => {
   });
 });
 
+describe('updates — the card changelog', () => {
+  test('round-trips through both chunks, unknown entry keys intact', () => {
+    const original = normalizeCard({
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        name: 'Kept',
+        description: 'desc',
+        updates: [
+          { label: 'v1.2 · 2026-09-18', text: 'Rebalanced the lorebook.', keptByThirdParty: true },
+          { text: 'First release.' },
+        ],
+      },
+    });
+
+    const png = writeCard(CARRIER, original);
+
+    // Both chunks carry the field, like every other.
+    for (const keyword of ['chara', 'ccv3']) {
+      const chunk = readTextChunks(png).find((c) => c.keyword === keyword)!;
+      const payload = JSON.parse(Buffer.from(chunk.text, 'base64').toString('utf8'));
+      expect(payload.data.updates).toHaveLength(2);
+    }
+
+    const readBack = readCard(png);
+    expect(readBack.data.updates).toEqual(original.data.updates);
+    expect(readBack.data.updates?.[0]?.keptByThirdParty).toBe(true);
+  });
+
+  test('sanitises the shape: bad entries drop, non-string labels drop, a non-array drops the key', () => {
+    const messy = normalizeCard({
+      spec: 'chara_card_v2',
+      spec_version: '2.0',
+      data: {
+        name: 'Messy',
+        description: 'd',
+        updates: [
+          { label: 7, text: 'kept' },
+          { text: '   ' },
+          { text: 42 },
+          'a bare string',
+          null,
+          { label: 'v1.1', text: 'kept too' },
+        ],
+      },
+    });
+    expect(messy.data.updates).toEqual([{ text: 'kept' }, { label: 'v1.1', text: 'kept too' }]);
+
+    const notAnArray = normalizeCard({
+      spec: 'chara_card_v2',
+      spec_version: '2.0',
+      data: { name: 'Odd', description: 'd', updates: 'nope' },
+    });
+    expect('updates' in notAnArray.data).toBe(false);
+  });
+
+  test('an absent field stays absent — an imported ST card gains no key', () => {
+    const card = readCard(sampleCard());
+    expect('updates' in card.data).toBe(false);
+
+    const edited = mergeCardData(card, { description: 'edited' });
+    expect('updates' in edited.data).toBe(false);
+    expect('updates' in readCard(writeCard(CARRIER, edited)).data).toBe(false);
+  });
+
+  test('a declared empty array survives as an empty array', () => {
+    const card = normalizeCard({
+      spec: 'chara_card_v2',
+      spec_version: '2.0',
+      data: { name: 'Empty', description: 'd', updates: [] },
+    });
+    expect(card.data.updates).toEqual([]);
+  });
+
+  test('a patch with updates replaces the array; an unrelated edit keeps the stored one', () => {
+    const original = normalizeCard({
+      spec: 'chara_card_v2',
+      spec_version: '2.0',
+      data: { name: 'Log', description: 'd', updates: [{ label: 'v1', text: 'first' }] },
+    });
+
+    expect(mergeCardData(original, { description: 'edited' }).data.updates).toEqual([
+      { label: 'v1', text: 'first' },
+    ]);
+    expect(mergeCardData(original, { updates: [{ text: 'second' }] }).data.updates).toEqual([
+      { text: 'second' },
+    ]);
+  });
+
+  test('a bare V1 card reads updates from the top level', () => {
+    const card = normalizeCard({
+      name: 'Legacy',
+      description: 'd',
+      personality: 'p',
+      scenario: 's',
+      first_mes: 'f',
+      mes_example: 'm',
+      updates: [{ label: 'v1', text: 'old card, new field' }],
+    });
+    expect(card.data.updates).toEqual([{ label: 'v1', text: 'old card, new field' }]);
+  });
+});
+
 describe('unknown-key preservation', () => {
   test('foreign keys survive normalise -> merge -> write -> read', () => {
     const original = normalizeCard({

@@ -27,7 +27,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { resolveGreetingMacros } from '@shared/prompt/greeting.ts';
 import type { TokenCounter } from '@shared/prompt/token-cache.ts';
-import type { CardDataV2, CharacterDetail } from '@shared/types/card.ts';
+import type { CardDataV2, CardUpdate, CharacterDetail } from '@shared/types/card.ts';
 import type { Persona } from '@shared/types/chat.ts';
 import type { Preset } from '@shared/types/preset.ts';
 import type {
@@ -201,6 +201,7 @@ export function StudioBench({
           return draft.updateExtension('world', typeof world === 'string' && world ? world : null);
         }
         if (target.key === 'source') return draft.update('source', opened.data.source ?? []);
+        if (target.key === 'updates') return draft.update('updates', opened.data.updates ?? []);
         return draft.update(target.key, opened.data[target.key]);
     }
   };
@@ -369,6 +370,10 @@ export function StudioBench({
             />
           </div>
           <div className="w3-st-field">{textField('creator_notes', 'Creator notes', 'text')}</div>
+          <UpdatesField
+            value={draft.data.updates ?? []}
+            onChange={(updates) => draft.update('updates', updates)}
+          />
           <FoldingFields
             fields={[
               { key: 'nickname', label: 'Nickname', value: draft.data.nickname ?? '' },
@@ -1093,6 +1098,169 @@ function Examples({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------- Updates ----------
+
+/**
+ * The card's changelog, written as a stack: the newest update at the top, each entry a
+ * freeform label (a date, a version, a title) over what changed. A row with no text stays
+ * on screen so there is something to type into, but `useCardDraft` filters what it saves —
+ * an update that says nothing never reaches the card.
+ */
+function UpdatesField({
+  value,
+  onChange,
+}: {
+  value: CardUpdate[];
+  onChange: (updates: CardUpdate[]) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  /*
+   * Updates carry no id, so the editor lends each one for as long as the card is open, and
+   * an insert, a move or a removal carries the ids along with the entries — the greetings
+   * shelf does the same, for the same reason.
+   */
+  const ids = useRef<number[]>([]);
+  const nextId = useRef(0);
+  while (ids.current.length < value.length) ids.current.push(nextId.current++);
+  ids.current.length = value.length;
+  const [added, setAdded] = useState(false);
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const from = ids.current.indexOf(Number(event.active.id));
+    const to = event.over ? ids.current.indexOf(Number(event.over.id)) : -1;
+    if (from < 0 || to < 0 || from === to) return;
+    ids.current = moveItem(ids.current, from, to);
+    onChange(moveItem(value, from, to));
+  };
+
+  const add = () => {
+    ids.current.unshift(nextId.current++);
+    setAdded(true);
+    onChange([
+      { label: new Date().toLocaleDateString(undefined, { dateStyle: 'medium' }), text: '' },
+      ...value,
+    ]);
+  };
+
+  const remove = (index: number) => {
+    ids.current.splice(index, 1);
+    onChange(value.filter((_, at) => at !== index));
+  };
+
+  return (
+    <div className="w3-st-field">
+      <div className="w3-st-updates__head">
+        <FieldHead label="Updates" />
+        <button type="button" className="w3-st-updates__add" onClick={add}>
+          <Icon name="plus" size="xs" />
+          Add update
+        </button>
+      </div>
+      {value.length ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+          onDragEnd={onDragEnd}
+        >
+          <SortableContext items={ids.current} strategy={verticalListSortingStrategy}>
+            <div className="w3-st-updates">
+              {value.map((entry, index) => (
+                <UpdateRow
+                  key={ids.current[index]}
+                  id={ids.current[index]!}
+                  index={index}
+                  entry={entry}
+                  autoFocus={added && index === 0}
+                  onChange={(patch) =>
+                    onChange(value.map((item, at) => (at === index ? { ...item, ...patch } : item)))
+                  }
+                  onRemove={() => remove(index)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      ) : null}
+    </div>
+  );
+}
+
+function UpdateRow({
+  id,
+  index,
+  entry,
+  autoFocus,
+  onChange,
+  onRemove,
+}: {
+  id: number;
+  index: number;
+  entry: CardUpdate;
+  autoFocus?: boolean;
+  onChange: (patch: Partial<CardUpdate>) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  const [armed, setArmed] = useState(false);
+  return (
+    <div
+      ref={setNodeRef}
+      className="w3-st-update"
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-dragging={isDragging || undefined}
+    >
+      <div className="w3-st-update__top">
+        <button
+          type="button"
+          className="w3-st-update__grip"
+          aria-label={`Move update ${index + 1}`}
+          {...attributes}
+          {...listeners}
+        >
+          <svg viewBox="0 0 10 16" width="8" height="14" aria-hidden="true" fill="currentColor">
+            <circle cx="2" cy="3" r="1.3" />
+            <circle cx="8" cy="3" r="1.3" />
+            <circle cx="2" cy="8" r="1.3" />
+            <circle cx="8" cy="8" r="1.3" />
+            <circle cx="2" cy="13" r="1.3" />
+            <circle cx="8" cy="13" r="1.3" />
+          </svg>
+        </button>
+        <LineInput
+          className="w3-st-input w3-st-update__label"
+          label={`Update ${index + 1} label`}
+          value={entry.label ?? ''}
+          placeholder="Label — a date, a version, or a title"
+          onCommit={(label) => onChange({ label })}
+        />
+        <button
+          type="button"
+          className="w3-st-ghost w3-st-ghost--sm"
+          data-armed={armed || undefined}
+          onBlur={() => setArmed(false)}
+          onClick={() => (armed ? onRemove() : setArmed(true))}
+        >
+          <Icon name="trash" size="xs" />
+          {armed ? 'Click again to remove' : 'Remove'}
+        </button>
+      </div>
+      <MacroText
+        label={`Update ${index + 1}`}
+        value={entry.text}
+        placeholder="What changed"
+        autoFocus={autoFocus}
+        onChange={(text) => onChange({ text })}
+      />
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { characterApi } from '../lib/api.ts';
 import { Icon } from './icons.tsx';
 import {
   cardFolds,
+  cardUpdates,
   coverOverflow,
   cropAfterDrag,
   greetingPreview,
@@ -151,6 +152,7 @@ export function CharacterSheet({
   const notes = data?.creator_notes?.trim()
     ? readableNotes(readableCardText(data.creator_notes, names))
     : '';
+  const updates = data ? cardUpdates(data, names) : [];
   const book = data?.character_book?.entries?.length ?? 0;
   const tags = data?.tags?.filter((tag) => tag.trim()) ?? [];
 
@@ -213,6 +215,26 @@ export function CharacterSheet({
           <p className="w3-sheet__hint">No notes from the creator.</p>
         )}
       </section>
+
+      {updates.length ? (
+        <section className="w3-sheet__group" aria-label="Updates">
+          <h3 className="w3-sheet__label">Updates</h3>
+          <div className="w3-sheet__timeline">
+            {updates.map((update, index) => {
+              const latest = index === 0;
+              return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: updates carry no id of their own
+                <article key={index} className="w3-sheet__update" data-latest={latest || undefined}>
+                  {update.label ? (
+                    <span className="w3-sheet__update-label">{update.label}</span>
+                  ) : null}
+                  <Markdown text={update.text} className="w3-sheet__update-text" />
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {detail ? (
         <section className="w3-sheet__group" aria-label="The card">

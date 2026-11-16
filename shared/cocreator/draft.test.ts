@@ -32,6 +32,20 @@ describe('the working card', () => {
     expect(draft.mystery).toEqual({ keep: true });
   });
 
+  test("keeps the card's own updates, which no Co-Creator slot writes or compares", () => {
+    const original = base();
+    original.data.updates = [{ label: 'v1.2', text: 'Rebalanced the lorebook.' }];
+    expect(projectDraft(emptyStash(), original).data.updates).toEqual(original.data.updates);
+
+    // Not a slot: an edit to the changelog is neither a conflict nor part of the patch.
+    const draft = structuredClone(original);
+    const latest = structuredClone(original);
+    latest.data.updates = [{ text: 'Changed in the Studio while the session was open.' }];
+    const compared = compareDraft(original, latest, draft);
+    expect(compared.conflicts).toEqual([]);
+    expect(compared.patch).toEqual({});
+  });
+
   test('preserves unrelated outside edits and writes only our changes, including clears', () => {
     const original = base();
     const draft = structuredClone(original);

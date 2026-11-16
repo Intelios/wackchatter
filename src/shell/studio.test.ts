@@ -102,6 +102,12 @@ describe('problems', () => {
     ]);
   });
 
+  test('updates are the creator talking to the reader, not the card misbehaving', () => {
+    expect(
+      studioProblems(data({ updates: [{ label: '{{chra}}', text: 'More {{nonsense}}.' }] }), []),
+    ).toEqual([]);
+  });
+
   test('a switched-off entry without keys is not a problem', () => {
     const list = entries({
       extensions: {},
@@ -120,6 +126,17 @@ describe('cost', () => {
     expect(cost.lore.map((row) => [row.label, row.tokens])).toEqual([['Talia', 2]]);
     expect(cost.bySection.definition).toBe(4);
     expect(cost.bySection.lorebook).toBe(2);
+  });
+
+  test('updates are never sent, so they cost nothing', () => {
+    const without = cardCost(data(), [], counter);
+    const withUpdates = cardCost(
+      data({ updates: [{ label: 'v1', text: 'Rewrote everything you are.' }] }),
+      [],
+      counter,
+    );
+    expect(withUpdates.alwaysTotal).toBe(without.alwaysTotal);
+    expect(withUpdates.bySection.metadata).toBe(0);
   });
 });
 
@@ -159,6 +176,39 @@ describe('changes since opening', () => {
       kind: 'added-entry',
       uid: 9,
     });
+  });
+
+  test('updates list as one change: added, removed or reordered', () => {
+    const withUpdates = (updates: CardDataV2['updates']) => ({
+      data: data({ updates }),
+      folder: '',
+      entries: entries(BOOK),
+    });
+    const openedUpdates = withUpdates([{ label: 'v1', text: 'First.' }]);
+
+    expect(cardChanges(openedUpdates, withUpdates([{ label: 'v1', text: 'First.' }]))).toEqual([]);
+
+    const edited = cardChanges(openedUpdates, withUpdates([{ label: 'v1', text: 'Edited.' }]));
+    expect(edited).toHaveLength(1);
+    expect(edited[0]?.id).toBe('updates');
+    expect(edited[0]?.before).toBe('Edited');
+
+    expect(cardChanges(openedUpdates, withUpdates([])).at(0)?.before).toBe('1 updates');
+    expect(cardChanges(withUpdates([]), withUpdates([{ text: 'New.' }])).at(0)?.after).toBe(
+      '1 updates',
+    );
+
+    const reordered = cardChanges(
+      withUpdates([
+        { label: 'v1', text: 'First.' },
+        { label: 'v2', text: 'Second.' },
+      ]),
+      withUpdates([
+        { label: 'v2', text: 'Second.' },
+        { label: 'v1', text: 'First.' },
+      ]),
+    );
+    expect(reordered.at(0)?.before).toBe('Reordered');
   });
 
   test('a moved entry has not changed', () => {

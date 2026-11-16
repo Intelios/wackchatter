@@ -9,7 +9,7 @@
  *
  *   headings  the field's own headings, when it has two or more of one style
  *   groups    its PList / W++ groups, same rule
- *   fields    Description, Personality, Scenario, Examples, Lorebook
+ *   fields    Description, Personality, Scenario, Examples, Lorebook, Updates
  *   raw       one section holding the whole card
  *
  * The rungs above `fields` are the guess, and they are allowed to fail — `cardStructure.ts`
@@ -31,11 +31,18 @@
  * in this project, so the part worth testing has to be reachable without one.
  */
 
+import { cleanUpdates } from '@shared/card/updates.ts';
 import type { CardDataV2, CharacterBook } from '@shared/types/card.ts';
 import { type FieldSplit, type SplitStyle, splitCardText } from './cardStructure.ts';
 
 /** The card text worth reading back. Order is the order the sections appear in. */
-export type CardField = 'description' | 'personality' | 'scenario' | 'mes_example' | 'lorebook';
+export type CardField =
+  | 'description'
+  | 'personality'
+  | 'scenario'
+  | 'mes_example'
+  | 'lorebook'
+  | 'updates';
 
 const FIELD_ORDER: readonly CardField[] = [
   'description',
@@ -43,6 +50,7 @@ const FIELD_ORDER: readonly CardField[] = [
   'scenario',
   'mes_example',
   'lorebook',
+  'updates',
 ];
 
 export const CARD_FIELD_LABELS: Readonly<Record<CardField, string>> = {
@@ -51,6 +59,7 @@ export const CARD_FIELD_LABELS: Readonly<Record<CardField, string>> = {
   scenario: 'Scenario',
   mes_example: 'Examples',
   lorebook: 'Lorebook',
+  updates: 'Updates',
 };
 
 /**
@@ -134,6 +143,17 @@ export function formatBookSection(book: CharacterBook | undefined): string {
       return [title, (entry.content ?? '').trim()].filter(Boolean).join('\n');
     })
     .filter(Boolean)
+    .join('\n\n');
+}
+
+/**
+ * The card's changelog as one readable block, newest first: the label (when there is one)
+ * on its own line above what changed, entries apart by a blank line. Entries that say
+ * nothing are not updates, and a changelog with none of them is no section at all.
+ */
+export function formatUpdatesSection(updates: CardDataV2['updates']): string {
+  return cleanUpdates(updates)
+    .map((entry) => [entry.label?.trim(), entry.text.trim()].filter(Boolean).join('\n'))
     .join('\n\n');
 }
 
@@ -224,6 +244,7 @@ function identity(text: string): string {
 
 function fieldText(card: CardDataV2, field: CardField): string {
   if (field === 'lorebook') return formatBookSection(card.character_book);
+  if (field === 'updates') return formatUpdatesSection(card.updates);
   return typeof card[field] === 'string' ? (card[field] as string) : '';
 }
 
