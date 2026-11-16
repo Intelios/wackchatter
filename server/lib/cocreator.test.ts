@@ -596,12 +596,15 @@ describe('repairing stored JSON', () => {
   test('example toggles default in, and unknown keys are dropped', () => {
     const selection = normalizeExamples({
       cards: ['a.png'],
-      fields: { mes_example: true, bogus: true },
+      fields: { mes_example: true, creator_notes: true, bogus: true },
     });
 
     expect(selection.fields.mes_example).toBe(true);
+    expect(selection.fields.creator_notes).toBe(true);
     expect(selection.fields.description).toBe(true);
     expect('bogus' in selection.fields).toBe(false);
+    // Saved before creator notes existed: the missing key takes the default, never undefined.
+    expect(normalizeExamples({ cards: [] }).fields.creator_notes).toBe(false);
   });
 
   test('a duplicate example is attached once', () => {

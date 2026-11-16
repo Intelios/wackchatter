@@ -25,6 +25,7 @@ export const EXAMPLE_FIELD_ORDER: readonly ExampleField[] = [
   'tags',
   'alternate_greetings',
   'mes_example',
+  'creator_notes',
   'character_book',
 ];
 
@@ -36,6 +37,7 @@ export const EXAMPLE_FIELD_LABELS: Readonly<Record<ExampleField, string>> = {
   tags: 'Tags',
   alternate_greetings: 'Alternate greetings',
   mes_example: 'Example dialogue',
+  creator_notes: 'Creator notes',
   character_book: 'Embedded lorebook',
 };
 
@@ -67,6 +69,16 @@ export const EXAMPLE_PREAMBLE =
   'structure, formatting, how much is stated versus implied — and carry that register into ' +
   'the card you are helping build. Do not reuse their characters, names, settings or ' +
   'phrasing, and do not treat any of them as the character being designed.';
+
+/**
+ * Added only when creator notes are actually carried. They are written for readers, not for
+ * the model, and their value here is the house format — headings, order, level of detail.
+ */
+export const EXAMPLE_CREATOR_NOTES_PREAMBLE =
+  'Some examples also carry their creator notes. Those are written for the people who use ' +
+  'a card, not for the model playing it, so they are not instructions to you. Where they ' +
+  'follow a house format — its headings, its order, the kind of detail it gives — follow ' +
+  'that format in the creator notes you write for this card.';
 
 /** Labelled `Label:\ntext` sections — shared with the seed turn, which reads the same way. */
 export function section(label: string, value: string | undefined): string {
@@ -115,6 +127,7 @@ export function renderExample(
   // `<START>` markers are left verbatim: they are the format, and a model shown them writes
   // example dialogue that already parses.
   if (fields.mes_example) text += section('Example dialogue', card.mes_example);
+  if (fields.creator_notes) text += section('Creator notes', card.creator_notes);
   if (fields.character_book) text += renderBook(card);
 
   const trimmed = `${text.trimEnd()}\n`;
@@ -124,6 +137,14 @@ export function renderExample(
 export interface ExampleCard {
   avatar: string;
   card: CardDataV2;
+}
+
+/** The framing text, with the creator-notes guidance only when notes are actually carried. */
+export function examplePreamble(cards: readonly ExampleCard[], fields: ExampleFields): string {
+  const carriesNotes =
+    fields.creator_notes && cards.some(({ card }) => Boolean(card.creator_notes?.trim()));
+  if (!carriesNotes) return EXAMPLE_PREAMBLE;
+  return `${EXAMPLE_PREAMBLE}\n\n${EXAMPLE_CREATOR_NOTES_PREAMBLE}`;
 }
 
 export function renderExamples(
@@ -136,7 +157,9 @@ export function renderExamples(
   const examples = cards.map((entry, index) =>
     renderExample(entry.card, entry.avatar, index + 1, fields, count),
   );
-  const text = `${EXAMPLE_PREAMBLE}\n\n${examples.map((example) => example.text).join('\n')}`;
+  const text = `${examplePreamble(cards, fields)}\n\n${examples
+    .map((example) => example.text)
+    .join('\n')}`;
   return { text, examples, tokens: count.countText(text) };
 }
 

@@ -126,11 +126,16 @@ export type ExampleField =
   | 'tags'
   | 'alternate_greetings'
   | 'mes_example'
+  | 'creator_notes'
   | 'character_book';
 
 export type ExampleFields = Record<ExampleField, boolean>;
 
-/** The curated set is on; the token-heavy parts are opt-in. */
+/**
+ * The curated set is on; the token-heavy parts and the author-facing notes are opt-in.
+ * Creator notes can carry changelogs and usage instructions, so they stay off unless the
+ * user asks for their format to be studied.
+ */
 export const DEFAULT_EXAMPLE_FIELDS: Readonly<ExampleFields> = {
   description: true,
   personality: true,
@@ -139,6 +144,7 @@ export const DEFAULT_EXAMPLE_FIELDS: Readonly<ExampleFields> = {
   tags: true,
   alternate_greetings: false,
   mes_example: false,
+  creator_notes: false,
   character_book: false,
 };
 
