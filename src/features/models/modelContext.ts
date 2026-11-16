@@ -4,7 +4,7 @@
  * reads as unknown (`contextOrDefault` then picks a generous size).
  */
 
-import { contextOrDefault } from '@shared/models/context.ts';
+import { contextOrDefault, isKnownContext } from '@shared/models/context.ts';
 import type { ProviderModel, ResolvedModel } from '@shared/providers/types.ts';
 import { settingsApi } from '../../lib/api.ts';
 
@@ -36,30 +36,40 @@ export async function modelContextLength(model: ResolvedModel): Promise<number |
   return (await modelCatalogueEntry(model))?.contextLength ?? null;
 }
 
+/** The context a request to `model` may fill, plus whether that number is only the fallback. */
+export async function resolveModelContextInfo(
+  model: ResolvedModel,
+  signal?: AbortSignal,
+): Promise<{ tokens: number; assumed: boolean }> {
+  signal?.throwIfAborted();
+  const pending = modelContextLength(model);
+  const known = await (signal
+    ? // The catalogue is shared. Stop releases this request without aborting other readers.
+      new Promise<number | null>((resolve, reject) => {
+        const aborted = () => {
+          signal.removeEventListener('abort', aborted);
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        };
+        signal.addEventListener('abort', aborted, { once: true });
+        pending.then(
+          (tokens) => {
+            signal.removeEventListener('abort', aborted);
+            resolve(tokens);
+          },
+          (error) => {
+            signal.removeEventListener('abort', aborted);
+            reject(error);
+          },
+        );
+      })
+    : pending);
+  return { tokens: contextOrDefault(known), assumed: !isKnownContext(known) };
+}
+
 /** The context a request to `model` may fill. */
 export async function resolveModelContext(
   model: ResolvedModel,
   signal?: AbortSignal,
 ): Promise<number> {
-  signal?.throwIfAborted();
-  const pending = modelContextLength(model).then(contextOrDefault);
-  if (!signal) return pending;
-  // The catalogue is shared. Stop releases this request without aborting other readers.
-  return new Promise<number>((resolve, reject) => {
-    const aborted = () => {
-      signal.removeEventListener('abort', aborted);
-      reject(new DOMException('The operation was aborted.', 'AbortError'));
-    };
-    signal.addEventListener('abort', aborted, { once: true });
-    pending.then(
-      (tokens) => {
-        signal.removeEventListener('abort', aborted);
-        resolve(tokens);
-      },
-      (error) => {
-        signal.removeEventListener('abort', aborted);
-        reject(error);
-      },
-    );
-  });
+  return (await resolveModelContextInfo(model, signal)).tokens;
 }

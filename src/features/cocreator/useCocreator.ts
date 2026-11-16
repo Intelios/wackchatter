@@ -16,7 +16,7 @@ import {
   makeCompactionPlan,
   shouldCompact,
 } from '@shared/cocreator/compaction.ts';
-import { cocreatorBudget } from '@shared/cocreator/generation.ts';
+import { cocreatorBudget, cocreatorContextLimit } from '@shared/cocreator/generation.ts';
 import { captureSideSnapshot, resolveSideSettings } from '@shared/cocreator/sideChat.ts';
 import {
   type CoCreatorReasoningEfforts,
@@ -37,7 +37,7 @@ import { runGeneration } from '../../lib/generation.ts';
 import { useTokenizer } from '../../lib/useTokenizer.ts';
 import type { StreamStore } from '../chat/state/streamStore.ts';
 import { createStreamStore } from '../chat/state/streamStore.ts';
-import { resolveModelContext } from '../models/modelContext.ts';
+import { resolveModelContextInfo } from '../models/modelContext.ts';
 import { useModelContext } from '../models/useModelContext.ts';
 import { measureCharacterContext } from './characterContext.ts';
 import { CocreatorSaveQueue } from './cocreatorPersistence.ts';
@@ -359,7 +359,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
     return null;
   }, [resolved.model, preset, examplesReady]);
 
-  const sideModelContext = sideModelContextInfo.tokens;
+  const sideModelContext = cocreatorContextLimit(sideModelContextInfo);
 
   const sideContext = useMemo(() => {
     if (!state.sideChat || !preset || !sideConnection || !sideModelContext) return null;
@@ -600,9 +600,15 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       manualCompactionDone.current = done;
       setCompacting(target);
       try {
-        const contextTokens = await resolveModelContext(model, controller.signal);
+        const contextInfo = await resolveModelContextInfo(model, controller.signal);
         controller.signal.throwIfAborted();
-        await performCompaction(base, target, controller, contextTokens, requestEffort);
+        await performCompaction(
+          base,
+          target,
+          controller,
+          cocreatorContextLimit(contextInfo),
+          requestEffort,
+        );
       } catch (error) {
         if (!controller.signal.aborted && stateRef.current.sessionId === base.sessionId)
           dispatch({ type: 'error/set', target, message: (error as Error).message });
@@ -623,7 +629,7 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
       let measured: ReturnType<typeof measure> = null;
       let failure: string | null = null;
       try {
-        measured = measure(state, target, info.tokens, loadedExamples.text);
+        measured = measure(state, target, cocreatorContextLimit(info), loadedExamples.text);
       } catch (error) {
         failure = (error as Error).message;
       }
@@ -771,9 +777,11 @@ export function useCocreator(options: UseCocreatorOptions): UseCocreator {
 
       try {
         // Sized from the model's own context, never a setting: a request that would not fit
-        // is the model's limit, not something to tune by hand.
-        const contextTokens = await resolveModelContext(requestConnection, controller.signal);
+        // is the model's limit, not something to tune by hand. A window the catalogue does
+        // not state is no limit of ours — everything is sent and the provider may refuse it.
+        const contextInfo = await resolveModelContextInfo(requestConnection, controller.signal);
         if (!ensureActive()) return;
+        const contextTokens = cocreatorContextLimit(contextInfo);
         const measured = measure(
           mode === 'continue' ? current : started,
           target,

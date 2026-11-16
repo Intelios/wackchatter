@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { contextOrDefault, UNKNOWN_MODEL_CONTEXT } from './context.ts';
+import { contextOrDefault, isKnownContext, UNKNOWN_MODEL_CONTEXT } from './context.ts';
 
 test('a model’s own context wins; one that doesn’t say gets a generous size', () => {
   expect(contextOrDefault(1_000_000)).toBe(1_000_000);
@@ -9,4 +9,17 @@ test('a model’s own context wins; one that doesn’t say gets a generous size'
     UNKNOWN_MODEL_CONTEXT,
     UNKNOWN_MODEL_CONTEXT,
   ]);
+});
+
+test('only a positive finite number counts as stated', () => {
+  expect(isKnownContext(1_000_000)).toBe(true);
+  expect(isKnownContext(1)).toBe(true);
+  expect([
+    isKnownContext(null),
+    isKnownContext(undefined),
+    isKnownContext(0),
+    isKnownContext(-5),
+    isKnownContext(Number.NaN),
+    isKnownContext(Number.POSITIVE_INFINITY),
+  ]).toEqual([false, false, false, false, false, false]);
 });
